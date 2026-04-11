@@ -15,12 +15,12 @@
 /// ```
 
 /// Storage for all environment values — passed down during rendering.
-public struct EnvironmentValues: @unchecked Sendable {
+public struct EnvironmentValues: Sendable {
     public var theme: any Theme = DefaultTheme()
     public var terminalSize: TerminalSize = TerminalSize(cols: 80, rows: 24)
     public var colorSupport: ColorSupport = .trueColor
     public var isFocused: Bool = false
-    public var focusedID: AnyHashable? = nil
+    public var focusedID: NodeID? = nil
 
     public init() {}
 }

@@ -15,7 +15,15 @@ public class AttributeNode {
 
     /// State storage slots — persisted across body re-evaluations.
     /// @TerminalState creates slots here during first body evaluation.
-    public var stateSlots: [AnyStateStorage] = []
+    /// Dictionary keyed by source location for O(1) lookup.
+    public var stateSlots: [String: AnyStateStorage] = [:]
+
+    /// Cached intrinsic width — nil means needs recomputation.
+    /// Invalidated when markDirty() is called (content changed).
+    public var cachedWidth: Int?
+
+    /// Cached intrinsic height — nil means needs recomputation.
+    public var cachedHeight: Int?
 
     /// Whether this node can receive focus (set by .focusable() modifier).
     public var isFocusable: Bool = false
@@ -29,13 +37,18 @@ public class AttributeNode {
     }
 
     /// Mark this node and its layout ancestors as needing re-evaluation.
+    /// Also invalidates cached measurements up the tree.
     public func markDirty() {
         isDirty = true
+        cachedWidth = nil
+        cachedHeight = nil
         parent?.markLayoutDirty()
     }
 
-    /// Mark layout dirty up the tree.
+    /// Mark layout dirty up the tree and invalidate measurement caches.
     func markLayoutDirty() {
+        cachedWidth = nil
+        cachedHeight = nil
         if case .layout = kind {
             isDirty = true
         }
@@ -49,6 +62,27 @@ public enum NodeKind {
     case layout(LayoutInfo)
     case modifier(ModifierEffect)
     case viewBody(ViewBodyInfo)
+
+    /// Quick kind checks for reconciliation type-safety.
+    var isPrimitive: Bool {
+        if case .primitive = self { return true }
+        return false
+    }
+
+    func isLayout(_ kind: LayoutKind) -> Bool {
+        if case .layout(let info) = self { return info.kind == kind }
+        return false
+    }
+
+    var isModifier: Bool {
+        if case .modifier = self { return true }
+        return false
+    }
+
+    var isViewBody: Bool {
+        if case .viewBody = self { return true }
+        return false
+    }
 }
 
 // MARK: - Primitive
@@ -115,10 +149,7 @@ public enum ModifierEffect {
 // MARK: - View Body
 
 /// Type-erased container for a view body node.
-/// The generic concrete type is captured in the closure.
 public final class ViewBodyInfo {
-    /// Closure that re-evaluates the body and updates children in the graph.
-    public var evaluate: ((AttributeNode, AttributeGraph) -> Void)?
     /// Name for debugging
     public var viewTypeName: String
 

@@ -15,11 +15,9 @@ public enum TerminalEvent: Sendable {
     case timer(String)
 }
 
-// SIGWINCH flag
-nonisolated(unsafe) private var _resizeFlag: Bool = false
-
 /// Current frame stats — updated by the runtime each frame.
-nonisolated(unsafe) public var frameStats = FrameStats.zero
+/// MainActor-isolated to prevent torn reads from concurrent access.
+@MainActor public var frameStats = FrameStats.zero
 
 // MARK: - Event Queue
 
@@ -29,24 +27,19 @@ final class EventQueue: @unchecked Sendable {
     private let lock = NSLock()
 
     func push(_ event: TerminalEvent) {
-        lock.lock()
-        buffer.append(event)
-        lock.unlock()
+        lock.withLock { buffer.append(event) }
     }
 
     func drain() -> [TerminalEvent] {
-        lock.lock()
-        let events = buffer
-        buffer.removeAll(keepingCapacity: true)
-        lock.unlock()
-        return events
+        lock.withLock {
+            let events = buffer
+            buffer.removeAll(keepingCapacity: true)
+            return events
+        }
     }
 
     var hasEvents: Bool {
-        lock.lock()
-        let result = !buffer.isEmpty
-        lock.unlock()
-        return result
+        lock.withLock { !buffer.isEmpty }
     }
 }
 
@@ -82,8 +75,8 @@ public enum RenderMode: Sendable {
 
 @MainActor
 public final class TerminalRuntime<RootView: TerminalView> {
-    private let buildView: @Sendable () -> RootView
-    private let onEvent: @Sendable (TerminalEvent) -> Bool
+    private let buildView: () -> RootView
+    private let onEvent: (TerminalEvent) -> Bool
     private let timers: [TerminalTimer]
     private let renderMode: RenderMode
     private let tracer: DevTracer
@@ -95,23 +88,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let frameCounter = FrameCounter()
     private let eventQueue = EventQueue()
     private var outputBuffer = OutputBuffer()
-    nonisolated(unsafe) private let graph = AttributeGraph()
+    private let graph = AttributeGraph()
     private let debugPanel = DebugPanel()
     private let debugOverlay = DebugOverlay()
     private let inspector = Inspector()
     private let keyBindings = KeyBindings()
     public let focusEngine = FocusEngine()
 
-    public nonisolated init(
+    public init(
         renderMode: RenderMode = .fps60,
         timers: [TerminalTimer] = [],
         devTrace: DevTraceConfig? = nil,
-        onEvent: @escaping @Sendable (TerminalEvent) -> Bool = { event in
+        onEvent: @escaping (TerminalEvent) -> Bool = { event in
             if case .key(let k) = event, k.key == .character("q") { return false }
             if case .key(let k) = event, k.key == .escape { return false }
             return true
         },
-        @TerminalViewBuilder content: @escaping @Sendable () -> RootView
+        @TerminalViewBuilder content: @escaping () -> RootView
     ) {
         self.buildView = content
         self.onEvent = onEvent
@@ -126,9 +119,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     }
 
     public func run() async {
-        Terminal.installResizeHandler {
-            _resizeFlag = true
-        }
+        Terminal.installResizeHandler()
         Terminal.enableRawMode()
         Terminal.enterAlternateScreen()
         Terminal.enableMouseTracking()
@@ -169,11 +160,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
             timerTasks.append(task)
         }
 
-        // Resize poller
+        // Resize poller — uses atomic flag set by SIGWINCH handler
         let resizeTask = Task.detached {
             while !Task.isCancelled {
-                if _resizeFlag {
-                    _resizeFlag = false
+                if Terminal.checkResize() {
                     let newSize = Terminal.size()
                     queue.push(.resize(newSize.cols, newSize.rows))
                 }
@@ -370,7 +360,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         frameCounter.beginFrame()
         tracer.beginFrame()
 
-        let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let buildStart = monotonicNanoseconds()
 
         // Set environment for body evaluation
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
@@ -399,10 +389,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #endif
 
         buffer.renderFull(into: &outputBuffer)
-        let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let buildEnd = monotonicNanoseconds()
 
         outputBuffer.flush()
-        let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let flushEnd = monotonicNanoseconds()
 
         let totalCells = buffer.width * buffer.height
         tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
@@ -423,7 +413,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         frameCounter.beginFrame()
         tracer.beginFrame()
 
-        let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let buildStart = monotonicNanoseconds()
 
         let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
 
@@ -437,6 +427,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
             let view = buildView()
             let graphChanged = graph.update(from: view)
+
+            // Rebuild focus index after graph changes
+            if let root = graph.root {
+                focusEngine.rebuildIndex(root: root)
+            }
 
             // Render if graph changed OR if we were explicitly told to (key press, etc.)
             if graphChanged || previousBuffer == nil || needsRender {
@@ -485,10 +480,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
                 let changedCells = buffer.countDiff(from: previousBuffer)
                 buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
-                let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+                let buildEnd = monotonicNanoseconds()
 
                 outputBuffer.flush()
-                let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+                let flushEnd = monotonicNanoseconds()
 
                 tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
                 frameStats = frameCounter.endFrame(
@@ -505,7 +500,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
 
         // Nothing changed — skip everything
-        let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let buildEnd = monotonicNanoseconds()
         tracer.endFrame(buffer: previousBuffer!, previousBuffer: previousBuffer)
         frameStats = frameCounter.endFrame(
             cellsChanged: 0, totalCells: size.cols * size.rows,
@@ -625,15 +620,13 @@ extension TerminalAppProtocol {
         return true
     }
 
-    public static func main() async {
-        let onEventFn: @Sendable (TerminalEvent) -> Bool = { onEvent($0) }
-        let contentFn: @Sendable () -> Content = { content() }
+    @MainActor public static func main() async {
         let runtime = TerminalRuntime(
             renderMode: renderMode,
             timers: timers,
             devTrace: devTrace,
-            onEvent: onEventFn,
-            content: contentFn
+            onEvent: { onEvent($0) },
+            content: { content() }
         )
         await runtime.run()
     }

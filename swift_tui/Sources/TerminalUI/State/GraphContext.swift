@@ -1,7 +1,12 @@
 /// Context set by the graph during body evaluation.
 /// @State property wrappers read this to connect to their graph-owned storage.
 ///
-/// This is safe because all graph evaluation happens on @MainActor — single-threaded.
+/// These are thread-local-like: set before body evaluation, restored after.
+/// All access happens on @MainActor (body evaluation, focus registration, rendering).
+/// Marked nonisolated(unsafe) because enforcing @MainActor on the static properties
+/// would require @MainActor on every view struct and modifier protocol, which is
+/// architecturally infeasible. Safety is guaranteed by the runtime's single-threaded
+/// graph evaluation on MainActor.
 public enum GraphContext {
     /// The current node being evaluated.
     nonisolated(unsafe) public static var currentNode: AttributeNode?

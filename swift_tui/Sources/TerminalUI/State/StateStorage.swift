@@ -4,7 +4,7 @@ import Observation
 /// When `value` is mutated, the Observation framework fires change
 /// notifications, which the graph uses to mark the owning node dirty.
 @Observable
-public final class StateStorage<Value>: @unchecked Sendable {
+public final class StateStorage<Value> {
     public var value: Value
 
     public init(_ value: Value) {

@@ -4,6 +4,22 @@ import Glibc
 import Darwin
 #endif
 
+import Synchronization
+
+/// Platform-agnostic POSIX write — avoids ambiguity with Swift instance methods.
+@inline(__always)
+internal func posixWrite(_ fd: Int32, _ buf: UnsafeRawPointer, _ count: Int) -> Int {
+    #if canImport(Glibc)
+    return Glibc.write(fd, buf, count)
+    #elseif canImport(Darwin)
+    return Darwin.write(fd, buf, count)
+    #endif
+}
+
+/// Atomic flag set by SIGWINCH handler, polled by resize task.
+/// Using Atomic<Bool> ensures signal-safety and eliminates TOCTOU races.
+private let _resizeFlag = Atomic<Bool>(false)
+
 public struct TerminalSize: Sendable {
     public var cols: Int
     public var rows: Int
@@ -79,7 +95,7 @@ public enum Terminal {
         s.withUTF8 { buf in
             var written = 0
             while written < buf.count {
-                let n = Darwin.write(STDOUT_FILENO, buf.baseAddress! + written, buf.count - written)
+                let n = posixWrite(STDOUT_FILENO, buf.baseAddress! + written, buf.count - written)
                 if n <= 0 { break }
                 written += n
             }
@@ -91,21 +107,24 @@ public enum Terminal {
         s.withUTF8Buffer { buf in
             var written = 0
             while written < buf.count {
-                let n = Darwin.write(STDOUT_FILENO, buf.baseAddress! + written, buf.count - written)
+                let n = posixWrite(STDOUT_FILENO, buf.baseAddress! + written, buf.count - written)
                 if n <= 0 { break }
                 written += n
             }
         }
     }
 
-    public static func installResizeHandler(_ handler: @escaping () -> Void) {
-        _resizeCallback = handler
-        signal(SIGWINCH, _sigwinchHandler)
+    /// Install the SIGWINCH handler. Sets an atomic flag — no Swift closure
+    /// in the signal handler (async-signal-safe).
+    public static func installResizeHandler() {
+        signal(SIGWINCH) { _ in
+            _resizeFlag.store(true, ordering: .relaxed)
+        }
     }
-}
 
-nonisolated(unsafe) private var _resizeCallback: (() -> Void)?
-
-private func _sigwinchHandler(_: Int32) {
-    _resizeCallback?()
+    /// Atomically check and clear the resize flag. Returns true if a resize
+    /// occurred since the last check. No TOCTOU — single atomic exchange.
+    public static func checkResize() -> Bool {
+        _resizeFlag.exchange(false, ordering: .relaxed)
+    }
 }

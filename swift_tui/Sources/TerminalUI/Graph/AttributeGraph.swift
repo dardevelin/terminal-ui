@@ -1,11 +1,18 @@
 import Observation
+import Synchronization
 
 /// The attribute graph — persistent DAG of typed nodes.
 /// Owns the root node, manages reconciliation, tracks dirty state.
 /// First frame: builds from scratch. Subsequent frames: updates in place.
 public final class AttributeGraph {
     public var root: AttributeNode?
-    public var hasDirtyNodes: Bool = false
+    /// Atomic dirty flag — set from observation onChange callbacks which may fire
+    /// on any thread. Read/cleared on MainActor during update().
+    private let _hasDirtyNodes = Atomic<Bool>(false)
+    public var hasDirtyNodes: Bool {
+        get { _hasDirtyNodes.load(ordering: .relaxed) }
+        set { _hasDirtyNodes.store(newValue, ordering: .relaxed) }
+    }
 
     public init() {}
 
@@ -44,14 +51,20 @@ public final class AttributeGraph {
         GraphContext.currentNode = node
         GraphContext.currentGraph = self
 
-        // Evaluate body with observation tracking
-        nonisolated(unsafe) let capturedNode = node
-        nonisolated(unsafe) let capturedGraph = self
+        // Evaluate body with observation tracking.
+        // onChange fires on whatever thread triggers the state mutation.
+        // - hasDirtyNodes uses Atomic internally, safe from any thread.
+        // - markDirty() dispatched to MainActor since it walks the mutable parent chain.
+        // - Weak captures prevent memory leaks when nodes are removed from the graph.
+        nonisolated(unsafe) weak let weakNode = node
+        nonisolated(unsafe) weak let weakGraph = self
         let body: V.Body = withObservationTracking {
             view.body
         } onChange: {
-            capturedNode.markDirty()
-            capturedGraph.hasDirtyNodes = true
+            weakGraph?.hasDirtyNodes = true
+            if let node = weakNode {
+                Task { @MainActor in node.markDirty() }
+            }
         }
 
         // Restore context
@@ -144,6 +157,7 @@ public final class AttributeGraph {
                     changed = true
                 }
 
+                node.isDirty = false
                 return
             }
         }
@@ -169,6 +183,7 @@ public final class AttributeGraph {
 
     /// Update primitive values in place — no allocation.
     /// Only sets `changed` if the value actually differs.
+    /// Always clears isDirty after a successful match.
     func updatePrimitive<V: TerminalView>(_ node: AttributeNode, from view: V) -> Bool {
         if let text = view as? Text {
             if case .primitive(.text(let old)) = node.kind {
@@ -176,11 +191,15 @@ public final class AttributeGraph {
                     node.kind = .primitive(.text(text.spans))
                     changed = true
                 }
+                node.isDirty = false
                 return true
             }
         }
         if view is Spacer {
-            if case .primitive(.spacer) = node.kind { return true }
+            if case .primitive(.spacer) = node.kind {
+                node.isDirty = false
+                return true
+            }
         }
         if let bar = view as? ProgressBar {
             if case .primitive(.progressBar(let oldVal, _, _, _)) = node.kind {
@@ -190,6 +209,7 @@ public final class AttributeGraph {
                     ))
                     changed = true
                 }
+                node.isDirty = false
                 return true
             }
         }
@@ -199,24 +219,40 @@ public final class AttributeGraph {
                     node.kind = .primitive(.spinner(frame: spinner.frame, style: spinner.style))
                     changed = true
                 }
+                node.isDirty = false
                 return true
             }
         }
         if view is EmptyView {
-            if case .primitive(.empty) = node.kind { return true }
+            if case .primitive(.empty) = node.kind {
+                node.isDirty = false
+                return true
+            }
         }
         return false
     }
 
     /// Update layout container children in place.
+    /// When counts match, verifies type compatibility before in-place update.
+    /// If a child's type changed (e.g., conditional branch flip), that child
+    /// is rebuilt rather than updated in place — prevents state leakage.
     func updateLayoutChildren(_ node: AttributeNode, from newChildren: [Any]) {
         if node.children.count == newChildren.count {
-            // Same count — update each child in place
             for (i, newChild) in newChildren.enumerated() {
-                updateAnyView(node.children[i], from: newChild)
+                let existing = node.children[i]
+                if canUpdateInPlace(existing, from: newChild) {
+                    updateAnyView(existing, from: newChild)
+                } else {
+                    // Type mismatch — rebuild this child
+                    let childID = node.id.appending(.index(i))
+                    let childNode = constructAnyView(newChild, id: childID)
+                    childNode.parent = node
+                    node.children[i] = childNode
+                    changed = true
+                }
             }
         } else {
-            // Child count changed — rebuild children
+            // Child count changed — rebuild all children
             node.children.removeAll(keepingCapacity: true)
             for (i, child) in newChildren.enumerated() {
                 let childID = node.id.appending(.index(i))
@@ -224,7 +260,37 @@ public final class AttributeGraph {
                 childNode.parent = node
                 node.children.append(childNode)
             }
+            changed = true
         }
+        node.isDirty = false
+    }
+
+    /// Check if an existing node is structurally compatible with a new view.
+    /// Returns false if the node kind doesn't match (e.g., text node receiving layout view).
+    private func canUpdateInPlace(_ node: AttributeNode, from view: Any) -> Bool {
+        guard let tv = view as? any TerminalView else { return false }
+        return canUpdateInPlaceTyped(node, from: tv)
+    }
+
+    private func canUpdateInPlaceTyped<V: TerminalView>(_ node: AttributeNode, from view: V) -> Bool {
+        // Primitives — check that the view type matches the stored primitive kind
+        if view is Text { return node.kind.isPrimitive }
+        if view is Spacer { return node.kind.isPrimitive }
+        if view is ProgressBar { return node.kind.isPrimitive }
+        if view is Spinner { return node.kind.isPrimitive }
+        if view is EmptyView { return node.kind.isPrimitive }
+        if view is Divider { return node.kind.isPrimitive }
+        // Layouts — check kind matches
+        if view is any _GraphVStack { return node.kind.isLayout(.vstack) }
+        if view is any _GraphHStack { return node.kind.isLayout(.hstack) }
+        if view is any _GraphZStack { return node.kind.isLayout(.zstack) }
+        // Modifiers, conditionals, forEach — check structural kind
+        if view is any _GraphModified { return node.kind.isModifier }
+        if view is any _GraphConditional { return true } // conditionals handle their own branch check
+        if view is any _GraphForEach { return node.kind.isLayout(.vstack) } // ForEach builds as vstack
+        // Composite views — check viewBody
+        if !(V.Body.self == Never.self) { return node.kind.isViewBody }
+        return true // default: allow update
     }
 
     /// Type-erased update — opens the existential to call the generic version.
@@ -362,13 +428,15 @@ public final class AttributeGraph {
         GraphContext.currentNode = node
         GraphContext.currentGraph = self
 
-        nonisolated(unsafe) let capturedNode2 = node
-        nonisolated(unsafe) let capturedGraph2 = self
+        nonisolated(unsafe) weak let weakNode2 = node
+        nonisolated(unsafe) weak let weakGraph2 = self
         let body: V.Body = withObservationTracking {
             view.body
         } onChange: {
-            capturedNode2.markDirty()
-            capturedGraph2.hasDirtyNodes = true
+            weakGraph2?.hasDirtyNodes = true
+            if let node = weakNode2 {
+                Task { @MainActor in node.markDirty() }
+            }
         }
 
         GraphContext.currentNode = prevNode

@@ -4,12 +4,18 @@ import PackageDescription
 
 let package = Package(
     name: "swift_tui",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "TerminalUI", targets: ["TerminalUI"]),
     ],
     targets: [
-        .target(name: "TerminalUI", path: "Sources/TerminalUI"),
+        .target(
+            name: "TerminalUI",
+            path: "Sources/TerminalUI",
+            swiftSettings: [
+                .swiftLanguageMode(.v6),
+            ]
+        ),
         .executableTarget(
             name: "Demo",
             dependencies: ["TerminalUI"],

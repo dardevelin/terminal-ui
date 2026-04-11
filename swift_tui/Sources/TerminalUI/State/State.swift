@@ -30,17 +30,17 @@ public struct TerminalState<Value> {
             guard let node = GraphContext.currentNode else {
                 return initialValue
             }
-            if let slot = findSlot(in: node) {
+            if let slot = node.stateSlots[key] as? StateSlot<Value> {
                 return slot.storage.value
             }
             // First evaluation — create storage
             let slot = StateSlot(key: key, initialValue: initialValue)
-            node.stateSlots.append(slot)
+            node.stateSlots[key] = slot
             return initialValue
         }
         nonmutating set {
             guard let node = GraphContext.currentNode else { return }
-            if let slot = findSlot(in: node) {
+            if let slot = node.stateSlots[key] as? StateSlot<Value> {
                 slot.storage.value = newValue
             }
         }
@@ -53,14 +53,7 @@ public struct TerminalState<Value> {
         )
     }
 
-    private func findSlot(in node: AttributeNode) -> StateSlot<Value>? {
-        for slot in node.stateSlots {
-            if let typed = slot as? StateSlot<Value>, typed.key == key {
-                return typed
-            }
-        }
-        return nil
-    }
+    // State slot lookup is now O(1) via dictionary keyed by source location.
 }
 
 /// A two-way reference to state owned elsewhere.

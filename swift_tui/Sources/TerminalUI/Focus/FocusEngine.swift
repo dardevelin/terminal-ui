@@ -5,7 +5,8 @@
 /// Mouse hover: tracked independently, follows mouse position.
 ///
 /// Owned by the TerminalRuntime. One per app instance.
-public final class FocusEngine: @unchecked Sendable {
+/// Always accessed from @MainActor (TerminalRuntime).
+public final class FocusEngine {
 
     /// Keyboard focus — the node that receives key events.
     /// Moved by Tab/Shift+Tab, arrow keys, or clicking a focusable node.
@@ -19,53 +20,70 @@ public final class FocusEngine: @unchecked Sendable {
     public var mousePosition: (x: Int, y: Int) = (0, 0)
 
     /// Registered key handlers — keyed by NodeID.
-    /// Populated during graph construction/update from `.onKeyPress` modifiers.
-    /// Cleared and rebuilt each frame to stay in sync with the graph.
     var keyHandlers: [NodeID: (KeyEvent) -> KeyEventResult] = [:]
 
     /// Registered click handlers — keyed by NodeID.
-    /// Called when a mouse click lands inside a focusable node's rect.
-    /// Receives the click position relative to the node's rect origin.
     var clickHandlers: [NodeID: (_ relativeX: Int, _ relativeY: Int) -> Void] = [:]
 
+    // MARK: - Cached Indices (rebuilt when graph changes)
+
+    /// O(1) node lookup by ID — replaces recursive tree walk.
+    private var nodeIndex: [NodeID: AttributeNode] = [:]
+
+    /// Pre-computed ordered list of focusable nodes (depth-first, pre-order).
+    private var focusableList: [AttributeNode] = []
+
     public init() {}
+
+    // MARK: - Index Rebuilding
+
+    /// Rebuild both indices with a single depth-first walk.
+    /// Called after graph.update() when the graph structure changed.
+    public func rebuildIndex(root: AttributeNode) {
+        nodeIndex.removeAll(keepingCapacity: true)
+        focusableList.removeAll(keepingCapacity: true)
+        buildIndexRecursive(root)
+    }
+
+    private func buildIndexRecursive(_ node: AttributeNode) {
+        nodeIndex[node.id] = node
+        if node.isFocusable {
+            focusableList.append(node)
+        }
+        for child in node.children {
+            buildIndexRecursive(child)
+        }
+    }
 
     // MARK: - Keyboard Focus Traversal
 
     /// Move keyboard focus to the next focusable node (Tab).
     public func focusNext(root: AttributeNode?) {
-        guard let root else { return }
-        let focusables = collectFocusables(root)
-        guard !focusables.isEmpty else { return }
+        guard !focusableList.isEmpty else { return }
 
         if let current = keyboardFocusID,
-           let idx = focusables.firstIndex(where: { $0.id == current }) {
-            let next = (idx + 1) % focusables.count
-            keyboardFocusID = focusables[next].id
+           let idx = focusableList.firstIndex(where: { $0.id == current }) {
+            let next = (idx + 1) % focusableList.count
+            keyboardFocusID = focusableList[next].id
         } else {
-            keyboardFocusID = focusables.first?.id
+            keyboardFocusID = focusableList.first?.id
         }
     }
 
     /// Move keyboard focus to the previous focusable node (Shift+Tab).
     public func focusPrevious(root: AttributeNode?) {
-        guard let root else { return }
-        let focusables = collectFocusables(root)
-        guard !focusables.isEmpty else { return }
+        guard !focusableList.isEmpty else { return }
 
         if let current = keyboardFocusID,
-           let idx = focusables.firstIndex(where: { $0.id == current }) {
-            let prev = idx == 0 ? focusables.count - 1 : idx - 1
-            keyboardFocusID = focusables[prev].id
+           let idx = focusableList.firstIndex(where: { $0.id == current }) {
+            let prev = idx == 0 ? focusableList.count - 1 : idx - 1
+            keyboardFocusID = focusableList[prev].id
         } else {
-            keyboardFocusID = focusables.last?.id
+            keyboardFocusID = focusableList.last?.id
         }
     }
 
     /// Directional keyboard focus movement — respects layout axis.
-    /// VStack: up/down moves between focusable children.
-    /// HStack: left/right moves between focusable children.
-    /// Cross-axis falls back to linear traversal.
     public func focusInDirection(_ direction: FocusDirection, root: AttributeNode?) {
         guard let root else { return }
         guard let current = keyboardFocusID else {
@@ -117,8 +135,7 @@ public final class FocusEngine: @unchecked Sendable {
 
     // MARK: - Mouse Handling
 
-    /// Update hover state from mouse position. Finds the deepest focusable
-    /// node at the given position using the resolved rects from the graph.
+    /// Update hover state from mouse position.
     public func updateMouseHover(x: Int, y: Int, root: AttributeNode?) {
         mousePosition = (x, y)
         guard let root else {
@@ -129,28 +146,22 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     /// Handle mouse click — transfer keyboard focus to the clicked focusable node.
-    /// If the node has a click handler (e.g., List row selection), call it with
-    /// coordinates relative to the node's rect. Otherwise send synthetic enter
-    /// to activate buttons/toggles.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
         guard let root else { return }
         if let target = findFocusableAt(x: x, y: y, in: root) {
             keyboardFocusID = target.id
 
-            // Check for click handler first (List row selection)
             if let handler = findClickHandler(for: target, root: root) {
                 let relX = x - target.rect.x
                 let relY = y - target.rect.y
                 handler(relX, relY)
             } else {
-                // No click handler — activate with synthetic enter (buttons/toggles)
                 let syntheticEnter = KeyEvent(key: .enter)
                 _ = routeKeyEvent(syntheticEnter, root: root)
             }
         }
     }
 
-    /// Find a click handler for a node — check self and ancestors.
     private func findClickHandler(for node: AttributeNode, root: AttributeNode) -> ((_ relativeX: Int, _ relativeY: Int) -> Void)? {
         if let handler = clickHandlers[node.id] { return handler }
         var ancestor = node.parent
@@ -164,19 +175,14 @@ public final class FocusEngine: @unchecked Sendable {
     // MARK: - Key Event Routing
 
     /// Route a key event to the keyboard-focused node's handler.
-    /// Walks ancestors (handlers wrap focusable nodes from outside)
-    /// and subtree (handlers inside focusable content).
-    /// Returns true if the event was consumed.
     public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode?) -> Bool {
         guard let focused = keyboardFocusID, let root else { return false }
         guard let focusedNode = findNode(id: focused, in: root) else { return false }
 
-        // Check the focused node itself
         if let handler = keyHandlers[focused] {
             if handler(event) == .handled { return true }
         }
 
-        // Walk UP — onKeyPress wraps focusable, so handler is on an ancestor
         var ancestor = focusedNode.parent
         while let node = ancestor {
             if let handler = keyHandlers[node.id] {
@@ -185,7 +191,6 @@ public final class FocusEngine: @unchecked Sendable {
             ancestor = node.parent
         }
 
-        // Walk DOWN — handlers inside the focusable subtree
         return routeToSubtree(event, node: focusedNode)
     }
 
@@ -217,19 +222,18 @@ public final class FocusEngine: @unchecked Sendable {
 
     // MARK: - Queries
 
-    /// Is this node the keyboard-focused node?
     public func isKeyboardFocused(_ nodeID: NodeID) -> Bool {
         keyboardFocusID == nodeID
     }
 
-    /// Is this node under the mouse cursor?
     public func isMouseHovered(_ nodeID: NodeID) -> Bool {
         mouseHoverID == nodeID
     }
 
     // MARK: - Internal Helpers
 
-    /// Collect all focusable nodes in tree order (depth-first, pre-order).
+    /// Collect focusable nodes under a subtree — used for directional navigation
+    /// within a specific layout parent. Uses nodeIndex for the root-level query.
     func collectFocusables(_ node: AttributeNode) -> [AttributeNode] {
         var result: [AttributeNode] = []
         collectFocusablesRecursive(node, into: &result)
@@ -247,13 +251,11 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Find the deepest focusable node whose rect contains the point.
     func findFocusableAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        // Check children in reverse order (highest z-order first)
         for child in node.children.reversed() {
             if let found = findFocusableAt(x: x, y: y, in: child) {
                 return found
             }
         }
-        // Check self
         if node.isFocusable {
             let r = node.rect
             if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height {
@@ -263,16 +265,21 @@ public final class FocusEngine: @unchecked Sendable {
         return nil
     }
 
-    /// Find a node by ID in the tree.
-    func findNode(id: NodeID, in root: AttributeNode) -> AttributeNode? {
-        if root.id == id { return root }
-        for child in root.children {
-            if let found = findNode(id: id, in: child) { return found }
+    /// Find a node by ID — O(1) via cached index, falls back to tree walk.
+    public func findNode(id: NodeID, in root: AttributeNode) -> AttributeNode? {
+        if let node = nodeIndex[id] { return node }
+        // Fallback for nodes not yet indexed (e.g., modal content added mid-frame)
+        return findNodeRecursive(id: id, in: root)
+    }
+
+    private func findNodeRecursive(id: NodeID, in node: AttributeNode) -> AttributeNode? {
+        if node.id == id { return node }
+        for child in node.children {
+            if let found = findNodeRecursive(id: id, in: child) { return found }
         }
         return nil
     }
 
-    /// Walk up from a node to find the nearest layout container parent.
     private func findLayoutParent(of node: AttributeNode) -> AttributeNode? {
         var current = node.parent
         while let p = current {

@@ -99,7 +99,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                 sel.set(elements[itemIndex].id)
             }
         }
-        .onKeyPress { [selection, scroll] event in
+        .onKeyPress { [selection] event in
             guard let sel = selection else { return .ignored }
             let elements = Array(data)
             let total = elements.count

@@ -161,7 +161,7 @@ extension ZStack: _GraphZStack {
 extension ForEach: _GraphForEach {
     func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
-        for (i, element) in data.enumerated() {
+        for element in data {
             let childID = id.appending(.explicit(AnyHashable(element.id)))
             let childView = content(element)
             let childNode = graph.constructNode(for: childView, id: childID)
@@ -217,7 +217,7 @@ extension ForEach: _GraphForEach {
 extension ForEachWithID: _GraphForEach {
     func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
-        for (i, element) in data.enumerated() {
+        for element in data {
             let key = element[keyPath: idKeyPath]
             let childID = id.appending(.explicit(AnyHashable(key)))
             let childView = content(element)

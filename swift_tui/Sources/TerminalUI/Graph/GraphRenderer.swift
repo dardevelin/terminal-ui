@@ -97,8 +97,10 @@ public enum GraphRenderer {
             break
 
         case .divider:
-            let line = String(repeating: "─", count: context.rect.width)
-            buffer.write(line, x: context.rect.x, y: context.rect.y, style: context.style)
+            let y = context.rect.y
+            for x in context.rect.x..<(context.rect.x + context.rect.width) {
+                buffer[x, y] = Cell(character: "─", style: context.style)
+            }
 
         case .progressBar(let value, let label, let filled, let empty):
             let width = context.rect.width
@@ -140,7 +142,8 @@ public enum GraphRenderer {
     }
 
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
+        var spacerCount = 0
+        for child in children { if case .primitive(.spacer) = child.kind { spacerCount += 1 } }
 
         var childHeights: [Int] = []
         var totalContentHeight = 0
@@ -175,7 +178,8 @@ public enum GraphRenderer {
     }
 
     static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
+        var spacerCount = 0
+        for child in children { if case .primitive(.spacer) = child.kind { spacerCount += 1 } }
 
         var childWidths: [Int] = []
         var totalContentWidth = 0
@@ -357,86 +361,14 @@ public enum GraphRenderer {
         }
     }
 
-    // MARK: - Measurement
+    // MARK: - Measurement (delegated to GraphMeasurer)
 
     public static func measureWidth(_ node: AttributeNode) -> Int {
-        switch node.kind {
-        case .primitive(let content):
-            switch content {
-            case .text(let spans):
-                // Fast path: single span (99% of cases) — no allocation
-                if spans.count == 1 {
-                    return spans[0].text.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
-                }
-                // Multi-span: need to join
-                return spans.map(\.text).joined().split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
-            case .spacer, .empty: return 0
-            case .divider: return 1
-            case .progressBar: return 20
-            case .spinner(let frame, let style):
-                return style.frames[frame % style.frames.count].count
-            }
-
-        case .layout(let info):
-            switch info.kind {
-            case .vstack:
-                return node.children.map { measureWidth($0) }.max() ?? 0
-            case .hstack:
-                return node.children.map { measureWidth($0) }.reduce(0, +)
-            case .zstack:
-                return node.children.map { measureWidth($0) }.max() ?? 0
-            }
-
-        case .modifier(let effect):
-            guard let child = node.children.first else { return 0 }
-            var base = measureWidth(child)
-            if case .padding(let n) = effect { base += n * 2 }
-            if case .border = effect { base += 2 }
-            if case .frame(let w, _) = effect, let w { return w }
-            return base
-
-        case .viewBody:
-            return node.children.first.map { measureWidth($0) } ?? 0
-        }
+        GraphMeasurer.measureWidth(node)
     }
 
     public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
-        switch node.kind {
-        case .primitive(let content):
-            switch content {
-            case .text(let spans):
-                if spans.count == 1 {
-                    return spans[0].text.split(separator: "\n", omittingEmptySubsequences: false).count
-                }
-                return spans.map(\.text).joined().split(separator: "\n", omittingEmptySubsequences: false).count
-            case .spacer: return 1
-            case .divider: return 1
-            case .empty: return 0
-            case .progressBar: return 1
-            case .spinner: return 1
-            }
-
-        case .layout(let info):
-            switch info.kind {
-            case .vstack:
-                return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.reduce(0, +)
-            case .hstack:
-                return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.max() ?? 0
-            case .zstack:
-                return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.max() ?? 0
-            }
-
-        case .modifier(let effect):
-            guard let child = node.children.first else { return 0 }
-            var base = measureHeight(child, proposedWidth: proposedWidth)
-            if case .padding(let n) = effect { base += n * 2 }
-            if case .border = effect { base += 2 }
-            if case .frame(_, let h) = effect, let h { return h }
-            return base
-
-        case .viewBody:
-            return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
-        }
+        GraphMeasurer.measureHeight(node, proposedWidth: proposedWidth)
     }
 
     // MARK: - Focus Rendering
