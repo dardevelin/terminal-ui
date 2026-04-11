@@ -89,6 +89,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     nonisolated(unsafe) private let graph = AttributeGraph()
     private let debugPanel = DebugPanel()
     private let debugOverlay = DebugOverlay()
+    private let inspector = Inspector()
 
     public nonisolated init(
         renderMode: RenderMode = .fps60,
@@ -190,6 +191,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     if keyEvent.key == .character("f") && keyEvent.modifiers.contains(.ctrl) {
                         debugPanel.toggle()
                     }
+                    // ctrl+i = toggle inspector
+                    if keyEvent.key == .character("i") && keyEvent.modifiers.contains(.ctrl) {
+                        inspector.toggle()
+                    }
+                    // Arrow keys move inspector cursor when active
+                    if inspector.active {
+                        switch keyEvent.key {
+                        case .up:    inspector.moveCursor(dx: 0, dy: -1, maxX: size.cols, maxY: size.rows)
+                        case .down:  inspector.moveCursor(dx: 0, dy: 1, maxX: size.cols, maxY: size.rows)
+                        case .left:  inspector.moveCursor(dx: -1, dy: 0, maxX: size.cols, maxY: size.rows)
+                        case .right: inspector.moveCursor(dx: 1, dy: 0, maxX: size.cols, maxY: size.rows)
+                        default: break
+                        }
+                    }
                     #endif
                     needsRender = true
 
@@ -266,6 +281,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #if DEBUG
         debugOverlay.render(into: &buffer, stats: frameStats)
         debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
+        inspector.render(into: &buffer, graph: graph)
         #endif
 
         buffer.renderFull(into: &outputBuffer)
