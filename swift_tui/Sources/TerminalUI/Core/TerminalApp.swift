@@ -423,7 +423,16 @@ public protocol TerminalAppProtocol {
 extension TerminalAppProtocol {
     public static var renderMode: RenderMode { .fps60 }
     public static var timers: [TerminalTimer] { [] }
-    public static var devTrace: DevTraceConfig? { nil }
+    public static var devTrace: DevTraceConfig? {
+        #if DEBUG
+        var config = DevTraceConfig.default
+        config.enabled = true
+        config.frameLimit = 100
+        return config
+        #else
+        return nil
+        #endif
+    }
 
     public static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let k) = event, k.key == .character("q") { return false }
