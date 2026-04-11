@@ -90,6 +90,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let debugPanel = DebugPanel()
     private let debugOverlay = DebugOverlay()
     private let inspector = Inspector()
+    private let keyBindings = KeyBindings()
 
     public nonisolated init(
         renderMode: RenderMode = .fps60,
@@ -183,17 +184,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         describeKeyEvent(keyEvent),
                         timestamp: ProcessInfo.processInfo.systemUptime
                     )
-                    // ctrl+d = toggle bottom overlay
-                    if keyEvent.key == .character("d") && keyEvent.modifiers.contains(.ctrl) {
-                        debugOverlay.toggle()
-                    }
-                    // ctrl+f = cycle side panel
-                    if keyEvent.key == .character("f") && keyEvent.modifiers.contains(.ctrl) {
-                        debugPanel.toggle()
-                    }
-                    // ctrl+i = toggle inspector
-                    if keyEvent.key == .character("i") && keyEvent.modifiers.contains(.ctrl) {
-                        inspector.toggle()
+                    // Handle debug key bindings
+                    if let action = keyBindings.action(for: keyEvent) {
+                        switch action {
+                        case .toggleDebugOverlay: debugOverlay.toggle()
+                        case .toggleDebugPanel: debugPanel.toggle()
+                        case .toggleInspector: inspector.toggle()
+                        default: break
+                        }
                     }
                     // Arrow keys move inspector cursor when active
                     if inspector.active {
@@ -311,9 +309,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
-        // Only rebuild if the graph has dirty nodes or we have no previous buffer.
-        // On idle frames, this skips buildView() entirely — zero view construction.
-        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
+        // When debug tools are active, always render — don't fight the skip logic.
+        // In optimized mode (no debug tools), skip when nothing changed.
+        #if DEBUG
+        let debugActive = debugOverlay.visible || debugPanel.mode != .hidden || inspector.active
+        #else
+        let debugActive = false
+        #endif
+        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender || debugActive
 
         if needsWork {
             let view = buildView()
@@ -330,6 +333,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 #if DEBUG
                 debugOverlay.render(into: &buffer, stats: frameStats)
                 debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
+                inspector.render(into: &buffer, graph: graph)
                 #endif
 
                 let changedCells = buffer.countDiff(from: previousBuffer)

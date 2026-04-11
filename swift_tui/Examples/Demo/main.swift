@@ -402,6 +402,23 @@ struct App: TerminalView {
 
     static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let k) = event {
+            // Log every key event for debugging
+            var keyDesc = ""
+            if k.modifiers.contains(.ctrl) { keyDesc += "C-" }
+            if k.modifiers.contains(.alt) { keyDesc += "A-" }
+            switch k.key {
+            case .character(let c): keyDesc += String(c)
+            case .enter: keyDesc += "ret"
+            case .tab: keyDesc += "tab"
+            case .escape: keyDesc += "esc"
+            case .up: keyDesc += "up"
+            case .down: keyDesc += "down"
+            case .left: keyDesc += "left"
+            case .right: keyDesc += "right"
+            default: keyDesc += "?"
+            }
+            state.addLog(.info, "key: \(keyDesc)")
+
             switch k.key {
             case .character("q"), .escape: return false
             case .character("1"): state.selectedTab = 0
