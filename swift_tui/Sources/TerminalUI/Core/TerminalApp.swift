@@ -1,0 +1,361 @@
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
+import Foundation
+
+// MARK: - Events
+
+public enum TerminalEvent: Sendable {
+    case key(KeyEvent)
+    case resize(Int, Int)
+    case timer(String)
+}
+
+// SIGWINCH flag
+nonisolated(unsafe) private var _resizeFlag: Bool = false
+
+/// Current frame stats — updated by the runtime each frame.
+nonisolated(unsafe) public var frameStats = FrameStats.zero
+
+// MARK: - Event Queue
+
+/// Thread-safe event queue. Producers push, main actor drains.
+final class EventQueue: @unchecked Sendable {
+    private var buffer: [TerminalEvent] = []
+    private let lock = NSLock()
+
+    func push(_ event: TerminalEvent) {
+        lock.lock()
+        buffer.append(event)
+        lock.unlock()
+    }
+
+    func drain() -> [TerminalEvent] {
+        lock.lock()
+        let events = buffer
+        buffer.removeAll(keepingCapacity: true)
+        lock.unlock()
+        return events
+    }
+}
+
+// MARK: - Timer
+
+public struct TerminalTimer: Sendable {
+    public let name: String
+    public let interval: Duration
+
+    public init(_ name: String, every interval: Duration) {
+        self.name = name
+        self.interval = interval
+    }
+}
+
+// MARK: - Render Mode
+
+public enum RenderMode: Sendable {
+    /// Render as fast as possible — no sleep between frames.
+    case uncapped
+    /// Cap at a specific frame interval.
+    case capped(Duration)
+    /// Only render when an event arrives — no frame clock.
+    case onDemand
+
+    /// Common presets
+    public static var fps30: RenderMode { .capped(.milliseconds(33)) }
+    public static var fps60: RenderMode { .capped(.milliseconds(16)) }
+    public static var fps120: RenderMode { .capped(.milliseconds(8)) }
+}
+
+// MARK: - Runtime
+
+@MainActor
+public final class TerminalRuntime<RootView: TerminalView> {
+    private let buildView: @Sendable () -> RootView
+    private let onEvent: @Sendable (TerminalEvent) -> Bool
+    private let timers: [TerminalTimer]
+    private let renderMode: RenderMode
+    private let tracer: DevTracer
+
+    private var size: TerminalSize
+    private var previousBuffer: CellBuffer?
+    private var needsRender: Bool = true
+    private let frameCounter = FrameCounter()
+    private let eventQueue = EventQueue()
+    private var outputBuffer = OutputBuffer()
+    nonisolated(unsafe) private let graph = AttributeGraph()
+
+    public nonisolated init(
+        renderMode: RenderMode = .fps60,
+        timers: [TerminalTimer] = [],
+        devTrace: DevTraceConfig? = nil,
+        onEvent: @escaping @Sendable (TerminalEvent) -> Bool = { event in
+            if case .key(let k) = event, k.key == .character("q") { return false }
+            if case .key(let k) = event, k.key == .escape { return false }
+            return true
+        },
+        @TerminalViewBuilder content: @escaping @Sendable () -> RootView
+    ) {
+        self.buildView = content
+        self.onEvent = onEvent
+        self.timers = timers
+        self.renderMode = renderMode
+        self.tracer = DevTracer.shared
+        self.size = Terminal.size()
+
+        if let devTrace {
+            tracer.configure(devTrace)
+        }
+    }
+
+    public func run() async {
+        Terminal.installResizeHandler {
+            _resizeFlag = true
+        }
+        Terminal.enableRawMode()
+        Terminal.enterAlternateScreen()
+
+        defer {
+            tracer.writeSummary()
+            Terminal.exitAlternateScreen()
+            Terminal.disableRawMode()
+        }
+
+        renderFullFrame()
+
+        let queue = self.eventQueue
+
+        // Input reader
+        let inputTask = Task.detached {
+            while !Task.isCancelled {
+                if let key = InputParser.readKey() {
+                    queue.push(.key(key))
+                }
+            }
+        }
+
+        // Named timers
+        var timerTasks: [Task<Void, Never>] = []
+        for timer in timers {
+            let task = Task.detached {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: timer.interval)
+                    if !Task.isCancelled {
+                        queue.push(.timer(timer.name))
+                    }
+                }
+            }
+            timerTasks.append(task)
+        }
+
+        // Resize poller
+        let resizeTask = Task.detached {
+            while !Task.isCancelled {
+                if _resizeFlag {
+                    _resizeFlag = false
+                    let newSize = Terminal.size()
+                    queue.push(.resize(newSize.cols, newSize.rows))
+                }
+                try? await Task.sleep(for: .milliseconds(16))
+            }
+        }
+
+        // Frame loop
+        var running = true
+
+        while running {
+            // Drain all queued events
+            let events = eventQueue.drain()
+            for event in events {
+                let shouldContinue = onEvent(event)
+
+                switch event {
+                case .key(let keyEvent):
+                    tracer.traceInput(keyEvent)
+                    needsRender = true
+
+                case .resize(let cols, let rows):
+                    size = TerminalSize(cols: cols, rows: rows)
+                    tracer.traceResize(cols: cols, rows: rows)
+                    Terminal.write("\u{1B}[2J")
+                    renderFullFrame()
+                    needsRender = false
+
+                case .timer:
+                    needsRender = true
+                }
+
+                if !shouldContinue {
+                    running = false
+                    break
+                }
+            }
+
+            // Render
+            if running {
+                switch renderMode {
+                case .uncapped:
+                    // Always render — maximum throughput
+                    renderDiffFrame()
+                    needsRender = false
+                    await Task.yield()
+
+                case .capped(let interval):
+                    if needsRender {
+                        renderDiffFrame()
+                        needsRender = false
+                    }
+                    try? await Task.sleep(for: interval)
+
+                case .onDemand:
+                    if needsRender {
+                        renderDiffFrame()
+                        needsRender = false
+                    }
+                    // Wait until something arrives
+                    while eventQueue.drain().isEmpty && running {
+                        try? await Task.sleep(for: .milliseconds(1))
+                    }
+                }
+            }
+        }
+
+        inputTask.cancel()
+        for t in timerTasks { t.cancel() }
+        resizeTask.cancel()
+    }
+
+    // MARK: - Rendering (@MainActor)
+
+    private func renderFullFrame() {
+        frameCounter.beginFrame()
+        tracer.beginFrame()
+
+        let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        // Build/update the attribute graph from the view tree
+        let view = buildView()
+        graph.update(from: view)
+
+        // Render from graph — no Any, no as?, enum dispatch only
+        var buffer = CellBuffer(width: size.cols, height: size.rows)
+        let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
+        if let root = graph.root {
+            GraphRenderer.render(root, into: &buffer, context: context)
+        }
+
+        buffer.renderFull(into: &outputBuffer)
+        let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        outputBuffer.flush()
+        let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        let totalCells = buffer.width * buffer.height
+        tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
+        frameStats = frameCounter.endFrame(
+            cellsChanged: totalCells, totalCells: totalCells,
+            buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
+            bytesWritten: outputBuffer.size
+        )
+        previousBuffer = buffer
+    }
+
+    private func renderDiffFrame() {
+        frameCounter.beginFrame()
+        tracer.beginFrame()
+
+        let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        let view = buildView()
+        graph.update(from: view)
+
+        var buffer = CellBuffer(width: size.cols, height: size.rows)
+        let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
+        if let root = graph.root {
+            GraphRenderer.render(root, into: &buffer, context: context)
+        }
+
+        let changed = buffer.countDiff(from: previousBuffer)
+        buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+        let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        outputBuffer.flush()
+        let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
+        frameStats = frameCounter.endFrame(
+            cellsChanged: changed, totalCells: buffer.width * buffer.height,
+            buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
+            bytesWritten: outputBuffer.size
+        )
+        previousBuffer = buffer
+    }
+}
+
+// MARK: - @main entry point protocol
+
+public protocol TerminalAppProtocol {
+    associatedtype Content: TerminalView
+    static var renderMode: RenderMode { get }
+    static var timers: [TerminalTimer] { get }
+    static var devTrace: DevTraceConfig? { get }
+    static func onEvent(_ event: TerminalEvent) -> Bool
+    @TerminalViewBuilder static func content() -> Content
+}
+
+extension TerminalAppProtocol {
+    public static var renderMode: RenderMode { .fps60 }
+    public static var timers: [TerminalTimer] { [] }
+    public static var devTrace: DevTraceConfig? { nil }
+
+    public static func onEvent(_ event: TerminalEvent) -> Bool {
+        if case .key(let k) = event, k.key == .character("q") { return false }
+        if case .key(let k) = event, k.key == .escape { return false }
+        return true
+    }
+
+    public static func main() async {
+        let onEventFn: @Sendable (TerminalEvent) -> Bool = { onEvent($0) }
+        let contentFn: @Sendable () -> Content = { content() }
+        let runtime = TerminalRuntime(
+            renderMode: renderMode,
+            timers: timers,
+            devTrace: devTrace,
+            onEvent: onEventFn,
+            content: contentFn
+        )
+        await runtime.run()
+    }
+}
+
+// MARK: - Inline printing (no event loop)
+
+public enum TerminalApp {
+    public static func print<V: TerminalView>(_ view: V, width: Int? = nil) {
+        let size = Terminal.size()
+        let cols = width ?? size.cols
+        let height = max(Renderer.measureHeight(view, proposedWidth: cols), 1)
+
+        var buffer = CellBuffer(width: cols, height: height)
+        let context = RenderContext(rect: Rect(x: 0, y: 0, width: cols, height: height))
+        Renderer.render(view, into: &buffer, context: context)
+
+        for y in 0..<height {
+            var line = ""
+            var lastStyle = Style.plain
+            for x in 0..<cols {
+                let cell = buffer[x, y]
+                if cell.style != lastStyle {
+                    line += buffer.styleToAnsi(cell.style)
+                    lastStyle = cell.style
+                }
+                line += String(cell.character)
+            }
+            line += "\u{1B}[0m"
+            Swift.print(line)
+        }
+    }
+}
