@@ -126,8 +126,9 @@ public final class DebugStream: @unchecked Sendable {
         switch node.kind {
         case .primitive(let content):
             switch content {
-            case .text(let s):
+            case .text(let spans):
                 kind = "text"
+                let s = spans.map(\.text).joined()
                 value = s.count > 40 ? String(s.prefix(40)) + "..." : s
             case .spacer:
                 kind = "spacer"

@@ -698,7 +698,7 @@ struct App: TerminalView {
 // MARK: - Entry Point
 
 @main struct Demo: TerminalAppProtocol {
-    static var renderMode: RenderMode { .fps30 }
+    static var renderMode: RenderMode { .onDemand }
 
     static var timers: [TerminalTimer] {[
         TerminalTimer("spinner", every: .milliseconds(80)),

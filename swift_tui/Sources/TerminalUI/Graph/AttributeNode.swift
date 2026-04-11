@@ -54,7 +54,7 @@ public enum NodeKind {
 // MARK: - Primitive
 
 public enum PrimitiveContent {
-    case text(String)
+    case text([TextSpan])
     case spacer
     case divider
     case progressBar(value: Double, label: String?, filled: Character, empty: Character)

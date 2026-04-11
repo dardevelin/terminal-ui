@@ -74,14 +74,23 @@ public enum GraphRenderer {
 
     static func renderPrimitive(_ content: PrimitiveContent, into buffer: inout CellBuffer, context: RenderContext) {
         switch content {
-        case .text(let string):
-            let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
-            let maxWidth = context.rect.width
-            for (i, line) in lines.enumerated() {
-                let y = context.rect.y + i
-                guard y < context.rect.y + context.rect.height else { break }
-                let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
-                buffer.write(clipped, x: context.rect.x, y: y, style: context.style)
+        case .text(let spans):
+            // Fast path: single unstyled span — use simple write
+            if spans.count == 1 && !spans[0].hasOverrides {
+                let string = spans[0].text
+                let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
+                let maxWidth = context.rect.width
+                for (i, line) in lines.enumerated() {
+                    let y = context.rect.y + i
+                    guard y < context.rect.y + context.rect.height else { break }
+                    let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
+                    buffer.write(clipped, x: context.rect.x, y: y, style: context.style)
+                }
+            } else {
+                // Styled path: write each span with its own resolved style
+                buffer.writeSpans(spans, x: context.rect.x, y: context.rect.y,
+                                  maxWidth: context.rect.width, maxHeight: context.rect.height,
+                                  baseStyle: context.style)
             }
 
         case .spacer:
@@ -354,8 +363,13 @@ public enum GraphRenderer {
         switch node.kind {
         case .primitive(let content):
             switch content {
-            case .text(let s):
-                return s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
+            case .text(let spans):
+                // Fast path: single span (99% of cases) — no allocation
+                if spans.count == 1 {
+                    return spans[0].text.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
+                }
+                // Multi-span: need to join
+                return spans.map(\.text).joined().split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
             case .spacer, .empty: return 0
             case .divider: return 1
             case .progressBar: return 20
@@ -390,8 +404,11 @@ public enum GraphRenderer {
         switch node.kind {
         case .primitive(let content):
             switch content {
-            case .text(let s):
-                return s.split(separator: "\n", omittingEmptySubsequences: false).count
+            case .text(let spans):
+                if spans.count == 1 {
+                    return spans[0].text.split(separator: "\n", omittingEmptySubsequences: false).count
+                }
+                return spans.map(\.text).joined().split(separator: "\n", omittingEmptySubsequences: false).count
             case .spacer: return 1
             case .divider: return 1
             case .empty: return 0

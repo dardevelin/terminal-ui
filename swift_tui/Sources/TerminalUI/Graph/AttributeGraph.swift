@@ -172,8 +172,8 @@ public final class AttributeGraph {
     func updatePrimitive<V: TerminalView>(_ node: AttributeNode, from view: V) -> Bool {
         if let text = view as? Text {
             if case .primitive(.text(let old)) = node.kind {
-                if old != text.content {
-                    node.kind = .primitive(.text(text.content))
+                if old != text.spans {
+                    node.kind = .primitive(.text(text.spans))
                     changed = true
                 }
                 return true
@@ -267,7 +267,7 @@ public final class AttributeGraph {
 
     func constructPrimitive<V: TerminalView>(for view: V, id: NodeID) -> AttributeNode? {
         if let text = view as? Text {
-            return AttributeNode(id: id, kind: .primitive(.text(text.content)))
+            return AttributeNode(id: id, kind: .primitive(.text(text.spans)))
         }
         if view is Spacer {
             return AttributeNode(id: id, kind: .primitive(.spacer))

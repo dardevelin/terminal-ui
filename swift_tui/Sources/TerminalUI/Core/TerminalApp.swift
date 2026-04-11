@@ -41,6 +41,13 @@ final class EventQueue: @unchecked Sendable {
         lock.unlock()
         return events
     }
+
+    var hasEvents: Bool {
+        lock.lock()
+        let result = !buffer.isEmpty
+        lock.unlock()
+        return result
+    }
 }
 
 // MARK: - Timer
@@ -235,9 +242,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 case .resize(let cols, let rows):
                     size = TerminalSize(cols: cols, rows: rows)
                     tracer.traceResize(cols: cols, rows: rows)
-                    Terminal.write("\u{1B}[2J")
-                    renderFullFrame()
-                    needsRender = false
+                    previousBuffer = nil  // Force full render (no diff base)
+                    needsRender = true
 
                 case .timer:
                     needsRender = true
@@ -262,15 +268,26 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     await Task.yield()
 
                 case .capped(let interval):
+                    let frameStart = ContinuousClock.now
                     if needsRender {
                         renderDiffFrame()
                         needsRender = false
                     }
-                    try? await Task.sleep(for: interval)
+                    // Sleep only the remaining budget (interval minus work done)
+                    let elapsed = ContinuousClock.now - frameStart
+                    let remaining = interval - elapsed
+                    if remaining > .zero {
+                        try? await Task.sleep(for: remaining)
+                    }
 
                 case .onDemand:
-                    // Wait until something arrives
-                    while eventQueue.drain().isEmpty && running {
+                    // Render if dirty, then wait for next event
+                    if needsRender {
+                        renderDiffFrame()
+                        needsRender = false
+                    }
+                    // Block until an event arrives — zero CPU when idle
+                    while running && !eventQueue.hasEvents {
                         try? await Task.sleep(for: .milliseconds(1))
                     }
                 }
@@ -551,7 +568,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         switch node.kind {
         case .primitive(let c):
             switch c {
-            case .text(let s): kind = "Text(\(s.prefix(20)))"
+            case .text(let spans): kind = "Text(\(spans.map(\.text).joined().prefix(20)))"
             case .spacer: kind = "Spacer"
             case .divider: kind = "Divider"
             case .progressBar(let v, _, _, _): kind = "ProgressBar(\(Int(v*100))%)"

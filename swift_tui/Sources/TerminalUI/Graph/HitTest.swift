@@ -69,8 +69,9 @@ public struct HitResult {
         switch node.kind {
         case .primitive(let content):
             switch content {
-            case .text(let s):
+            case .text(let spans):
                 values.append(("type", "Text"))
+                let s = spans.map(\.text).joined()
                 values.append(("content", s.count > 30 ? String(s.prefix(30)) + "..." : s))
             case .spacer:
                 values.append(("type", "Spacer"))

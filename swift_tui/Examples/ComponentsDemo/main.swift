@@ -128,7 +128,7 @@ struct ClickableTab: TerminalView {
 struct TabBar: TerminalView {
     let selected: Int
     let onSelect: (Int) -> Void
-    let tabs = ["Process List", "Charts", "Heatmap", "Table"]
+    let tabs = ["Process List", "Charts", "Heatmap", "Table", "Styled Text"]
 
     var body: some TerminalView {
         HStack {
@@ -334,6 +334,91 @@ struct TableTab: TerminalView {
     }
 }
 
+// MARK: - Tab 5: Styled Text
+
+struct StyledTextTab: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            Text("Styled Text (per-character colors)")
+                .bold()
+            Divider()
+
+            // Result builder syntax
+            Text {
+                "func ".fg(.magenta)
+                "greet".fg(.cyan)
+                "(".fg(.white)
+                "name".fg(.brightBlue)
+                ": ".fg(.white)
+                "String".fg(.green)
+                ")".fg(.white)
+                " -> ".fg(.magenta)
+                "String".fg(.green)
+                " {".fg(.white)
+            }
+            Text {
+                "    return ".fg(.magenta)
+                "\"Hello, ".fg(.yellow)
+                "\\(".fg(.cyan)
+                "name".fg(.brightBlue)
+                ")".fg(.cyan)
+                "!\"".fg(.yellow)
+            }
+            Text("}".fg(.white))
+
+            Text("")
+            Text("Diff-style output:").bold()
+            Text {
+                "--- a/main.swift".styled(foreground: .red, bold: true)
+            }
+            Text {
+                "+++ b/main.swift".styled(foreground: .green, bold: true)
+            }
+            Text {
+                "@@ -1,3 +1,4 @@".fg(.cyan)
+            }
+            Text(" import Foundation".fg(.gray))
+            Text {
+                "-import UIKit".fg(.red)
+            }
+            Text {
+                "+import SwiftUI".fg(.green)
+            }
+            Text {
+                "+import Combine".fg(.green)
+            }
+            Text(" ".fg(.gray))
+
+            Text("")
+            Text("Log levels:").bold()
+            Text {
+                "[".fg(.gray)
+                "INFO".styled(foreground: .brightWhite, background: .blue, bold: true)
+                "] ".fg(.gray)
+                "Server started on port ".fg(.white)
+                "8080".fg(.cyan)
+            }
+            Text {
+                "[".fg(.gray)
+                "WARN".styled(foreground: .black, background: .yellow, bold: true)
+                "] ".fg(.gray)
+                "Connection pool at ".fg(.white)
+                "85%".fg(.yellow)
+                " capacity".fg(.white)
+            }
+            Text {
+                "[".fg(.gray)
+                "ERR ".styled(foreground: .brightWhite, background: .red, bold: true)
+                "] ".fg(.gray)
+                "Failed to connect: ".fg(.white)
+                "timeout after 30s".fg(.red).bolded()
+            }
+
+            Spacer()
+        }
+    }
+}
+
 // MARK: - Root
 
 struct ComponentsApp: TerminalView {
@@ -350,8 +435,10 @@ struct ComponentsApp: TerminalView {
                 ChartsTab(state: state)
             } else if state.selectedTab == 2 {
                 HeatmapTab(state: state)
-            } else {
+            } else if state.selectedTab == 3 {
                 TableTab(state: state)
+            } else {
+                StyledTextTab()
             }
         }
         .padding(1)
@@ -377,6 +464,7 @@ struct ComponentsApp: TerminalView {
             case .character("2"): state.selectedTab = 1
             case .character("3"): state.selectedTab = 2
             case .character("4"): state.selectedTab = 3
+            case .character("5"): state.selectedTab = 4
             default: break
             }
         case .timer(let name):

@@ -324,8 +324,9 @@ public final class DebugPanel {
         switch node.kind {
         case .primitive(let content):
             switch content {
-            case .text(let s):
+            case .text(let spans):
                 kind = "txt"
+                let s = spans.map(\.text).joined()
                 let preview = s.replacingOccurrences(of: "\n", with: "\\n")
                 detail = preview.count > 15 ? String(preview.prefix(15)) + ".." : preview
             case .spacer:
