@@ -31,22 +31,17 @@ public final class Inspector {
             cell.style.foreground = .black
             buffer[cursorX, cursorY] = cell
 
-            // Horizontal crosshair line (subtle)
-            let crossStyle = Style(foreground: nil, background: .ansi256(236), bold: false, italic: false, underline: false)
+            // Crosshair lines — always on top, no exceptions
+            let crossBg = Color.ansi256(236)
             for x in 0..<buffer.width where x != cursorX {
                 var c = buffer[x, cursorY]
-                if c.style.background == nil {
-                    c.style.background = crossStyle.background
-                    buffer[x, cursorY] = c
-                }
+                c.style.background = crossBg
+                buffer[x, cursorY] = c
             }
-            // Vertical crosshair line
             for y in 0..<buffer.height where y != cursorY {
                 var c = buffer[cursorX, y]
-                if c.style.background == nil {
-                    c.style.background = crossStyle.background
-                    buffer[cursorX, y] = c
-                }
+                c.style.background = crossBg
+                buffer[cursorX, y] = c
             }
         }
 
