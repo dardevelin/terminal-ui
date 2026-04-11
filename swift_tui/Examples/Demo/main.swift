@@ -82,6 +82,10 @@ final class AppState {
     var selectedTab: Int = 0
     var showHelp: Bool = false
 
+    // TextArea state
+    var editorText: String = "// Welcome to TerminalUI\n// Try editing this text!\n\nfunc hello() {\n    print(\"Hello, world!\")\n}\n"
+    var editorState: TextAreaState = TextAreaState()
+
     // Interactive controls state
     var searchText: String = ""
     var projectName: String = "swift_tui"
@@ -253,7 +257,7 @@ struct TitleBar: TerminalView {
                 Text(" ")
             }
             Spacer()
-            Text("v0.3")
+            Text("v0.6")
                 .foreground(.gray)
         }
     }
@@ -608,20 +612,221 @@ struct TableTab: TerminalView {
     }
 }
 
+// MARK: - Tab 8: Diff View
+
+struct DiffTab: TerminalView {
+    static let diffLines: [DiffLine] = {
+        let oldCode = """
+        func greet(_ name: String) {
+            print("Hello, \\(name)!")
+        }
+
+        func farewell(_ name: String) {
+            print("Goodbye!")
+        }
+        """
+
+        let newCode = """
+        func greet(_ name: String, formal: Bool = false) {
+            if formal {
+                print("Good day, \\(name).")
+            } else {
+                print("Hello, \\(name)!")
+            }
+        }
+
+        func farewell(_ name: String) {
+            print("Goodbye, \\(name)! See you soon.")
+        }
+
+        func wave() {
+            print("👋")
+        }
+        """
+        return DiffEngine.diff(original: oldCode, modified: newCode)
+    }()
+
+    var body: some TerminalView {
+        VStack {
+            Text("Diff View — Unified Mode")
+                .bold()
+            Divider()
+            DiffView(lines: Self.diffLines)
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Tab 9: Hunk Diff View
+
+struct HunkDiffTab: TerminalView {
+    static let hunks: [HunkDiff.Hunk] = [
+        HunkDiff.Hunk(oldStart: 1, newStart: 1, lines: [
+            HunkDiff.Line(type: .context, content: "import Foundation", oldLineNo: 1, newLineNo: 1),
+            HunkDiff.Line(type: .context, content: "", oldLineNo: 2, newLineNo: 2),
+            HunkDiff.Line(type: .remove, content: "func process(_ input: String) -> String {", oldLineNo: 3, newLineNo: nil),
+            HunkDiff.Line(type: .add, content: "func process(_ input: String, validate: Bool = true) -> Result<String, Error> {", oldLineNo: nil, newLineNo: 3),
+            HunkDiff.Line(type: .add, content: "    guard validate else { return .success(input) }", oldLineNo: nil, newLineNo: 4),
+            HunkDiff.Line(type: .context, content: "    let trimmed = input.trimmingCharacters(in: .whitespaces)", oldLineNo: 4, newLineNo: 5),
+            HunkDiff.Line(type: .remove, content: "    return trimmed.uppercased()", oldLineNo: 5, newLineNo: nil),
+            HunkDiff.Line(type: .add, content: "    return .success(trimmed.uppercased())", oldLineNo: nil, newLineNo: 6),
+            HunkDiff.Line(type: .context, content: "}", oldLineNo: 6, newLineNo: 7),
+        ]),
+        HunkDiff.Hunk(oldStart: 10, newStart: 11, lines: [
+            HunkDiff.Line(type: .context, content: "// MARK: - Tests", oldLineNo: 10, newLineNo: 11),
+            HunkDiff.Line(type: .context, content: "", oldLineNo: 11, newLineNo: 12),
+            HunkDiff.Line(type: .add, content: "func testValidation() {", oldLineNo: nil, newLineNo: 13),
+            HunkDiff.Line(type: .add, content: "    let result = process(\"hello\", validate: true)", oldLineNo: nil, newLineNo: 14),
+            HunkDiff.Line(type: .add, content: "    assert(result == .success(\"HELLO\"))", oldLineNo: nil, newLineNo: 15),
+            HunkDiff.Line(type: .add, content: "}", oldLineNo: nil, newLineNo: 16),
+        ]),
+    ]
+
+    var body: some TerminalView {
+        VStack {
+            Text("Hunk Diff — GitHub PR Review Style")
+                .bold()
+            Text("  j/k: navigate  v: visual select  Esc: cancel")
+                .foreground(.gray)
+            Divider()
+            HunkDiffView(
+                hunks: Self.hunks,
+                fileName: "Sources/Core/Processor.swift",
+                visibleCount: 18
+            )
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Tab 10: Tree View
+
+struct FileItem: Identifiable {
+    let id: String
+    let name: String
+    let children: [FileItem]?
+
+    static let sampleTree: [FileItem] = [
+        FileItem(id: "src", name: "Sources/", children: [
+            FileItem(id: "core", name: "Core/", children: [
+                FileItem(id: "app", name: "TerminalApp.swift", children: nil),
+                FileItem(id: "frame", name: "FrameStats.swift", children: nil),
+                FileItem(id: "input", name: "InputParser.swift", children: nil),
+                FileItem(id: "key", name: "KeyEvent.swift", children: nil),
+            ]),
+            FileItem(id: "views", name: "Views/", children: [
+                FileItem(id: "text", name: "Text.swift", children: nil),
+                FileItem(id: "btn", name: "Button.swift", children: nil),
+                FileItem(id: "list", name: "List.swift", children: nil),
+                FileItem(id: "tree", name: "TreeView.swift", children: nil),
+                FileItem(id: "diff", name: "DiffView.swift", children: nil),
+            ]),
+            FileItem(id: "graph", name: "Graph/", children: [
+                FileItem(id: "ag", name: "AttributeGraph.swift", children: nil),
+                FileItem(id: "an", name: "AttributeNode.swift", children: nil),
+                FileItem(id: "gr", name: "GraphRenderer.swift", children: nil),
+            ]),
+        ]),
+        FileItem(id: "ex", name: "Examples/", children: [
+            FileItem(id: "demo", name: "Demo/", children: [
+                FileItem(id: "main", name: "main.swift", children: nil),
+            ]),
+        ]),
+        FileItem(id: "pkg", name: "Package.swift", children: nil),
+    ]
+}
+
+struct TreeTab: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            Text("Tree View — File Browser")
+                .bold()
+            Text("  ↑↓/mouse: navigate  →/Enter: expand  ←: collapse  Ctrl+G: inspector")
+                .foreground(.gray)
+            Divider()
+            TreeView(FileItem.sampleTree, children: \.children, visibleCount: 20) { item in
+                Text(item.name)
+                    .foreground(item.children != nil ? .cyan : .default)
+            }
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Tab 11: TextArea
+
+struct TextAreaTab: TerminalView {
+    let state: AppState
+
+    var body: some TerminalView {
+        VStack {
+            Text("TextArea — Multi-line Editor")
+                .bold()
+            Text("  Arrow keys: move  Shift+arrows: select  Type to insert")
+                .foreground(.gray)
+            Divider()
+            TextArea(
+                text: Binding(get: { state.editorText }, set: { state.editorText = $0 }),
+                state: Binding(get: { state.editorState }, set: { state.editorState = $0 }),
+                lineNumbers: true,
+                visibleHeight: 16
+            )
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Tab 12: StatusBar Demo
+
+struct StatusBarTab: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            Text("StatusBar Component")
+                .bold()
+            Divider()
+            Text("  Key hints style:")
+            StatusBar.keyHints([
+                ("^C", "Quit"),
+                ("^S", "Save"),
+                ("Tab", "Focus"),
+                ("^D", "Debug"),
+                ("^F", "Panel"),
+            ])
+            Text("")
+            Text("  Custom sections style:")
+            StatusBar {
+                StatusBar.Section(.left) {
+                    " NORMAL ".fg(.white).bg(.blue).bolded()
+                }
+                StatusBar.Section(.center) {
+                    "main.swift".fg(.white)
+                }
+                StatusBar.Section(.right) {
+                    "Ln 42, Col 8".fg(.gray)
+                }
+            }
+            Text("")
+            Text("  These bars pin to a single row and fill the available width.")
+                .foreground(.gray)
+            Spacer()
+        }
+    }
+}
+
 // MARK: - Help Overlay
 
 struct HelpOverlay: TerminalView {
     static let content = [
-        "  Keyboard Shortcuts    ",
-        "────────────────────────",
-        "  1-7     Switch tabs   ",
-        "  Tab     Next control  ",
-        "  S-Tab   Prev control  ",
-        "  Enter   Activate      ",
-        "  h/?     Toggle help   ",
-        "  ctrl+d  Debug overlay ",
-        "  ctrl+f  Debug panel   ",
-        "  q/esc   Quit          ",
+        "  Keyboard Shortcuts     ",
+        "─────────────────────────",
+        "  1-9,0   Switch tabs    ",
+        "  Tab     Next control   ",
+        "  S-Tab   Prev control   ",
+        "  Enter   Activate       ",
+        "  h/?     Toggle help    ",
+        "  ctrl+d  Debug overlay  ",
+        "  ctrl+f  Debug panel    ",
+        "  q/esc   Quit           ",
     ].joined(separator: "\n")
 
     var body: some TerminalView {
@@ -648,7 +853,7 @@ struct StatusLine: TerminalView {
             Text("tab:\(tab + 1)/\(tabCount)")
                 .foreground(.gray)
             Spacer()
-            Text("1-7: tabs  Tab: navigate  h: help  q: quit")
+            Text("1-0/-/=: tabs  []: prev/next  h: help  q: quit")
                 .foreground(.gray)
         }
     }
@@ -659,7 +864,10 @@ struct StatusLine: TerminalView {
 struct App: TerminalView {
     let state: AppState
 
-    static let tabNames = ["Build", "Logs", "Controls", "Charts", "Heatmap", "Processes", "Table"]
+    static let tabNames = [
+        "Build", "Logs", "Controls", "Charts", "Heatmap",
+        "Processes", "Table", "Diff", "HunkDiff", "Tree", "Editor", "StatusBar",
+    ]
 
     var body: some TerminalView {
         VStack {
@@ -682,8 +890,18 @@ struct App: TerminalView {
                 HeatmapTab(state: state)
             } else if state.selectedTab == 5 {
                 ProcessListTab(state: state)
-            } else {
+            } else if state.selectedTab == 6 {
                 TableTab(state: state)
+            } else if state.selectedTab == 7 {
+                DiffTab()
+            } else if state.selectedTab == 8 {
+                HunkDiffTab()
+            } else if state.selectedTab == 9 {
+                TreeTab()
+            } else if state.selectedTab == 10 {
+                TextAreaTab(state: state)
+            } else {
+                StatusBarTab()
             }
 
             Spacer()
@@ -718,6 +936,13 @@ struct App: TerminalView {
             case .character("5"): state.selectedTab = 4
             case .character("6"): state.selectedTab = 5
             case .character("7"): state.selectedTab = 6
+            case .character("8"): state.selectedTab = 7
+            case .character("9"): state.selectedTab = 8
+            case .character("0"): state.selectedTab = 9
+            case .character("-"): state.selectedTab = 10
+            case .character("="): state.selectedTab = 11
+            case .character("["): state.selectedTab = max(0, state.selectedTab - 1)
+            case .character("]"): state.selectedTab = min(App.tabNames.count - 1, state.selectedTab + 1)
             case .character("?"), .character("h"):
                 state.showHelp.toggle()
             default: break

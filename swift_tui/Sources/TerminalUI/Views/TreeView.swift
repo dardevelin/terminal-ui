@@ -1,0 +1,508 @@
+/// A hierarchical tree view with expandable/collapsible nodes,
+/// keyboard navigation, mouse support, and box-drawing connectors.
+///
+/// Works with any data type that provides children via a key path.
+/// Children are lazily evaluated — only expanded nodes compute their children.
+///
+/// Usage:
+/// ```
+/// TreeView(rootItems, children: \.children) { item in
+///     Text(item.name)
+/// }
+///
+/// // With selection binding
+/// @TerminalState var selected: Int? = nil
+/// TreeView(items, children: \.children, selection: $selected) { item in
+///     HStack {
+///         Text(item.isDirectory ? "+" : "-")
+///         Text(item.name)
+///     }
+/// }
+/// ```
+/// Customizable style for TreeView appearance.
+public struct TreeViewStyle: Sendable {
+    /// Color of expand/collapse arrow on unselected rows
+    public var arrowColor: Color = .gray
+    /// Color of expand/collapse arrow on the selected row
+    public var selectedArrowColor: Color = .cyan
+    /// Color of tree connector lines (├── └── │)
+    public var connectorColor: Color = .gray
+    /// Foreground color for the selected row's text
+    public var selectedForeground: Color = .white
+    /// Background color for the selected row (nil = no background highlight)
+    public var selectedBackground: Color? = nil
+    /// Character for expanded node indicator
+    public var expandedArrow: Character = "\u{25BE}"   // ▾
+    /// Character for collapsed node indicator
+    public var collapsedArrow: Character = "\u{25B8}"  // ▸
+    /// Prefix shown before the selected row
+    public var selectionPrefix: String = "\u{25B8} "   // "▸ "
+    /// Prefix shown before unselected rows (for alignment)
+    public var unselectedPrefix: String = "  "
+
+    public static let `default` = TreeViewStyle()
+
+    public init() {}
+}
+
+public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: TerminalView
+    where Data.Element: Identifiable, Data.Element.ID: Sendable
+{
+    public let data: Data
+    public let childrenKeyPath: KeyPath<Data.Element, Data?>
+    public let selection: Binding<Data.Element.ID?>?
+    public let visibleCount: Int
+    public let style: TreeViewStyle
+    public let content: (Data.Element) -> Content
+
+    @TerminalState var expandedIDs: Set<AnyHashableID> = []
+    @TerminalState var selectedIndex: Int = 0
+    @TerminalState var scrollOffset: Int = 0
+    @TerminalState var initialized: Bool = false
+
+    public init(
+        _ data: Data,
+        children: KeyPath<Data.Element, Data?>,
+        selection: Binding<Data.Element.ID?>? = nil,
+        visibleCount: Int = 20,
+        style: TreeViewStyle = .default,
+        @TerminalViewBuilder content: @escaping (Data.Element) -> Content
+    ) {
+        self.data = data
+        self.childrenKeyPath = children
+        self.selection = selection
+        self.visibleCount = visibleCount
+        self.style = style
+        self.content = content
+    }
+
+    public var body: some TerminalView {
+        // Capture bindings for use in closures
+        let expandedBinding = $expandedIDs
+        let selectedIdxBinding = $selectedIndex
+        let scrollBinding = $scrollOffset
+        let initBinding = $initialized
+
+        // Auto-expand root items on first render
+        let _ = {
+            if !initBinding.get() {
+                initBinding.set(true)
+                var initial = expandedBinding.get()
+                for item in data {
+                    initial.insert(AnyHashableID(item.id))
+                }
+                expandedBinding.set(initial)
+            }
+        }()
+
+        // Flatten visible tree
+        let expanded = expandedBinding.get()
+        let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
+        let total = rows.count
+
+        // Sync selectedIndex bounds and scroll (side effects, not views)
+        let currentIndex = min(max(selectedIdxBinding.get(), 0), max(total - 1, 0))
+        let adjustedOffset: Int = {
+            if currentIndex != selectedIdxBinding.get() {
+                selectedIdxBinding.set(currentIndex)
+            }
+            if let sel = selection, total > 0 {
+                sel.set(rows[currentIndex].item.id)
+            }
+            let offset = TreeViewHelpers.adjustScroll(
+                scrollOffset: scrollBinding.get(),
+                selectedIndex: currentIndex,
+                total: total,
+                visibleCount: visibleCount
+            )
+            if offset != scrollBinding.get() {
+                scrollBinding.set(offset)
+            }
+            return offset
+        }()
+
+        // Compute visible slice
+        let hasUpIndicator = adjustedOffset > 0
+        let hasDownIndicator = (adjustedOffset + visibleCount) < total
+        let indicatorLines = (hasUpIndicator ? 1 : 0) + (hasDownIndicator ? 1 : 0)
+        let itemLines = max(1, visibleCount - indicatorLines)
+        let slice = rows.dropFirst(adjustedOffset).prefix(itemLines)
+
+        return VStack {
+            if hasUpIndicator {
+                Text("  \u{25B2} \(adjustedOffset) more")
+                    .foreground(.gray)
+            }
+
+            ForEach(Array(slice)) { row in
+                treeRow(row, isSelected: row.flatIndex == currentIndex, expandedIDs: expanded)
+            }
+
+            if hasDownIndicator {
+                let remaining = total - adjustedOffset - itemLines
+                Text("  \u{25BC} \(remaining) more")
+                    .foreground(.gray)
+            }
+        }
+        .frame(minHeight: visibleCount)
+        .focusable()
+        .onClick { [selection, expandedBinding, selectedIdxBinding, scrollBinding] _, relY in
+            let expanded = expandedBinding.get()
+            let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
+            let total = rows.count
+            guard total > 0 else { return }
+            let offset = scrollBinding.get()
+            let hasUpInd = offset > 0
+            let rowOffset = hasUpInd ? relY - 1 : relY
+            let itemIndex = offset + rowOffset
+            guard itemIndex >= 0 && itemIndex < total else { return }
+
+            selectedIdxBinding.set(itemIndex)
+            selection?.set(rows[itemIndex].item.id)
+            TreeViewHelpers.toggleExpand(rows[itemIndex].item, childrenKeyPath: childrenKeyPath, expandedBinding: expandedBinding)
+        }
+        .onKeyPress { [selection, expandedBinding, selectedIdxBinding] event in
+            let expanded = expandedBinding.get()
+            let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
+            let total = rows.count
+            guard total > 0 else { return .ignored }
+
+            let idx = selectedIdxBinding.get()
+
+            switch event.key {
+            case .up:
+                let newIdx = max(0, idx - 1)
+                selectedIdxBinding.set(newIdx)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
+                return .handled
+
+            case .down:
+                let newIdx = min(total - 1, idx + 1)
+                selectedIdxBinding.set(newIdx)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
+                return .handled
+
+            case .right:
+                guard idx < total else { return .handled }
+                let row = rows[idx]
+                if TreeViewHelpers.hasChildren(row.item, childrenKeyPath: childrenKeyPath)
+                    && !expanded.contains(AnyHashableID(row.item.id))
+                {
+                    var ids = expanded
+                    ids.insert(AnyHashableID(row.item.id))
+                    expandedBinding.set(ids)
+                }
+                return .handled
+
+            case .left:
+                guard idx < total else { return .handled }
+                let row = rows[idx]
+                if TreeViewHelpers.hasChildren(row.item, childrenKeyPath: childrenKeyPath)
+                    && expanded.contains(AnyHashableID(row.item.id))
+                {
+                    var ids = expanded
+                    ids.remove(AnyHashableID(row.item.id))
+                    expandedBinding.set(ids)
+                } else if let parentID = row.parentID {
+                    if let parentIdx = rows.firstIndex(where: { AnyHashableID($0.item.id) == parentID }) {
+                        selectedIdxBinding.set(parentIdx)
+                        TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: parentIdx)
+                    }
+                }
+                return .handled
+
+            case .enter, .character(" "):
+                guard idx < total else { return .handled }
+                TreeViewHelpers.toggleExpand(rows[idx].item, childrenKeyPath: childrenKeyPath, expandedBinding: expandedBinding)
+                return .handled
+
+            case .pageUp:
+                let newIdx = max(0, idx - visibleCount)
+                selectedIdxBinding.set(newIdx)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
+                return .handled
+
+            case .pageDown:
+                let newIdx = min(total - 1, idx + visibleCount)
+                selectedIdxBinding.set(newIdx)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
+                return .handled
+
+            case .home:
+                selectedIdxBinding.set(0)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: 0)
+                return .handled
+
+            case .end:
+                let last = total - 1
+                selectedIdxBinding.set(last)
+                TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: last)
+                return .handled
+
+            default:
+                return .ignored
+            }
+        }
+    }
+
+    // MARK: - Tree Row Rendering
+
+    private func treeRow(
+        _ row: FlatRow<Data.Element>,
+        isSelected: Bool,
+        expandedIDs: Set<AnyHashableID>
+    ) -> some TerminalView {
+        let connectorSpans = TreeViewHelpers.buildConnectorSpans(row, color: style.connectorColor)
+        let indicatorSpan = TreeViewHelpers.expandIndicatorSpan(
+            row,
+            childrenKeyPath: childrenKeyPath,
+            expandedIDs: expandedIDs,
+            style: style,
+            isSelected: isSelected
+        )
+
+        let bg: Color = isSelected ? (style.selectedBackground ?? .default) : .default
+
+        return HStack {
+            Text(spans: connectorSpans + [indicatorSpan])
+            content(row.item)
+        }
+        .foreground(isSelected ? style.selectedForeground : .default)
+        .background(bg)
+    }
+}
+
+// MARK: - Static Helpers
+
+/// Namespace for static helper functions used by TreeView.
+/// Extracted so closures can call them without capturing `self`.
+enum TreeViewHelpers {
+
+    static func flattenedRows<Data: RandomAccessCollection>(
+        data: Data,
+        childrenKeyPath: KeyPath<Data.Element, Data?>,
+        expandedIDs: Set<AnyHashableID>
+    ) -> [FlatRow<Data.Element>] where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        var result: [FlatRow<Data.Element>] = []
+        let items = Array(data)
+
+        for (i, item) in items.enumerated() {
+            let isLast = (i == items.count - 1)
+            flattenNode(
+                item,
+                depth: 0,
+                isLast: isLast,
+                ancestorHasNext: [],
+                parentID: nil,
+                childrenKeyPath: childrenKeyPath,
+                expandedIDs: expandedIDs,
+                into: &result
+            )
+        }
+        return result
+    }
+
+    static func flattenNode<Data: RandomAccessCollection>(
+        _ item: Data.Element,
+        depth: Int,
+        isLast: Bool,
+        ancestorHasNext: [Bool],
+        parentID: AnyHashableID?,
+        childrenKeyPath: KeyPath<Data.Element, Data?>,
+        expandedIDs: Set<AnyHashableID>,
+        into result: inout [FlatRow<Data.Element>]
+    ) where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        let flatIndex = result.count
+        result.append(FlatRow(
+            item: item,
+            depth: depth,
+            isLast: isLast,
+            ancestorHasNext: ancestorHasNext,
+            parentID: parentID,
+            flatIndex: flatIndex
+        ))
+
+        // Lazy: only evaluate children of expanded nodes
+        let itemID = AnyHashableID(item.id)
+        guard expandedIDs.contains(itemID) else { return }
+        guard let children = item[keyPath: childrenKeyPath] else { return }
+        let childArray = Array(children)
+        guard !childArray.isEmpty else { return }
+
+        // Build ancestorHasNext for children: current level contributes !isLast
+        var childAncestorHasNext = ancestorHasNext
+        childAncestorHasNext.append(!isLast)
+
+        for (i, child) in childArray.enumerated() {
+            let childIsLast = (i == childArray.count - 1)
+            flattenNode(
+                child,
+                depth: depth + 1,
+                isLast: childIsLast,
+                ancestorHasNext: childAncestorHasNext,
+                parentID: itemID,
+                childrenKeyPath: childrenKeyPath,
+                expandedIDs: expandedIDs,
+                into: &result
+            )
+        }
+    }
+
+    // MARK: - Connectors
+
+    static func buildConnectorSpans<Element: Identifiable>(_ row: FlatRow<Element>, color: Color = .gray) -> [TextSpan] {
+        guard row.depth > 0 else { return [] }
+        var spans: [TextSpan] = []
+
+        // Vertical continuation lines for ancestor levels
+        for level in 0..<(row.depth - 1) {
+            if row.ancestorHasNext[level] {
+                spans.append(TextSpan("\u{2502}   ", foreground: color))  // "│   "
+            } else {
+                spans.append(TextSpan("    "))
+            }
+        }
+
+        // Branch connector for this node
+        if row.isLast {
+            spans.append(TextSpan("\u{2514}\u{2500}\u{2500} ", foreground: color))  // "└── "
+        } else {
+            spans.append(TextSpan("\u{251C}\u{2500}\u{2500} ", foreground: color))  // "├── "
+        }
+
+        return spans
+    }
+
+    static func expandIndicatorSpan<Data: RandomAccessCollection>(
+        _ row: FlatRow<Data.Element>,
+        childrenKeyPath: KeyPath<Data.Element, Data?>,
+        expandedIDs: Set<AnyHashableID>,
+        style: TreeViewStyle = .default,
+        isSelected: Bool = false
+    ) -> TextSpan where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        let color = isSelected ? style.selectedArrowColor : style.arrowColor
+        if hasChildren(row.item, childrenKeyPath: childrenKeyPath) {
+            if expandedIDs.contains(AnyHashableID(row.item.id)) {
+                return TextSpan("\(style.expandedArrow) ", foreground: color, bold: isSelected)
+            } else {
+                return TextSpan("\(style.collapsedArrow) ", foreground: color, bold: isSelected)
+            }
+        }
+        // Leaf items: show arrow when selected, space when not
+        if isSelected {
+            return TextSpan("\(style.collapsedArrow) ", foreground: style.selectedArrowColor, bold: true)
+        }
+        return TextSpan("  ")
+    }
+
+    // MARK: - Expand / Collapse
+
+    static func hasChildren<Data: RandomAccessCollection>(
+        _ item: Data.Element,
+        childrenKeyPath: KeyPath<Data.Element, Data?>
+    ) -> Bool where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        guard let children = item[keyPath: childrenKeyPath] else { return false }
+        return !children.isEmpty
+    }
+
+    static func toggleExpand<Data: RandomAccessCollection>(
+        _ item: Data.Element,
+        childrenKeyPath: KeyPath<Data.Element, Data?>,
+        expandedBinding: Binding<Set<AnyHashableID>>
+    ) where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        guard hasChildren(item, childrenKeyPath: childrenKeyPath) else { return }
+        var ids = expandedBinding.get()
+        let key = AnyHashableID(item.id)
+        if ids.contains(key) {
+            ids.remove(key)
+        } else {
+            ids.insert(key)
+        }
+        expandedBinding.set(ids)
+    }
+
+    // MARK: - Selection
+
+    static func syncSelection<Element: Identifiable>(
+        selection: Binding<Element.ID?>?,
+        rows: [FlatRow<Element>],
+        index: Int
+    ) {
+        guard let sel = selection, index >= 0 && index < rows.count else { return }
+        sel.set(rows[index].item.id)
+    }
+
+    // MARK: - Scroll
+
+    static func adjustScroll(scrollOffset: Int, selectedIndex: Int, total: Int, visibleCount: Int) -> Int {
+        guard total > visibleCount else { return 0 }
+
+        var offset = scrollOffset
+
+        let hasUp = offset > 0
+        let hasDown = (offset + visibleCount) < total
+        let topIndicator = hasUp ? 1 : 0
+        let bottomIndicator = hasDown ? 1 : 0
+        let itemLines = visibleCount - topIndicator - bottomIndicator
+
+        let firstVisible = offset
+        let lastVisible = offset + itemLines - 1
+
+        // Selection below viewport
+        if selectedIndex > lastVisible {
+            let needsDown = (selectedIndex < total - 1)
+            let downRes = needsDown ? 1 : 0
+            let upRes = 1
+            let items = visibleCount - upRes - downRes
+            offset = selectedIndex - items + 1
+        }
+
+        // Selection above viewport
+        if selectedIndex < firstVisible {
+            if selectedIndex == 0 {
+                offset = 0
+            } else {
+                offset = selectedIndex
+            }
+        }
+
+        let maxOffset = total - (visibleCount - 1)
+        offset = max(0, min(maxOffset, offset))
+        return offset
+    }
+}
+
+// MARK: - FlatRow
+
+/// A single visible row in the flattened tree, carrying layout metadata.
+struct FlatRow<Element: Identifiable>: Identifiable {
+    let item: Element
+    let depth: Int
+    let isLast: Bool
+    let ancestorHasNext: [Bool]
+    let parentID: AnyHashableID?
+    let flatIndex: Int
+
+    var id: FlatRowID<Element.ID> {
+        FlatRowID(itemID: item.id, flatIndex: flatIndex)
+    }
+}
+
+/// Stable identity for flattened rows, combining the item ID with its
+/// position to handle the same item appearing at different depths if
+/// re-expanded.
+struct FlatRowID<ItemID: Hashable>: Hashable {
+    let itemID: ItemID
+    let flatIndex: Int
+}
+
+// MARK: - AnyHashableID
+
+/// Type-erased Hashable wrapper for heterogeneous ID storage in the expanded set.
+struct AnyHashableID: Hashable, @unchecked Sendable {
+    private let wrapped: AnyHashable
+
+    init<ID: Hashable & Sendable>(_ id: ID) {
+        self.wrapped = AnyHashable(id)
+    }
+}
