@@ -74,21 +74,15 @@ public enum LayoutKind {
 }
 
 public struct Size: Equatable, Sendable {
-    public var width: Double
-    public var height: Double
+    public var width: Int
+    public var height: Int
 
-    public init(width: Double, height: Double) {
+    public init(width: Int, height: Int) {
         self.width = width
         self.height = height
     }
 
-    /// Convenience initializer from Int values.
-    public init(width: Int, height: Int) {
-        self.width = Double(width)
-        self.height = Double(height)
-    }
-
-    public static let zero = Size(width: 0.0, height: 0.0)
+    public static let zero = Size(width: 0, height: 0)
 }
 
 // MARK: - Modifier

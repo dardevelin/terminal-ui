@@ -1,42 +1,40 @@
-/// Layout rectangle using Double for unit-agnostic layout math.
-/// Cell backends round to Int at render time; pixel backends use fractional values directly.
-public struct Rect: Equatable, Sendable {
-    public var x: Double
-    public var y: Double
-    public var width: Double
-    public var height: Double
+/// Layout rectangle generic over coordinate type.
+///
+/// Terminal backends use `LayoutRect<Int>` (aliased as `Rect` and `CellRect`).
+/// Pixel backends use `LayoutRect<Double>` (aliased as `PixelRect`).
+public struct LayoutRect<C: Coordinate>: Equatable, Sendable, Hashable {
+    public var x: C
+    public var y: C
+    public var width: C
+    public var height: C
 
-    public init(x: Double, y: Double, width: Double, height: Double) {
+    public init(x: C, y: C, width: C, height: C) {
         self.x = x
         self.y = y
         self.width = width
         self.height = height
     }
 
-    /// Convenience initializer from Int values (e.g. terminal column/row counts).
-    public init(x: Int, y: Int, width: Int, height: Int) {
-        self.x = Double(x)
-        self.y = Double(y)
-        self.width = Double(width)
-        self.height = Double(height)
-    }
+    public var isEmpty: Bool { width <= C.zero || height <= C.zero }
 
-    public var isEmpty: Bool { width <= 0 || height <= 0 }
-
-    public func inset(by amount: Int) -> Rect {
-        let d = Double(amount)
-        return Rect(
-            x: x + d,
-            y: y + d,
-            width: max(0, width - d * 2),
-            height: max(0, height - d * 2)
+    public func inset(by amount: C) -> LayoutRect<C> {
+        LayoutRect(
+            x: x + amount,
+            y: y + amount,
+            width: (width - amount * C(2)).max(C.zero),
+            height: (height - amount * C(2)).max(C.zero)
         )
     }
-
-    /// Convert to integer cell coordinates by rounding.
-    /// Used at the cell-backend boundary when writing to CellBuffer.
-    public var intX: Int { Int(x.rounded(.toNearestOrAwayFromZero)) }
-    public var intY: Int { Int(y.rounded(.toNearestOrAwayFromZero)) }
-    public var intWidth: Int { Int(width.rounded(.toNearestOrAwayFromZero)) }
-    public var intHeight: Int { Int(height.rounded(.toNearestOrAwayFromZero)) }
 }
+
+// MARK: - Default typealiases
+
+/// Cell-based rectangle — the default for terminal rendering.
+/// All existing code uses this via the bare name `Rect`.
+public typealias Rect = LayoutRect<Int>
+
+/// Explicit alias for terminal backends.
+public typealias CellRect = LayoutRect<Int>
+
+/// Pixel-based rectangle for GPU/fractional rendering.
+public typealias PixelRect = LayoutRect<Double>

@@ -72,25 +72,23 @@ public enum GraphRenderer {
         switch content {
         case .text(let string):
             let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
-            let maxWidth = context.rect.intWidth
+            let maxWidth = context.rect.width
             for (i, line) in lines.enumerated() {
-                let y = context.rect.intY + i
-                guard y < context.rect.intY + context.rect.intHeight else { break }
-                // Clip text to rect width
+                let y = context.rect.y + i
+                guard y < context.rect.y + context.rect.height else { break }
                 let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
-                buffer.write(clipped, x: context.rect.intX, y: y, style: context.style)
+                buffer.write(clipped, x: context.rect.x, y: y, style: context.style)
             }
 
         case .spacer:
             break
 
         case .divider:
-            // Horizontal line filling the width
-            let line = String(repeating: "─", count: context.rect.intWidth)
-            buffer.write(line, x: context.rect.intX, y: context.rect.intY, style: context.style)
+            let line = String(repeating: "─", count: context.rect.width)
+            buffer.write(line, x: context.rect.x, y: context.rect.y, style: context.style)
 
         case .progressBar(let value, let label, let filled, let empty):
-            let width = context.rect.intWidth
+            let width = context.rect.width
             let labelPart = label.map { $0 + " " } ?? ""
             let percentText = " \(Int(value * 100))%"
             let barWidth = max(0, width - labelPart.count - percentText.count)
@@ -100,12 +98,12 @@ public enum GraphRenderer {
                 + String(repeating: filled, count: filledCount)
                 + String(repeating: empty, count: emptyCount)
                 + percentText
-            buffer.write(barText, x: context.rect.intX, y: context.rect.intY, style: context.style)
+            buffer.write(barText, x: context.rect.x, y: context.rect.y, style: context.style)
 
         case .spinner(let frame, let style):
             let frames = style.frames
             let text = frames[frame % frames.count]
-            buffer.write(text, x: context.rect.intX, y: context.rect.intY, style: context.style)
+            buffer.write(text, x: context.rect.x, y: context.rect.y, style: context.style)
 
         case .empty:
             break
@@ -131,8 +129,8 @@ public enum GraphRenderer {
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
 
-        var childHeights: [Double] = []
-        var totalContentHeight: Double = 0
+        var childHeights: [Int] = []
+        var totalContentHeight = 0
         for child in children {
             if case .primitive(.spacer) = child.kind {
                 childHeights.append(0)
@@ -144,19 +142,19 @@ public enum GraphRenderer {
         }
 
         let remainingHeight = max(0, context.rect.height - totalContentHeight)
-        let spacerHeight = spacerCount > 0 ? remainingHeight / Double(spacerCount) : 0
+        let spacerBase = spacerCount > 0 ? remainingHeight / spacerCount : 0
+        var spacerRemainder = spacerCount > 0 ? remainingHeight % spacerCount : 0
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
             if case .primitive(.spacer) = child.kind {
-                y += spacerHeight
+                let extra = spacerRemainder > 0 ? 1 : 0
+                spacerRemainder -= extra
+                y += spacerBase + extra
                 continue
             }
             let h = childHeights[i]
-            // Snap to integer grid to prevent fractional gaps
-            let snappedY = y.rounded(.down)
-            let snappedH = (y + h).rounded(.down) - snappedY
-            let childRect = Rect(x: context.rect.x, y: snappedY, width: context.rect.width, height: max(1, snappedH))
+            let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: max(1, h))
             let childContext = RenderContext(style: context.style, rect: childRect)
             render(child, into: &buffer, context: childContext)
             y += h
@@ -166,8 +164,8 @@ public enum GraphRenderer {
     static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
 
-        var childWidths: [Double] = []
-        var totalContentWidth: Double = 0
+        var childWidths: [Int] = []
+        var totalContentWidth = 0
         for child in children {
             if case .primitive(.spacer) = child.kind {
                 childWidths.append(0)
@@ -179,18 +177,19 @@ public enum GraphRenderer {
         }
 
         let remainingWidth = max(0, context.rect.width - totalContentWidth)
-        let spacerWidth = spacerCount > 0 ? remainingWidth / Double(spacerCount) : 0
+        let spacerBase = spacerCount > 0 ? remainingWidth / spacerCount : 0
+        var spacerRemainder = spacerCount > 0 ? remainingWidth % spacerCount : 0
 
         var x = context.rect.x
         for (i, child) in children.enumerated() {
             if case .primitive(.spacer) = child.kind {
-                x += spacerWidth
+                let extra = spacerRemainder > 0 ? 1 : 0
+                spacerRemainder -= extra
+                x += spacerBase + extra
                 continue
             }
             let w = childWidths[i]
-            let snappedX = x.rounded(.down)
-            let snappedW = (x + w).rounded(.down) - snappedX
-            let childRect = Rect(x: snappedX, y: context.rect.y, width: max(1, snappedW), height: context.rect.height)
+            let childRect = Rect(x: x, y: context.rect.y, width: max(1, w), height: context.rect.height)
             let childContext = RenderContext(style: context.style, rect: childRect)
             render(child, into: &buffer, context: childContext)
             x += w
@@ -241,8 +240,8 @@ public enum GraphRenderer {
             render(child, into: &buffer, context: ctx)
 
         case .frame(let width, let height):
-            if let w = width { ctx.rect.width = min(Double(w), ctx.rect.width) }
-            if let h = height { ctx.rect.height = min(Double(h), ctx.rect.height) }
+            if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
+            if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
             render(child, into: &buffer, context: ctx)
 
         case .explicitID:
@@ -270,8 +269,8 @@ public enum GraphRenderer {
                 let modalNode = node.children[1]
 
                 // Measure modal content
-                let mw = Int(measureWidth(modalNode))
-                let mh = Int(measureHeight(modalNode, proposedWidth: Double(mw)))
+                let mw = measureWidth(modalNode)
+                let mh = measureHeight(modalNode, proposedWidth: mw)
                 let contentWidth = min(mw, buffer.width - 2)
                 let contentHeight = min(mh, buffer.height - 2)
 
@@ -280,14 +279,13 @@ public enum GraphRenderer {
                 let my = max(0, (buffer.height - contentHeight) / 2)
 
                 // Use compositor: dim layer + modal layer
-                // Layer 1: dim the entire background
                 let dimLayer = Layer(
                     width: buffer.width, height: buffer.height,
                     x: 0, y: 0,
                     style: .dim(.ansi256(239))
                 )
 
-                // Layer 2: render modal into its own isolated buffer
+                // Render modal into its own isolated buffer
                 var modalLayer = Layer(
                     width: contentWidth, height: contentHeight,
                     x: mx, y: my,
@@ -299,6 +297,9 @@ public enum GraphRenderer {
                 )
                 render(modalNode, into: &modalLayer.buffer, context: modalContext)
 
+                // Offset resolved rects so hit testing works in screen coordinates
+                offsetRects(of: modalNode, dx: mx, dy: my)
+
                 // Composite: dim first, then modal on top
                 Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
             }
@@ -309,7 +310,7 @@ public enum GraphRenderer {
         let r = context.rect
         guard r.width >= 2, r.height >= 2 else { return }
 
-        let rx = r.intX, ry = r.intY, rw = r.intWidth, rh = r.intHeight
+        let rx = r.x, ry = r.y, rw = r.width, rh = r.height
 
         buffer[rx, ry] = Cell(character: style.topLeft, style: context.style)
         buffer[rx + rw - 1, ry] = Cell(character: style.topRight, style: context.style)
@@ -329,17 +330,17 @@ public enum GraphRenderer {
 
     // MARK: - Measurement
 
-    public static func measureWidth(_ node: AttributeNode) -> Double {
+    public static func measureWidth(_ node: AttributeNode) -> Int {
         switch node.kind {
         case .primitive(let content):
             switch content {
             case .text(let s):
-                return Double(s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0)
+                return s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
             case .spacer, .empty: return 0
             case .divider: return 1
             case .progressBar: return 20
             case .spinner(let frame, let style):
-                return Double(style.frames[frame % style.frames.count].count)
+                return style.frames[frame % style.frames.count].count
             }
 
         case .layout(let info):
@@ -355,9 +356,9 @@ public enum GraphRenderer {
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
             var base = measureWidth(child)
-            if case .padding(let n) = effect { base += Double(n * 2) }
+            if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(let w, _) = effect, let w { return Double(w) }
+            if case .frame(let w, _) = effect, let w { return w }
             return base
 
         case .viewBody:
@@ -365,12 +366,12 @@ public enum GraphRenderer {
         }
     }
 
-    public static func measureHeight(_ node: AttributeNode, proposedWidth: Double) -> Double {
+    public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
         switch node.kind {
         case .primitive(let content):
             switch content {
             case .text(let s):
-                return Double(s.split(separator: "\n", omittingEmptySubsequences: false).count)
+                return s.split(separator: "\n", omittingEmptySubsequences: false).count
             case .spacer: return 1
             case .divider: return 1
             case .empty: return 0
@@ -391,13 +392,25 @@ public enum GraphRenderer {
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
             var base = measureHeight(child, proposedWidth: proposedWidth)
-            if case .padding(let n) = effect { base += Double(n * 2) }
+            if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(_, let h) = effect, let h { return Double(h) }
+            if case .frame(_, let h) = effect, let h { return h }
             return base
 
         case .viewBody:
             return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
+        }
+    }
+
+    // MARK: - Rect Offset (for modal hit testing)
+
+    /// Offset resolved rects of a subtree so hit testing works in screen coordinates.
+    /// Modal content is rendered into a local buffer at (0,0) but composited at (dx,dy).
+    static func offsetRects(of node: AttributeNode, dx: Int, dy: Int) {
+        node.rect.x += dx
+        node.rect.y += dy
+        for child in node.children {
+            offsetRects(of: child, dx: dx, dy: dy)
         }
     }
 }

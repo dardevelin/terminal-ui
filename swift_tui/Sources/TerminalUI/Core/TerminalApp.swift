@@ -462,7 +462,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         case .viewBody(let info):
             kind = info.viewTypeName
         }
-        output += "\(indent)\(kind) @ (\(r.intX),\(r.intY) \(r.intWidth)x\(r.intHeight))\n"
+        output += "\(indent)\(kind) @ (\(r.x),\(r.y) \(r.width)x\(r.height))\n"
         for child in node.children {
             dumpNode(child, depth: depth + 1, into: &output)
         }
@@ -521,7 +521,7 @@ public enum TerminalApp {
     public static func print<V: TerminalView>(_ view: V, width: Int? = nil) {
         let size = Terminal.size()
         let cols = width ?? size.cols
-        let height = max(Int(Renderer.measureHeight(view, proposedWidth: Double(cols)).rounded(.up)), 1)
+        let height = max(Renderer.measureHeight(view, proposedWidth: cols), 1)
 
         var buffer = CellBuffer(width: cols, height: height)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: cols, height: height))

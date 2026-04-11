@@ -176,7 +176,7 @@ public final class DebugStream: @unchecked Sendable {
             id: node.id.path.map { "\($0)" }.joined(separator: "."),
             kind: kind,
             depth: depth,
-            rect: [node.rect.intX, node.rect.intY, node.rect.intWidth, node.rect.intHeight],
+            rect: [node.rect.x, node.rect.y, node.rect.width, node.rect.height],
             isDirty: node.isDirty,
             childCount: node.children.count,
             value: value,

@@ -41,7 +41,7 @@ public enum Renderer {
     // MARK: - ProgressBar
 
     static func renderProgressBar(_ bar: ProgressBar, into buffer: inout CellBuffer, context: RenderContext) {
-        let width = context.rect.intWidth
+        let width = context.rect.width
         let labelPart: String
         if let label = bar.label {
             labelPart = label + " "
@@ -59,13 +59,13 @@ public enum Renderer {
             + String(repeating: bar.empty, count: emptyCount)
             + percentText
 
-        buffer.write(barText, x: context.rect.intX, y: context.rect.intY, style: context.style)
+        buffer.write(barText, x: context.rect.x, y: context.rect.y, style: context.style)
     }
 
     // MARK: - Spinner
 
     static func renderSpinner(_ spinner: Spinner, into buffer: inout CellBuffer, context: RenderContext) {
-        buffer.write(spinner.text, x: context.rect.intX, y: context.rect.intY, style: context.style)
+        buffer.write(spinner.text, x: context.rect.x, y: context.rect.y, style: context.style)
     }
 
     // MARK: - Text
@@ -73,9 +73,9 @@ public enum Renderer {
     static func renderText(_ text: Text, into buffer: inout CellBuffer, context: RenderContext) {
         let lines = text.content.split(separator: "\n", omittingEmptySubsequences: false)
         for (i, line) in lines.enumerated() {
-            let y = context.rect.intY + i
-            guard y < context.rect.intY + context.rect.intHeight else { break }
-            buffer.write(String(line), x: context.rect.intX, y: y, style: context.style)
+            let y = context.rect.y + i
+            guard y < context.rect.y + context.rect.height else { break }
+            buffer.write(String(line), x: context.rect.x, y: y, style: context.style)
         }
     }
 
@@ -87,12 +87,11 @@ public enum Renderer {
 
         let spacerCount = children.filter { $0 is Spacer }.count
 
-        // Measure actual height of every non-spacer child
-        var childHeights: [Double] = []
-        var totalContentHeight: Double = 0
+        var childHeights: [Int] = []
+        var totalContentHeight = 0
         for child in children {
             if child is Spacer {
-                childHeights.append(0) // placeholder, filled below
+                childHeights.append(0)
             } else {
                 let h = measureHeight(child, proposedWidth: context.rect.width)
                 childHeights.append(h)
@@ -101,18 +100,19 @@ public enum Renderer {
         }
 
         let remainingHeight = max(0, context.rect.height - totalContentHeight)
-        let spacerHeight = spacerCount > 0 ? remainingHeight / Double(spacerCount) : 0
+        let spacerBase = spacerCount > 0 ? remainingHeight / spacerCount : 0
+        var spacerRemainder = spacerCount > 0 ? remainingHeight % spacerCount : 0
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
             if child is Spacer {
-                y += spacerHeight
+                let extra = spacerRemainder > 0 ? 1 : 0
+                spacerRemainder -= extra
+                y += spacerBase + extra
                 continue
             }
             let h = childHeights[i]
-            let snappedY = y.rounded(.down)
-            let snappedH = (y + h).rounded(.down) - snappedY
-            let childRect = Rect(x: context.rect.x, y: snappedY, width: context.rect.width, height: max(1, snappedH))
+            let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: max(1, h))
             let childContext = RenderContext(style: context.style, rect: childRect)
             renderAny(child, into: &buffer, context: childContext)
             y += h
@@ -126,24 +126,25 @@ public enum Renderer {
         guard !children.isEmpty else { return }
 
         let spacerCount = children.filter { $0 is Spacer }.count
-        let nonSpacerWidths = children.compactMap { child -> Double? in
+        let nonSpacerWidths = children.compactMap { child -> Int? in
             if child is Spacer { return nil }
             return measureWidth(child)
         }
-        let totalContentWidth = nonSpacerWidths.reduce(0.0, +)
+        let totalContentWidth = nonSpacerWidths.reduce(0, +)
         let remainingWidth = max(0, context.rect.width - totalContentWidth)
-        let spacerWidth = spacerCount > 0 ? remainingWidth / Double(spacerCount) : 0.0
+        let spacerBase = spacerCount > 0 ? remainingWidth / spacerCount : 0
+        var spacerRemainder = spacerCount > 0 ? remainingWidth % spacerCount : 0
 
         var x = context.rect.x
         for child in children {
             if child is Spacer {
-                x += spacerWidth
+                let extra = spacerRemainder > 0 ? 1 : 0
+                spacerRemainder -= extra
+                x += spacerBase + extra
                 continue
             }
-            let childWidth = Double(measureWidth(child))
-            let snappedX = x.rounded(.down)
-            let snappedW = (x + childWidth).rounded(.down) - snappedX
-            let childRect = Rect(x: snappedX, y: context.rect.y, width: max(1, snappedW), height: context.rect.height)
+            let childWidth = measureWidth(child)
+            let childRect = Rect(x: x, y: context.rect.y, width: max(1, childWidth), height: context.rect.height)
             let childContext = RenderContext(style: context.style, rect: childRect)
             renderAny(child, into: &buffer, context: childContext)
             x += childWidth
@@ -196,16 +197,16 @@ public enum Renderer {
 
     // MARK: - Measurement (simple prototype)
 
-    static func measureWidth(_ view: Any) -> Double {
+    static func measureWidth(_ view: Any) -> Int {
         if let text = view as? Text {
             let lines = text.content.split(separator: "\n", omittingEmptySubsequences: false)
-            return Double(lines.map(\.count).max() ?? 0)
+            return lines.map(\.count).max() ?? 0
         }
         if view is ProgressBar {
-            return 20 // progress bars are flexible, give a minimum
+            return 20
         }
         if let spinner = view as? Spinner {
-            return Double(spinner.text.count)
+            return spinner.text.count
         }
         if let modified = view as? any _ModifiedViewProtocol {
             return modified.measureModifiedWidth()
@@ -228,14 +229,14 @@ public enum Renderer {
         return 0
     }
 
-    static func measureBodyWidth<V: TerminalView>(_ view: V) -> Double {
+    static func measureBodyWidth<V: TerminalView>(_ view: V) -> Int {
         if V.Body.self == Never.self { return 0 }
         return measureWidth(view.body)
     }
 
-    static func measureHeight(_ view: Any, proposedWidth: Double) -> Double {
+    static func measureHeight(_ view: Any, proposedWidth: Int) -> Int {
         if let text = view as? Text {
-            return Double(text.content.split(separator: "\n", omittingEmptySubsequences: false).count)
+            return text.content.split(separator: "\n", omittingEmptySubsequences: false).count
         }
         if let modified = view as? any _ModifiedViewProtocol {
             return modified.measureModifiedHeight(proposedWidth: proposedWidth)
@@ -249,7 +250,7 @@ public enum Renderer {
             return children.map { measureHeight($0, proposedWidth: proposedWidth) }.max() ?? 0
         }
         if view is Spacer {
-            return 1 // spacer takes minimum 1 row in measurement
+            return 1
         }
         if view is EmptyView {
             return 0
@@ -261,7 +262,7 @@ public enum Renderer {
         return 1
     }
 
-    static func measureBodyHeight<V: TerminalView>(_ view: V, proposedWidth: Double) -> Double {
+    static func measureBodyHeight<V: TerminalView>(_ view: V, proposedWidth: Int) -> Int {
         if V.Body.self == Never.self { return 0 }
         return measureHeight(view.body, proposedWidth: proposedWidth)
     }
@@ -279,6 +280,6 @@ protocol _HStackProtocol {
 
 protocol _ModifiedViewProtocol {
     func renderModified(into buffer: inout CellBuffer, context: RenderContext)
-    func measureModifiedWidth() -> Double
-    func measureModifiedHeight(proposedWidth: Double) -> Double
+    func measureModifiedWidth() -> Int
+    func measureModifiedHeight(proposedWidth: Int) -> Int
 }

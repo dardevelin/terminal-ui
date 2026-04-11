@@ -19,12 +19,30 @@ public enum HitTest {
     private static func search(x: Int, y: Int, node: AttributeNode, path: inout [AttributeNode]) -> AttributeNode? {
         let r = node.rect
         // Check if point is within this node's rect
-        guard x >= r.intX, x < r.intX + r.intWidth,
-              y >= r.intY, y < r.intY + r.intHeight else {
+        guard x >= r.x, x < r.x + r.width,
+              y >= r.y, y < r.y + r.height else {
             return nil
         }
 
         path.append(node)
+
+        // Modal layer awareness: when a modal is presented, it occludes the base app.
+        // If the point is inside the modal content, only search modal children.
+        // If outside, return the modal node itself (dimmed area, no base hit).
+        if case .modifier(.modal(let isPresented)) = node.kind, isPresented, node.children.count > 1 {
+            let modalChild = node.children[1]
+            let mr = modalChild.rect
+            if x >= mr.x, x < mr.x + mr.width,
+               y >= mr.y, y < mr.y + mr.height {
+                // Inside modal bounds — only search modal subtree
+                if let found = search(x: x, y: y, node: modalChild, path: &path) {
+                    return found
+                }
+                return modalChild
+            }
+            // Outside modal bounds — hit the dimmed area (no base app passthrough)
+            return node
+        }
 
         // Search children in reverse order (last child = highest z-order)
         for child in node.children.reversed() {
@@ -101,7 +119,7 @@ public struct HitResult {
 
     /// Resolved rect from layout
     public var resolvedRect: (x: Int, y: Int, width: Int, height: Int) {
-        (node.rect.intX, node.rect.intY, node.rect.intWidth, node.rect.intHeight)
+        (node.rect.x, node.rect.y, node.rect.width, node.rect.height)
     }
 
     /// Full modifier chain from root to this node

@@ -107,10 +107,10 @@ extension ModifiedView: _ModifiedViewProtocol {
         }
     }
 
-    public func measureModifiedWidth() -> Double {
+    public func measureModifiedWidth() -> Int {
         var base = Renderer.measureWidth(content)
         if modifier is PaddingModifier {
-            base += Double((modifier as! PaddingModifier).amount * 2)
+            base += (modifier as! PaddingModifier).amount * 2
         }
         if modifier is BorderModifier {
             base += 2
@@ -118,10 +118,10 @@ extension ModifiedView: _ModifiedViewProtocol {
         return base
     }
 
-    public func measureModifiedHeight(proposedWidth: Double) -> Double {
+    public func measureModifiedHeight(proposedWidth: Int) -> Int {
         var base = Renderer.measureHeight(content, proposedWidth: proposedWidth)
         if modifier is PaddingModifier {
-            base += Double((modifier as! PaddingModifier).amount * 2)
+            base += (modifier as! PaddingModifier).amount * 2
         }
         if modifier is BorderModifier {
             base += 2
@@ -133,7 +133,7 @@ extension ModifiedView: _ModifiedViewProtocol {
         let r = context.rect
         guard r.width >= 2, r.height >= 2 else { return }
 
-        let rx = r.intX, ry = r.intY, rw = r.intWidth, rh = r.intHeight
+        let rx = r.x, ry = r.y, rw = r.width, rh = r.height
 
         // Corners
         buffer[rx, ry] = Cell(character: style.topLeft, style: context.style)
