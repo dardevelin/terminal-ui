@@ -309,14 +309,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
-        // When debug tools are active, always render — don't fight the skip logic.
-        // In optimized mode (no debug tools), skip when nothing changed.
-        #if DEBUG
-        let debugActive = debugOverlay.visible || debugPanel.mode != .hidden || inspector.active
-        #else
-        let debugActive = false
-        #endif
-        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender || debugActive
+        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
 
         if needsWork {
             let view = buildView()
