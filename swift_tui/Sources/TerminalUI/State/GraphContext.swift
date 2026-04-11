@@ -8,4 +8,7 @@ public enum GraphContext {
 
     /// The current graph instance.
     nonisolated(unsafe) public static var currentGraph: AttributeGraph?
+
+    /// Current environment values — propagated during rendering.
+    nonisolated(unsafe) public static var currentEnvironment: EnvironmentValues?
 }
