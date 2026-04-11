@@ -79,8 +79,8 @@ public struct CellBuffer: Sendable {
     }
 
     public mutating func fill(_ rect: Rect, character: Character = " ", style: Style = .plain) {
-        for row in rect.y..<min(rect.y + rect.height, height) {
-            for col in rect.x..<min(rect.x + rect.width, width) {
+        for row in rect.intY..<min(rect.intY + rect.intHeight, height) {
+            for col in rect.intX..<min(rect.intX + rect.intWidth, width) {
                 self[col, row] = Cell(character: character, style: style)
             }
         }

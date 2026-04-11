@@ -30,6 +30,9 @@ extension ModifiedView: _GraphModified {
         case let bdr as BorderModifier: .border(bdr.style)
         case let frm as FrameModifier: .frame(width: frm.width, height: frm.height)
         case let idm as IDModifier: .explicitID(idm.id)
+        case is any _OverlayModifierProtocol: .overlay
+        case is any _BackgroundViewModifierProtocol: .backgroundView
+        case let modal as any _ModalModifierProtocol: .modal(isPresented: modal.modalIsPresented)
         default: .bold
         }
     }
@@ -40,6 +43,29 @@ extension ModifiedView: _GraphModified {
 
     func updateChild(_ child: AttributeNode, graph: AttributeGraph) {
         graph.updateNode(child, from: content)
+    }
+
+    func constructExtraChild(id: NodeID, graph: AttributeGraph) -> AttributeNode? {
+        if let ovl = modifier as? any _OverlayModifierProtocol {
+            return ovl.constructOverlayNode(id: id, graph: graph)
+        }
+        if let bg = modifier as? any _BackgroundViewModifierProtocol {
+            return bg.constructBackgroundNode(id: id, graph: graph)
+        }
+        if let modal = modifier as? any _ModalModifierProtocol, modal.modalIsPresented {
+            return modal.constructModalNode(id: id, graph: graph)
+        }
+        return nil
+    }
+
+    func updateExtraChild(_ child: AttributeNode, graph: AttributeGraph) {
+        if let ovl = modifier as? any _OverlayModifierProtocol {
+            ovl.updateOverlayNode(child, graph: graph)
+        } else if let bg = modifier as? any _BackgroundViewModifierProtocol {
+            bg.updateBackgroundNode(child, graph: graph)
+        } else if let modal = modifier as? any _ModalModifierProtocol {
+            modal.updateModalNode(child, graph: graph)
+        }
     }
 }
 

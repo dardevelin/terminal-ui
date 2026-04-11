@@ -163,6 +163,9 @@ public final class DebugStream: @unchecked Sendable {
             case .border(let s): kind = "border"; value = "\(s)"
             case .frame(let w, let h): kind = "frame"; value = "\(w ?? 0)x\(h ?? 0)"
             case .explicitID(let id): kind = "id"; value = "\(id)"
+            case .overlay: kind = "overlay"; value = ""
+            case .backgroundView: kind = "bgView"; value = ""
+            case .modal(let p): kind = "modal"; value = p ? "shown" : "hidden"
             }
         case .viewBody(let info):
             kind = "view"
@@ -173,7 +176,7 @@ public final class DebugStream: @unchecked Sendable {
             id: node.id.path.map { "\($0)" }.joined(separator: "."),
             kind: kind,
             depth: depth,
-            rect: [node.rect.x, node.rect.y, node.rect.width, node.rect.height],
+            rect: [node.rect.intX, node.rect.intY, node.rect.intWidth, node.rect.intHeight],
             isDirty: node.isDirty,
             childCount: node.children.count,
             value: value,

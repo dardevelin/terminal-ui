@@ -74,10 +74,21 @@ public enum LayoutKind {
 }
 
 public struct Size: Equatable, Sendable {
-    public var width: Int
-    public var height: Int
+    public var width: Double
+    public var height: Double
 
-    public static let zero = Size(width: 0, height: 0)
+    public init(width: Double, height: Double) {
+        self.width = width
+        self.height = height
+    }
+
+    /// Convenience initializer from Int values.
+    public init(width: Int, height: Int) {
+        self.width = Double(width)
+        self.height = Double(height)
+    }
+
+    public static let zero = Size(width: 0.0, height: 0.0)
 }
 
 // MARK: - Modifier
@@ -92,6 +103,9 @@ public enum ModifierEffect {
     case border(BorderStyle)
     case frame(width: Int?, height: Int?)
     case explicitID(AnyHashable)
+    case overlay     // child[0] = base, child[1] = overlay content
+    case backgroundView  // child[0] = background content, child[1] = base (render bg first)
+    case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
 }
 
 // MARK: - View Body

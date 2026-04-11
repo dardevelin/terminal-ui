@@ -28,9 +28,9 @@ public enum GraphRenderer {
         case .text(let string):
             let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
             for (i, line) in lines.enumerated() {
-                let y = context.rect.y + i
-                guard y < context.rect.y + context.rect.height else { break }
-                buffer.write(String(line), x: context.rect.x, y: y, style: context.style)
+                let y = context.rect.intY + i
+                guard y < context.rect.intY + context.rect.intHeight else { break }
+                buffer.write(String(line), x: context.rect.intX, y: y, style: context.style)
             }
 
         case .spacer:
@@ -38,11 +38,11 @@ public enum GraphRenderer {
 
         case .divider:
             // Horizontal line filling the width
-            let line = String(repeating: "─", count: context.rect.width)
-            buffer.write(line, x: context.rect.x, y: context.rect.y, style: context.style)
+            let line = String(repeating: "─", count: context.rect.intWidth)
+            buffer.write(line, x: context.rect.intX, y: context.rect.intY, style: context.style)
 
         case .progressBar(let value, let label, let filled, let empty):
-            let width = context.rect.width
+            let width = context.rect.intWidth
             let labelPart = label.map { $0 + " " } ?? ""
             let percentText = " \(Int(value * 100))%"
             let barWidth = max(0, width - labelPart.count - percentText.count)
@@ -52,12 +52,12 @@ public enum GraphRenderer {
                 + String(repeating: filled, count: filledCount)
                 + String(repeating: empty, count: emptyCount)
                 + percentText
-            buffer.write(barText, x: context.rect.x, y: context.rect.y, style: context.style)
+            buffer.write(barText, x: context.rect.intX, y: context.rect.intY, style: context.style)
 
         case .spinner(let frame, let style):
             let frames = style.frames
             let text = frames[frame % frames.count]
-            buffer.write(text, x: context.rect.x, y: context.rect.y, style: context.style)
+            buffer.write(text, x: context.rect.intX, y: context.rect.intY, style: context.style)
 
         case .empty:
             break
@@ -83,8 +83,8 @@ public enum GraphRenderer {
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
 
-        var childHeights: [Int] = []
-        var totalContentHeight = 0
+        var childHeights: [Double] = []
+        var totalContentHeight: Double = 0
         for child in children {
             if case .primitive(.spacer) = child.kind {
                 childHeights.append(0)
@@ -96,7 +96,7 @@ public enum GraphRenderer {
         }
 
         let remainingHeight = max(0, context.rect.height - totalContentHeight)
-        let spacerHeight = spacerCount > 0 ? remainingHeight / spacerCount : 0
+        let spacerHeight = spacerCount > 0 ? remainingHeight / Double(spacerCount) : 0
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
@@ -115,8 +115,8 @@ public enum GraphRenderer {
     static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         let spacerCount = children.filter { if case .primitive(.spacer) = $0.kind { return true }; return false }.count
 
-        var childWidths: [Int] = []
-        var totalContentWidth = 0
+        var childWidths: [Double] = []
+        var totalContentWidth: Double = 0
         for child in children {
             if case .primitive(.spacer) = child.kind {
                 childWidths.append(0)
@@ -128,7 +128,7 @@ public enum GraphRenderer {
         }
 
         let remainingWidth = max(0, context.rect.width - totalContentWidth)
-        let spacerWidth = spacerCount > 0 ? remainingWidth / spacerCount : 0
+        let spacerWidth = spacerCount > 0 ? remainingWidth / Double(spacerCount) : 0
 
         var x = context.rect.x
         for (i, child) in children.enumerated() {
@@ -188,13 +188,69 @@ public enum GraphRenderer {
             render(child, into: &buffer, context: ctx)
 
         case .frame(let width, let height):
-            if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
-            if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
+            if let w = width { ctx.rect.width = min(Double(w), ctx.rect.width) }
+            if let h = height { ctx.rect.height = min(Double(h), ctx.rect.height) }
             render(child, into: &buffer, context: ctx)
 
         case .explicitID:
-            // Identity modifier — doesn't affect rendering
             render(child, into: &buffer, context: ctx)
+
+        case .overlay:
+            // Render base first, then overlay on top in same rect
+            render(child, into: &buffer, context: ctx)
+            if node.children.count > 1 {
+                render(node.children[1], into: &buffer, context: ctx)
+            }
+
+        case .backgroundView:
+            // Render background first, then base on top
+            if node.children.count > 1 {
+                render(node.children[1], into: &buffer, context: ctx)
+            }
+            render(child, into: &buffer, context: ctx)
+
+        case .modal(let isPresented):
+            // Always render base app
+            render(child, into: &buffer, context: ctx)
+
+            if isPresented, node.children.count > 1 {
+                let modalNode = node.children[1]
+
+                // Measure modal content
+                let mw = Int(measureWidth(modalNode))
+                let mh = Int(measureHeight(modalNode, proposedWidth: Double(mw)))
+                let contentWidth = min(mw, buffer.width - 4)
+                let contentHeight = min(mh, buffer.height - 2)
+
+                // Center on screen
+                let mx = max(0, (buffer.width - contentWidth) / 2)
+                let my = max(0, (buffer.height - contentHeight) / 2)
+
+                // Dim background — keep characters visible but muted
+                let dimFg = Color.ansi256(239)
+                for y in 0..<buffer.height {
+                    for x in 0..<buffer.width {
+                        var cell = buffer[x, y]
+                        cell.style.foreground = dimFg
+                        cell.style.bold = false
+                        buffer[x, y] = cell
+                    }
+                }
+
+                // Clear modal area
+                for y in my..<min(my + contentHeight, buffer.height) {
+                    for x in mx..<min(mx + contentWidth, buffer.width) {
+                        buffer[x, y] = Cell(character: " ", style: .plain)
+                    }
+                }
+
+                // Render modal content
+                let modalContext = RenderContext(
+                    style: .plain,
+                    rect: Rect(x: mx, y: my, width: contentWidth, height: contentHeight)
+                )
+                render(modalNode, into: &buffer, context: modalContext)
+            }
         }
     }
 
@@ -202,35 +258,37 @@ public enum GraphRenderer {
         let r = context.rect
         guard r.width >= 2, r.height >= 2 else { return }
 
-        buffer[r.x, r.y] = Cell(character: style.topLeft, style: context.style)
-        buffer[r.x + r.width - 1, r.y] = Cell(character: style.topRight, style: context.style)
-        buffer[r.x, r.y + r.height - 1] = Cell(character: style.bottomLeft, style: context.style)
-        buffer[r.x + r.width - 1, r.y + r.height - 1] = Cell(character: style.bottomRight, style: context.style)
+        let rx = r.intX, ry = r.intY, rw = r.intWidth, rh = r.intHeight
 
-        for x in (r.x + 1)..<(r.x + r.width - 1) {
-            buffer[x, r.y] = Cell(character: style.horizontal, style: context.style)
-            buffer[x, r.y + r.height - 1] = Cell(character: style.horizontal, style: context.style)
+        buffer[rx, ry] = Cell(character: style.topLeft, style: context.style)
+        buffer[rx + rw - 1, ry] = Cell(character: style.topRight, style: context.style)
+        buffer[rx, ry + rh - 1] = Cell(character: style.bottomLeft, style: context.style)
+        buffer[rx + rw - 1, ry + rh - 1] = Cell(character: style.bottomRight, style: context.style)
+
+        for x in (rx + 1)..<(rx + rw - 1) {
+            buffer[x, ry] = Cell(character: style.horizontal, style: context.style)
+            buffer[x, ry + rh - 1] = Cell(character: style.horizontal, style: context.style)
         }
 
-        for y in (r.y + 1)..<(r.y + r.height - 1) {
-            buffer[r.x, y] = Cell(character: style.vertical, style: context.style)
-            buffer[r.x + r.width - 1, y] = Cell(character: style.vertical, style: context.style)
+        for y in (ry + 1)..<(ry + rh - 1) {
+            buffer[rx, y] = Cell(character: style.vertical, style: context.style)
+            buffer[rx + rw - 1, y] = Cell(character: style.vertical, style: context.style)
         }
     }
 
     // MARK: - Measurement
 
-    public static func measureWidth(_ node: AttributeNode) -> Int {
+    public static func measureWidth(_ node: AttributeNode) -> Double {
         switch node.kind {
         case .primitive(let content):
             switch content {
             case .text(let s):
-                return s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
+                return Double(s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0)
             case .spacer, .empty: return 0
             case .divider: return 1
             case .progressBar: return 20
             case .spinner(let frame, let style):
-                return style.frames[frame % style.frames.count].count
+                return Double(style.frames[frame % style.frames.count].count)
             }
 
         case .layout(let info):
@@ -246,9 +304,9 @@ public enum GraphRenderer {
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
             var base = measureWidth(child)
-            if case .padding(let n) = effect { base += n * 2 }
+            if case .padding(let n) = effect { base += Double(n * 2) }
             if case .border = effect { base += 2 }
-            if case .frame(let w, _) = effect, let w { return w }
+            if case .frame(let w, _) = effect, let w { return Double(w) }
             return base
 
         case .viewBody:
@@ -256,12 +314,12 @@ public enum GraphRenderer {
         }
     }
 
-    public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
+    public static func measureHeight(_ node: AttributeNode, proposedWidth: Double) -> Double {
         switch node.kind {
         case .primitive(let content):
             switch content {
             case .text(let s):
-                return s.split(separator: "\n", omittingEmptySubsequences: false).count
+                return Double(s.split(separator: "\n", omittingEmptySubsequences: false).count)
             case .spacer: return 1
             case .divider: return 1
             case .empty: return 0
@@ -282,9 +340,9 @@ public enum GraphRenderer {
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
             var base = measureHeight(child, proposedWidth: proposedWidth)
-            if case .padding(let n) = effect { base += n * 2 }
+            if case .padding(let n) = effect { base += Double(n * 2) }
             if case .border = effect { base += 2 }
-            if case .frame(_, let h) = effect, let h { return h }
+            if case .frame(_, let h) = effect, let h { return Double(h) }
             return base
 
         case .viewBody:

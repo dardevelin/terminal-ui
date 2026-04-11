@@ -438,7 +438,7 @@ public enum TerminalApp {
     public static func print<V: TerminalView>(_ view: V, width: Int? = nil) {
         let size = Terminal.size()
         let cols = width ?? size.cols
-        let height = max(Renderer.measureHeight(view, proposedWidth: cols), 1)
+        let height = max(Int(Renderer.measureHeight(view, proposedWidth: Double(cols)).rounded(.up)), 1)
 
         var buffer = CellBuffer(width: cols, height: height)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: cols, height: height))

@@ -106,13 +106,40 @@ public final class AttributeGraph {
             }
         }
 
-        // Modifiers — update effect + child
+        // Modifiers — update effect + child + extra child
         if let modified = view as? any _GraphModified {
             if case .modifier = node.kind {
-                node.kind = .modifier(modified.graphEffect())
+                let newEffect = modified.graphEffect()
+                let oldEffect = node.kind
+                node.kind = .modifier(newEffect)
+
+                // Update base child
                 if let child = node.children.first {
                     modified.updateChild(child, graph: self)
                 }
+
+                // Handle extra child (overlay/background/modal)
+                let hadExtra = node.children.count > 1
+                let extraChild = modified.constructExtraChild(
+                    id: node.id.appending(.index(1)), graph: self
+                )
+
+                if let extraChild {
+                    if hadExtra {
+                        // Update existing extra child
+                        modified.updateExtraChild(node.children[1], graph: self)
+                    } else {
+                        // Add new extra child (e.g., modal just became presented)
+                        extraChild.parent = node
+                        node.children.append(extraChild)
+                        changed = true
+                    }
+                } else if hadExtra {
+                    // Remove extra child (e.g., modal dismissed)
+                    node.children.removeLast()
+                    changed = true
+                }
+
                 return
             }
         }
@@ -297,10 +324,19 @@ public final class AttributeGraph {
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
         let effect = modified.graphEffect()
         let node = AttributeNode(id: id, kind: .modifier(effect))
+
+        // Base view child (child[0])
         let childID = id.appending(.index(0))
         let childNode = modified.constructChildNode(id: childID, graph: self)
         childNode.parent = node
         node.children.append(childNode)
+
+        // Extra child for overlay/background/modal (child[1])
+        if let extraNode = modified.constructExtraChild(id: id.appending(.index(1)), graph: self) {
+            extraNode.parent = node
+            node.children.append(extraNode)
+        }
+
         return node
     }
 
@@ -363,6 +399,9 @@ protocol _GraphModified {
     func graphEffect() -> ModifierEffect
     func constructChildNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateChild(_ child: AttributeNode, graph: AttributeGraph)
+    /// For overlay/background/modal: construct the extra child node
+    func constructExtraChild(id: NodeID, graph: AttributeGraph) -> AttributeNode?
+    func updateExtraChild(_ child: AttributeNode, graph: AttributeGraph)
 }
 
 protocol _GraphConditional {

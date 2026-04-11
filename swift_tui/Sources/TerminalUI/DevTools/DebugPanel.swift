@@ -207,6 +207,9 @@ public final class DebugPanel {
             case .border(_): kind = "bdr"; detail = ""
             case .frame(let w, let h): kind = "frm"; detail = "\(w ?? 0)x\(h ?? 0)"
             case .explicitID(_): kind = "id"; detail = ""
+            case .overlay: kind = "ovl"; detail = ""
+            case .backgroundView: kind = "bg"; detail = ""
+            case .modal(let p): kind = "mdl"; detail = p ? "on" : "off"
             }
             style = node.isDirty ? dirtyStyle : dimStyle
 

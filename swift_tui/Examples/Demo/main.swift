@@ -432,11 +432,9 @@ struct App: TerminalView {
     }
 
     static func content() -> some TerminalView {
-        ZStack {
-            App(state: state)
-            if state.showHelp {
+        App(state: state)
+            .modal(isPresented: state.showHelp) {
                 HelpOverlay()
             }
-        }
     }
 }

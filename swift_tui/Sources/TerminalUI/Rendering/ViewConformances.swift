@@ -107,10 +107,10 @@ extension ModifiedView: _ModifiedViewProtocol {
         }
     }
 
-    public func measureModifiedWidth() -> Int {
+    public func measureModifiedWidth() -> Double {
         var base = Renderer.measureWidth(content)
         if modifier is PaddingModifier {
-            base += (modifier as! PaddingModifier).amount * 2
+            base += Double((modifier as! PaddingModifier).amount * 2)
         }
         if modifier is BorderModifier {
             base += 2
@@ -118,10 +118,10 @@ extension ModifiedView: _ModifiedViewProtocol {
         return base
     }
 
-    public func measureModifiedHeight(proposedWidth: Int) -> Int {
+    public func measureModifiedHeight(proposedWidth: Double) -> Double {
         var base = Renderer.measureHeight(content, proposedWidth: proposedWidth)
         if modifier is PaddingModifier {
-            base += (modifier as! PaddingModifier).amount * 2
+            base += Double((modifier as! PaddingModifier).amount * 2)
         }
         if modifier is BorderModifier {
             base += 2
@@ -133,22 +133,24 @@ extension ModifiedView: _ModifiedViewProtocol {
         let r = context.rect
         guard r.width >= 2, r.height >= 2 else { return }
 
+        let rx = r.intX, ry = r.intY, rw = r.intWidth, rh = r.intHeight
+
         // Corners
-        buffer[r.x, r.y] = Cell(character: style.topLeft, style: context.style)
-        buffer[r.x + r.width - 1, r.y] = Cell(character: style.topRight, style: context.style)
-        buffer[r.x, r.y + r.height - 1] = Cell(character: style.bottomLeft, style: context.style)
-        buffer[r.x + r.width - 1, r.y + r.height - 1] = Cell(character: style.bottomRight, style: context.style)
+        buffer[rx, ry] = Cell(character: style.topLeft, style: context.style)
+        buffer[rx + rw - 1, ry] = Cell(character: style.topRight, style: context.style)
+        buffer[rx, ry + rh - 1] = Cell(character: style.bottomLeft, style: context.style)
+        buffer[rx + rw - 1, ry + rh - 1] = Cell(character: style.bottomRight, style: context.style)
 
         // Horizontal edges
-        for x in (r.x + 1)..<(r.x + r.width - 1) {
-            buffer[x, r.y] = Cell(character: style.horizontal, style: context.style)
-            buffer[x, r.y + r.height - 1] = Cell(character: style.horizontal, style: context.style)
+        for x in (rx + 1)..<(rx + rw - 1) {
+            buffer[x, ry] = Cell(character: style.horizontal, style: context.style)
+            buffer[x, ry + rh - 1] = Cell(character: style.horizontal, style: context.style)
         }
 
         // Vertical edges
-        for y in (r.y + 1)..<(r.y + r.height - 1) {
-            buffer[r.x, y] = Cell(character: style.vertical, style: context.style)
-            buffer[r.x + r.width - 1, y] = Cell(character: style.vertical, style: context.style)
+        for y in (ry + 1)..<(ry + rh - 1) {
+            buffer[rx, y] = Cell(character: style.vertical, style: context.style)
+            buffer[rx + rw - 1, y] = Cell(character: style.vertical, style: context.style)
         }
     }
 }
