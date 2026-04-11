@@ -1,51 +1,53 @@
 import Foundation
+import Observation
 import TerminalUI
 
-// State is now managed by the framework via @TerminalState
-// No more nonisolated(unsafe) global vars
+// App state as @Observable — the graph tracks access to these properties.
+// When a property changes, only views that read it get re-evaluated.
+@Observable
+final class AppState {
+    var spinnerFrame: Int = 0
+    var progress: Double = 0.0
+    var logMessages: [(String, Color)] = []
+    var lastTaskLogged = ""
 
-let startTime = Date()
+    let startTime = Date()
+    let taskList: [(String, Double)] = [
+        ("compiling sources", 0.3),
+        ("linking modules",   0.5),
+        ("running tests",     0.7),
+        ("generating docs",   0.85),
+        ("packaging binary",  1.0),
+    ]
 
-let taskList: [(String, Double)] = [
-    ("compiling sources", 0.3),
-    ("linking modules",   0.5),
-    ("running tests",     0.7),
-    ("generating docs",   0.85),
-    ("packaging binary",  1.0),
-]
-
-// Global state still needed for timer-driven updates
-// (will move into views with @TerminalState once the graph
-// supports stateful re-evaluation without full rebuild)
-nonisolated(unsafe) var spinnerFrame: Int = 0
-nonisolated(unsafe) var progress: Double = 0.0
-nonisolated(unsafe) var logMessages: [(String, Color)] = []
-nonisolated(unsafe) var lastTaskLogged = ""
-
-func currentTask() -> String {
-    for (name, threshold) in taskList {
-        if progress < threshold { return name }
-    }
-    return "done"
-}
-
-func advanceBuild() {
-    if progress < 1.0 {
-        progress = min(1.0, progress + 0.005)
+    func currentTask() -> String {
+        for (name, threshold) in taskList {
+            if progress < threshold { return name }
+        }
+        return "done"
     }
 
-    let task = currentTask()
-    if task != lastTaskLogged {
-        let elapsed = String(format: "%.1fs", Date().timeIntervalSince(startTime))
-        logMessages.append(("[\(elapsed)] \(task)...", .gray))
-        lastTaskLogged = task
-    }
+    func advanceBuild() {
+        if progress < 1.0 {
+            progress = min(1.0, progress + 0.005)
+        }
 
-    if progress >= 1.0 && !logMessages.contains(where: { $0.0.contains("complete") }) {
-        let elapsed = String(format: "%.1fs", Date().timeIntervalSince(startTime))
-        logMessages.append(("[\(elapsed)] build complete", .green))
+        let task = currentTask()
+        if task != lastTaskLogged {
+            let elapsed = String(format: "%.1fs", Date().timeIntervalSince(startTime))
+            logMessages.append(("[\(elapsed)] \(task)...", .gray))
+            lastTaskLogged = task
+        }
+
+        if progress >= 1.0 && !logMessages.contains(where: { $0.0.contains("complete") }) {
+            let elapsed = String(format: "%.1fs", Date().timeIntervalSince(startTime))
+            logMessages.append(("[\(elapsed)] build complete", .green))
+        }
     }
 }
+
+// Single instance — shared via closure capture
+nonisolated(unsafe) let state = AppState()
 
 // Views
 
@@ -117,8 +119,8 @@ struct StatusBar: TerminalView {
 
         if case .timer(let name) = event {
             switch name {
-            case "spinner": spinnerFrame += 1
-            case "build":   advanceBuild()
+            case "spinner": state.spinnerFrame += 1
+            case "build":   state.advanceBuild()
             default: break
             }
         }
@@ -126,14 +128,18 @@ struct StatusBar: TerminalView {
     }
 
     static func content() -> some TerminalView {
-        let elapsed = String(format: "%.1fs", Date().timeIntervalSince(startTime))
+        let elapsed = String(format: "%.1fs", Date().timeIntervalSince(state.startTime))
 
         VStack {
             Header()
             Text("")
-            BuildStatus(spinnerFrame: spinnerFrame, progress: progress, task: currentTask())
+            BuildStatus(
+                spinnerFrame: state.spinnerFrame,
+                progress: state.progress,
+                task: state.currentTask()
+            )
             Text("")
-            LogView(messages: logMessages)
+            LogView(messages: state.logMessages)
             Spacer()
             StatusBar(elapsed: elapsed)
         }

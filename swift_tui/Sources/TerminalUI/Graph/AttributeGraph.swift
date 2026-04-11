@@ -18,11 +18,13 @@ public final class AttributeGraph {
         if let existing = root {
             changed = false
             updateNode(existing, from: view)
-            hasDirtyNodes = changed
+            // Clear dirty AFTER update — Observation may set it again
+            // for the next state change during re-evaluation
+            hasDirtyNodes = false
             return changed
         } else {
             root = constructNode(for: view, id: .root)
-            hasDirtyNodes = true
+            hasDirtyNodes = false
             return true
         }
     }

@@ -295,57 +295,58 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
-        // Rebuild view tree and update graph
-        let view = buildView()
-        let graphChanged = graph.update(from: view)
+        // Only rebuild if the graph has dirty nodes or we have no previous buffer.
+        // On idle frames, this skips buildView() entirely — zero view construction.
+        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
 
-        // Only rebuild the cell buffer if the graph actually changed
-        if graphChanged || previousBuffer == nil {
-            var buffer = CellBuffer(width: size.cols, height: size.rows)
-            let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
-            if let root = graph.root {
-                GraphRenderer.render(root, into: &buffer, context: context)
+        if needsWork {
+            let view = buildView()
+            let graphChanged = graph.update(from: view)
+
+            if graphChanged || previousBuffer == nil {
+                var buffer = CellBuffer(width: size.cols, height: size.rows)
+                let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
+                if let root = graph.root {
+                    GraphRenderer.render(root, into: &buffer, context: context)
+                }
+
+                #if DEBUG
+                debugOverlay.render(into: &buffer, stats: frameStats)
+                debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
+                #endif
+
+                let changedCells = buffer.countDiff(from: previousBuffer)
+                buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+                let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+                outputBuffer.flush()
+                let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+                tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
+                frameStats = frameCounter.endFrame(
+                    cellsChanged: changedCells, totalCells: buffer.width * buffer.height,
+                    buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
+                    bytesWritten: outputBuffer.size
+                )
+                #if DEBUG
+                debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
+                #endif
+                previousBuffer = buffer
+                return
             }
-
-            #if DEBUG
-            debugOverlay.render(into: &buffer, stats: frameStats)
-            debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
-            #endif
-
-            let changedCells = buffer.countDiff(from: previousBuffer)
-            buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
-            let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
-
-            outputBuffer.flush()
-            let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
-
-            tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
-            let stats = frameCounter.endFrame(
-                cellsChanged: changedCells, totalCells: buffer.width * buffer.height,
-                buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
-                bytesWritten: outputBuffer.size
-            )
-            frameStats = stats
-            #if DEBUG
-            let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
-            debugPanel.recordFrameTime(buildMs)
-            #endif
-            previousBuffer = buffer
-        } else {
-            // Nothing changed — skip render entirely
-            let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
-            tracer.endFrame(buffer: previousBuffer!, previousBuffer: previousBuffer)
-            let stats = frameCounter.endFrame(
-                cellsChanged: 0, totalCells: size.cols * size.rows,
-                buildNs: buildEnd - buildStart, flushNs: 0,
-                bytesWritten: 0
-            )
-            frameStats = stats
-            #if DEBUG
-            let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
-            debugPanel.recordFrameTime(buildMs)
-            #endif
         }
+
+        // Nothing changed — skip everything
+        let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        tracer.endFrame(buffer: previousBuffer!, previousBuffer: previousBuffer)
+        frameStats = frameCounter.endFrame(
+            cellsChanged: 0, totalCells: size.cols * size.rows,
+            buildNs: buildEnd - buildStart, flushNs: 0,
+            bytesWritten: 0
+        )
+        #if DEBUG
+        debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
+        #endif
     }
 
     #if DEBUG
