@@ -55,22 +55,37 @@ public enum DiffMode: Sendable {
     case sideBySide
 }
 
-// MARK: - DiffEngine (Myers diff algorithm)
+// MARK: - DiffEngine
 
-/// Computes line-level diffs between two strings using the Myers algorithm.
+/// Computes line-level diffs between two strings.
+/// Supports two algorithms: Myers (fast for small diffs) and LCS (simple, always correct).
 /// Separated from the view so it can be tested independently.
 public enum DiffEngine {
 
+    /// Algorithm selection for diff computation.
+    public enum Algorithm {
+        /// Myers O((N+M)*D) — fast when differences are small (D << N*M).
+        /// Based on Eugene Myers' 1986 paper.
+        case myers
+        /// LCS O(N*M) — simple longest common subsequence. Guaranteed correct,
+        /// better for heavily divergent files where D approaches N+M.
+        case lcs
+    }
+
     /// Compute diff lines from two multi-line strings.
-    public static func diff(original: String, modified: String) -> [DiffLine] {
+    public static func diff(original: String, modified: String, algorithm: Algorithm = .myers) -> [DiffLine] {
         let oldLines = original.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let newLines = modified.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-        return diff(oldLines: oldLines, newLines: newLines)
+        return diff(oldLines: oldLines, newLines: newLines, algorithm: algorithm)
     }
 
     /// Compute diff lines from two arrays of strings.
-    public static func diff(oldLines: [String], newLines: [String]) -> [DiffLine] {
-        let edits = lcsDiff(old: oldLines, new: newLines)
+    public static func diff(oldLines: [String], newLines: [String], algorithm: Algorithm = .myers) -> [DiffLine] {
+        let edits: [Edit]
+        switch algorithm {
+        case .myers: edits = myersDiff(old: oldLines, new: newLines)
+        case .lcs: edits = lcsDiff(old: oldLines, new: newLines)
+        }
         return buildDiffLines(from: edits, old: oldLines, new: newLines)
     }
 
@@ -83,8 +98,103 @@ public enum DiffEngine {
         case delete(Int)      // oldIndex
     }
 
-    /// LCS-based diff — O(N*M) time and space, simple and correct.
-    /// Returns the edit script as a sequence of keep/insert/delete operations.
+    /// Myers diff algorithm — O((N+M)*D) time, O((N+M)*D) space.
+    /// D = edit distance (number of insertions + deletions).
+    /// Much faster than LCS O(N*M) when differences are small.
+    ///
+    /// Reference: Eugene W. Myers, "An O(ND) Difference Algorithm and Its Variations", 1986.
+    private static func myersDiff(old: [String], new: [String]) -> [Edit] {
+        let n = old.count
+        let m = new.count
+
+        guard n > 0 || m > 0 else { return [] }
+
+        let maxD = n + m
+        let offset = maxD  // index offset so k in [-maxD, maxD] maps to [0, 2*maxD]
+        let vSize = 2 * maxD + 1
+        var v = Array(repeating: 0, count: vSize)
+        var trace: [[Int]] = []
+
+        // Forward pass — find shortest edit path
+        var foundD = 0
+        outer: for d in 0...maxD {
+            // Save V state BEFORE processing this d (for backtracking)
+            trace.append(Array(v))
+
+            for k in stride(from: -d, through: d, by: 2) {
+                var x: Int
+                if k == -d || (k != d && v[k - 1 + offset] < v[k + 1 + offset]) {
+                    x = v[k + 1 + offset]       // move down (insert from new)
+                } else {
+                    x = v[k - 1 + offset] + 1   // move right (delete from old)
+                }
+                var y = x - k
+
+                // Follow diagonal (matching lines)
+                while x < n && y < m && old[x] == new[y] {
+                    x += 1
+                    y += 1
+                }
+
+                v[k + offset] = x
+
+                if x >= n && y >= m {
+                    foundD = d
+                    break outer
+                }
+            }
+        }
+
+        // Backtrack — reconstruct the edit script from the trace
+        var x = n
+        var y = m
+        var edits: [Edit] = []
+
+        for d in stride(from: foundD, through: 1, by: -1) {
+            let prevV = trace[d]  // V state saved BEFORE step d was processed
+            let k = x - y
+
+            // Determine which diagonal we came from
+            let prevK: Int
+            if k == -d || (k != d && prevV[k - 1 + offset] < prevV[k + 1 + offset]) {
+                prevK = k + 1  // came from above (insert)
+            } else {
+                prevK = k - 1  // came from left (delete)
+            }
+
+            let prevX = prevV[prevK + offset]
+            let prevY = prevX - prevK
+
+            // Diagonal moves (matching lines) — walk backwards
+            while x > prevX && y > prevY {
+                x -= 1
+                y -= 1
+                edits.append(.keep(x, y))
+            }
+
+            // The non-diagonal move
+            if x == prevX {
+                y -= 1
+                edits.append(.insert(y))
+            } else {
+                x -= 1
+                edits.append(.delete(x))
+            }
+        }
+
+        // Remaining diagonal at d=0 (all matches from the start)
+        while x > 0 && y > 0 {
+            x -= 1
+            y -= 1
+            edits.append(.keep(x, y))
+        }
+
+        edits.reverse()
+        return edits
+    }
+
+    /// LCS-based diff — O(N*M) time and space. Simple and always correct.
+    /// Better than Myers when differences are large (D approaches N+M).
     private static func lcsDiff(old: [String], new: [String]) -> [Edit] {
         let n = old.count
         let m = new.count
@@ -109,8 +219,7 @@ public enum DiffEngine {
         while i > 0 && j > 0 {
             if old[i - 1] == new[j - 1] {
                 edits.append(.keep(i - 1, j - 1))
-                i -= 1
-                j -= 1
+                i -= 1; j -= 1
             } else if dp[i - 1][j] >= dp[i][j - 1] {
                 edits.append(.delete(i - 1))
                 i -= 1
@@ -119,14 +228,8 @@ public enum DiffEngine {
                 j -= 1
             }
         }
-        while i > 0 {
-            edits.append(.delete(i - 1))
-            i -= 1
-        }
-        while j > 0 {
-            edits.append(.insert(j - 1))
-            j -= 1
-        }
+        while i > 0 { edits.append(.delete(i - 1)); i -= 1 }
+        while j > 0 { edits.append(.insert(j - 1)); j -= 1 }
 
         edits.reverse()
         return edits
