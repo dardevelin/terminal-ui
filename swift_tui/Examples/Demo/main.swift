@@ -87,15 +87,12 @@ struct StatusBar: TerminalView {
     let elapsed: String
 
     var body: some TerminalView {
-        VStack {
-            DebugOverlay()
-            HStack {
-                Text(elapsed)
-                    .foreground(.gray)
-                Spacer()
-                Text("q: quit")
-                    .foreground(.gray)
-            }
+        HStack {
+            Text(elapsed)
+                .foreground(.gray)
+            Spacer()
+            Text("q: quit")
+                .foreground(.gray)
         }
     }
 }

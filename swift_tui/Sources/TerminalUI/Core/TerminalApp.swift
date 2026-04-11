@@ -87,6 +87,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let eventQueue = EventQueue()
     private var outputBuffer = OutputBuffer()
     nonisolated(unsafe) private let graph = AttributeGraph()
+    private let debugPanel = DebugPanel()
+    private let debugOverlay = DebugOverlay()
 
     public nonisolated init(
         renderMode: RenderMode = .fps60,
@@ -175,6 +177,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 switch event {
                 case .key(let keyEvent):
                     tracer.traceInput(keyEvent)
+                    #if DEBUG
+                    debugPanel.recordInput(
+                        describeKeyEvent(keyEvent),
+                        timestamp: ProcessInfo.processInfo.systemUptime
+                    )
+                    // ctrl+d = toggle bottom overlay
+                    if keyEvent.key == .character("d") && keyEvent.modifiers.contains(.ctrl) {
+                        debugOverlay.toggle()
+                    }
+                    // ctrl+f = cycle side panel
+                    if keyEvent.key == .character("f") && keyEvent.modifiers.contains(.ctrl) {
+                        debugPanel.toggle()
+                    }
+                    #endif
                     needsRender = true
 
                 case .resize(let cols, let rows):
@@ -186,6 +202,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
                 case .timer:
                     needsRender = true
+                    #if DEBUG
+                    debugPanel.markGraphDirty()
+                    #endif
                 }
 
                 if !shouldContinue {
@@ -247,6 +266,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             GraphRenderer.render(root, into: &buffer, context: context)
         }
 
+        // Debug overlays — render directly into buffer, bypass graph
+        #if DEBUG
+        debugOverlay.render(into: &buffer, stats: frameStats)
+        debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
+        #endif
+
         buffer.renderFull(into: &outputBuffer)
         let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
@@ -255,11 +280,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let totalCells = buffer.width * buffer.height
         tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
-        frameStats = frameCounter.endFrame(
+        let stats = frameCounter.endFrame(
             cellsChanged: totalCells, totalCells: totalCells,
             buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
             bytesWritten: outputBuffer.size
         )
+        frameStats = stats
+        #if DEBUG
+        let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
+        debugPanel.recordFrameTime(buildMs)
+        #endif
         previousBuffer = buffer
     }
 
@@ -278,6 +308,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             GraphRenderer.render(root, into: &buffer, context: context)
         }
 
+        // Debug overlays — render directly into buffer, bypass graph
+        #if DEBUG
+        debugOverlay.render(into: &buffer, stats: frameStats)
+        debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
+        #endif
+
         let changed = buffer.countDiff(from: previousBuffer)
         buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
         let buildEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
@@ -286,13 +322,63 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let flushEnd = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
 
         tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
-        frameStats = frameCounter.endFrame(
+        let stats = frameCounter.endFrame(
             cellsChanged: changed, totalCells: buffer.width * buffer.height,
             buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
             bytesWritten: outputBuffer.size
         )
+        frameStats = stats
+        #if DEBUG
+        let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
+        debugPanel.recordFrameTime(buildMs)
+        #endif
         previousBuffer = buffer
     }
+
+    #if DEBUG
+    private func cycleDebugMode() {
+        if !debugOverlay.visible && debugPanel.mode == .hidden {
+            // hidden → overlay
+            debugOverlay.visible = true
+        } else if debugOverlay.visible && debugPanel.mode == .hidden {
+            // overlay → overlay + graph
+            debugPanel.toggle()
+        } else if debugPanel.mode == .inputLog {
+            // last panel mode → all hidden
+            debugOverlay.visible = false
+            debugPanel.mode = .hidden
+        } else {
+            // cycle panel modes
+            debugPanel.toggle()
+        }
+    }
+
+    private func describeKeyEvent(_ event: KeyEvent) -> String {
+        var parts: [String] = []
+        if event.modifiers.contains(.ctrl) { parts.append("C") }
+        if event.modifiers.contains(.alt) { parts.append("A") }
+        if event.modifiers.contains(.shift) { parts.append("S") }
+        switch event.key {
+        case .character(let c): parts.append(String(c))
+        case .enter: parts.append("ret")
+        case .tab: parts.append("tab")
+        case .backspace: parts.append("bsp")
+        case .escape: parts.append("esc")
+        case .up: parts.append("↑")
+        case .down: parts.append("↓")
+        case .left: parts.append("←")
+        case .right: parts.append("→")
+        case .home: parts.append("home")
+        case .end: parts.append("end")
+        case .pageUp: parts.append("pgup")
+        case .pageDown: parts.append("pgdn")
+        case .delete: parts.append("del")
+        case .f(let n): parts.append("F\(n)")
+        case .unknown(let b): parts.append("?\(b)")
+        }
+        return parts.joined(separator: "-")
+    }
+    #endif
 }
 
 // MARK: - @main entry point protocol

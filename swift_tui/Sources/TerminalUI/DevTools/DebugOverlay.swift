@@ -1,47 +1,26 @@
 import Foundation
 
+/// Debug overlay — renders directly into the cell buffer's bottom row.
+/// Bypasses the view tree and graph entirely — zero framework overhead.
+/// Erased in release builds.
+
 #if DEBUG
 
-public struct DebugOverlay: TerminalView {
+public final class DebugOverlay {
+    public var visible: Bool = false
+
     public init() {}
 
-    public var body: some TerminalView {
-        let s = DebugOverlay.format(frameStats)
+    public func toggle() { visible = !visible }
 
-        HStack {
-            Text("dbg")
-                .foreground(.magenta)
-                .bold()
-            Text(" \(s.fps)")
-                .foreground(s.fpsColor)
-            Text(" \(s.build)")
-                .foreground(.cyan)
-            Text(" \(s.flush)")
-                .foreground(.yellow)
-            Text(" \(s.bytes) \(s.dirty)")
-                .foreground(.gray)
-            Text(" f:\(s.frame)")
-                .foreground(.gray)
-            Spacer()
-            Text(s.uptime)
-                .foreground(.gray)
-        }
-    }
+    /// Render directly into the buffer — called by the runtime, not the graph.
+    public func render(into buffer: inout CellBuffer, stats: FrameStats) {
+        guard visible else { return }
+        let y = buffer.height - 1
+        guard y >= 0, buffer.width > 20 else { return }
 
-    struct Formatted {
-        var fps: String
-        var fpsColor: Color
-        var build: String
-        var flush: String
-        var bytes: String
-        var dirty: String
-        var frame: Int
-        var uptime: String
-    }
-
-    static func format(_ stats: FrameStats) -> Formatted {
-        let buildUs = Double(stats.buildTime.components.attoseconds) / 1_000_000_000_000.0
-        let flushUs = Double(stats.flushTime.components.attoseconds) / 1_000_000_000_000.0
+        let buildMs = Double(stats.buildTime.components.attoseconds) / 1_000_000_000_000_000.0
+        let flushMs = Double(stats.flushTime.components.attoseconds) / 1_000_000_000_000_000.0
         let uptimeSec = Double(stats.uptime.components.seconds)
             + Double(stats.uptime.components.attoseconds) / 1_000_000_000_000_000_000.0
 
@@ -50,31 +29,47 @@ public struct DebugOverlay: TerminalView {
             : "\(stats.bytesWritten)b"
 
         let diffPct = stats.totalCells > 0
-            ? String(format: "%.0f%%", Double(stats.cellsChanged) / Double(stats.totalCells) * 100)
-            : "0%"
+            ? Int(Double(stats.cellsChanged) / Double(stats.totalCells) * 100)
+            : 0
 
-        let fpsColor: Color = stats.fps > 100 ? .green : stats.fps > 30 ? .yellow : .red
+        // Build the line as segments with styles — no view tree, no graph nodes
+        let segments: [(String, Style)] = [
+            ("dbg", Style(foreground: .magenta, background: nil, bold: true, italic: false, underline: false)),
+            (String(format: " %.0ffps", stats.fps),
+             Style(foreground: stats.fps > 100 ? .green : stats.fps > 30 ? .yellow : .red,
+                   background: nil, bold: false, italic: false, underline: false)),
+            (String(format: " build:%.2fms", buildMs),
+             Style(foreground: .cyan, background: nil, bold: false, italic: false, underline: false)),
+            (String(format: " io:%.2fms", flushMs),
+             Style(foreground: .yellow, background: nil, bold: false, italic: false, underline: false)),
+            (" \(bytesText) \(diffPct)%dirty f:\(stats.frameCount)",
+             Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)),
+        ]
 
-        return Formatted(
-            fps: String(format: "%.0ffps", stats.fps),
-            fpsColor: fpsColor,
-            build: String(format: "build:%.2fms", buildUs),
-            flush: String(format: "io:%.2fms", flushUs),
-            bytes: bytesText,
-            dirty: "\(diffPct)dirty",
-            frame: stats.frameCount,
-            uptime: String(format: "%.0fs", uptimeSec)
-        )
+        let uptimeText = String(format: "%.0fs", uptimeSec)
+        let uptimeStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+
+        // Write segments left-aligned
+        var x = 0
+        for (text, style) in segments {
+            buffer.write(text, x: x, y: y, style: style)
+            x += text.count
+        }
+
+        // Write uptime right-aligned
+        let uptimeX = buffer.width - uptimeText.count
+        if uptimeX > x {
+            buffer.write(uptimeText, x: uptimeX, y: y, style: uptimeStyle)
+        }
     }
 }
 
 #else
 
-public struct DebugOverlay: TerminalView {
+public final class DebugOverlay: Sendable {
     public init() {}
-    public var body: some TerminalView {
-        EmptyView()
-    }
+    @inline(__always) public func toggle() {}
+    @inline(__always) public func render(into buffer: inout CellBuffer, stats: FrameStats) {}
 }
 
 #endif
