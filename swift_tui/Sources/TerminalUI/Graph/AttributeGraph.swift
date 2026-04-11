@@ -286,7 +286,7 @@ public final class AttributeGraph {
         if view is any _GraphZStack { return node.kind.isLayout(.zstack) }
         // Modifiers, conditionals, forEach — check structural kind
         if view is any _GraphModified { return node.kind.isModifier }
-        if view is any _GraphConditional { return true } // conditionals handle their own branch check
+        if view is any _GraphConditional { return node.kind.isViewBody } // conditionals are viewBody("Conditional") nodes
         if view is any _GraphForEach { return node.kind.isLayout(.vstack) } // ForEach builds as vstack
         // Composite views — check viewBody
         if !(V.Body.self == Never.self) { return node.kind.isViewBody }

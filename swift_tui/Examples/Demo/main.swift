@@ -813,6 +813,32 @@ struct StatusBarTab: TerminalView {
     }
 }
 
+// MARK: - Active Tab Router
+// Renders the selected tab without using if/else chains or switch in a result builder.
+// Deep ConditionalView nesting causes index-out-of-range during graph reconciliation.
+
+struct ActiveTab: TerminalView {
+    let index: Int
+    let state: AppState
+
+    var body: some TerminalView {
+        // Each case is a full VStack — the graph sees a single composite child
+        // that changes type when tabs switch, triggering a clean rebuild.
+        if index == 0 { BuildTab(state: state) }
+        else if index == 1 { LogsTab(logs: state.logs) }
+        else if index == 2 { ControlsTab(state: state) }
+        else if index == 3 { ChartsTab(state: state) }
+        else if index == 4 { HeatmapTab(state: state) }
+        else if index == 5 { ProcessListTab(state: state) }
+        else if index == 6 { TableTab(state: state) }
+        else if index == 7 { DiffTab() }
+        else if index == 8 { HunkDiffTab() }
+        else if index == 9 { TreeTab() }
+        else if index == 10 { TextAreaTab(state: state) }
+        else { StatusBarTab() }
+    }
+}
+
 // MARK: - Help Overlay
 
 struct HelpOverlay: TerminalView {
@@ -878,31 +904,7 @@ struct App: TerminalView {
             )
             Divider()
 
-            if state.selectedTab == 0 {
-                BuildTab(state: state)
-            } else if state.selectedTab == 1 {
-                LogsTab(logs: state.logs)
-            } else if state.selectedTab == 2 {
-                ControlsTab(state: state)
-            } else if state.selectedTab == 3 {
-                ChartsTab(state: state)
-            } else if state.selectedTab == 4 {
-                HeatmapTab(state: state)
-            } else if state.selectedTab == 5 {
-                ProcessListTab(state: state)
-            } else if state.selectedTab == 6 {
-                TableTab(state: state)
-            } else if state.selectedTab == 7 {
-                DiffTab()
-            } else if state.selectedTab == 8 {
-                HunkDiffTab()
-            } else if state.selectedTab == 9 {
-                TreeTab()
-            } else if state.selectedTab == 10 {
-                TextAreaTab(state: state)
-            } else {
-                StatusBarTab()
-            }
+            ActiveTab(index: state.selectedTab, state: state)
 
             Spacer()
             Divider()

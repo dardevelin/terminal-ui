@@ -70,7 +70,7 @@ public enum DiffEngine {
 
     /// Compute diff lines from two arrays of strings.
     public static func diff(oldLines: [String], newLines: [String]) -> [DiffLine] {
-        let edits = myersDiff(old: oldLines, new: newLines)
+        let edits = lcsDiff(old: oldLines, new: newLines)
         return buildDiffLines(from: edits, old: oldLines, new: newLines)
     }
 
@@ -83,102 +83,49 @@ public enum DiffEngine {
         case delete(Int)      // oldIndex
     }
 
-    /// Myers diff algorithm — O((N+M)*D) time, O((N+M)*D) space.
-    /// Returns the shortest edit script as a sequence of keep/insert/delete operations.
-    private static func myersDiff(old: [String], new: [String]) -> [Edit] {
+    /// LCS-based diff — O(N*M) time and space, simple and correct.
+    /// Returns the edit script as a sequence of keep/insert/delete operations.
+    private static func lcsDiff(old: [String], new: [String]) -> [Edit] {
         let n = old.count
         let m = new.count
-        let maxD = n + m
 
-        guard maxD > 0 else { return [] }
-
-        // V array indexed from -maxD to maxD, stored as offset array
-        // v[k] = furthest reaching x on diagonal k
-        let size = 2 * maxD + 1
-        var v = Array(repeating: 0, count: size)
-        // Store trace of V arrays for backtracking
-        var trace: [[Int]] = []
-
-        func idx(_ k: Int) -> Int { k + maxD }
-
-        outer: for d in 0...maxD {
-            trace.append(v)
-
-            for k in stride(from: -d, through: d, by: 2) {
-                var x: Int
-                if k == -d || (k != d && v[idx(k - 1)] < v[idx(k + 1)]) {
-                    x = v[idx(k + 1)]  // move down (insert)
+        // Build LCS table
+        var dp = Array(repeating: Array(repeating: 0, count: m + 1), count: n + 1)
+        for i in 1...max(n, 1) {
+            guard i <= n else { break }
+            for j in 1...max(m, 1) {
+                guard j <= m else { break }
+                if old[i - 1] == new[j - 1] {
+                    dp[i][j] = dp[i - 1][j - 1] + 1
                 } else {
-                    x = v[idx(k - 1)] + 1  // move right (delete)
-                }
-
-                var y = x - k
-
-                // Follow diagonal (matches)
-                while x < n && y < m && old[x] == new[y] {
-                    x += 1
-                    y += 1
-                }
-
-                v[idx(k)] = x
-
-                if x >= n && y >= m {
-                    break outer
+                    dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
                 }
             }
         }
 
-        // Backtrack to recover the edit script
-        return backtrack(trace: trace, n: n, m: m, maxD: maxD)
-    }
-
-    /// Walk the trace backwards to recover the actual edit operations.
-    private static func backtrack(trace: [[Int]], n: Int, m: Int, maxD: Int) -> [Edit] {
-        func idx(_ k: Int) -> Int { k + maxD }
-
-        var x = n
-        var y = m
+        // Backtrack to produce edit script
         var edits: [Edit] = []
-
-        for d in stride(from: trace.count - 1, through: 1, by: -1) {
-            let v = trace[d - 1]
-            let k = x - y
-
-            var prevK: Int
-            if k == -d || (k != d && v[idx(k - 1)] < v[idx(k + 1)]) {
-                prevK = k + 1
+        var i = n, j = m
+        while i > 0 && j > 0 {
+            if old[i - 1] == new[j - 1] {
+                edits.append(.keep(i - 1, j - 1))
+                i -= 1
+                j -= 1
+            } else if dp[i - 1][j] >= dp[i][j - 1] {
+                edits.append(.delete(i - 1))
+                i -= 1
             } else {
-                prevK = k - 1
-            }
-
-            let prevX = v[idx(prevK)]
-            let prevY = prevX - prevK
-
-            // Diagonal moves (matches) — walk backwards
-            while x > prevX && y > prevY {
-                x -= 1
-                y -= 1
-                edits.append(.keep(x, y))
-            }
-
-            if d > 0 {
-                if x == prevX {
-                    // Vertical move — insertion
-                    y -= 1
-                    edits.append(.insert(y))
-                } else {
-                    // Horizontal move — deletion
-                    x -= 1
-                    edits.append(.delete(x))
-                }
+                edits.append(.insert(j - 1))
+                j -= 1
             }
         }
-
-        // Handle remaining diagonal at d=0
-        while x > 0 && y > 0 {
-            x -= 1
-            y -= 1
-            edits.append(.keep(x, y))
+        while i > 0 {
+            edits.append(.delete(i - 1))
+            i -= 1
+        }
+        while j > 0 {
+            edits.append(.insert(j - 1))
+            j -= 1
         }
 
         edits.reverse()
