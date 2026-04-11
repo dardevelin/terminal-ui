@@ -26,5 +26,10 @@ let package = Package(
             dependencies: ["TerminalUI"],
             path: "Examples/ComponentsDemo"
         ),
+        .executableTarget(
+            name: "DotMatrixDemo",
+            dependencies: ["TerminalUI"],
+            path: "Examples/DotMatrixDemo"
+        ),
     ]
 )
