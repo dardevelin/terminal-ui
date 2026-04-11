@@ -3,6 +3,9 @@
 public enum GraphRenderer {
 
     public static func render(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
+        // Record resolved rect on every node — used for hit testing
+        node.rect = context.rect
+
         switch node.kind {
         case .primitive(let content):
             renderPrimitive(content, into: &buffer, context: context)
@@ -14,7 +17,6 @@ public enum GraphRenderer {
             renderModifier(node, effect: effect, into: &buffer, context: context)
 
         case .viewBody:
-            // Composite — just render children
             for child in node.children {
                 render(child, into: &buffer, context: context)
             }
