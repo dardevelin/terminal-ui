@@ -16,7 +16,7 @@ public class AttributeNode {
     /// State storage slots — persisted across body re-evaluations.
     /// @TerminalState creates slots here during first body evaluation.
     /// Dictionary keyed by source location for O(1) lookup.
-    public var stateSlots: [String: AnyStateStorage] = [:]
+    public var stateSlots: [String: any AnyStateStorage] = [:]
 
     /// Cached intrinsic width — nil means needs recomputation.
     /// Invalidated when markDirty() is called (content changed).

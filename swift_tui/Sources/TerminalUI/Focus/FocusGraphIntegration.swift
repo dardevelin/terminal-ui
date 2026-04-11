@@ -37,14 +37,14 @@ enum FocusGraphIntegration {
     /// After constructing or updating a modifier node, register any focus-related
     /// behavior with the FocusEngine.
     static func registerIfNeeded(modifier: any ViewModifier, nodeID: NodeID) {
-        if let focusMod = modifier as? _FocusGraphModifier {
+        if let focusMod = modifier as? any _FocusGraphModifier {
             focusMod.registerWithFocusEngine(nodeID: nodeID)
         }
     }
 
     /// Fire lifecycle events for newly constructed modifier nodes.
     static func fireLifecycleIfNeeded(modifier: any ViewModifier, node: AttributeNode) {
-        if let lifecycle = modifier as? _LifecycleModifier {
+        if let lifecycle = modifier as? any _LifecycleModifier {
             lifecycle.onConstruct(node: node)
         }
     }

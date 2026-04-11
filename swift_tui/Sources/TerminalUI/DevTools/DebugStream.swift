@@ -83,13 +83,13 @@ public struct GraphDebugNode: Codable, Sendable {
 public final class DebugStream: @unchecked Sendable {
     public static let shared = DebugStream()
 
-    private var sinks: [DebugSink] = []
+    private var sinks: [any DebugSink] = []
     private let lock = NSLock()
     private var enabled = false
 
     private init() {}
 
-    public func addSink(_ sink: DebugSink) {
+    public func addSink(_ sink: any DebugSink) {
         lock.lock()
         sinks.append(sink)
         enabled = true
