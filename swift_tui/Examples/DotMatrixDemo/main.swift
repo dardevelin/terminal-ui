@@ -249,7 +249,7 @@ nonisolated(unsafe) let state = AppState()
 
                 // Bottom hint
                 HStack {
-                    Text("  tab: focus input  ctrl+p: pause  ctrl+c: quit")
+                    Text("  tab: focus  enter: submit  opt+enter: newline  ctrl+p: pause  ctrl+c: quit")
                         .foreground(.ansi256(238))
                     Spacer()
                 }

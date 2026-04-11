@@ -176,39 +176,37 @@ public struct PromptInput: TerminalView {
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
 
         switch event.key {
-        // MARK: Submit (Enter) / Newline (Shift+Enter)
+        // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
+        case .enter where !event.modifiers.isEmpty:
+            // Any modified Enter = insert newline (expand the input box)
+            let line = lines[st.cursorRow]
+            let idx = line.index(line.startIndex, offsetBy: st.cursorCol)
+            let before = String(line[..<idx])
+            let after = String(line[idx...])
+            lines[st.cursorRow] = before
+            lines.insert(after, at: st.cursorRow + 1)
+            st.cursorRow += 1
+            st.cursorCol = 0
+            text.set(lines.joined(separator: "\n"))
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            state.set(st)
+            return .handled
+
         case .enter:
-            if event.modifiers.contains(.shift) {
-                // Insert newline
-                let line = lines[st.cursorRow]
-                let idx = line.index(line.startIndex, offsetBy: st.cursorCol)
-                let before = String(line[..<idx])
-                let after = String(line[idx...])
-                lines[st.cursorRow] = before
-                lines.insert(after, at: st.cursorRow + 1)
-                st.cursorRow += 1
+            // Plain Enter = submit
+            let submitted = content.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !submitted.isEmpty {
+                st.history.insert(submitted, at: 0)
+                st.historyIndex = -1
+                st.savedInput = ""
+                onSubmit?(submitted)
+                text.set("")
+                st.cursorRow = 0
                 st.cursorCol = 0
-                text.set(lines.joined(separator: "\n"))
-                adjustScroll(&st, maxVisibleLines: maxVisibleLines)
-                state.set(st)
-                return .handled
-            } else {
-                // Submit
-                let submitted = content.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !submitted.isEmpty {
-                    st.history.insert(submitted, at: 0)
-                    st.historyIndex = -1
-                    st.savedInput = ""
-                    state.set(st)
-                    onSubmit?(submitted)
-                    text.set("")
-                    st.cursorRow = 0
-                    st.cursorCol = 0
-                    st.scrollRow = 0
-                    state.set(st)
-                }
-                return .handled
+                st.scrollRow = 0
             }
+            state.set(st)
+            return .handled
 
         // MARK: Character input
         case .character(let c):

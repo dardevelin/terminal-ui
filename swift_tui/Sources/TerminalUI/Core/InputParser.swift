@@ -64,6 +64,11 @@ public enum InputParser {
             return parseSsSequence(&buf)
         }
 
+        // Alt+Enter (ESC + CR)
+        if second == 13 {
+            return .key(KeyEvent(key: .enter, modifiers: .alt))
+        }
+
         // Alt+key
         let char = Character(UnicodeScalar(second))
         return .key(KeyEvent(key: .character(char), modifiers: .alt))
@@ -97,7 +102,7 @@ public enum InputParser {
     }
 
     static func parseExtendedCsi(_ third: UInt8) -> TerminalEvent {
-        // Accumulate numeric parameters: ESC [ N ; M ~ or ESC [ 1 ; M A/B/C/D
+        // Accumulate numeric parameters: ESC [ N ; M ~ or ESC [ 1 ; M A/B/C/D or ESC [ N ; M u
         var params: [UInt8] = [third]
         while true {
             var next: UInt8 = 0
@@ -105,11 +110,13 @@ public enum InputParser {
             guard n == 1 else { break }
 
             if next == UInt8(ascii: "~") {
-                // Final byte for tilde sequences
                 return parseTildeKey(params)
             }
+            if next == UInt8(ascii: "u") {
+                // Kitty keyboard protocol: ESC [ keycode ; modifiers u
+                return parseKittyKey(params)
+            }
             if next >= UInt8(ascii: "A") && next <= UInt8(ascii: "Z") {
-                // Modified arrow/function key: ESC [ 1 ; Mod A
                 return parseModifiedKey(params, final: next)
             }
             params.append(next)
@@ -163,6 +170,37 @@ public enum InputParser {
         case UInt8(ascii: "R"): return .key(KeyEvent(key: .f(3), modifiers: mods))
         case UInt8(ascii: "S"): return .key(KeyEvent(key: .f(4), modifiers: mods))
         default: return .key(KeyEvent(key: .unknown(params + [final])))
+        }
+    }
+
+    /// Parse kitty keyboard protocol: ESC [ keycode ; modifiers u
+    /// Also handles extended format: ESC [ keycode ; modifiers ; event_type u
+    /// Event types: 1=press, 2=repeat, 3=release. We only act on press/repeat.
+    static func parseKittyKey(_ params: [UInt8]) -> TerminalEvent {
+        let numStr = String(params.map { Character(UnicodeScalar($0)) })
+        let segments = numStr.split(separator: ";").compactMap { Int($0) }
+        let keycode = segments.first ?? 0
+        let modifier = segments.count > 1 ? segments[1] : 1
+        let eventType = segments.count > 2 ? segments[2] : 1  // 1=press, 2=repeat, 3=release
+
+        // Ignore key release events
+        if eventType == 3 { return .key(KeyEvent(key: .unknown([]))) }
+
+        let mods = decodeModifier(modifier)
+
+        switch keycode {
+        case 13: return .key(KeyEvent(key: .enter, modifiers: mods))
+        case 9:  return .key(KeyEvent(key: .tab, modifiers: mods))
+        case 27: return .key(KeyEvent(key: .escape, modifiers: mods))
+        case 127: return .key(KeyEvent(key: .backspace, modifiers: mods))
+        case 1...26:
+            let char = Character(UnicodeScalar(keycode + 96)!)
+            return .key(KeyEvent(key: .character(char), modifiers: mods.union(.ctrl)))
+        case 32...126:
+            let char = Character(UnicodeScalar(keycode)!)
+            return .key(KeyEvent(key: .character(char), modifiers: mods))
+        default:
+            return .key(KeyEvent(key: .unknown(params), modifiers: mods))
         }
     }
 
