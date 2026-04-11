@@ -10,16 +10,23 @@ public final class AttributeGraph {
     // MARK: - Public API
 
     /// Build or update the graph from a view tree.
-    public func update<V: TerminalView>(from view: V) {
+    /// Returns true if any node values actually changed.
+    @discardableResult
+    public func update<V: TerminalView>(from view: V) -> Bool {
         if let existing = root {
-            // Update in place — no allocations if structure unchanged
+            changed = false
             updateNode(existing, from: view)
+            hasDirtyNodes = changed
+            return changed
         } else {
-            // First frame — build from scratch
             root = constructNode(for: view, id: .root)
+            hasDirtyNodes = true
+            return true
         }
-        hasDirtyNodes = false
     }
+
+    /// Tracks whether any values changed during update
+    private var changed = false
 
     // MARK: - In-Place Update
 
@@ -79,10 +86,14 @@ public final class AttributeGraph {
     }
 
     /// Update primitive values in place — no allocation.
+    /// Only sets `changed` if the value actually differs.
     func updatePrimitive<V: TerminalView>(_ node: AttributeNode, from view: V) -> Bool {
         if let text = view as? Text {
-            if case .primitive(.text) = node.kind {
-                node.kind = .primitive(.text(text.content))
+            if case .primitive(.text(let old)) = node.kind {
+                if old != text.content {
+                    node.kind = .primitive(.text(text.content))
+                    changed = true
+                }
                 return true
             }
         }
@@ -90,16 +101,22 @@ public final class AttributeGraph {
             if case .primitive(.spacer) = node.kind { return true }
         }
         if let bar = view as? ProgressBar {
-            if case .primitive(.progressBar) = node.kind {
-                node.kind = .primitive(.progressBar(
-                    value: bar.value, label: bar.label, filled: bar.filled, empty: bar.empty
-                ))
+            if case .primitive(.progressBar(let oldVal, _, _, _)) = node.kind {
+                if oldVal != bar.value {
+                    node.kind = .primitive(.progressBar(
+                        value: bar.value, label: bar.label, filled: bar.filled, empty: bar.empty
+                    ))
+                    changed = true
+                }
                 return true
             }
         }
         if let spinner = view as? Spinner {
-            if case .primitive(.spinner) = node.kind {
-                node.kind = .primitive(.spinner(frame: spinner.frame, style: spinner.style))
+            if case .primitive(.spinner(let oldFrame, _)) = node.kind {
+                if oldFrame != spinner.frame {
+                    node.kind = .primitive(.spinner(frame: spinner.frame, style: spinner.style))
+                    changed = true
+                }
                 return true
             }
         }
