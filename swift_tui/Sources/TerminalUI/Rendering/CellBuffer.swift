@@ -81,7 +81,8 @@ public struct CellBuffer: Sendable {
     /// Write styled spans, handling newlines within spans. Each span resolves its
     /// style overrides against the base style. Clips to maxWidth × maxHeight.
     public mutating func writeSpans(_ spans: [TextSpan], x: Int, y: Int,
-                                     maxWidth: Int, maxHeight: Int, baseStyle: Style) {
+                                     maxWidth: Int, maxHeight: Int, baseStyle: Style,
+                                     wrap: Bool = true) {
         var col = x
         var row = y
         let maxX = x + maxWidth
@@ -96,7 +97,16 @@ public struct CellBuffer: Sendable {
                     guard row < maxY else { return }
                     continue
                 }
-                guard col < maxX else { continue } // clip this span's remaining chars on this line
+                if col >= maxX {
+                    if wrap {
+                        // Wrap to next line
+                        row += 1
+                        col = x
+                        guard row < maxY else { return }
+                    } else {
+                        continue // clip
+                    }
+                }
                 guard row < maxY else { return }
                 self[col, row] = Cell(character: char, style: style)
                 col += 1

@@ -78,10 +78,8 @@ public enum GraphMeasurer {
         case .primitive(let content):
             switch content {
             case .text(let spans):
-                if spans.count == 1 {
-                    return countLines(spans[0].text)
-                }
-                return countLines(spans.map(\.text).joined())
+                let text = spans.count == 1 ? spans[0].text : spans.map(\.text).joined()
+                return countWrappedLines(text, width: proposedWidth)
             case .spacer: return 1
             case .divider: return 1
             case .empty: return 0
@@ -147,5 +145,28 @@ public enum GraphMeasurer {
             if ch == "\n" { count += 1 }
         }
         return count
+    }
+
+    /// Count lines accounting for wrapping at the given width.
+    /// Each line that exceeds width wraps to additional rows.
+    static func countWrappedLines(_ s: String, width: Int) -> Int {
+        if s.isEmpty { return 0 }
+        guard width > 0 else { return countLines(s) }
+
+        var rows = 0
+        var col = 0
+        for ch in s {
+            if ch == "\n" {
+                rows += 1
+                col = 0
+            } else {
+                col += 1
+                if col > width {
+                    rows += 1
+                    col = 1
+                }
+            }
+        }
+        return rows + 1  // last line (no trailing \n)
     }
 }
