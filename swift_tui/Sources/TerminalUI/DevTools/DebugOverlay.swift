@@ -19,47 +19,47 @@ public final class DebugOverlay {
         let y = buffer.height - 1
         guard y >= 0, buffer.width > 20 else { return }
 
-        let buildMs = Double(stats.buildTime.components.attoseconds) / 1_000_000_000_000_000.0
-        let flushMs = Double(stats.flushTime.components.attoseconds) / 1_000_000_000_000_000.0
+        // Active frame stats (from last frame that actually rendered)
+        let aBuildMs = Double(stats.lastActiveBuildTime.components.attoseconds) / 1_000_000_000_000_000.0
+        let aFlushMs = Double(stats.lastActiveFlushTime.components.attoseconds) / 1_000_000_000_000_000.0
+        let aBytes = stats.lastActiveBytesWritten
+        let aCells = stats.lastActiveCellsChanged
+
         let uptimeSec = Double(stats.uptime.components.seconds)
             + Double(stats.uptime.components.attoseconds) / 1_000_000_000_000_000_000.0
 
-        let bytesText = stats.bytesWritten > 1024
-            ? String(format: "%.1fkb", Double(stats.bytesWritten) / 1024.0)
-            : "\(stats.bytesWritten)b"
+        let bytesText = aBytes > 1024
+            ? String(format: "%.1fkb", Double(aBytes) / 1024.0)
+            : "\(aBytes)b"
 
         let diffPct = stats.totalCells > 0
-            ? Int(Double(stats.cellsChanged) / Double(stats.totalCells) * 100)
+            ? Int(Double(aCells) / Double(stats.totalCells) * 100)
             : 0
 
-        // Build the line as segments with styles — no view tree, no graph nodes
+        let dim = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+
         let segments: [(String, Style)] = [
             ("dbg", Style(foreground: .magenta, background: nil, bold: true, italic: false, underline: false)),
-            (String(format: " %.0ffps", stats.fps),
-             Style(foreground: stats.fps > 100 ? .green : stats.fps > 30 ? .yellow : .red,
+            (String(format: " %.0f/%.0ffps", stats.activeRenderFps, stats.fps),
+             Style(foreground: stats.activeRenderFps > 30 ? .green : stats.activeRenderFps > 15 ? .yellow : .red,
                    background: nil, bold: false, italic: false, underline: false)),
-            (String(format: " build:%.2fms", buildMs),
+            (String(format: " build:%.2fms", aBuildMs),
              Style(foreground: .cyan, background: nil, bold: false, italic: false, underline: false)),
-            (String(format: " io:%.2fms", flushMs),
+            (String(format: " io:%.2fms", aFlushMs),
              Style(foreground: .yellow, background: nil, bold: false, italic: false, underline: false)),
-            (" \(bytesText) \(diffPct)%dirty f:\(stats.frameCount)",
-             Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)),
+            (" \(bytesText) \(diffPct)%dirty f:\(stats.frameCount)", dim),
         ]
 
-        let uptimeText = String(format: "%.0fs", uptimeSec)
-        let uptimeStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
-
-        // Write segments left-aligned
         var x = 0
         for (text, style) in segments {
             buffer.write(text, x: x, y: y, style: style)
             x += text.count
         }
 
-        // Write uptime right-aligned
+        let uptimeText = String(format: "%.0fs", uptimeSec)
         let uptimeX = buffer.width - uptimeText.count
         if uptimeX > x {
-            buffer.write(uptimeText, x: uptimeX, y: y, style: uptimeStyle)
+            buffer.write(uptimeText, x: uptimeX, y: y, style: dim)
         }
     }
 }

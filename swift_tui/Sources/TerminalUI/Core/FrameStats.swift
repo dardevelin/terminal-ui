@@ -20,11 +20,22 @@ public struct FrameStats: Sendable {
     public var bytesWritten: Int
     /// Time since app started
     public var uptime: Duration
+    /// Whether this frame did actual rendering work
+    public var wasActive: Bool
+
+    // Last active frame stats — preserved across idle frames
+    public var lastActiveBuildTime: Duration
+    public var lastActiveFlushTime: Duration
+    public var lastActiveCellsChanged: Int
+    public var lastActiveBytesWritten: Int
+    public var activeRenderFps: Double
 
     public static let zero = FrameStats(
         fps: 0, lastFrameTime: .zero, buildTime: .zero, flushTime: .zero,
         frameCount: 0, cellsChanged: 0, totalCells: 0, bytesWritten: 0,
-        uptime: .zero
+        uptime: .zero, wasActive: false,
+        lastActiveBuildTime: .zero, lastActiveFlushTime: .zero,
+        lastActiveCellsChanged: 0, lastActiveBytesWritten: 0, activeRenderFps: 0
     )
 }
 
@@ -43,6 +54,13 @@ final class FrameCounter {
     func beginFrame() {
         lastFrameStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
     }
+
+    // Tracks last active frame stats
+    private var lastActiveBuild: UInt64 = 0
+    private var lastActiveFlush: UInt64 = 0
+    private var lastActiveCells: Int = 0
+    private var lastActiveBytes: Int = 0
+    private var activeFrameTimes: [UInt64] = []
 
     func endFrame(cellsChanged: Int, totalCells: Int, buildNs: UInt64, flushNs: UInt64, bytesWritten: Int) -> FrameStats {
         let now = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
@@ -64,6 +82,28 @@ final class FrameCounter {
 
         let uptime = now - startTime
 
+        let isActive = cellsChanged > 0 || bytesWritten > 0
+
+        if isActive {
+            lastActiveBuild = buildNs
+            lastActiveFlush = flushNs
+            lastActiveCells = cellsChanged
+            lastActiveBytes = bytesWritten
+
+            activeFrameTimes.append(now)
+            if activeFrameTimes.count > 60 {
+                activeFrameTimes.removeFirst(activeFrameTimes.count - 60)
+            }
+        }
+
+        let activeFps: Double
+        if activeFrameTimes.count >= 2 {
+            let window = Double(activeFrameTimes.last! - activeFrameTimes.first!) / 1_000_000_000.0
+            activeFps = window > 0 ? Double(activeFrameTimes.count - 1) / window : 0
+        } else {
+            activeFps = 0
+        }
+
         return FrameStats(
             fps: fps,
             lastFrameTime: .nanoseconds(Int64(lastFrameDuration)),
@@ -73,7 +113,13 @@ final class FrameCounter {
             cellsChanged: cellsChanged,
             totalCells: totalCells,
             bytesWritten: bytesWritten,
-            uptime: .nanoseconds(Int64(uptime))
+            uptime: .nanoseconds(Int64(uptime)),
+            wasActive: isActive,
+            lastActiveBuildTime: .nanoseconds(Int64(lastActiveBuild)),
+            lastActiveFlushTime: .nanoseconds(Int64(lastActiveFlush)),
+            lastActiveCellsChanged: lastActiveCells,
+            lastActiveBytesWritten: lastActiveBytes,
+            activeRenderFps: activeFps
         )
     }
 }
