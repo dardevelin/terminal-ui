@@ -320,27 +320,20 @@ struct InfoTab: TerminalView {
 struct HelpOverlay: TerminalView {
     var body: some TerminalView {
         VStack {
-            Spacer()
-            Text("  ╔══════════════════════════╗")
+            Text("╔════════════════════════════╗")
                 .foreground(.cyan)
-            Text("  ║   Keyboard Shortcuts     ║")
+            Text("║    Keyboard Shortcuts      ║")
                 .foreground(.cyan)
                 .bold()
-            Text("  ╠══════════════════════════╣")
+            Text("╠════════════════════════════╣")
                 .foreground(.cyan)
-            Text("  ║  1/2/3   Switch tabs     ║")
-                .foreground(.white)
-            Text("  ║  h/?     Toggle help      ║")
-                .foreground(.white)
-            Text("  ║  ctrl+d  Debug overlay   ║")
-                .foreground(.white)
-            Text("  ║  ctrl+f  Debug panel     ║")
-                .foreground(.white)
-            Text("  ║  q/esc   Quit            ║")
-                .foreground(.white)
-            Text("  ╚══════════════════════════╝")
+            Text("║  1/2/3   Switch tabs       ║")
+            Text("║  h/?     Toggle help       ║")
+            Text("║  ctrl+d  Debug overlay     ║")
+            Text("║  ctrl+f  Debug panel       ║")
+            Text("║  q/esc   Quit              ║")
+            Text("╚════════════════════════════╝")
                 .foreground(.cyan)
-            Spacer()
         }
     }
 }

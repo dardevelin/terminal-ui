@@ -110,7 +110,9 @@ public enum Renderer {
                 continue
             }
             let h = childHeights[i]
-            let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: h)
+            let snappedY = y.rounded(.down)
+            let snappedH = (y + h).rounded(.down) - snappedY
+            let childRect = Rect(x: context.rect.x, y: snappedY, width: context.rect.width, height: max(1, snappedH))
             let childContext = RenderContext(style: context.style, rect: childRect)
             renderAny(child, into: &buffer, context: childContext)
             y += h
@@ -138,8 +140,10 @@ public enum Renderer {
                 x += spacerWidth
                 continue
             }
-            let childWidth = measureWidth(child)
-            let childRect = Rect(x: x, y: context.rect.y, width: childWidth, height: context.rect.height)
+            let childWidth = Double(measureWidth(child))
+            let snappedX = x.rounded(.down)
+            let snappedW = (x + childWidth).rounded(.down) - snappedX
+            let childRect = Rect(x: snappedX, y: context.rect.y, width: max(1, snappedW), height: context.rect.height)
             let childContext = RenderContext(style: context.style, rect: childRect)
             renderAny(child, into: &buffer, context: childContext)
             x += childWidth

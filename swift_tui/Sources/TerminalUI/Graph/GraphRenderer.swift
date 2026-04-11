@@ -27,10 +27,13 @@ public enum GraphRenderer {
         switch content {
         case .text(let string):
             let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
+            let maxWidth = context.rect.intWidth
             for (i, line) in lines.enumerated() {
                 let y = context.rect.intY + i
                 guard y < context.rect.intY + context.rect.intHeight else { break }
-                buffer.write(String(line), x: context.rect.intX, y: y, style: context.style)
+                // Clip text to rect width
+                let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
+                buffer.write(clipped, x: context.rect.intX, y: y, style: context.style)
             }
 
         case .spacer:
@@ -105,7 +108,10 @@ public enum GraphRenderer {
                 continue
             }
             let h = childHeights[i]
-            let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: h)
+            // Snap to integer grid to prevent fractional gaps
+            let snappedY = y.rounded(.down)
+            let snappedH = (y + h).rounded(.down) - snappedY
+            let childRect = Rect(x: context.rect.x, y: snappedY, width: context.rect.width, height: max(1, snappedH))
             let childContext = RenderContext(style: context.style, rect: childRect)
             render(child, into: &buffer, context: childContext)
             y += h
@@ -137,7 +143,9 @@ public enum GraphRenderer {
                 continue
             }
             let w = childWidths[i]
-            let childRect = Rect(x: x, y: context.rect.y, width: w, height: context.rect.height)
+            let snappedX = x.rounded(.down)
+            let snappedW = (x + w).rounded(.down) - snappedX
+            let childRect = Rect(x: snappedX, y: context.rect.y, width: max(1, snappedW), height: context.rect.height)
             let childContext = RenderContext(style: context.style, rect: childRect)
             render(child, into: &buffer, context: childContext)
             x += w
@@ -219,37 +227,35 @@ public enum GraphRenderer {
                 // Measure modal content
                 let mw = Int(measureWidth(modalNode))
                 let mh = Int(measureHeight(modalNode, proposedWidth: Double(mw)))
-                let contentWidth = min(mw, buffer.width - 4)
+                let contentWidth = min(mw, buffer.width - 2)
                 let contentHeight = min(mh, buffer.height - 2)
 
                 // Center on screen
                 let mx = max(0, (buffer.width - contentWidth) / 2)
                 let my = max(0, (buffer.height - contentHeight) / 2)
 
-                // Dim background — keep characters visible but muted
-                let dimFg = Color.ansi256(239)
-                for y in 0..<buffer.height {
-                    for x in 0..<buffer.width {
-                        var cell = buffer[x, y]
-                        cell.style.foreground = dimFg
-                        cell.style.bold = false
-                        buffer[x, y] = cell
-                    }
-                }
+                // Use compositor: dim layer + modal layer
+                // Layer 1: dim the entire background
+                let dimLayer = Layer(
+                    width: buffer.width, height: buffer.height,
+                    x: 0, y: 0,
+                    style: .dim(.ansi256(239))
+                )
 
-                // Clear modal area
-                for y in my..<min(my + contentHeight, buffer.height) {
-                    for x in mx..<min(mx + contentWidth, buffer.width) {
-                        buffer[x, y] = Cell(character: " ", style: .plain)
-                    }
-                }
-
-                // Render modal content
+                // Layer 2: render modal into its own isolated buffer
+                var modalLayer = Layer(
+                    width: contentWidth, height: contentHeight,
+                    x: mx, y: my,
+                    style: .opaque
+                )
                 let modalContext = RenderContext(
                     style: .plain,
-                    rect: Rect(x: mx, y: my, width: contentWidth, height: contentHeight)
+                    rect: Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
                 )
-                render(modalNode, into: &buffer, context: modalContext)
+                render(modalNode, into: &modalLayer.buffer, context: modalContext)
+
+                // Composite: dim first, then modal on top
+                Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
             }
         }
     }
