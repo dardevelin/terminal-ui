@@ -138,6 +138,9 @@ public final class DebugStream: @unchecked Sendable {
             case .spinner(let frame, _):
                 kind = "spinner"
                 value = "frame:\(frame)"
+            case .divider:
+                kind = "divider"
+                value = ""
             case .empty:
                 kind = "empty"
                 value = ""
@@ -146,6 +149,7 @@ public final class DebugStream: @unchecked Sendable {
             switch info.kind {
             case .vstack: kind = "vstack"
             case .hstack: kind = "hstack"
+            case .zstack: kind = "zstack"
             }
             value = "\(node.children.count) children"
         case .modifier(let effect):
@@ -157,6 +161,8 @@ public final class DebugStream: @unchecked Sendable {
             case .underline: kind = "underline"; value = ""
             case .padding(let n): kind = "padding"; value = "\(n)"
             case .border(let s): kind = "border"; value = "\(s)"
+            case .frame(let w, let h): kind = "frame"; value = "\(w ?? 0)x\(h ?? 0)"
+            case .explicitID(let id): kind = "id"; value = "\(id)"
             }
         case .viewBody(let info):
             kind = "view"

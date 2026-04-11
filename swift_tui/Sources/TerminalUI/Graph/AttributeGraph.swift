@@ -30,7 +30,7 @@ public final class AttributeGraph {
     }
 
     /// Tracks whether any values changed during update
-    private var changed = false
+    var changed = false
 
     // MARK: - Body Evaluation with Observation
 
@@ -99,6 +99,13 @@ public final class AttributeGraph {
             }
         }
 
+        if let zstack = view as? any _GraphZStack {
+            if case .layout(let info) = node.kind, info.kind == .zstack {
+                updateLayoutChildren(node, from: zstack.graphChildren())
+                return
+            }
+        }
+
         // Modifiers — update effect + child
         if let modified = view as? any _GraphModified {
             if case .modifier = node.kind {
@@ -113,6 +120,12 @@ public final class AttributeGraph {
         // Conditional — check if branch changed
         if let cond = view as? any _GraphConditional {
             cond.updateConditionalNode(node, graph: self)
+            return
+        }
+
+        // ForEach — update children from data
+        if let forEach = view as? any _GraphForEach {
+            forEach.updateForEachNode(node, graph: self)
             return
         }
 
@@ -206,11 +219,17 @@ public final class AttributeGraph {
         if let hstack = view as? any _GraphHStack {
             return constructHStack(hstack, id: id)
         }
+        if let zstack = view as? any _GraphZStack {
+            return constructZStack(zstack, id: id)
+        }
         if let modified = view as? any _GraphModified {
             return constructModifier(modified, id: id)
         }
         if let cond = view as? any _GraphConditional {
             return cond.constructConditionalNode(id: id, graph: self)
+        }
+        if let forEach = view as? any _GraphForEach {
+            return forEach.constructForEachNode(id: id, graph: self)
         }
         return constructComposite(view, id: id)
     }
@@ -229,6 +248,9 @@ public final class AttributeGraph {
         }
         if let spinner = view as? Spinner {
             return AttributeNode(id: id, kind: .primitive(.spinner(frame: spinner.frame, style: spinner.style)))
+        }
+        if view is Divider {
+            return AttributeNode(id: id, kind: .primitive(.divider))
         }
         if view is EmptyView {
             return AttributeNode(id: id, kind: .primitive(.empty))
@@ -251,6 +273,18 @@ public final class AttributeGraph {
     func constructHStack(_ hstack: any _GraphHStack, id: NodeID) -> AttributeNode {
         let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .hstack)))
         let children = hstack.graphChildren()
+        for (i, child) in children.enumerated() {
+            let childID = id.appending(.index(i))
+            let childNode = constructAnyView(child, id: childID)
+            childNode.parent = node
+            node.children.append(childNode)
+        }
+        return node
+    }
+
+    func constructZStack(_ zstack: any _GraphZStack, id: NodeID) -> AttributeNode {
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .zstack)))
+        let children = zstack.graphChildren()
         for (i, child) in children.enumerated() {
             let childID = id.appending(.index(i))
             let childNode = constructAnyView(child, id: childID)
@@ -334,4 +368,14 @@ protocol _GraphModified {
 protocol _GraphConditional {
     func constructConditionalNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateConditionalNode(_ node: AttributeNode, graph: AttributeGraph)
+}
+
+/// ForEach constructs children from identifiable data
+protocol _GraphZStack {
+    func graphChildren() -> [Any]
+}
+
+protocol _GraphForEach {
+    func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
+    func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph)
 }

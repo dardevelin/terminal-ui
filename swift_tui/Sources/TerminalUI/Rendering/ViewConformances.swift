@@ -17,6 +17,20 @@ extension HStack: _HStackProtocol {
     }
 }
 
+// MARK: - ForEach as VStack (for old renderer)
+
+extension ForEach: _VStackProtocol {
+    public func collectChildren() -> [Any] {
+        data.map { content($0) }
+    }
+}
+
+extension ForEachWithID: _VStackProtocol {
+    public func collectChildren() -> [Any] {
+        data.map { content($0) }
+    }
+}
+
 // MARK: - TupleView unpacking
 
 func extractChildren(from value: Any) -> [Any] {

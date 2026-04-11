@@ -178,6 +178,9 @@ public final class DebugPanel {
             case .spinner(let f, _):
                 kind = "spn"
                 detail = "f:\(f)"
+            case .divider:
+                kind = "div"
+                detail = ""
             case .empty:
                 kind = "emp"
                 detail = ""
@@ -185,7 +188,11 @@ public final class DebugPanel {
             style = node.isDirty ? dirtyStyle : bgStyle
 
         case .layout(let info):
-            kind = info.kind == .vstack ? "V" : "H"
+            switch info.kind {
+            case .vstack: kind = "V"
+            case .hstack: kind = "H"
+            case .zstack: kind = "Z"
+            }
             detail = "[\(node.children.count)]"
             style = node.isDirty ? dirtyStyle : Style(foreground: .cyan, background: .ansi256(236), bold: false, italic: false, underline: false)
 
@@ -198,6 +205,8 @@ public final class DebugPanel {
             case .underline: kind = "U"; detail = ""
             case .padding(let n): kind = "pad"; detail = "\(n)"
             case .border(_): kind = "bdr"; detail = ""
+            case .frame(let w, let h): kind = "frm"; detail = "\(w ?? 0)x\(h ?? 0)"
+            case .explicitID(_): kind = "id"; detail = ""
             }
             style = node.isDirty ? dirtyStyle : dimStyle
 

@@ -36,6 +36,11 @@ public enum GraphRenderer {
         case .spacer:
             break
 
+        case .divider:
+            // Horizontal line filling the width
+            let line = String(repeating: "─", count: context.rect.width)
+            buffer.write(line, x: context.rect.x, y: context.rect.y, style: context.style)
+
         case .progressBar(let value, let label, let filled, let empty):
             let width = context.rect.width
             let labelPart = label.map { $0 + " " } ?? ""
@@ -70,6 +75,8 @@ public enum GraphRenderer {
             renderVStack(children, into: &buffer, context: context)
         case .hstack:
             renderHStack(children, into: &buffer, context: context)
+        case .zstack:
+            renderZStack(children, into: &buffer, context: context)
         }
     }
 
@@ -137,6 +144,13 @@ public enum GraphRenderer {
         }
     }
 
+    static func renderZStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
+        // All children occupy the full rect — last child renders on top
+        for child in children {
+            render(child, into: &buffer, context: context)
+        }
+    }
+
     // MARK: - Modifiers
 
     static func renderModifier(_ node: AttributeNode, effect: ModifierEffect, into buffer: inout CellBuffer, context: RenderContext) {
@@ -172,6 +186,15 @@ public enum GraphRenderer {
             renderBorder(style, into: &buffer, context: ctx)
             ctx.rect = ctx.rect.inset(by: 1)
             render(child, into: &buffer, context: ctx)
+
+        case .frame(let width, let height):
+            if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
+            if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
+            render(child, into: &buffer, context: ctx)
+
+        case .explicitID:
+            // Identity modifier — doesn't affect rendering
+            render(child, into: &buffer, context: ctx)
         }
     }
 
@@ -204,6 +227,7 @@ public enum GraphRenderer {
             case .text(let s):
                 return s.split(separator: "\n", omittingEmptySubsequences: false).map(\.count).max() ?? 0
             case .spacer, .empty: return 0
+            case .divider: return 1
             case .progressBar: return 20
             case .spinner(let frame, let style):
                 return style.frames[frame % style.frames.count].count
@@ -215,6 +239,8 @@ public enum GraphRenderer {
                 return node.children.map { measureWidth($0) }.max() ?? 0
             case .hstack:
                 return node.children.map { measureWidth($0) }.reduce(0, +)
+            case .zstack:
+                return node.children.map { measureWidth($0) }.max() ?? 0
             }
 
         case .modifier(let effect):
@@ -222,6 +248,7 @@ public enum GraphRenderer {
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
+            if case .frame(let w, _) = effect, let w { return w }
             return base
 
         case .viewBody:
@@ -236,6 +263,7 @@ public enum GraphRenderer {
             case .text(let s):
                 return s.split(separator: "\n", omittingEmptySubsequences: false).count
             case .spacer: return 1
+            case .divider: return 1
             case .empty: return 0
             case .progressBar: return 1
             case .spinner: return 1
@@ -247,6 +275,8 @@ public enum GraphRenderer {
                 return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.reduce(0, +)
             case .hstack:
                 return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.max() ?? 0
+            case .zstack:
+                return node.children.map { measureHeight($0, proposedWidth: proposedWidth) }.max() ?? 0
             }
 
         case .modifier(let effect):
@@ -254,6 +284,7 @@ public enum GraphRenderer {
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
+            if case .frame(_, let h) = effect, let h { return h }
             return base
 
         case .viewBody:

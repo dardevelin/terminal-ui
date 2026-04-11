@@ -28,6 +28,8 @@ extension ModifiedView: _GraphModified {
         case is UnderlineModifier: .underline
         case let pad as PaddingModifier: .padding(pad.amount)
         case let bdr as BorderModifier: .border(bdr.style)
+        case let frm as FrameModifier: .frame(width: frm.width, height: frm.height)
+        case let idm as IDModifier: .explicitID(idm.id)
         default: .bold
         }
     }
@@ -73,5 +75,122 @@ extension ConditionalView: _GraphConditional {
                 node.children = [childNode]
             }
         }
+    }
+}
+
+// MARK: - ZStack
+
+extension ZStack: _GraphZStack {
+    func graphChildren() -> [Any] {
+        extractChildren(from: content)
+    }
+}
+
+// MARK: - ForEach
+
+extension ForEach: _GraphForEach {
+    func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
+        for (i, element) in data.enumerated() {
+            let childID = id.appending(.explicit(AnyHashable(element.id)))
+            let childView = content(element)
+            let childNode = graph.constructNode(for: childView, id: childID)
+            childNode.parent = node
+            node.children.append(childNode)
+        }
+        return node
+    }
+
+    func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph) {
+        guard case .layout = node.kind else { return }
+
+        let newElements = Array(data)
+
+        // Build lookup of existing children by explicit ID
+        var existingByID: [AnyHashable: AttributeNode] = [:]
+        for child in node.children {
+            if let lastComponent = child.id.path.last,
+               case .explicit(let key) = lastComponent {
+                existingByID[key] = child
+            }
+        }
+
+        // Rebuild children list — reuse existing nodes where possible
+        var newChildren: [AttributeNode] = []
+        var didChange = false
+
+        for element in newElements {
+            let key = AnyHashable(element.id)
+            let childID = node.id.appending(.explicit(key))
+
+            if let existing = existingByID[key] {
+                // Reuse — update in place
+                let childView = content(element)
+                graph.updateNode(existing, from: childView)
+                newChildren.append(existing)
+            } else {
+                // New element — construct
+                let childView = content(element)
+                let childNode = graph.constructNode(for: childView, id: childID)
+                childNode.parent = node
+                newChildren.append(childNode)
+                didChange = true
+            }
+        }
+
+        if newChildren.count != node.children.count { didChange = true }
+        if didChange { graph.changed = true }
+        node.children = newChildren
+    }
+}
+
+extension ForEachWithID: _GraphForEach {
+    func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
+        for (i, element) in data.enumerated() {
+            let key = element[keyPath: idKeyPath]
+            let childID = id.appending(.explicit(AnyHashable(key)))
+            let childView = content(element)
+            let childNode = graph.constructNode(for: childView, id: childID)
+            childNode.parent = node
+            node.children.append(childNode)
+        }
+        return node
+    }
+
+    func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph) {
+        guard case .layout = node.kind else { return }
+
+        var existingByID: [AnyHashable: AttributeNode] = [:]
+        for child in node.children {
+            if let lastComponent = child.id.path.last,
+               case .explicit(let key) = lastComponent {
+                existingByID[key] = child
+            }
+        }
+
+        var newChildren: [AttributeNode] = []
+        var didChange = false
+
+        for element in data {
+            let key = AnyHashable(element[keyPath: idKeyPath])
+            let childID = node.id.appending(.explicit(key))
+
+            if let existing = existingByID[key] {
+                let childView = content(element)
+                graph.updateNode(existing, from: childView)
+                newChildren.append(existing)
+            } else {
+                let childView = content(element)
+                let childNode = graph.constructNode(for: childView, id: childID)
+                childNode.parent = node
+                newChildren.append(childNode)
+                didChange = true
+            }
+        }
+
+        if newChildren.count != node.children.count { didChange = true }
+        if didChange { graph.changed = true }
+        node.children = newChildren
     }
 }

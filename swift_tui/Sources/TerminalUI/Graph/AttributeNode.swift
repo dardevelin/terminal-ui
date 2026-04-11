@@ -50,6 +50,7 @@ public enum NodeKind {
 public enum PrimitiveContent {
     case text(String)
     case spacer
+    case divider
     case progressBar(value: Double, label: String?, filled: Character, empty: Character)
     case spinner(frame: Int, style: SpinnerStyle)
     case empty
@@ -69,6 +70,7 @@ public struct LayoutInfo {
 public enum LayoutKind {
     case vstack
     case hstack
+    case zstack
 }
 
 public struct Size: Equatable, Sendable {
@@ -88,6 +90,8 @@ public enum ModifierEffect {
     case underline
     case padding(Int)
     case border(BorderStyle)
+    case frame(width: Int?, height: Int?)
+    case explicitID(AnyHashable)
 }
 
 // MARK: - View Body

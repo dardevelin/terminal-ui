@@ -49,6 +49,23 @@ public struct BorderModifier: ViewModifier {
     public let style: BorderStyle
 }
 
+// Frame
+public struct FrameModifier: ViewModifier {
+    public typealias ModifierType = (Int?, Int?)
+    public let width: Int?
+    public let height: Int?
+    public var minWidth: Int?
+    public var maxWidth: Int?
+    public var minHeight: Int?
+    public var maxHeight: Int?
+}
+
+// Explicit identity
+public struct IDModifier: ViewModifier {
+    public typealias ModifierType = AnyHashable
+    public let id: AnyHashable
+}
+
 // Chainable modifier methods on all TerminalViews
 extension TerminalView {
     public func foreground(_ color: Color) -> ModifiedView<Self, ForegroundModifier> {
@@ -77,5 +94,21 @@ extension TerminalView {
 
     public func border(_ style: BorderStyle = .rounded) -> ModifiedView<Self, BorderModifier> {
         ModifiedView(content: self, modifier: BorderModifier(style: style))
+    }
+
+    public func frame(width: Int? = nil, height: Int? = nil) -> ModifiedView<Self, FrameModifier> {
+        ModifiedView(content: self, modifier: FrameModifier(width: width, height: height))
+    }
+
+    public func frame(minWidth: Int? = nil, maxWidth: Int? = nil, minHeight: Int? = nil, maxHeight: Int? = nil) -> ModifiedView<Self, FrameModifier> {
+        ModifiedView(content: self, modifier: FrameModifier(
+            width: nil, height: nil,
+            minWidth: minWidth, maxWidth: maxWidth,
+            minHeight: minHeight, maxHeight: maxHeight
+        ))
+    }
+
+    public func id<ID: Hashable>(_ id: ID) -> ModifiedView<Self, IDModifier> {
+        ModifiedView(content: self, modifier: IDModifier(id: AnyHashable(id)))
     }
 }
