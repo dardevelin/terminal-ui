@@ -61,7 +61,11 @@ public enum GraphMeasurer {
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(let w, _) = effect, let w { return w }
+            if case .frame(let w, _, let minW, let maxW, _, _) = effect {
+                if let w { return w }
+                if let maxW { base = min(base, maxW) }
+                if let minW { base = max(base, minW) }
+            }
             return base
 
         case .viewBody:
@@ -106,7 +110,11 @@ public enum GraphMeasurer {
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(_, let h) = effect, let h { return h }
+            if case .frame(_, let h, _, _, let minH, let maxH) = effect {
+                if let h { return h }
+                if let maxH { base = min(base, maxH) }
+                if let minH { base = max(base, minH) }
+            }
             return base
 
         case .viewBody:

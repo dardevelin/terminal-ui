@@ -28,7 +28,7 @@ extension ModifiedView: _GraphModified {
         case is UnderlineModifier: .underline
         case let pad as PaddingModifier: .padding(pad.amount)
         case let bdr as BorderModifier: .border(bdr.style)
-        case let frm as FrameModifier: .frame(width: frm.width, height: frm.height)
+        case let frm as FrameModifier: .frame(width: frm.width, height: frm.height, minWidth: frm.minWidth, maxWidth: frm.maxWidth, minHeight: frm.minHeight, maxHeight: frm.maxHeight)
         case let idm as IDModifier: .explicitID(idm.id)
         case is any _OverlayModifierProtocol: .overlay
         case is any _BackgroundViewModifierProtocol: .backgroundView

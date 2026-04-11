@@ -23,6 +23,9 @@ private let _resizeFlag = Atomic<Bool>(false)
 public struct TerminalSize: Sendable {
     public var cols: Int
     public var rows: Int
+
+    /// Standard VT100 default — used as fallback when terminal size cannot be detected.
+    public static let `default` = TerminalSize(cols: 80, rows: 24)
 }
 
 public enum Terminal {
@@ -30,7 +33,7 @@ public enum Terminal {
 
     /// Minimum size for debug traces — prevents 0x0 captures
     #if DEBUG
-    nonisolated(unsafe) public static var debugMinSize: TerminalSize? = TerminalSize(cols: 80, rows: 24)
+    nonisolated(unsafe) public static var debugMinSize: TerminalSize? = .default
     #endif
 
     public static func size() -> TerminalSize {

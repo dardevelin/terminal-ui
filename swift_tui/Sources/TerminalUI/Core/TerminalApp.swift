@@ -366,6 +366,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
         GraphContext.currentEnvironment = env
+        GraphContext.currentProposedSize = Size(width: size.cols, height: size.rows)
 
         // Build/update the attribute graph from the view tree
         let view = buildView()
@@ -424,6 +425,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             var env = GraphContext.currentEnvironment ?? EnvironmentValues()
             env.terminalSize = size
             GraphContext.currentEnvironment = env
+            GraphContext.currentProposedSize = Size(width: size.cols, height: size.rows)
 
             let view = buildView()
             let graphChanged = graph.update(from: view)

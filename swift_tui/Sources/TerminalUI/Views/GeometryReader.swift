@@ -15,8 +15,11 @@ public struct GeometryReader<Content: TerminalView>: TerminalView {
     }
 
     public var body: some TerminalView {
-        // Read terminal size from environment for actual dimensions
-        let termSize = GraphContext.currentEnvironment?.terminalSize ?? TerminalSize(cols: 80, rows: 24)
+        // Read proposed size from render context if available, otherwise fall back to terminal size
+        if let proposed = GraphContext.currentProposedSize {
+            return content(proposed)
+        }
+        let termSize = GraphContext.currentEnvironment?.terminalSize ?? .default
         return content(Size(width: termSize.cols, height: termSize.rows))
     }
 }

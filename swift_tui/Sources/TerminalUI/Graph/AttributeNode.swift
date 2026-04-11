@@ -135,7 +135,7 @@ public enum ModifierEffect {
     case underline
     case padding(Int)
     case border(BorderStyle)
-    case frame(width: Int?, height: Int?)
+    case frame(width: Int?, height: Int?, minWidth: Int?, maxWidth: Int?, minHeight: Int?, maxHeight: Int?)
     case explicitID(AnyHashable)
     case overlay     // child[0] = base, child[1] = overlay content
     case backgroundView  // child[0] = background content, child[1] = base (render bg first)

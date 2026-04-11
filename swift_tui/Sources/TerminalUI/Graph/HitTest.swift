@@ -104,7 +104,7 @@ public struct HitResult {
             case .underline: values.append(("modifier", "underline"))
             case .padding(let n): values.append(("modifier", "padding(\(n))"))
             case .border(let s): values.append(("modifier", "border(\(s))"))
-            case .frame(let w, let h): values.append(("modifier", "frame(\(w ?? 0)x\(h ?? 0))"))
+            case .frame(let w, let h, _, _, _, _): values.append(("modifier", "frame(\(w ?? 0)x\(h ?? 0))"))
             case .explicitID(let id): values.append(("modifier", "id(\(id))"))
             case .overlay: values.append(("modifier", "overlay"))
             case .backgroundView: values.append(("modifier", "backgroundView"))
@@ -139,7 +139,7 @@ public struct HitResult {
                 case .underline: return "underline"
                 case .padding(let n): return "pad(\(n))"
                 case .border(_): return "border"
-                case .frame(let w, let h): return "frame(\(w ?? 0)x\(h ?? 0))"
+                case .frame(let w, let h, _, _, _, _): return "frame(\(w ?? 0)x\(h ?? 0))"
                 case .explicitID(_): return "id"
                 case .overlay: return "overlay"
                 case .backgroundView: return "bgView"

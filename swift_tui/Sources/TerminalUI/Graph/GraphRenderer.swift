@@ -256,9 +256,13 @@ public enum GraphRenderer {
             ctx.rect = ctx.rect.inset(by: 1)
             render(child, into: &buffer, context: ctx)
 
-        case .frame(let width, let height):
+        case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight):
             if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
+            if let maxW = maxWidth { ctx.rect.width = min(maxW, ctx.rect.width) }
+            if let minW = minWidth { ctx.rect.width = max(minW, ctx.rect.width) }
             if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
+            if let maxH = maxHeight { ctx.rect.height = min(maxH, ctx.rect.height) }
+            if let minH = minHeight { ctx.rect.height = max(minH, ctx.rect.height) }
             render(child, into: &buffer, context: ctx)
 
         case .explicitID:

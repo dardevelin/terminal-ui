@@ -47,9 +47,33 @@ public struct TerminalState<Value> {
     }
 
     public var projectedValue: Binding<Value> {
-        Binding(
-            get: { wrappedValue },
-            set: { wrappedValue = $0 }
+        // Capture the current node eagerly so the Binding works outside body evaluation
+        // (e.g., in onKeyPress/onClick closures where GraphContext.currentNode is nil).
+        let capturedNode = GraphContext.currentNode
+        let capturedKey = key
+        let fallback = initialValue
+
+        // Ensure the state slot exists — projectedValue may be accessed before wrappedValue
+        if let node = capturedNode, node.stateSlots[capturedKey] == nil {
+            node.stateSlots[capturedKey] = StateSlot(key: capturedKey, initialValue: fallback)
+        }
+
+        return Binding(
+            get: {
+                guard let node = capturedNode ?? GraphContext.currentNode else {
+                    return fallback
+                }
+                if let slot = node.stateSlots[capturedKey] as? StateSlot<Value> {
+                    return slot.storage.value
+                }
+                return fallback
+            },
+            set: { newValue in
+                guard let node = capturedNode ?? GraphContext.currentNode else { return }
+                if let slot = node.stateSlots[capturedKey] as? StateSlot<Value> {
+                    slot.storage.value = newValue
+                }
+            }
         )
     }
 

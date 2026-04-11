@@ -19,4 +19,8 @@ public enum GraphContext {
 
     /// Current focus engine — set by runtime so modifiers can register handlers.
     nonisolated(unsafe) public static var currentFocusEngine: FocusEngine?
+
+    /// Current proposed size — set by the renderer so GeometryReader can read
+    /// the actual available space rather than the full terminal size.
+    nonisolated(unsafe) public static var currentProposedSize: Size?
 }
