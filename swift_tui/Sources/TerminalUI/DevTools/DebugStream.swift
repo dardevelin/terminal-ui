@@ -1,3 +1,9 @@
+#if canImport(Glibc)
+import Glibc
+#elseif canImport(Darwin)
+import Darwin
+#endif
+
 import Foundation
 
 // MARK: - Debug Protocol
@@ -240,7 +246,7 @@ public final class FileDebugSink: DebugSink, @unchecked Sendable {
     private let encoder = JSONEncoder()
 
     public init(path: String) throws {
-        FileManager.default.createFile(atPath: path, contents: nil)
+        _ = FileManager.default.createFile(atPath: path, contents: nil)
         self.handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
         handle.seekToEndOfFile()
     }
@@ -285,7 +291,11 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
 
     private func setupSocket() {
         unlink(path)
+        #if canImport(Glibc)
+        fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         guard fd >= 0 else { return }
 
         var addr = sockaddr_un()
@@ -312,7 +322,7 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
         listen(fd, 1)
 
         // Non-blocking accept
-        fcntl(fd, F_SETFL, O_NONBLOCK)
+        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
     }
 
     public func receive(_ event: DebugEvent) {
@@ -336,7 +346,7 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
         guard var data = try? encoder.encode(value) else { return }
         data.append(0x0A) // newline
         let result = data.withUnsafeBytes { buf in
-            Darwin.write(clientFd, buf.baseAddress!, buf.count)
+            posixWrite(clientFd, buf.baseAddress!, buf.count)
         }
         if result <= 0 {
             close(clientFd)

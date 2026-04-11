@@ -212,7 +212,7 @@ public struct OutputBuffer {
         bytes.withUnsafeBufferPointer { buf in
             var written = 0
             while written < count {
-                let n = Darwin.write(fd, buf.baseAddress! + written, count - written)
+                let n = posixWrite(fd, buf.baseAddress! + written, count - written)
                 if n <= 0 { break }
                 written += n
             }

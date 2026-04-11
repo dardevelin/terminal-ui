@@ -1,4 +1,25 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
+
 import Foundation
+
+// MARK: - Cross-platform monotonic clock
+
+/// Returns the current monotonic time in nanoseconds.
+/// Uses `clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)` on Darwin
+/// and `clock_gettime(CLOCK_MONOTONIC)` on Linux.
+func monotonicNanoseconds() -> UInt64 {
+    #if canImport(Darwin)
+    return clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+    #elseif canImport(Glibc)
+    var ts = timespec()
+    clock_gettime(CLOCK_MONOTONIC, &ts)
+    return UInt64(ts.tv_sec) * 1_000_000_000 + UInt64(ts.tv_nsec)
+    #endif
+}
 
 /// Real-time frame statistics, updated by the runtime each frame.
 public struct FrameStats: Sendable {
@@ -48,11 +69,11 @@ final class FrameCounter {
     private let startTime: UInt64
 
     init() {
-        self.startTime = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        self.startTime = monotonicNanoseconds()
     }
 
     func beginFrame() {
-        lastFrameStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        lastFrameStart = monotonicNanoseconds()
     }
 
     // Tracks last active frame stats
@@ -63,7 +84,7 @@ final class FrameCounter {
     private var activeFrameTimes: [UInt64] = []
 
     func endFrame(cellsChanged: Int, totalCells: Int, buildNs: UInt64, flushNs: UInt64, bytesWritten: Int) -> FrameStats {
-        let now = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+        let now = monotonicNanoseconds()
         lastFrameDuration = now - lastFrameStart
         count += 1
 
