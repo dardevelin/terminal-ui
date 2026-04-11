@@ -9,20 +9,12 @@ public struct OnChangeModifier<Value: Equatable>: ViewModifier {
 public struct OnAppearModifier: ViewModifier {
     public typealias ModifierType = Bool
     public let action: () -> Void
-    public var didAppear = false
 }
 
 /// View modifier that calls a closure when the view disappears.
 public struct OnDisappearModifier: ViewModifier {
     public typealias ModifierType = Bool
     public let action: () -> Void
-}
-
-/// View modifier for per-view key handling.
-public struct OnKeyPressModifier: ViewModifier {
-    public typealias ModifierType = Key
-    public let key: Key?  // nil = any key
-    public let action: (KeyEvent) -> Void
 }
 
 extension TerminalView {
@@ -36,9 +28,5 @@ extension TerminalView {
 
     public func onDisappear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnDisappearModifier> {
         ModifiedView(content: self, modifier: OnDisappearModifier(action: action))
-    }
-
-    public func onKeyPress(_ key: Key? = nil, perform action: @escaping (KeyEvent) -> Void) -> ModifiedView<Self, OnKeyPressModifier> {
-        ModifiedView(content: self, modifier: OnKeyPressModifier(key: key, action: action))
     }
 }

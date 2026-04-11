@@ -1,4 +1,5 @@
 /// A button that triggers an action on enter/space when focused.
+/// Highlights when keyboard-focused, shows underline on mouse hover.
 ///
 /// Usage:
 /// ```
@@ -16,6 +17,14 @@ public struct Button: TerminalView {
     }
 
     public var body: some TerminalView {
-        Text("[\(label)]")
+        Text("[ \(label) ]")
+            .focusable()
+            .onKeyPress { event in
+                if event.key == .enter || event.key == .character(" ") {
+                    action()
+                    return .handled
+                }
+                return .ignored
+            }
     }
 }

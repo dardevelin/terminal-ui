@@ -10,6 +10,7 @@ import Foundation
 
 public enum TerminalEvent: Sendable {
     case key(KeyEvent)
+    case mouse(MouseEvent)
     case resize(Int, Int)
     case timer(String)
 }
@@ -92,6 +93,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let debugOverlay = DebugOverlay()
     private let inspector = Inspector()
     private let keyBindings = KeyBindings()
+    public let focusEngine = FocusEngine()
 
     public nonisolated init(
         renderMode: RenderMode = .fps60,
@@ -122,6 +124,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         Terminal.enableRawMode()
         Terminal.enterAlternateScreen()
+        Terminal.enableMouseTracking()
 
         defer {
             tracer.writeSummary()
@@ -129,15 +132,18 @@ public final class TerminalRuntime<RootView: TerminalView> {
             Terminal.disableRawMode()
         }
 
+        // Make focus engine accessible during graph construction
+        GraphContext.currentFocusEngine = focusEngine
+
         renderFullFrame()
 
         let queue = self.eventQueue
 
-        // Input reader
+        // Input reader — handles both keyboard and mouse events
         let inputTask = Task.detached {
             while !Task.isCancelled {
-                if let key = InputParser.readKey() {
-                    queue.push(.key(key))
+                if let event = InputParser.readEvent() {
+                    queue.push(event)
                 }
             }
         }
@@ -180,32 +186,50 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 switch event {
                 case .key(let keyEvent):
                     tracer.traceInput(keyEvent)
+                    handleKeyEvent(keyEvent)
+                    needsRender = true
+
+                case .mouse(let mouseEvent):
                     #if DEBUG
-                    debugPanel.recordInput(
-                        describeKeyEvent(keyEvent),
-                        timestamp: ProcessInfo.processInfo.systemUptime
-                    )
-                    // Handle debug key bindings
-                    if let action = keyBindings.action(for: keyEvent) {
-                        switch action {
-                        case .toggleDebugOverlay: debugOverlay.toggle()
-                        case .toggleDebugPanel: debugPanel.toggle()
-                        case .toggleInspector: inspector.toggle()
-                        case .captureFrame: captureCurrentFrame = true
-                        default: break
+                    // Debug panel click handling (collapse/expand nodes)
+                    if mouseEvent.kind == .press(.left) {
+                        if debugPanel.handleClick(x: mouseEvent.x, y: mouseEvent.y, graph: graph, bufferWidth: size.cols, bufferHeight: size.rows) {
+                            needsRender = true
+                            break
                         }
                     }
-                    // Arrow keys move inspector cursor when active
-                    if inspector.active {
-                        switch keyEvent.key {
-                        case .up:    inspector.moveCursor(dx: 0, dy: -1, maxX: size.cols, maxY: size.rows)
-                        case .down:  inspector.moveCursor(dx: 0, dy: 1, maxX: size.cols, maxY: size.rows)
-                        case .left:  inspector.moveCursor(dx: -1, dy: 0, maxX: size.cols, maxY: size.rows)
-                        case .right: inspector.moveCursor(dx: 1, dy: 0, maxX: size.cols, maxY: size.rows)
-                        default: break
+                    // Debug panel scroll handling
+                    if debugPanel.mode == .graphTree {
+                        if case .scrollUp = mouseEvent.kind {
+                            debugPanel.scrollGraphUp(amount: 3)
+                            needsRender = true
+                            break
+                        }
+                        if case .scrollDown = mouseEvent.kind {
+                            debugPanel.scrollGraphDown(amount: 3)
+                            needsRender = true
+                            break
                         }
                     }
                     #endif
+                    switch mouseEvent.kind {
+                    case .press(.left):
+                        focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                    case .moved, .drag:
+                        focusEngine.updateMouseHover(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                    case .scrollUp:
+                        // Route scroll to focused view as synthetic up arrow (3 lines)
+                        for _ in 0..<3 {
+                            _ = focusEngine.routeKeyEvent(KeyEvent(key: .up), root: graph.root)
+                        }
+                    case .scrollDown:
+                        // Route scroll to focused view as synthetic down arrow (3 lines)
+                        for _ in 0..<3 {
+                            _ = focusEngine.routeKeyEvent(KeyEvent(key: .down), root: graph.root)
+                        }
+                    default:
+                        break
+                    }
                     needsRender = true
 
                 case .resize(let cols, let rows):
@@ -258,6 +282,71 @@ public final class TerminalRuntime<RootView: TerminalView> {
         resizeTask.cancel()
     }
 
+    // MARK: - Key Event Handling
+
+    private func handleKeyEvent(_ keyEvent: KeyEvent) {
+        #if DEBUG
+        debugPanel.recordInput(
+            describeKeyEvent(keyEvent),
+            timestamp: ProcessInfo.processInfo.systemUptime
+        )
+        // Handle debug key bindings
+        if let action = keyBindings.action(for: keyEvent) {
+            switch action {
+            case .toggleDebugOverlay: debugOverlay.toggle()
+            case .toggleDebugPanel: debugPanel.toggle()
+            case .toggleInspector: inspector.toggle()
+            case .captureFrame: captureCurrentFrame = true
+            default: break
+            }
+        }
+        // Inspector takes over arrow keys when active
+        if inspector.active {
+            switch keyEvent.key {
+            case .up:    inspector.moveCursor(dx: 0, dy: -1, maxX: size.cols, maxY: size.rows); return
+            case .down:  inspector.moveCursor(dx: 0, dy: 1, maxX: size.cols, maxY: size.rows); return
+            case .left:  inspector.moveCursor(dx: -1, dy: 0, maxX: size.cols, maxY: size.rows); return
+            case .right: inspector.moveCursor(dx: 1, dy: 0, maxX: size.cols, maxY: size.rows); return
+            default: break
+            }
+        }
+        #endif
+
+        // Route key events to the focused view's handler FIRST.
+        // If the handler consumes it (e.g., List handles arrow keys), stop.
+        // Only if unhandled do we use arrow keys for focus navigation.
+        let handledByView = focusEngine.routeKeyEvent(keyEvent, root: graph.root)
+
+        if !handledByView {
+            // Focus navigation — Tab/Shift+Tab always navigate, arrow keys only if view didn't handle
+            if keyEvent.key == .tab && keyEvent.modifiers.contains(.shift) {
+                focusEngine.focusPrevious(root: graph.root)
+            } else if keyEvent.key == .tab {
+                focusEngine.focusNext(root: graph.root)
+            } else if keyEvent.key == .up {
+                focusEngine.focusInDirection(.up, root: graph.root)
+            } else if keyEvent.key == .down {
+                focusEngine.focusInDirection(.down, root: graph.root)
+            } else if keyEvent.key == .left {
+                focusEngine.focusInDirection(.left, root: graph.root)
+            } else if keyEvent.key == .right {
+                focusEngine.focusInDirection(.right, root: graph.root)
+            }
+
+            #if DEBUG
+            // Debug panel scroll — only if no view consumed the event
+            if debugPanel.mode == .graphTree {
+                let visibleLines = size.rows - 5
+                switch keyEvent.key {
+                case .pageUp: debugPanel.scrollGraphPageUp(visibleLines: visibleLines)
+                case .pageDown: debugPanel.scrollGraphPageDown(visibleLines: visibleLines)
+                default: break
+                }
+            }
+            #endif
+        }
+    }
+
     // MARK: - Rendering (@MainActor)
 
     private func renderFullFrame() {
@@ -265,6 +354,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
         tracer.beginFrame()
 
         let buildStart = clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW)
+
+        // Set environment for body evaluation
+        var env = GraphContext.currentEnvironment ?? EnvironmentValues()
+        env.terminalSize = size
+        GraphContext.currentEnvironment = env
 
         // Build/update the attribute graph from the view tree
         let view = buildView()
@@ -276,6 +370,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         if let root = graph.root {
             GraphRenderer.render(root, into: &buffer, context: context)
         }
+
+        // Focus indicators
+        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: focusEngine, root: graph.root)
 
         // Debug overlays — render directly into buffer, bypass graph
         #if DEBUG
@@ -314,6 +411,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
 
         if needsWork {
+            focusEngine.clearHandlers()
+
+            // Set environment for body evaluation
+            var env = GraphContext.currentEnvironment ?? EnvironmentValues()
+            env.terminalSize = size
+            GraphContext.currentEnvironment = env
+
             let view = buildView()
             let graphChanged = graph.update(from: view)
 
@@ -324,6 +428,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 if let root = graph.root {
                     GraphRenderer.render(root, into: &buffer, context: context)
                 }
+
+                // Focus indicators
+                GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: focusEngine, root: graph.root)
 
                 #if DEBUG
                 debugOverlay.render(into: &buffer, stats: frameStats)

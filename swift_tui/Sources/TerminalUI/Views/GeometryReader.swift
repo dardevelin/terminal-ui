@@ -1,4 +1,5 @@
 /// Reads the available size and passes it to a content builder.
+/// Uses the current terminal size from the environment.
 ///
 /// Usage:
 /// ```
@@ -6,9 +7,6 @@
 ///     Text("Width: \(size.width)")
 /// }
 /// ```
-///
-/// Note: In the current prototype, size is the proposed rect from layout.
-/// Full implementation will provide actual rendered size.
 public struct GeometryReader<Content: TerminalView>: TerminalView {
     public let content: (Size) -> Content
 
@@ -16,9 +14,9 @@ public struct GeometryReader<Content: TerminalView>: TerminalView {
         self.content = content
     }
 
-    // Body returns content with a placeholder size.
-    // The real size comes from the layout pass.
     public var body: some TerminalView {
-        content(Size(width: 80, height: 24))
+        // Read terminal size from environment for actual dimensions
+        let termSize = GraphContext.currentEnvironment?.terminalSize ?? TerminalSize(cols: 80, rows: 24)
+        return content(Size(width: termSize.cols, height: termSize.rows))
     }
 }

@@ -33,16 +33,27 @@ extension ModifiedView: _GraphModified {
         case is any _OverlayModifierProtocol: .overlay
         case is any _BackgroundViewModifierProtocol: .backgroundView
         case let modal as any _ModalModifierProtocol: .modal(isPresented: modal.modalIsPresented)
+        case is FocusableModifier: .focusable
+        case is OnKeyPressModifier: .onKeyPress
+        case is OnAppearModifier: .onAppear
+        case is OnClickModifier: .onClick
         default: .bold
         }
     }
 
     func constructChildNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
-        graph.constructNode(for: content, id: id)
+        let node = graph.constructNode(for: content, id: id)
+        // Register focus-related modifiers (onKeyPress, etc.)
+        FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: id)
+        return node
     }
 
     func updateChild(_ child: AttributeNode, graph: AttributeGraph) {
         graph.updateNode(child, from: content)
+        // Re-register on every update since handlers are cleared each frame
+        FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: child.id)
+        // Fire lifecycle events
+        FocusGraphIntegration.fireLifecycleIfNeeded(modifier: modifier, node: child)
     }
 
     func constructExtraChild(id: NodeID, graph: AttributeGraph) -> AttributeNode? {

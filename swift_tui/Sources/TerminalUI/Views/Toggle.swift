@@ -1,7 +1,8 @@
-/// A toggle switch.
+/// A toggle switch that toggles on enter/space when focused.
 ///
 /// Usage:
 /// ```
+/// @TerminalState var darkMode = false
 /// Toggle("Dark mode", isOn: $darkMode)
 /// ```
 public struct Toggle: TerminalView {
@@ -17,6 +18,14 @@ public struct Toggle: TerminalView {
         HStack {
             Text(isOn.get() ? "[x]" : "[ ]")
             Text(" \(label)")
+        }
+        .focusable()
+        .onKeyPress { [isOn] event in
+            if event.key == .enter || event.key == .character(" ") {
+                isOn.set(!isOn.get())
+                return .handled
+            }
+            return .ignored
         }
     }
 }

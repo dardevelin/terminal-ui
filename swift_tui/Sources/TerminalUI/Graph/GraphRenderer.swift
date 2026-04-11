@@ -39,6 +39,10 @@ public enum GraphRenderer {
             case .overlay: nodeName = "overlay"
             case .backgroundView: nodeName = "bgView"
             case .modal: nodeName = "modal"
+            case .focusable: nodeName = "focusable"
+            case .onKeyPress: nodeName = "onKeyPress"
+            case .onAppear: nodeName = "onAppear"
+            case .onClick: nodeName = "onClick"
             }
         case .viewBody(let info):
             nodeName = info.viewTypeName
@@ -261,6 +265,22 @@ public enum GraphRenderer {
             }
             render(child, into: &buffer, context: ctx)
 
+        case .focusable:
+            // isFocusable is set during graph construction (see below).
+            // Just render the child — focus ring is drawn after main render pass.
+            render(child, into: &buffer, context: ctx)
+
+        case .onKeyPress:
+            // Handler is registered on FocusEngine during graph update,
+            // not during rendering. Just pass through.
+            render(child, into: &buffer, context: ctx)
+
+        case .onAppear:
+            render(child, into: &buffer, context: ctx)
+
+        case .onClick:
+            render(child, into: &buffer, context: ctx)
+
         case .modal(let isPresented):
             // Always render base app
             render(child, into: &buffer, context: ctx)
@@ -289,7 +309,7 @@ public enum GraphRenderer {
                 var modalLayer = Layer(
                     width: contentWidth, height: contentHeight,
                     x: mx, y: my,
-                    style: .opaque
+                    style: .transparent  // only overwrite cells that have content
                 )
                 let modalContext = RenderContext(
                     style: .plain,
@@ -400,6 +420,72 @@ public enum GraphRenderer {
         case .viewBody:
             return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
         }
+    }
+
+    // MARK: - Focus Rendering
+
+    /// Draw focus indicators after the main render pass.
+    /// Keyboard focus: highlighted border/underline on the focused node's rect.
+    /// Mouse hover: subtle highlight on hovered node's rect.
+    public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine) {
+        // Keyboard focus — bold cyan left edge indicator
+        if let focusedID = focusEngine.keyboardFocusID,
+           let root = findRootForFocus(in: buffer),
+           let node = focusEngine.findNode(id: focusedID, in: root) {
+            let r = node.rect
+            // Draw focus indicator: cyan left bar
+            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                guard r.x > 0 else { continue }
+                buffer[r.x - 1, y] = Cell(character: "▎", style: focusStyle)
+            }
+        }
+
+        // Mouse hover — dim highlight on hovered node
+        if let hoverID = focusEngine.mouseHoverID,
+           hoverID != focusEngine.keyboardFocusID,
+           let root = findRootForFocus(in: buffer),
+           let node = focusEngine.findNode(id: hoverID, in: root) {
+            let r = node.rect
+            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: true)
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                guard r.x > 0 else { continue }
+                buffer[r.x - 1, y] = Cell(character: "▏", style: hoverStyle)
+            }
+        }
+    }
+
+    /// Render focus indicators using the graph root directly.
+    public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine, root: AttributeNode?) {
+        guard let root else { return }
+
+        // Keyboard focus — cyan left edge bar
+        if let focusedID = focusEngine.keyboardFocusID,
+           let node = focusEngine.findNode(id: focusedID, in: root) {
+            let r = node.rect
+            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                guard r.x > 0 else { continue }
+                buffer[r.x - 1, y] = Cell(character: "▎", style: focusStyle)
+            }
+        }
+
+        // Mouse hover — subtle underline bar (only if different from keyboard focus)
+        if let hoverID = focusEngine.mouseHoverID,
+           hoverID != focusEngine.keyboardFocusID,
+           let node = focusEngine.findNode(id: hoverID, in: root) {
+            let r = node.rect
+            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                guard r.x > 0 else { continue }
+                buffer[r.x - 1, y] = Cell(character: "▏", style: hoverStyle)
+            }
+        }
+    }
+
+    // Temporary: buffer doesn't carry graph root, so this is unused
+    private static func findRootForFocus(in buffer: CellBuffer) -> AttributeNode? {
+        nil
     }
 
     // MARK: - Rect Offset (for modal hit testing)

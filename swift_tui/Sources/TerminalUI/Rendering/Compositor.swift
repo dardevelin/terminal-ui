@@ -187,11 +187,17 @@ public enum Compositor {
                 }
             }
 
-        case .dim(let color):
+        case .dim(let tint):
             for outY in startY..<endY {
                 for outX in startX..<endX {
                     var cell = output[outX, outY]
-                    cell.style.foreground = color
+                    // Dim: shift bright colors to their dark counterparts, disable bold.
+                    // Preserves hue but reduces intensity.
+                    if let fg = cell.style.foreground {
+                        cell.style.foreground = fg.dimmed(fallback: tint)
+                    } else {
+                        cell.style.foreground = tint
+                    }
                     cell.style.bold = false
                     output[outX, outY] = cell
                 }

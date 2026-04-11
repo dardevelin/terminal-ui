@@ -15,5 +15,10 @@ let package = Package(
             dependencies: ["TerminalUI"],
             path: "Examples/Demo"
         ),
+        .executableTarget(
+            name: "ComponentsDemo",
+            dependencies: ["TerminalUI"],
+            path: "Examples/ComponentsDemo"
+        ),
     ]
 )

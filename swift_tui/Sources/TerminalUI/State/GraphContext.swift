@@ -11,4 +11,7 @@ public enum GraphContext {
 
     /// Current environment values — propagated during rendering.
     nonisolated(unsafe) public static var currentEnvironment: EnvironmentValues?
+
+    /// Current focus engine — set by runtime so modifiers can register handlers.
+    nonisolated(unsafe) public static var currentFocusEngine: FocusEngine?
 }

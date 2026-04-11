@@ -55,7 +55,22 @@ public enum Terminal {
     }
 
     public static func exitAlternateScreen() {
+        disableMouseTracking()
         writeRaw("\u{1B}[?25h\u{1B}[?1049l")
+    }
+
+    /// Enable SGR 1006 extended mouse protocol — click, drag, move, scroll.
+    public static func enableMouseTracking() {
+        // 1000: basic mouse tracking
+        // 1002: button event tracking (drag)
+        // 1003: any event tracking (mouse move)
+        // 1006: SGR extended format (for coordinates > 223)
+        writeRaw("\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1003h\u{1B}[?1006h")
+    }
+
+    /// Disable mouse tracking.
+    public static func disableMouseTracking() {
+        writeRaw("\u{1B}[?1006l\u{1B}[?1003l\u{1B}[?1002l\u{1B}[?1000l")
     }
 
     /// Write a string directly to stdout fd — bypasses Swift print/buffering

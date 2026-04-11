@@ -31,6 +31,13 @@ public final class DebugPanel {
     var lastBufferWidth: Int = 0
     var lastBufferHeight: Int = 0
 
+    // Graph tree scroll state
+    var graphScrollOffset: Int = 0
+    var graphTotalLines: Int = 0  // total lines in the tree (calculated each render)
+
+    // Collapsed nodes — tracked by NodeID
+    var collapsedNodes: Set<NodeID> = []
+
     public init() {}
 
     public func toggle() {
@@ -47,7 +54,6 @@ public final class DebugPanel {
         if frameTimes.count > maxHistory {
             frameTimes.removeFirst(frameTimes.count - maxHistory)
         }
-        // Frame timeline mode is always dirty (new data each frame)
         if mode == .frameTimeline { isDirty = true }
     }
 
@@ -64,6 +70,80 @@ public final class DebugPanel {
         if mode == .graphTree { isDirty = true }
     }
 
+    // MARK: - Graph Tree Scroll
+
+    public func scrollGraphUp(amount: Int = 1) {
+        graphScrollOffset = max(0, graphScrollOffset - amount)
+        isDirty = true
+    }
+
+    public func scrollGraphDown(amount: Int = 1) {
+        let maxOffset = max(0, graphTotalLines - 5)  // Keep at least 5 visible lines
+        graphScrollOffset = min(maxOffset, graphScrollOffset + amount)
+        isDirty = true
+    }
+
+    public func scrollGraphPageUp(visibleLines: Int) {
+        scrollGraphUp(amount: max(1, visibleLines - 2))
+    }
+
+    public func scrollGraphPageDown(visibleLines: Int) {
+        scrollGraphDown(amount: max(1, visibleLines - 2))
+    }
+
+    // MARK: - Collapse/Expand
+
+    /// Toggle collapsed state for a node. Called on click or enter.
+    public func toggleCollapse(nodeID: NodeID) {
+        if collapsedNodes.contains(nodeID) {
+            collapsedNodes.remove(nodeID)
+        } else {
+            collapsedNodes.insert(nodeID)
+        }
+        isDirty = true
+    }
+
+    /// Handle a mouse click in the graph tree panel area.
+    /// Returns true if the click was inside the panel and handled.
+    public func handleClick(x: Int, y: Int, graph: AttributeGraph?, bufferWidth: Int, bufferHeight: Int) -> Bool {
+        guard mode == .graphTree else { return false }
+        let panelWidth = min(width, bufferWidth / 2)
+        let panelX = bufferWidth - panelWidth
+        guard x >= panelX && x < bufferWidth else { return false }
+        guard y >= 2 else { return false }  // Skip header rows
+
+        // Find which node this row maps to
+        guard let root = graph?.root else { return false }
+        let targetLine = y - 2 + graphScrollOffset  // 2 = header + separator
+        var currentLine = 0
+        if let nodeID = findNodeAtLine(root, targetLine: targetLine, currentLine: &currentLine) {
+            toggleCollapse(nodeID: nodeID)
+            return true
+        }
+        return false
+    }
+
+    /// Find the NodeID at a specific line in the flattened tree.
+    private func findNodeAtLine(_ node: AttributeNode, targetLine: Int, currentLine: inout Int) -> NodeID? {
+        if currentLine == targetLine {
+            return node.id
+        }
+        currentLine += 1
+
+        if collapsedNodes.contains(node.id) {
+            return nil  // Children hidden
+        }
+
+        for child in node.children {
+            if let found = findNodeAtLine(child, targetLine: targetLine, currentLine: &currentLine) {
+                return found
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Render
+
     /// Render the debug panel into the right side of the buffer.
     /// Uses cached cells when panel content hasn't changed.
     public func render(into buffer: inout CellBuffer, graph: AttributeGraph?, stats: FrameStats) {
@@ -73,7 +153,6 @@ public final class DebugPanel {
         let sizeChanged = buffer.width != lastBufferWidth || buffer.height != lastBufferHeight
 
         if !isDirty && !sizeChanged && mode == lastMode && !cachedPanelCells.isEmpty {
-            // Replay cached cells — skip all rendering work
             for (x, y, cell) in cachedPanelCells {
                 buffer[x, y] = cell
             }
@@ -129,7 +208,13 @@ public final class DebugPanel {
 
         // Footer
         let footerRow = panelHeight - 1
-        writeLine(" ctrl+d: cycle  q: close", into: &buffer, x: panelX + 1, y: footerRow, width: panelWidth - 1, style: dimStyle)
+        let footerText: String
+        if mode == .graphTree {
+            footerText = " ↑↓:scroll  click:fold  ctrl+f:cycle"
+        } else {
+            footerText = " ctrl+f: cycle  q: close"
+        }
+        writeLine(footerText, into: &buffer, x: panelX + 1, y: footerRow, width: panelWidth - 1, style: dimStyle)
 
         // Cache the rendered panel cells for reuse on clean frames
         cachedPanelCells.removeAll(keepingCapacity: true)
@@ -148,15 +233,89 @@ public final class DebugPanel {
 
     func renderGraphTree(into buffer: inout CellBuffer, graph: AttributeGraph?, panelX: Int, startRow: Int, panelWidth: Int, panelHeight: Int, bgStyle: Style, dimStyle: Style, dirtyStyle: Style) {
         guard let root = graph?.root else { return }
+
+        // First pass: count total lines (needed for scroll bounds)
+        graphTotalLines = countLines(root)
+
+        // Clamp scroll offset
+        let visibleLines = panelHeight - startRow - 3  // reserve 2 for end marker + footer
+        if graphTotalLines <= visibleLines {
+            graphScrollOffset = 0
+        } else {
+            graphScrollOffset = min(graphScrollOffset, max(0, graphTotalLines - visibleLines))
+        }
+
+        // Second pass: flatten tree into lines, respecting collapsed state
+        var allLines: [(depth: Int, node: AttributeNode, isCollapsed: Bool)] = []
+        flattenTree(root, depth: 0, into: &allLines)
+
+        // Render visible slice
+        let visibleSlice = allLines.dropFirst(graphScrollOffset).prefix(visibleLines)
         var row = startRow
-        renderNode(root, into: &buffer, panelX: panelX, row: &row, panelWidth: panelWidth, maxRow: panelHeight - 2, depth: 0, bgStyle: bgStyle, dimStyle: dimStyle, dirtyStyle: dirtyStyle)
+
+        // Scroll indicator at top
+        if graphScrollOffset > 0 {
+            let indicator = " ▲ \(graphScrollOffset) more above"
+            writeLine(indicator, into: &buffer, x: panelX, y: row, width: panelWidth, style: dimStyle)
+            row += 1
+        }
+
+        for (depth, node, isCollapsed) in visibleSlice {
+            guard row < panelHeight - 2 else { break }
+            renderNodeLine(node, depth: depth, isCollapsed: isCollapsed, into: &buffer, panelX: panelX, y: row, panelWidth: panelWidth, bgStyle: bgStyle, dimStyle: dimStyle, dirtyStyle: dirtyStyle)
+            row += 1
+        }
+
+        // End-of-tree separator
+        let linesBelow = graphTotalLines - graphScrollOffset - visibleLines
+        if linesBelow > 0 {
+            let indicator = " ▼ \(linesBelow) more below"
+            writeLine(indicator, into: &buffer, x: panelX, y: row, width: panelWidth, style: dimStyle)
+            row += 1
+        } else {
+            // End marker
+            writeLine(String(repeating: "─", count: panelWidth), into: &buffer, x: panelX, y: row, width: panelWidth, style: dimStyle)
+            row += 1
+            writeLine(" end of tree", into: &buffer, x: panelX, y: row, width: panelWidth, style: dimStyle)
+        }
     }
 
-    func renderNode(_ node: AttributeNode, into buffer: inout CellBuffer, panelX: Int, row: inout Int, panelWidth: Int, maxRow: Int, depth: Int, bgStyle: Style, dimStyle: Style, dirtyStyle: Style) {
-        guard row < maxRow else { return }
+    /// Count total visible lines in the tree (respecting collapsed state).
+    func countLines(_ node: AttributeNode) -> Int {
+        var count = 1  // This node
+        if !collapsedNodes.contains(node.id) {
+            for child in node.children {
+                count += countLines(child)
+            }
+        }
+        return count
+    }
 
+    /// Flatten the tree into an array of (depth, node, isCollapsed) for rendering.
+    func flattenTree(_ node: AttributeNode, depth: Int, into result: inout [(depth: Int, node: AttributeNode, isCollapsed: Bool)]) {
+        let isCollapsed = collapsedNodes.contains(node.id) && !node.children.isEmpty
+        result.append((depth: depth, node: node, isCollapsed: isCollapsed))
+
+        if !collapsedNodes.contains(node.id) {
+            for child in node.children {
+                flattenTree(child, depth: depth + 1, into: &result)
+            }
+        }
+    }
+
+    /// Render a single node line.
+    func renderNodeLine(_ node: AttributeNode, depth: Int, isCollapsed: Bool, into buffer: inout CellBuffer, panelX: Int, y: Int, panelWidth: Int, bgStyle: Style, dimStyle: Style, dirtyStyle: Style) {
         let indent = String(repeating: "  ", count: min(depth, 8))
-        let prefix = depth > 0 ? "├─" : ""
+
+        // Collapse indicator for nodes with children
+        let collapsePrefix: String
+        if node.children.isEmpty {
+            collapsePrefix = depth > 0 ? "──" : ""
+        } else if isCollapsed {
+            collapsePrefix = "▸ "
+        } else {
+            collapsePrefix = "▾ "
+        }
 
         let kind: String
         let detail: String
@@ -193,7 +352,8 @@ public final class DebugPanel {
             case .hstack: kind = "H"
             case .zstack: kind = "Z"
             }
-            detail = "[\(node.children.count)]"
+            let childCount = isCollapsed ? "[\(node.children.count)…]" : "[\(node.children.count)]"
+            detail = childCount
             style = node.isDirty ? dirtyStyle : Style(foreground: .cyan, background: .ansi256(236), bold: false, italic: false, underline: false)
 
         case .modifier(let effect):
@@ -210,28 +370,27 @@ public final class DebugPanel {
             case .overlay: kind = "ovl"; detail = ""
             case .backgroundView: kind = "bg"; detail = ""
             case .modal(let p): kind = "mdl"; detail = p ? "on" : "off"
+            case .focusable: kind = "fcs"; detail = ""
+            case .onKeyPress: kind = "key"; detail = ""
+            case .onAppear: kind = "app"; detail = ""
+            case .onClick: kind = "clk"; detail = ""
             }
             style = node.isDirty ? dirtyStyle : dimStyle
 
         case .viewBody(let info):
             kind = info.viewTypeName
-            detail = ""
+            detail = isCollapsed ? " …" : ""
             style = node.isDirty ? dirtyStyle : Style(foreground: .green, background: .ansi256(236), bold: false, italic: false, underline: false)
         }
 
         let line: String
         if detail.isEmpty {
-            line = "\(indent)\(prefix)\(kind)"
+            line = "\(indent)\(collapsePrefix)\(kind)"
         } else {
-            line = "\(indent)\(prefix)\(kind) \(detail)"
+            line = "\(indent)\(collapsePrefix)\(kind) \(detail)"
         }
 
-        writeLine(line, into: &buffer, x: panelX, y: row, width: panelWidth, style: style)
-        row += 1
-
-        for child in node.children {
-            renderNode(child, into: &buffer, panelX: panelX, row: &row, panelWidth: panelWidth, maxRow: maxRow, depth: depth + 1, bgStyle: bgStyle, dimStyle: dimStyle, dirtyStyle: dirtyStyle)
-        }
+        writeLine(line, into: &buffer, x: panelX, y: y, width: panelWidth, style: style)
     }
 
     // MARK: - Frame Timeline
@@ -328,6 +487,7 @@ public final class DebugPanel: Sendable {
     @inline(__always) public func recordFrameTime(_ ms: Double) {}
     @inline(__always) public func recordInput(_ description: String, timestamp: Double) {}
     @inline(__always) public func render(into buffer: inout CellBuffer, graph: AttributeGraph?, stats: FrameStats) {}
+    @inline(__always) public func markGraphDirty() {}
 }
 
 #endif

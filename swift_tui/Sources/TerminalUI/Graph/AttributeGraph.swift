@@ -110,8 +110,12 @@ public final class AttributeGraph {
         if let modified = view as? any _GraphModified {
             if case .modifier = node.kind {
                 let newEffect = modified.graphEffect()
-                let oldEffect = node.kind
                 node.kind = .modifier(newEffect)
+
+                // Keep focusable flag in sync
+                if case .focusable = newEffect {
+                    node.isFocusable = true
+                }
 
                 // Update base child
                 if let child = node.children.first {
@@ -324,6 +328,11 @@ public final class AttributeGraph {
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
         let effect = modified.graphEffect()
         let node = AttributeNode(id: id, kind: .modifier(effect))
+
+        // Mark focusable during construction so it's available before first render
+        if case .focusable = effect {
+            node.isFocusable = true
+        }
 
         // Base view child (child[0])
         let childID = id.appending(.index(0))

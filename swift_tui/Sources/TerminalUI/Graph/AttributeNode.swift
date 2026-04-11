@@ -17,6 +17,12 @@ public class AttributeNode {
     /// @TerminalState creates slots here during first body evaluation.
     public var stateSlots: [AnyStateStorage] = []
 
+    /// Whether this node can receive focus (set by .focusable() modifier).
+    public var isFocusable: Bool = false
+
+    /// Whether onAppear has already fired for this node.
+    public var didAppear: Bool = false
+
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind
@@ -100,6 +106,10 @@ public enum ModifierEffect {
     case overlay     // child[0] = base, child[1] = overlay content
     case backgroundView  // child[0] = background content, child[1] = base (render bg first)
     case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
+    case focusable   // marks the child as able to receive focus
+    case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
+    case onAppear    // fires action on first graph construction (tracked on node)
+    case onClick     // attaches click handler (handler stored on FocusEngine)
 }
 
 // MARK: - View Body
