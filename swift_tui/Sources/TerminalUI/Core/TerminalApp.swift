@@ -303,7 +303,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
             let view = buildView()
             let graphChanged = graph.update(from: view)
 
-            if graphChanged || previousBuffer == nil {
+            // Render if graph changed OR if we were explicitly told to (key press, etc.)
+            if graphChanged || previousBuffer == nil || needsRender {
                 var buffer = CellBuffer(width: size.cols, height: size.rows)
                 let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
                 if let root = graph.root {

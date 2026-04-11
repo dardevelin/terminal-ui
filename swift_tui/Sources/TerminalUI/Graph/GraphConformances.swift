@@ -47,29 +47,62 @@ extension ModifiedView: _GraphModified {
 
 extension ConditionalView: _GraphConditional {
     func constructConditionalNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
+        // Create a wrapper node for the conditional — viewBody with "Conditional" name
+        let info = ViewBodyInfo(viewTypeName: "Conditional")
+        let node = AttributeNode(id: id, kind: .viewBody(info))
+
         switch self {
         case .first(let view):
-            return graph.constructNode(for: view, id: id.appending(.conditional(true)))
+            let childNode = graph.constructNode(for: view, id: id.appending(.conditional(true)))
+            childNode.parent = node
+            node.children = [childNode]
         case .second(let view):
-            return graph.constructNode(for: view, id: id.appending(.conditional(false)))
+            let childNode = graph.constructNode(for: view, id: id.appending(.conditional(false)))
+            childNode.parent = node
+            node.children = [childNode]
         }
+        return node
     }
 
     func updateConditionalNode(_ node: AttributeNode, graph: AttributeGraph) {
+        let currentBranch: Bool
         switch self {
-        case .first(let view):
-            // Check if the branch is the same
-            if node.children.count == 1, let child = node.children.first {
-                graph.updateNode(child, from: view)
-            } else {
+        case .first: currentBranch = true
+        case .second: currentBranch = false
+        }
+
+        // Check what branch was active before
+        let existingBranch: Bool?
+        if let child = node.children.first,
+           let lastComponent = child.id.path.last,
+           case .conditional(let b) = lastComponent {
+            existingBranch = b
+        } else {
+            existingBranch = nil
+        }
+
+        if currentBranch == existingBranch {
+            // Same branch — update child in place
+            switch self {
+            case .first(let view):
+                if let child = node.children.first {
+                    graph.updateNode(child, from: view)
+                }
+            case .second(let view):
+                if let child = node.children.first {
+                    graph.updateNode(child, from: view)
+                }
+            }
+        } else {
+            // Branch flipped — rebuild child
+            graph.changed = true
+            node.children.removeAll()
+            switch self {
+            case .first(let view):
                 let childNode = graph.constructNode(for: view, id: node.id.appending(.conditional(true)))
                 childNode.parent = node
                 node.children = [childNode]
-            }
-        case .second(let view):
-            if node.children.count == 1, let child = node.children.first {
-                graph.updateNode(child, from: view)
-            } else {
+            case .second(let view):
                 let childNode = graph.constructNode(for: view, id: node.id.appending(.conditional(false)))
                 childNode.parent = node
                 node.children = [childNode]
