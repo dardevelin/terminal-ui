@@ -12,10 +12,24 @@ public struct TerminalSize: Sendable {
 public enum Terminal {
     nonisolated(unsafe) private static var originalTermios: termios?
 
+    /// Minimum size for debug traces — prevents 0x0 captures
+    #if DEBUG
+    nonisolated(unsafe) public static var debugMinSize: TerminalSize? = TerminalSize(cols: 80, rows: 24)
+    #endif
+
     public static func size() -> TerminalSize {
         var ws = winsize()
         _ = ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &ws)
-        return TerminalSize(cols: Int(ws.ws_col), rows: Int(ws.ws_row))
+        var size = TerminalSize(cols: Int(ws.ws_col), rows: Int(ws.ws_row))
+
+        #if DEBUG
+        // In debug, enforce minimum size so traces are useful
+        if let minSize = debugMinSize, size.cols == 0 || size.rows == 0 {
+            size = minSize
+        }
+        #endif
+
+        return size
     }
 
     public static func enableRawMode() {

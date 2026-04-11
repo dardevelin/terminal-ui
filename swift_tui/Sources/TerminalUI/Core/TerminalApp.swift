@@ -83,6 +83,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var size: TerminalSize
     private var previousBuffer: CellBuffer?
     private var needsRender: Bool = true
+    private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
     private let eventQueue = EventQueue()
     private var outputBuffer = OutputBuffer()
@@ -190,6 +191,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         case .toggleDebugOverlay: debugOverlay.toggle()
                         case .toggleDebugPanel: debugPanel.toggle()
                         case .toggleInspector: inspector.toggle()
+                        case .captureFrame: captureCurrentFrame = true
                         default: break
                         }
                     }
@@ -327,6 +329,34 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 debugOverlay.render(into: &buffer, stats: frameStats)
                 debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
                 inspector.render(into: &buffer, graph: graph)
+
+                // On-demand frame capture (ctrl+s)
+                if captureCurrentFrame {
+                    captureCurrentFrame = false
+                    let captureDir = ".swift_tui/captures"
+                    try? FileManager.default.createDirectory(atPath: captureDir, withIntermediateDirectories: true)
+                    let ts = Int(ProcessInfo.processInfo.systemUptime * 1000)
+
+                    // Text screenshot
+                    var text = "capture: \(ts)\nsize: \(buffer.width)x\(buffer.height)\n---\n"
+                    for y in 0..<buffer.height {
+                        for x in 0..<buffer.width {
+                            text += String(buffer[x, y].character)
+                        }
+                        text += "\n"
+                    }
+                    try? text.write(toFile: "\(captureDir)/\(ts).txt", atomically: true, encoding: .utf8)
+
+                    // ANSI screenshot
+                    try? buffer.fullRender().write(toFile: "\(captureDir)/\(ts).ansi", atomically: true, encoding: .utf8)
+
+                    // Graph snapshot
+                    if let root = graph.root {
+                        var graphDump = "graph capture: \(ts)\n"
+                        dumpNode(root, depth: 0, into: &graphDump)
+                        try? graphDump.write(toFile: "\(captureDir)/\(ts).graph", atomically: true, encoding: .utf8)
+                    }
+                }
                 #endif
 
                 let changedCells = buffer.countDiff(from: previousBuffer)
@@ -405,6 +435,37 @@ public final class TerminalRuntime<RootView: TerminalView> {
         case .unknown(let b): parts.append("?\(b)")
         }
         return parts.joined(separator: "-")
+    }
+
+    private func dumpNode(_ node: AttributeNode, depth: Int, into output: inout String) {
+        let indent = String(repeating: "  ", count: depth)
+        let r = node.rect
+        let kind: String
+        switch node.kind {
+        case .primitive(let c):
+            switch c {
+            case .text(let s): kind = "Text(\(s.prefix(20)))"
+            case .spacer: kind = "Spacer"
+            case .divider: kind = "Divider"
+            case .progressBar(let v, _, _, _): kind = "ProgressBar(\(Int(v*100))%)"
+            case .spinner(let f, _): kind = "Spinner(f:\(f))"
+            case .empty: kind = "Empty"
+            }
+        case .layout(let info):
+            switch info.kind {
+            case .vstack: kind = "VStack[\(node.children.count)]"
+            case .hstack: kind = "HStack[\(node.children.count)]"
+            case .zstack: kind = "ZStack[\(node.children.count)]"
+            }
+        case .modifier(let effect):
+            kind = ".\(effect)"
+        case .viewBody(let info):
+            kind = info.viewTypeName
+        }
+        output += "\(indent)\(kind) @ (\(r.intX),\(r.intY) \(r.intWidth)x\(r.intHeight))\n"
+        for child in node.children {
+            dumpNode(child, depth: depth + 1, into: &output)
+        }
     }
     #endif
 }
