@@ -13,6 +13,10 @@ public class AttributeNode {
     /// Style inherited from parent + modifiers
     public var resolvedStyle: Style = .plain
 
+    /// State storage slots — persisted across body re-evaluations.
+    /// @TerminalState creates slots here during first body evaluation.
+    public var stateSlots: [AnyStateStorage] = []
+
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind

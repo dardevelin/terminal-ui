@@ -1,3 +1,5 @@
+import Observation
+
 /// The attribute graph — persistent DAG of typed nodes.
 /// Owns the root node, manages reconciliation, tracks dirty state.
 /// First frame: builds from scratch. Subsequent frames: updates in place.
@@ -27,6 +29,48 @@ public final class AttributeGraph {
 
     /// Tracks whether any values changed during update
     private var changed = false
+
+    // MARK: - Body Evaluation with Observation
+
+    /// Evaluate a composite view's body with observation tracking.
+    /// Sets GraphContext so @TerminalState can connect to storage.
+    /// Uses withObservationTracking so state access creates dependency edges.
+    func evaluateBody<V: TerminalView>(node: AttributeNode, view: V) {
+        // Set context so @TerminalState finds this node's storage
+        let prevNode = GraphContext.currentNode
+        let prevGraph = GraphContext.currentGraph
+        GraphContext.currentNode = node
+        GraphContext.currentGraph = self
+
+        // Evaluate body with observation tracking
+        nonisolated(unsafe) let capturedNode = node
+        nonisolated(unsafe) let capturedGraph = self
+        let body: V.Body = withObservationTracking {
+            view.body
+        } onChange: {
+            capturedNode.markDirty()
+            capturedGraph.hasDirtyNodes = true
+        }
+
+        // Restore context
+        GraphContext.currentNode = prevNode
+        GraphContext.currentGraph = prevGraph
+
+        // Update or create child from body result
+        if let child = node.children.first {
+            updateNode(child, from: body)
+        } else {
+            let childNode = constructNode(for: body, id: node.id.appending(.index(0)))
+            childNode.parent = node
+            node.children = [childNode]
+        }
+
+        // If the body produced different output, mark changed
+        if node.isDirty {
+            changed = true
+            node.isDirty = false
+        }
+    }
 
     // MARK: - In-Place Update
 
@@ -70,17 +114,9 @@ public final class AttributeGraph {
             return
         }
 
-        // Composite view — re-evaluate body, update child
+        // Composite view — re-evaluate body with observation tracking
         if !(V.Body.self == Never.self) {
-            let body = view.body
-            if let child = node.children.first {
-                updateNode(child, from: body)
-            } else {
-                // No child yet — build
-                let childNode = constructNode(for: body, id: node.id.appending(.index(0)))
-                childNode.parent = node
-                node.children = [childNode]
-            }
+            evaluateBody(node: node, view: view)
             return
         }
     }
@@ -238,7 +274,25 @@ public final class AttributeGraph {
         }
         let info = ViewBodyInfo(viewTypeName: String(describing: V.self))
         let node = AttributeNode(id: id, kind: .viewBody(info))
-        let body = view.body
+
+        // Set context and evaluate with observation
+        let prevNode = GraphContext.currentNode
+        let prevGraph = GraphContext.currentGraph
+        GraphContext.currentNode = node
+        GraphContext.currentGraph = self
+
+        nonisolated(unsafe) let capturedNode2 = node
+        nonisolated(unsafe) let capturedGraph2 = self
+        let body: V.Body = withObservationTracking {
+            view.body
+        } onChange: {
+            capturedNode2.markDirty()
+            capturedGraph2.hasDirtyNodes = true
+        }
+
+        GraphContext.currentNode = prevNode
+        GraphContext.currentGraph = prevGraph
+
         let childID = id.appending(.index(0))
         let childNode = constructNode(for: body, id: childID)
         childNode.parent = node

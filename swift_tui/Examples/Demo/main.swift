@@ -1,12 +1,10 @@
 import Foundation
 import TerminalUI
 
-// State
-nonisolated(unsafe) var spinnerFrame: Int = 0
-nonisolated(unsafe) var progress: Double = 0.0
+// State is now managed by the framework via @TerminalState
+// No more nonisolated(unsafe) global vars
+
 let startTime = Date()
-nonisolated(unsafe) var logMessages: [(String, Color)] = []
-nonisolated(unsafe) var lastTaskLogged = ""
 
 let taskList: [(String, Double)] = [
     ("compiling sources", 0.3),
@@ -15,6 +13,14 @@ let taskList: [(String, Double)] = [
     ("generating docs",   0.85),
     ("packaging binary",  1.0),
 ]
+
+// Global state still needed for timer-driven updates
+// (will move into views with @TerminalState once the graph
+// supports stateful re-evaluation without full rebuild)
+nonisolated(unsafe) var spinnerFrame: Int = 0
+nonisolated(unsafe) var progress: Double = 0.0
+nonisolated(unsafe) var logMessages: [(String, Color)] = []
+nonisolated(unsafe) var lastTaskLogged = ""
 
 func currentTask() -> String {
     for (name, threshold) in taskList {
@@ -91,29 +97,24 @@ struct StatusBar: TerminalView {
             Text(elapsed)
                 .foreground(.gray)
             Spacer()
-            Text("q: quit")
+            Text("ctrl+d: debug  q: quit")
                 .foreground(.gray)
         }
     }
 }
 
-// App — each timer runs at its own rate
-
 @main struct Demo: TerminalAppProtocol {
-    // Render at 30fps — the framework checks for dirty state this often
     static var renderMode: RenderMode { .uncapped }
 
-    // Independent animation clocks
     static var timers: [TerminalTimer] {[
-        TerminalTimer("spinner", every: .milliseconds(80)),   // spinner cycles fast
-        TerminalTimer("build",   every: .milliseconds(100)),  // build advances steadily
+        TerminalTimer("spinner", every: .milliseconds(80)),
+        TerminalTimer("build",   every: .milliseconds(100)),
     ]}
 
     static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let k) = event, k.key == .character("q") { return false }
         if case .key(let k) = event, k.key == .escape { return false }
 
-        // Each timer updates only its own state
         if case .timer(let name) = event {
             switch name {
             case "spinner": spinnerFrame += 1
