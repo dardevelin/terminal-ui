@@ -166,6 +166,7 @@ struct MorseSignal: TerminalView {
 @Observable
 final class AppState {
     var inputText: String = "HELLO WORLD"
+    var promptState: PromptInputState = PromptInputState()
     var scrollOffset: Int = 0
     var paused: Bool = false
 }
@@ -185,7 +186,8 @@ nonisolated(unsafe) let state = AppState()
         switch event {
         case .key(let k):
             switch k.key {
-            case .escape: return false
+            case .character("c") where k.modifiers.contains(.ctrl): return false
+            case .character("q") where k.modifiers.contains(.ctrl): return false
             case .character("p") where k.modifiers.contains(.ctrl):
                 state.paused.toggle()
             default: break
@@ -213,22 +215,26 @@ nonisolated(unsafe) let state = AppState()
 
                 Text("")
 
-                // Input field
-                HStack {
-                    Text("  ")
-                    TextInput("\u{25B8} ", text: Binding(
+                // Input field — full width
+                PromptInput(
+                    text: Binding(
                         get: { state.inputText },
                         set: {
                             state.inputText = $0
                             state.scrollOffset = 0
                         }
-                    ))
-                    .foreground(.cyan)
-                    Spacer()
-                    Text(state.paused ? " \u{25A0} PAUSED " : " \u{25B6} LIVE ")
-                        .foreground(state.paused ? .yellow : .green)
-                    Text("  ")
-                }
+                    ),
+                    state: Binding(
+                        get: { state.promptState },
+                        set: { state.promptState = $0 }
+                    ),
+                    prompt: "\u{276F}",
+                    badge: state.paused ? "PAUSED" : "LIVE",
+                    maxVisibleLines: 4,
+                    onSubmit: { _ in
+                        state.scrollOffset = 0
+                    }
+                )
 
                 Text("")
 
@@ -243,7 +249,7 @@ nonisolated(unsafe) let state = AppState()
 
                 // Bottom hint
                 HStack {
-                    Text("  tab: edit  ctrl+p: pause  esc: quit")
+                    Text("  tab: focus input  ctrl+p: pause  ctrl+c: quit")
                         .foreground(.ansi256(238))
                     Spacer()
                 }
