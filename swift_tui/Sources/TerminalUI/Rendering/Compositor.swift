@@ -4,14 +4,24 @@ public struct Layer {
     public var x: Int
     public var y: Int
     public var style: LayerStyle
+    /// Previous buffer for delta detection
+    public var previousBuffer: CellBuffer?
+    /// Dirty rect — nil means fully dirty, empty rect means clean
+    public var dirtyRect: DirtyRegion
 
     public enum LayerStyle {
-        /// Opaque — all cells in the buffer replace whatever is below
         case opaque
-        /// Transparent — only non-empty cells replace what's below
         case transparent
-        /// Dim — modifies the cells below (changes foreground color)
         case dim(Color)
+    }
+
+    public enum DirtyRegion: Equatable {
+        /// Entire layer needs recompositing
+        case full
+        /// Only this rect changed
+        case rect(x: Int, y: Int, width: Int, height: Int)
+        /// Nothing changed — skip this layer
+        case clean
     }
 
     public init(width: Int, height: Int, x: Int = 0, y: Int = 0, style: LayerStyle = .opaque) {
@@ -19,58 +29,171 @@ public struct Layer {
         self.x = x
         self.y = y
         self.style = style
+        self.previousBuffer = nil
+        self.dirtyRect = .full
+    }
+
+    /// Compare against previous buffer and compute dirty region.
+    public mutating func computeDirtyRegion() {
+        guard let prev = previousBuffer,
+              prev.width == buffer.width,
+              prev.height == buffer.height else {
+            dirtyRect = .full
+            return
+        }
+
+        var minX = buffer.width, minY = buffer.height
+        var maxX = -1, maxY = -1
+
+        for y in 0..<buffer.height {
+            for x in 0..<buffer.width {
+                if buffer[x, y] != prev[x, y] {
+                    minX = min(minX, x)
+                    minY = min(minY, y)
+                    maxX = max(maxX, x)
+                    maxY = max(maxY, y)
+                }
+            }
+        }
+
+        if maxX < 0 {
+            dirtyRect = .clean
+        } else {
+            dirtyRect = .rect(x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1)
+        }
+    }
+
+    /// Snapshot current buffer as previous for next frame's delta.
+    public mutating func snapshotBuffer() {
+        previousBuffer = buffer
     }
 }
 
 /// Composites multiple layers into a final cell buffer.
-/// Layers are applied bottom-to-top. Higher layers occlude lower ones
-/// within their bounds.
+/// Supports full and delta compositing.
 public enum Compositor {
 
-    /// Merge all layers into the output buffer, bottom to top.
+    /// Full composite — merge all layers, bottom to top.
     public static func composite(layers: [Layer], into output: inout CellBuffer) {
         for layer in layers {
-            switch layer.style {
-            case .opaque:
-                // Every cell from this layer replaces the output
-                for ly in 0..<layer.buffer.height {
-                    let outY = layer.y + ly
-                    guard outY >= 0, outY < output.height else { continue }
-                    for lx in 0..<layer.buffer.width {
-                        let outX = layer.x + lx
-                        guard outX >= 0, outX < output.width else { continue }
-                        output[outX, outY] = layer.buffer[lx, ly]
-                    }
-                }
+            compositeLayer(layer, into: &output, region: .full)
+        }
+    }
 
-            case .transparent:
-                // Only non-empty cells from this layer replace the output
-                for ly in 0..<layer.buffer.height {
-                    let outY = layer.y + ly
-                    guard outY >= 0, outY < output.height else { continue }
-                    for lx in 0..<layer.buffer.width {
-                        let outX = layer.x + lx
-                        guard outX >= 0, outX < output.width else { continue }
-                        let cell = layer.buffer[lx, ly]
-                        if cell != .empty {
-                            output[outX, outY] = cell
-                        }
-                    }
-                }
+    /// Delta composite — only recomposite dirty regions.
+    /// Layers that haven't changed are skipped entirely.
+    /// Returns the bounding rect of all changes in output coordinates, or nil if nothing changed.
+    public static func deltaComposite(layers: inout [Layer], into output: inout CellBuffer) -> (x: Int, y: Int, width: Int, height: Int)? {
+        // Compute dirty regions for each layer
+        for i in 0..<layers.count {
+            layers[i].computeDirtyRegion()
+        }
 
-            case .dim(let color):
-                // Modify existing cells — change foreground, don't replace content
-                for ly in 0..<layer.buffer.height {
-                    let outY = layer.y + ly
-                    guard outY >= 0, outY < output.height else { continue }
-                    for lx in 0..<layer.buffer.width {
-                        let outX = layer.x + lx
-                        guard outX >= 0, outX < output.width else { continue }
-                        var cell = output[outX, outY]
-                        cell.style.foreground = color
-                        cell.style.bold = false
+        // Find union of all dirty regions in output space
+        var dirtyMinX = output.width, dirtyMinY = output.height
+        var dirtyMaxX = -1, dirtyMaxY = -1
+
+        for layer in layers {
+            switch layer.dirtyRect {
+            case .full:
+                // Full layer dirty — entire layer bounds are dirty in output space
+                dirtyMinX = min(dirtyMinX, layer.x)
+                dirtyMinY = min(dirtyMinY, layer.y)
+                dirtyMaxX = max(dirtyMaxX, layer.x + layer.buffer.width - 1)
+                dirtyMaxY = max(dirtyMaxY, layer.y + layer.buffer.height - 1)
+
+            case .rect(let rx, let ry, let rw, let rh):
+                // Partial dirty — translate to output space
+                dirtyMinX = min(dirtyMinX, layer.x + rx)
+                dirtyMinY = min(dirtyMinY, layer.y + ry)
+                dirtyMaxX = max(dirtyMaxX, layer.x + rx + rw - 1)
+                dirtyMaxY = max(dirtyMaxY, layer.y + ry + rh - 1)
+
+            case .clean:
+                continue
+            }
+        }
+
+        // Nothing dirty across all layers
+        if dirtyMaxX < 0 { return nil }
+
+        // Clamp to output bounds
+        dirtyMinX = max(0, dirtyMinX)
+        dirtyMinY = max(0, dirtyMinY)
+        dirtyMaxX = min(output.width - 1, dirtyMaxX)
+        dirtyMaxY = min(output.height - 1, dirtyMaxY)
+
+        let dirtyW = dirtyMaxX - dirtyMinX + 1
+        let dirtyH = dirtyMaxY - dirtyMinY + 1
+
+        // Recomposite only the dirty region from ALL layers
+        // (because higher layers may occlude lower layers in the dirty area)
+        let outputRegion = Layer.DirtyRegion.rect(x: dirtyMinX, y: dirtyMinY, width: dirtyW, height: dirtyH)
+        for layer in layers {
+            compositeLayer(layer, into: &output, region: outputRegion)
+        }
+
+        // Snapshot all layers for next frame
+        for i in 0..<layers.count {
+            layers[i].snapshotBuffer()
+        }
+
+        return (x: dirtyMinX, y: dirtyMinY, width: dirtyW, height: dirtyH)
+    }
+
+    // MARK: - Internal
+
+    static func compositeLayer(_ layer: Layer, into output: inout CellBuffer, region: Layer.DirtyRegion) {
+        // Determine the output rect to process
+        let (startX, startY, endX, endY): (Int, Int, Int, Int)
+
+        switch region {
+        case .full:
+            startX = max(0, layer.x)
+            startY = max(0, layer.y)
+            endX = min(output.width, layer.x + layer.buffer.width)
+            endY = min(output.height, layer.y + layer.buffer.height)
+        case .rect(let rx, let ry, let rw, let rh):
+            // Intersect the dirty rect with the layer's bounds in output space
+            startX = max(rx, layer.x)
+            startY = max(ry, layer.y)
+            endX = min(rx + rw, min(output.width, layer.x + layer.buffer.width))
+            endY = min(ry + rh, min(output.height, layer.y + layer.buffer.height))
+        case .clean:
+            return
+        }
+
+        guard startX < endX, startY < endY else { return }
+
+        switch layer.style {
+        case .opaque:
+            for outY in startY..<endY {
+                let ly = outY - layer.y
+                for outX in startX..<endX {
+                    let lx = outX - layer.x
+                    output[outX, outY] = layer.buffer[lx, ly]
+                }
+            }
+
+        case .transparent:
+            for outY in startY..<endY {
+                let ly = outY - layer.y
+                for outX in startX..<endX {
+                    let lx = outX - layer.x
+                    let cell = layer.buffer[lx, ly]
+                    if cell != .empty {
                         output[outX, outY] = cell
                     }
+                }
+            }
+
+        case .dim(let color):
+            for outY in startY..<endY {
+                for outX in startX..<endX {
+                    var cell = output[outX, outY]
+                    cell.style.foreground = color
+                    cell.style.bold = false
+                    output[outX, outY] = cell
                 }
             }
         }
