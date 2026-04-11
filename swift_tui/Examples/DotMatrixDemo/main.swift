@@ -204,8 +204,6 @@ nonisolated(unsafe) let state = AppState()
     static func content() -> some TerminalView {
         GeometryReader { size in
             VStack {
-                Spacer()
-
                 // Morse signal — the main visual, edge to edge
                 MorseSignal(
                     tape: Morse.encode(state.inputText),
@@ -215,7 +213,7 @@ nonisolated(unsafe) let state = AppState()
 
                 Text("")
 
-                // Input field — full width
+                // Input field — full width, grows downward
                 PromptInput(
                     text: Binding(
                         get: { state.inputText },
@@ -245,7 +243,7 @@ nonisolated(unsafe) let state = AppState()
                         .foreground(.ansi256(242))
                 }
 
-                Text("")
+                Spacer()
 
                 // Bottom hint
                 HStack {
