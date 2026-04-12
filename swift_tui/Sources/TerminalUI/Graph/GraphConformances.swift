@@ -1,5 +1,35 @@
 // Connect existing view types to the attribute graph.
 
+// MARK: - TupleView unpacking
+
+func extractChildren(from value: Any) -> [Any] {
+    let mirror = Mirror(reflecting: value)
+
+    if let tupleView = value as? any _TupleViewProtocol {
+        return tupleView.children()
+    }
+
+    if mirror.displayStyle == .tuple {
+        return mirror.children.map(\.value)
+    }
+
+    return [value]
+}
+
+protocol _TupleViewProtocol {
+    func children() -> [Any]
+}
+
+extension TupleView: _TupleViewProtocol {
+    public func children() -> [Any] {
+        let mirror = Mirror(reflecting: value)
+        if mirror.displayStyle == .tuple {
+            return mirror.children.map(\.value)
+        }
+        return [value]
+    }
+}
+
 // MARK: - VStack
 
 extension VStack: _GraphVStack {

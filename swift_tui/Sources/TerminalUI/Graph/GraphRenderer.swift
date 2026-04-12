@@ -1,3 +1,13 @@
+public struct RenderContext {
+    public var style: Style
+    public var rect: Rect
+
+    public init(style: Style = .plain, rect: Rect) {
+        self.style = style
+        self.rect = rect
+    }
+}
+
 /// Renderer that walks the attribute graph instead of the view tree.
 /// Switches on NodeKind enum — no Any, no as?, no protocol conformance checks.
 public enum GraphRenderer {
@@ -378,37 +388,8 @@ public enum GraphRenderer {
     // MARK: - Focus Rendering
 
     /// Draw focus indicators after the main render pass.
-    /// Keyboard focus: highlighted border/underline on the focused node's rect.
-    /// Mouse hover: subtle highlight on hovered node's rect.
-    public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine) {
-        // Keyboard focus — bold cyan left edge indicator
-        if let focusedID = focusEngine.keyboardFocusID,
-           let root = findRootForFocus(in: buffer),
-           let node = focusEngine.findNode(id: focusedID, in: root) {
-            let r = node.rect
-            // Draw focus indicator: cyan left bar
-            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
-            for y in r.y..<min(r.y + r.height, buffer.height) {
-                guard r.x > 0 else { continue }
-                buffer[r.x - 1, y] = Cell(character: "▎", style: focusStyle)
-            }
-        }
-
-        // Mouse hover — dim highlight on hovered node
-        if let hoverID = focusEngine.mouseHoverID,
-           hoverID != focusEngine.keyboardFocusID,
-           let root = findRootForFocus(in: buffer),
-           let node = focusEngine.findNode(id: hoverID, in: root) {
-            let r = node.rect
-            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: true)
-            for y in r.y..<min(r.y + r.height, buffer.height) {
-                guard r.x > 0 else { continue }
-                buffer[r.x - 1, y] = Cell(character: "▏", style: hoverStyle)
-            }
-        }
-    }
-
-    /// Render focus indicators using the graph root directly.
+    /// Keyboard focus: cyan left edge bar on focused node's rect.
+    /// Mouse hover: subtle bar on hovered node's rect.
     public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine, root: AttributeNode?) {
         guard let root else { return }
 
@@ -434,11 +415,6 @@ public enum GraphRenderer {
                 buffer[r.x - 1, y] = Cell(character: "▏", style: hoverStyle)
             }
         }
-    }
-
-    // Temporary: buffer doesn't carry graph root, so this is unused
-    private static func findRootForFocus(in buffer: CellBuffer) -> AttributeNode? {
-        nil
     }
 
     // MARK: - Rect Offset (for modal hit testing)

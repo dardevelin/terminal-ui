@@ -640,11 +640,18 @@ public enum TerminalApp {
     public static func print<V: TerminalView>(_ view: V, width: Int? = nil) {
         let size = Terminal.size()
         let cols = width ?? size.cols
-        let height = max(Renderer.measureHeight(view, proposedWidth: cols), 1)
+
+        let graph = AttributeGraph()
+        graph.update(from: view)
+
+        guard let root = graph.root else { return }
+
+        let measuredHeight = GraphMeasurer.measureHeight(root, proposedWidth: cols)
+        let height = max(measuredHeight, 1)
 
         var buffer = CellBuffer(width: cols, height: height)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: cols, height: height))
-        Renderer.render(view, into: &buffer, context: context)
+        GraphRenderer.render(root, into: &buffer, context: context)
 
         for y in 0..<height {
             var line = ""

@@ -255,7 +255,7 @@ public struct CellBuffer: Sendable {
         out.writeReset()
     }
 
-    // MARK: - Legacy String-based rendering (kept for TerminalApp.print)
+    // MARK: - String-based rendering (used by frame capture)
 
     func fullRender() -> String {
         var output = "\u{1B}[H" // cursor home
