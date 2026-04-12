@@ -111,6 +111,19 @@ public enum GraphRenderer {
         }
     }
 
+    /// Compute spacer distribution: base size per spacer + how many get one extra unit.
+    private static func spacerDistribution(spacerCount: Int, available: Int) -> (base: Int, remainder: Int) {
+        guard spacerCount > 0 else { return (0, 0) }
+        return (available / spacerCount, available % spacerCount)
+    }
+
+    /// Consume one spacer unit from a distribution, returning the size for this spacer.
+    private static func consumeSpacer(base: Int, remainder: inout Int) -> Int {
+        let extra = remainder > 0 ? 1 : 0
+        remainder -= extra
+        return base + extra
+    }
+
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         var spacerCount = 0
         for child in children { if case .primitive(.spacer) = child.kind { spacerCount += 1 } }
@@ -127,22 +140,18 @@ public enum GraphRenderer {
             }
         }
 
-        let remainingHeight = max(0, context.rect.height - totalContentHeight)
-        let spacerBase = spacerCount > 0 ? remainingHeight / spacerCount : 0
-        var spacerRemainder = spacerCount > 0 ? remainingHeight % spacerCount : 0
+        let remaining = max(0, context.rect.height - totalContentHeight)
+        var (spacerBase, spacerRemainder) = spacerDistribution(spacerCount: spacerCount, available: remaining)
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
             if case .primitive(.spacer) = child.kind {
-                let extra = spacerRemainder > 0 ? 1 : 0
-                spacerRemainder -= extra
-                y += spacerBase + extra
+                y += consumeSpacer(base: spacerBase, remainder: &spacerRemainder)
                 continue
             }
             let h = childHeights[i]
             let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: max(1, h))
-            let childContext = RenderContext(style: context.style, rect: childRect)
-            render(child, into: &buffer, context: childContext)
+            render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             y += h
         }
     }
@@ -163,22 +172,18 @@ public enum GraphRenderer {
             }
         }
 
-        let remainingWidth = max(0, context.rect.width - totalContentWidth)
-        let spacerBase = spacerCount > 0 ? remainingWidth / spacerCount : 0
-        var spacerRemainder = spacerCount > 0 ? remainingWidth % spacerCount : 0
+        let remaining = max(0, context.rect.width - totalContentWidth)
+        var (spacerBase, spacerRemainder) = spacerDistribution(spacerCount: spacerCount, available: remaining)
 
         var x = context.rect.x
         for (i, child) in children.enumerated() {
             if case .primitive(.spacer) = child.kind {
-                let extra = spacerRemainder > 0 ? 1 : 0
-                spacerRemainder -= extra
-                x += spacerBase + extra
+                x += consumeSpacer(base: spacerBase, remainder: &spacerRemainder)
                 continue
             }
             let w = childWidths[i]
             let childRect = Rect(x: x, y: context.rect.y, width: max(1, w), height: context.rect.height)
-            let childContext = RenderContext(style: context.style, rect: childRect)
-            render(child, into: &buffer, context: childContext)
+            render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w
         }
     }
