@@ -23,8 +23,22 @@ private enum ASCII {
 }
 
 // MARK: - SGR 1006 Mouse Protocol Bitmasks
-// Reference: xterm ctlseqs — CSI < Cb ; Cx ; Cy M/m
-// Cb encodes button identity + modifiers in a single integer via bitfields.
+// Reference: https://invisible-island.net/xterm/ctlseqs/ctlseqs.html (Mouse Tracking)
+//
+// Format: CSI < Cb ; Cx ; Cy M (press) or CSI < Cb ; Cx ; Cy m (release)
+// Cx, Cy are 1-indexed column/row. Cb is a bitfield:
+//
+//   Bits 0-1: button number (0=left, 1=middle, 2=right, 3=release/none)
+//   Bit 2:    shift
+//   Bit 3:    alt (meta)
+//   Bit 4:    ctrl
+//   Bit 5:    motion (drag or move — set when mouse moves with/without button)
+//   Bit 6:    scroll (set for scroll events; bits 0-1 encode direction: 0=up, 1=down)
+//
+// SGR 1006 replaces X10 encoding which used a single byte per coordinate,
+// limiting positions to column 223. SGR uses decimal ASCII parameters with
+// no upper limit. The 'm' final byte for release is also a SGR 1006 addition —
+// X10 used button=3 to indicate release, losing which button was released.
 
 private enum SGRMouse {
     static let shiftBit = 4
@@ -32,14 +46,17 @@ private enum SGRMouse {
     static let ctrlBit = 16
     static let motionFlag = 32
     static let scrollFlag = 64
-    /// Extracts button identity: bits 0-1 (button number) and bit 6 (scroll indicator)
     static let buttonMask = 0x43
     static let buttonNumberMask = 3
 }
 
 // MARK: - xterm Modifier Encoding
-// Reference: xterm — modifier parameter = 1 + (shift?1:0) + (alt?2:0) + (ctrl?4:0)
-// The -1 offset exists because xterm encodes "no modifier" as 1, not 0.
+// Reference: xterm ctlseqs — extended CSI key sequences use a modifier parameter.
+// Value = 1 + bitmask, where bitmask = (shift?1:0) + (alt?2:0) + (ctrl?4:0).
+//
+// The +1 offset is an xterm convention: parameter position 0 means "omitted"
+// in CSI sequences, so "no modifier" must encode as 1 to distinguish from
+// "parameter not present." Decode by subtracting 1 before checking bits.
 
 private enum XTermModifier {
     static let shiftBit = 1
@@ -71,7 +88,17 @@ private enum TildeCode {
 
 // MARK: - Kitty Keyboard Protocol
 // Reference: https://sw.kovidgoyal.net/kitty/keyboard-protocol/
-// Event types in extended format: ESC [ keycode ; modifiers ; event_type u
+//
+// A modern replacement for xterm's escape sequences, adopted by kitty, alacritty,
+// wezterm, ghostty. Key advantages over xterm:
+// - Unambiguous keycodes (no ESC press vs ESC sequence prefix confusion)
+// - Key release events (event_type=3)
+// - Reliable modifier reporting for all keys
+//
+// Format: ESC [ keycode ; modifiers u
+// Extended: ESC [ keycode ; modifiers ; event_type u
+// Modifiers use the same encoding as xterm (value = 1 + bitmask).
+// We ignore release events (type=3) because our event model is press-only.
 
 private enum KittyEventType {
     static let press = 1
@@ -80,7 +107,18 @@ private enum KittyEventType {
 }
 
 // MARK: - UTF-8 Lead Byte Masks
-// Reference: RFC 3629 — each lead byte pattern determines the sequence length.
+// Reference: RFC 3629
+//
+// UTF-8 encodes Unicode code points in 1-4 bytes. The lead byte's high bits
+// determine how many continuation bytes (10xxxxxx) follow:
+//
+//   0xxxxxxx — 1 byte  (U+0000..U+007F, ASCII)
+//   110xxxxx — 2 bytes (U+0080..U+07FF)
+//   1110xxxx — 3 bytes (U+0800..U+FFFF, includes CJK, emoji base)
+//   11110xxx — 4 bytes (U+10000..U+10FFFF, includes emoji, symbols)
+//
+// Detection: mask the lead byte and compare against the pattern.
+// Example: byte 0xE2 (11100010) & mask 0xF0 (11110000) = 0xE0 → 3-byte sequence.
 
 private enum UTF8 {
     static let singleByteMask: UInt8 = 0x80
@@ -130,6 +168,14 @@ public enum InputParser {
     }
 
     // MARK: - Escape Sequences
+    //
+    // ESC (0x1B) is both a standalone key AND the prefix for all CSI/SS3 sequences.
+    // Disambiguation: read the next byte with a short timeout (set by VTIME in raw mode).
+    // If read() returns 0, no byte arrived within 100ms — it was a standalone ESC press.
+    // If a byte arrives, it identifies the sequence type:
+    //   '[' → CSI (Control Sequence Introducer): cursor keys, mouse, function keys
+    //   'O' → SS3 (Single Shift 3): F1-F4 on most terminals
+    //   other → Alt+key (terminals send ESC followed by the key byte for Alt combos)
 
     static func parseEscapeSequence(_ buf: inout [UInt8]) -> TerminalEvent {
         var secondByte: UInt8 = 0
@@ -295,8 +341,13 @@ public enum InputParser {
 
     // MARK: - SGR 1006 Mouse
 
-    /// Parse SGR mouse event: ESC [ < Cb ; Cx ; Cy M/m
-    /// Already consumed `ESC [ <`, now read `Cb;Cx;Cy` and final `M` (press) or `m` (release).
+    /// Parse SGR 1006 mouse event. Already consumed `ESC [ <`.
+    /// Reads semicolon-separated decimal parameters `Cb;Cx;Cy` and final byte
+    /// `M` (press/motion) or `m` (release). Cx/Cy are 1-indexed, converted to 0-indexed.
+    ///
+    /// Bitfield decoding order matters: scroll and motion flags are checked before
+    /// press/release because they override button interpretation. A scroll event
+    /// with button=0 means scroll-up, not left-click.
     static func parseSgrMouse() -> TerminalEvent {
         var rawBytes: [UInt8] = []
         var finalByte: UInt8 = 0
@@ -350,7 +401,10 @@ public enum InputParser {
         } else {
             let buttonNumber = buttonIdentity & SGRMouse.buttonNumberMask
             if buttonNumber == 3 {
-                // X10 compatibility: button 3 in press context means release
+                // X10 legacy: button number 3 in a press context means "button released"
+                // because the original X10 protocol had no separate release event.
+                // SGR 1006 uses the 'm' final byte for release instead, but some
+                // terminals still emit button=3 for compatibility.
                 kind = .release(.left)
             } else {
                 kind = .press(MouseButton(rawValue: UInt8(buttonNumber)) ?? .left)
@@ -361,6 +415,10 @@ public enum InputParser {
     }
 
     // MARK: - SS3 (F1-F4)
+    //
+    // SS3 (Single Shift 3): ESC O followed by P/Q/R/S for F1-F4.
+    // Historical VT100 convention. F5+ use CSI tilde sequences instead.
+    // Some terminals send CSI P/Q/R/S for F1-F4 — those are handled in parseModifiedKey.
 
     static func parseSsSequence(_ buf: inout [UInt8]) -> TerminalEvent {
         var thirdByte: UInt8 = 0
