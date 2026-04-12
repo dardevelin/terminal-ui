@@ -451,32 +451,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
                 inspector.render(into: &buffer, graph: graph)
 
-                // On-demand frame capture (ctrl+s)
                 if captureCurrentFrame {
                     captureCurrentFrame = false
-                    let captureDir = ".swift_tui/captures"
-                    try? FileManager.default.createDirectory(atPath: captureDir, withIntermediateDirectories: true)
-                    let ts = Int(ProcessInfo.processInfo.systemUptime * 1000)
-
-                    // Text screenshot
-                    var text = "capture: \(ts)\nsize: \(buffer.width)x\(buffer.height)\n---\n"
-                    for y in 0..<buffer.height {
-                        for x in 0..<buffer.width {
-                            text += String(buffer[x, y].character)
-                        }
-                        text += "\n"
-                    }
-                    try? text.write(toFile: "\(captureDir)/\(ts).txt", atomically: true, encoding: .utf8)
-
-                    // ANSI screenshot
-                    try? buffer.fullRender().write(toFile: "\(captureDir)/\(ts).ansi", atomically: true, encoding: .utf8)
-
-                    // Graph snapshot
-                    if let root = graph.root {
-                        var graphDump = "graph capture: \(ts)\n"
-                        dumpNode(root, depth: 0, into: &graphDump)
-                        try? graphDump.write(toFile: "\(captureDir)/\(ts).graph", atomically: true, encoding: .utf8)
-                    }
+                    captureFrame(buffer: buffer)
                 }
                 #endif
 
@@ -556,6 +533,28 @@ public final class TerminalRuntime<RootView: TerminalView> {
         case .unknown(let b): parts.append("?\(b)")
         }
         return parts.joined(separator: "-")
+    }
+
+    private func captureFrame(buffer: CellBuffer) {
+        let captureDir = ".swift_tui/captures"
+        try? FileManager.default.createDirectory(atPath: captureDir, withIntermediateDirectories: true)
+        let ts = Int(ProcessInfo.processInfo.systemUptime * 1000)
+
+        var text = "capture: \(ts)\nsize: \(buffer.width)x\(buffer.height)\n---\n"
+        for y in 0..<buffer.height {
+            for x in 0..<buffer.width {
+                text += String(buffer[x, y].character)
+            }
+            text += "\n"
+        }
+        try? text.write(toFile: "\(captureDir)/\(ts).txt", atomically: true, encoding: .utf8)
+        try? buffer.fullRender().write(toFile: "\(captureDir)/\(ts).ansi", atomically: true, encoding: .utf8)
+
+        if let root = graph.root {
+            var graphDump = "graph capture: \(ts)\n"
+            dumpNode(root, depth: 0, into: &graphDump)
+            try? graphDump.write(toFile: "\(captureDir)/\(ts).graph", atomically: true, encoding: .utf8)
+        }
     }
 
     private func dumpNode(_ node: AttributeNode, depth: Int, into output: inout String) {
