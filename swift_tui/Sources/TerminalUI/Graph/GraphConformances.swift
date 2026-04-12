@@ -67,7 +67,12 @@ extension ModifiedView: _GraphModified {
         case is OnKeyPressModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
         case is OnClickModifier: .onClick
-        default: .bold
+        default:
+            #if DEBUG
+            fatalError("Unmapped modifier: \(type(of: modifier))")
+            #else
+            .bold
+            #endif
         }
     }
 
