@@ -57,8 +57,10 @@ public final class FocusEngine {
 
     // MARK: - Keyboard Focus Traversal
 
-    /// Move keyboard focus to the next focusable node (Tab).
-    public func focusNext(root: AttributeNode?) {
+    /// Move keyboard focus to the next focusable node (Tab order).
+    /// Tab order = depth-first pre-order of the view tree, matching visual reading order.
+    /// Wraps around: last node → first node.
+    public func focusNext() {
         guard !focusableList.isEmpty else { return }
 
         if let current = keyboardFocusID,
@@ -71,7 +73,7 @@ public final class FocusEngine {
     }
 
     /// Move keyboard focus to the previous focusable node (Shift+Tab).
-    public func focusPrevious(root: AttributeNode?) {
+    public func focusPrevious() {
         guard !focusableList.isEmpty else { return }
 
         if let current = keyboardFocusID,
@@ -83,19 +85,29 @@ public final class FocusEngine {
         }
     }
 
-    /// Directional keyboard focus movement — respects layout axis.
+    /// Directional focus movement — arrow keys respect layout axis.
+    ///
+    /// Finds the focused node's nearest layout parent (VStack or HStack) and
+    /// checks if the arrow direction matches the layout axis:
+    ///   VStack + up/down → move to sibling above/below
+    ///   HStack + left/right → move to sibling left/right
+    ///   Axis mismatch (e.g. left arrow in VStack) → fall back to Tab order
+    ///
+    /// This enables spatial navigation: pressing down in a VStack moves to the
+    /// next item visually below, not just the next in document order. Similar to
+    /// i3wm's focus parent/child navigation within container types.
     public func focusInDirection(_ direction: FocusDirection, root: AttributeNode?) {
         guard let root else { return }
         guard let current = keyboardFocusID else {
-            focusNext(root: root)
+            focusNext()
             return
         }
 
         guard let currentNode = findNode(id: current, in: root) else { return }
         guard let parentLayout = findLayoutParent(of: currentNode) else {
             switch direction {
-            case .up, .left: focusPrevious(root: root)
-            case .down, .right: focusNext(root: root)
+            case .up, .left: focusPrevious()
+            case .down, .right: focusNext()
             }
             return
         }
@@ -126,8 +138,8 @@ public final class FocusEngine {
                 }
             } else {
                 switch direction {
-                case .up, .left: focusPrevious(root: root)
-                case .down, .right: focusNext(root: root)
+                case .up, .left: focusPrevious()
+                case .down, .right: focusNext()
                 }
             }
         }
@@ -145,7 +157,13 @@ public final class FocusEngine {
         mouseHoverID = findFocusableAt(x: x, y: y, in: root)?.id
     }
 
-    /// Handle mouse click — transfer keyboard focus to the clicked focusable node.
+    /// Handle mouse click — transfer keyboard focus and invoke click handler.
+    ///
+    /// If the clicked node has an onClick handler, invokes it with coordinates
+    /// relative to the node's rect (not screen coordinates).
+    /// If no onClick handler exists, synthesizes an Enter key event instead.
+    /// This gives button-like behavior to focusable nodes without explicit
+    /// click handlers — clicking a focused Button triggers its onKeyPress.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
         guard let root else { return }
         if let target = findFocusableAt(x: x, y: y, in: root) {
@@ -174,7 +192,16 @@ public final class FocusEngine {
 
     // MARK: - Key Event Routing
 
-    /// Route a key event to the keyboard-focused node's handler.
+    /// Route a key event to the focused node, then bubble up ancestors.
+    ///
+    /// Routing order: focused node → parent → grandparent → ... → root.
+    /// First handler that returns .handled stops propagation.
+    /// This matches DOM event bubbling: inner handlers get first chance,
+    /// outer containers can provide fallback behavior.
+    ///
+    /// If no ancestor handles it, tries subtree routing (focused node's
+    /// children) as a last resort for composite views that register
+    /// handlers on internal structure.
     public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode?) -> Bool {
         guard let focused = keyboardFocusID, let root else { return false }
         guard let focusedNode = findNode(id: focused, in: root) else { return false }

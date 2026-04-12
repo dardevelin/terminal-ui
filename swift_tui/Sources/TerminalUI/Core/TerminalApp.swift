@@ -137,7 +137,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let queue = self.eventQueue
 
-        // Input reader — handles both keyboard and mouse events
+        // Concurrent producers push events into the shared queue.
+        // Task.detached runs off MainActor — these are the only threads that
+        // touch the EventQueue (which is NSLock-protected).
+        // The main loop below drains the queue on MainActor.
+
         let inputTask = Task.detached {
             while !Task.isCancelled {
                 if let event = InputParser.readEvent() {
@@ -171,11 +175,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             }
         }
 
-        // Frame loop
+        // Frame loop — runs on MainActor.
+        // Each iteration: drain events → handle → render → pace.
+        // Event priority: view handlers first, then focus navigation, then debug tools.
         var running = true
 
         while running {
-            // Drain all queued events
             let events = eventQueue.drain()
             for event in events {
                 let shouldContinue = onEvent(event)
@@ -232,7 +237,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 case .resize(let cols, let rows):
                     size = TerminalSize(cols: cols, rows: rows)
                     tracer.traceResize(cols: cols, rows: rows)
-                    previousBuffer = nil  // Force full render (no diff base)
+                    previousBuffer = nil  // nil previous forces full render (no diff base to compare against)
                     needsRender = true
 
                 case .timer:
@@ -327,9 +332,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         if !handledByView {
             // Focus navigation — Tab/Shift+Tab always navigate, arrow keys only if view didn't handle
             if keyEvent.key == .tab && keyEvent.modifiers.contains(.shift) {
-                focusEngine.focusPrevious(root: graph.root)
+                focusEngine.focusPrevious()
             } else if keyEvent.key == .tab {
-                focusEngine.focusNext(root: graph.root)
+                focusEngine.focusNext()
             } else if keyEvent.key == .up {
                 focusEngine.focusInDirection(.up, root: graph.root)
             } else if keyEvent.key == .down {
