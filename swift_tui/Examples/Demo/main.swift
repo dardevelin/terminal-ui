@@ -218,18 +218,28 @@ nonisolated(unsafe) let state = AppState()
 struct TabItem: TerminalView {
     let label: String
     let isSelected: Bool
-    let action: () -> Void
+    let index: Int
+    let tabCount: Int
+    let onSelectTab: (Int) -> Void
 
     var body: some TerminalView {
         Text(isSelected ? "▸ \(label)" : "  \(label)")
             .foreground(isSelected ? .white : .gray)
             .focusable()
             .onKeyPress { event in
-                if event.key == .enter || event.key == .character(" ") {
-                    action()
+                switch event.key {
+                case .enter, .character(" "):
+                    onSelectTab(index)
                     return .handled
+                case .right:
+                    if index + 1 < tabCount { onSelectTab(index + 1) }
+                    return .ignored
+                case .left:
+                    if index > 0 { onSelectTab(index - 1) }
+                    return .ignored
+                default:
+                    return .ignored
                 }
-                return .ignored
             }
     }
 }
@@ -248,15 +258,24 @@ struct TitleBar: TerminalView {
                 .bold()
             Text(" │ ")
                 .foreground(.gray)
-            ForEach(Array(tabNames.enumerated().map {
-                TabEntry(index: $0.offset, name: $0.element)
-            })) { entry in
-                TabItem(label: entry.name, isSelected: selectedTab == entry.index) {
-                    onSelectTab(entry.index)
+            ScrollView(.horizontal) {
+                HStack {
+                    ForEach(Array(tabNames.enumerated().map {
+                        TabEntry(index: $0.offset, name: $0.element)
+                    })) { entry in
+                        TabItem(
+                            label: entry.name,
+                            isSelected: selectedTab == entry.index,
+                            index: entry.index,
+                            tabCount: tabNames.count,
+                            onSelectTab: onSelectTab
+                        )
+                        Text(" ")
+                    }
                 }
-                Text(" ")
             }
-            Spacer()
+            Text(" │ ")
+                .foreground(.gray)
             Text("v0.6")
                 .foreground(.gray)
         }

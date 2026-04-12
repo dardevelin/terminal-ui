@@ -186,6 +186,17 @@ public final class AttributeGraph {
             return
         }
 
+        // ScrollView — update single child
+        if let scroll = view as? any _GraphScrollView {
+            if case .layout(let info) = node.kind, case .scroll = info.kind {
+                if let child = node.children.first {
+                    updateAnyView(child, from: scroll.graphChild())
+                }
+                node.isDirty = false
+                return
+            }
+        }
+
         // Composite view — re-evaluate body with observation tracking
         if !(V.Body.self == Never.self) {
             evaluateBody(node: node, view: view)
@@ -296,6 +307,9 @@ public final class AttributeGraph {
         if view is any _GraphVStack { return node.kind.isLayout(.vstack) }
         if view is any _GraphHStack { return node.kind.isLayout(.hstack) }
         if view is any _GraphZStack { return node.kind.isLayout(.zstack) }
+        if let scroll = view as? any _GraphScrollView {
+            return node.kind.isLayout(.scroll(scroll.scrollAxis))
+        }
         // Modifiers, conditionals, forEach — check structural kind
         if view is any _GraphModified { return node.kind.isModifier }
         if view is any _GraphConditional { return node.kind.isViewBody } // conditionals are viewBody("Conditional") nodes
@@ -340,6 +354,9 @@ public final class AttributeGraph {
         }
         if let forEach = view as? any _GraphForEach {
             return forEach.constructForEachNode(id: id, graph: self)
+        }
+        if let scroll = view as? any _GraphScrollView {
+            return constructScrollView(scroll, id: id)
         }
         return constructComposite(view, id: id)
     }
@@ -401,6 +418,15 @@ public final class AttributeGraph {
             childNode.parent = node
             node.children.append(childNode)
         }
+        return node
+    }
+
+    func constructScrollView(_ scroll: any _GraphScrollView, id: NodeID) -> AttributeNode {
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .scroll(scroll.scrollAxis))))
+        let childID = id.appending(.index(0))
+        let childNode = constructAnyView(scroll.graphChild(), id: childID)
+        childNode.parent = node
+        node.children.append(childNode)
         return node
     }
 
@@ -507,4 +533,9 @@ protocol _GraphZStack {
 protocol _GraphForEach {
     func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph)
+}
+
+protocol _GraphScrollView {
+    var scrollAxis: ScrollAxis { get }
+    func graphChild() -> Any
 }

@@ -31,6 +31,10 @@ public class AttributeNode {
     /// Whether onAppear has already fired for this node.
     public var didAppear: Bool = false
 
+    /// Scroll offset for scroll layout nodes — persisted across frames.
+    /// Positive values scroll content left (horizontal) or up (vertical).
+    public var scrollOffset: Int = 0
+
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind
@@ -103,6 +107,8 @@ extension NodeKind {
             case .vstack: "VStack"
             case .hstack: "HStack"
             case .zstack: "ZStack"
+            case .scroll(let axis):
+                axis == .horizontal ? "ScrollView(H)" : "ScrollView(V)"
             }
         case .modifier(let effect):
             switch effect {
@@ -152,10 +158,11 @@ public struct LayoutInfo {
     }
 }
 
-public enum LayoutKind {
+public enum LayoutKind: Equatable {
     case vstack
     case hstack
     case zstack
+    case scroll(ScrollAxis)
 }
 
 public struct Size: Equatable, Sendable {

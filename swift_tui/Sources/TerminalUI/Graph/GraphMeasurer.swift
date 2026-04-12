@@ -55,6 +55,18 @@ public enum GraphMeasurer {
                     total += measureWidth(child)
                 }
                 return total
+            case .scroll(let axis):
+                // Horizontal scroll: report viewport width (0 = flexible, parent decides).
+                // Vertical scroll: report content width (same as vstack).
+                switch axis {
+                case .horizontal: return 0
+                case .vertical:
+                    var maxW = 0
+                    for child in children {
+                        maxW = max(maxW, measureWidth(child))
+                    }
+                    return maxW
+                }
             }
 
         case .modifier(let effect):
@@ -103,6 +115,18 @@ public enum GraphMeasurer {
                     maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
                 }
                 return maxH
+            case .scroll(let axis):
+                // Horizontal scroll: report content height (same as hstack).
+                // Vertical scroll: report 0 (flexible, parent decides viewport height).
+                switch axis {
+                case .horizontal:
+                    var maxH = 0
+                    for child in children {
+                        maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
+                    }
+                    return maxH
+                case .vertical: return 0
+                }
             }
 
         case .modifier(let effect):

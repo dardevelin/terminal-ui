@@ -111,6 +111,8 @@ public enum GraphRenderer {
             renderHStack(children, into: &buffer, context: context)
         case .zstack:
             renderZStack(children, into: &buffer, context: context)
+        case .scroll(let axis):
+            renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
         }
     }
 
@@ -163,13 +165,15 @@ public enum GraphRenderer {
     }
 
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        var spacerCount = 0
-        for child in children { if case .primitive(.spacer) = child.kind { spacerCount += 1 } }
+        var flexCount = 0
+        for child in children {
+            if isVFlexChild(child) { flexCount += 1 }
+        }
 
         var childHeights: [Int] = []
         var totalContentHeight = 0
         for child in children {
-            if case .primitive(.spacer) = child.kind {
+            if isVFlexChild(child) {
                 childHeights.append(0)
             } else {
                 let h = measureHeight(child, proposedWidth: context.rect.width)
@@ -179,12 +183,20 @@ public enum GraphRenderer {
         }
 
         let remaining = max(0, context.rect.height - totalContentHeight)
-        var (spacerBase, spacerRemainder) = spacerDistribution(spacerCount: spacerCount, available: remaining)
+        var (flexBase, flexRemainder) = spacerDistribution(spacerCount: flexCount, available: remaining)
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
-            if case .primitive(.spacer) = child.kind {
-                y += consumeSpacer(base: spacerBase, remainder: &spacerRemainder)
+            if isVFlexChild(child) {
+                let flexHeight = consumeSpacer(base: flexBase, remainder: &flexRemainder)
+                if case .primitive(.spacer) = child.kind {
+                    y += flexHeight
+                } else {
+                    let childRect = Rect(x: context.rect.x, y: y,
+                                         width: context.rect.width, height: max(1, flexHeight))
+                    render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+                    y += flexHeight
+                }
                 continue
             }
             let h = childHeights[i]
@@ -194,14 +206,24 @@ public enum GraphRenderer {
         }
     }
 
+    /// Vertical flex: spacers and vertical scroll views consume remaining height.
+    private static func isVFlexChild(_ node: AttributeNode) -> Bool {
+        if case .primitive(.spacer) = node.kind { return true }
+        if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
+        return false
+    }
+
     static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        var spacerCount = 0
-        for child in children { if case .primitive(.spacer) = child.kind { spacerCount += 1 } }
+        // Count flex children: spacers and horizontal scroll views both consume remaining space
+        var flexCount = 0
+        for child in children {
+            if isFlexChild(child) { flexCount += 1 }
+        }
 
         var childWidths: [Int] = []
         var totalContentWidth = 0
         for child in children {
-            if case .primitive(.spacer) = child.kind {
+            if isFlexChild(child) {
                 childWidths.append(0)
             } else {
                 let w = measureWidth(child)
@@ -211,14 +233,23 @@ public enum GraphRenderer {
         }
 
         let remaining = max(0, context.rect.width - totalContentWidth)
-        var (spacerBase, spacerRemainder) = spacerDistribution(spacerCount: spacerCount, available: remaining)
+        var (flexBase, flexRemainder) = spacerDistribution(spacerCount: flexCount, available: remaining)
 
         let maxX = context.rect.x + context.rect.width
         var x = context.rect.x
         for (i, child) in children.enumerated() {
             if x >= maxX { break }
-            if case .primitive(.spacer) = child.kind {
-                x += consumeSpacer(base: spacerBase, remainder: &spacerRemainder)
+            if isFlexChild(child) {
+                let flexWidth = consumeSpacer(base: flexBase, remainder: &flexRemainder)
+                // Spacers just consume space; scroll views render into the flex allocation
+                if case .primitive(.spacer) = child.kind {
+                    x += flexWidth
+                } else {
+                    let childRect = Rect(x: x, y: context.rect.y,
+                                         width: max(1, flexWidth), height: context.rect.height)
+                    render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+                    x += flexWidth
+                }
                 continue
             }
             let w = childWidths[i]
@@ -229,11 +260,222 @@ public enum GraphRenderer {
         }
     }
 
+    /// A child is "flex" if it should consume remaining space in a stack layout.
+    /// Spacers and scroll views (in the matching axis) are flex children.
+    private static func isFlexChild(_ node: AttributeNode) -> Bool {
+        if case .primitive(.spacer) = node.kind { return true }
+        if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
+        return false
+    }
+
+    // MARK: - Scroll
+
+    /// Render a scroll container: render content into a local buffer at natural size,
+    /// then blit the visible slice (offset by scrollOffset) into the main buffer.
+    ///
+    /// Two-phase approach prevents content bleeding past the viewport boundary
+    /// (e.g. into border columns). The local buffer acts as a clip mask.
+    static func renderScroll(_ node: AttributeNode, axis: ScrollAxis, children: [AttributeNode],
+                             into buffer: inout CellBuffer, context: RenderContext) {
+        guard let contentChild = node.children.first else { return }
+        let offset = node.scrollOffset
+        let viewport = context.rect
+
+        switch axis {
+        case .horizontal:
+            let contentWidth = measureWidth(contentChild)
+            guard contentWidth > 0, viewport.width > 0, viewport.height > 0 else { return }
+
+            // Render content into a local buffer at (0,0) with natural width
+            var contentBuffer = CellBuffer(width: contentWidth, height: viewport.height)
+            let contentRect = Rect(x: 0, y: 0, width: contentWidth, height: viewport.height)
+            render(contentChild, into: &contentBuffer,
+                   context: RenderContext(style: context.style, rect: contentRect))
+
+            // Blit visible slice: source x range [offset ..< offset+viewportWidth]
+            let srcStartX = max(0, offset)
+            let srcEndX = min(contentWidth, offset + viewport.width)
+            for y in 0..<viewport.height {
+                for srcX in srcStartX..<srcEndX {
+                    let dstX = viewport.x + (srcX - offset)
+                    let dstY = viewport.y + y
+                    let cell = contentBuffer[srcX, y]
+                    if cell != .empty {
+                        buffer[dstX, dstY] = cell
+                    }
+                }
+            }
+
+            // Offset child rects so hit testing works in screen coordinates
+            offsetRects(of: contentChild, dx: viewport.x - offset, dy: viewport.y)
+
+        case .vertical:
+            let contentHeight = measureHeight(contentChild, proposedWidth: viewport.width)
+            guard contentHeight > 0, viewport.width > 0, viewport.height > 0 else { return }
+
+            var contentBuffer = CellBuffer(width: viewport.width, height: contentHeight)
+            let contentRect = Rect(x: 0, y: 0, width: viewport.width, height: contentHeight)
+            render(contentChild, into: &contentBuffer,
+                   context: RenderContext(style: context.style, rect: contentRect))
+
+            let srcStartY = max(0, offset)
+            let srcEndY = min(contentHeight, offset + viewport.height)
+            for srcY in srcStartY..<srcEndY {
+                for x in 0..<viewport.width {
+                    let dstX = viewport.x + x
+                    let dstY = viewport.y + (srcY - offset)
+                    let cell = contentBuffer[x, srcY]
+                    if cell != .empty {
+                        buffer[dstX, dstY] = cell
+                    }
+                }
+            }
+
+            offsetRects(of: contentChild, dx: viewport.x, dy: viewport.y - offset)
+        }
+    }
+
     static func renderZStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
         // All children occupy the full rect — last child renders on top
         for child in children {
             render(child, into: &buffer, context: context)
         }
+    }
+
+    // MARK: - Scroll-to-Focused
+
+    /// Adjust scroll offsets on all scroll containers that enclose the focused node.
+    ///
+    /// Strategy: find the focused node, walk UP to find scroll ancestors.
+    /// For each scroll ancestor, compute the focused node's position within the
+    /// scroll content using measurements, then adjust offset to keep it visible.
+    ///
+    /// Must run AFTER graph update, BEFORE render — render uses scrollOffset.
+    public static func adjustScrollForFocus(root: AttributeNode?, focusedID: NodeID?,
+                                            viewportWidth: Int, viewportHeight: Int) {
+        guard let root, let focusedID else { return }
+        guard let focusedNode = findNode(focusedID, in: root) else { return }
+
+        // Walk up from focused node to find scroll container ancestors
+        var current = focusedNode
+        while let parent = current.parent {
+            if case .layout(let info) = parent.kind, case .scroll(let axis) = info.kind {
+                guard let contentChild = parent.children.first else { break }
+
+                let focusedPosition = measureFocusedPosition(
+                    in: contentChild, focusedID: focusedID, axis: axis
+                )
+
+                if let (start, size) = focusedPosition {
+                    // Use the scroll node's rect from the previous frame for viewport size.
+                    // This is the actual allocated size after parent layout, not the terminal size.
+                    // On first frame rect is zero — fall back to terminal size.
+                    let scrollRect = parent.rect
+                    let viewportSize: Int
+                    switch axis {
+                    case .horizontal:
+                        viewportSize = scrollRect.width > 0 ? scrollRect.width : viewportWidth
+                    case .vertical:
+                        viewportSize = scrollRect.height > 0 ? scrollRect.height : viewportHeight
+                    }
+
+                    adjustScrollOffset(
+                        node: parent, axis: axis, focusedStart: start, focusedSize: size,
+                        viewportSize: viewportSize
+                    )
+                }
+            }
+            current = parent
+        }
+    }
+
+    /// Compute the position and size of the focused node within a content subtree.
+    /// Returns (start offset in scroll axis, size in scroll axis) or nil if not found.
+    ///
+    /// For HStack content: walks effective children, sums widths before the child
+    /// that contains the focused node.
+    /// For VStack content: same with heights.
+    /// For other node types: recurses into children.
+    private static func measureFocusedPosition(in node: AttributeNode, focusedID: NodeID,
+                                               axis: ScrollAxis) -> (start: Int, size: Int)? {
+        // Is this node (or its subtree) the focused node?
+        if node.id == focusedID {
+            let size = axis == .horizontal ? measureWidth(node) : measureHeight(node, proposedWidth: 0)
+            return (start: 0, size: size)
+        }
+
+        // If this is a layout node, compute child positions along its axis
+        if case .layout(let info) = node.kind {
+            let children = effectiveChildren(of: node)
+            let isMatchingAxis: Bool
+            switch (info.kind, axis) {
+            case (.hstack, .horizontal), (.vstack, .vertical): isMatchingAxis = true
+            default: isMatchingAxis = false
+            }
+
+            if isMatchingAxis {
+                // Children are laid out sequentially along the scroll axis
+                var position = 0
+                for child in children {
+                    if let result = measureFocusedPosition(in: child, focusedID: focusedID, axis: axis) {
+                        return (start: position + result.start, size: result.size)
+                    }
+                    position += axis == .horizontal ? measureWidth(child) : measureHeight(child, proposedWidth: 0)
+                }
+                return nil
+            }
+        }
+
+        // For non-matching layouts, modifiers, viewBody: recurse into children
+        for child in node.children {
+            if let result = measureFocusedPosition(in: child, focusedID: focusedID, axis: axis) {
+                return result
+            }
+        }
+        return nil
+    }
+
+    /// Adjust a scroll node's offset to keep the focused element visible within the viewport.
+    private static func adjustScrollOffset(node: AttributeNode, axis: ScrollAxis,
+                                           focusedStart: Int, focusedSize: Int, viewportSize: Int) {
+        guard viewportSize > 0 else { return }
+
+        // Measure total content size
+        guard let contentChild = node.children.first else { return }
+        let totalContent = axis == .horizontal
+            ? measureWidth(contentChild)
+            : measureHeight(contentChild, proposedWidth: 0)
+
+        // Content fits in viewport — no scroll needed
+        guard totalContent > viewportSize else {
+            node.scrollOffset = 0
+            return
+        }
+
+        let focusedEnd = focusedStart + focusedSize
+        var offset = node.scrollOffset
+
+        // Focused element past the right/bottom edge — scroll forward
+        if focusedEnd > offset + viewportSize {
+            offset = focusedEnd - viewportSize
+        }
+
+        // Focused element before the left/top edge — scroll backward
+        if focusedStart < offset {
+            offset = focusedStart
+        }
+
+        let maxOffset = max(0, totalContent - viewportSize)
+        node.scrollOffset = max(0, min(offset, maxOffset))
+    }
+
+    /// Find a node by ID via tree walk.
+    private static func findNode(_ id: NodeID, in node: AttributeNode) -> AttributeNode? {
+        if node.id == id { return node }
+        for child in node.children {
+            if let found = findNode(id, in: child) { return found }
+        }
+        return nil
     }
 
     // MARK: - Modifiers
@@ -399,28 +641,48 @@ public enum GraphRenderer {
     public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine, root: AttributeNode?) {
         guard let root else { return }
 
-        // Keyboard focus — cyan left edge bar
+        // Keyboard focus — cyan left edge bar.
+        // Skip for nodes inside scroll containers — scroll content provides its own
+        // focus indicator (e.g. ▸ arrow prefix). The ▎ bar fights with viewport clipping.
         if let focusedID = focusEngine.keyboardFocusID,
-           let node = focusEngine.findNode(id: focusedID, in: root) {
+           let node = focusEngine.findNode(id: focusedID, in: root),
+           scrollAncestorRect(of: node) == nil {
             let r = node.rect
-            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
-            for y in r.y..<min(r.y + r.height, buffer.height) {
-                guard r.x > 0 else { continue }
-                buffer[r.x - 1, y] = Cell(character: "▎", style: focusStyle)
+            let drawX = r.x - 1
+            if drawX > 0 {
+                let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
+                for y in r.y..<min(r.y + r.height, buffer.height) {
+                    buffer[drawX, y] = Cell(character: "▎", style: focusStyle)
+                }
             }
         }
 
         // Mouse hover — subtle underline bar (only if different from keyboard focus)
         if let hoverID = focusEngine.mouseHoverID,
            hoverID != focusEngine.keyboardFocusID,
-           let node = focusEngine.findNode(id: hoverID, in: root) {
+           let node = focusEngine.findNode(id: hoverID, in: root),
+           scrollAncestorRect(of: node) == nil {
             let r = node.rect
-            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
-            for y in r.y..<min(r.y + r.height, buffer.height) {
-                guard r.x > 0 else { continue }
-                buffer[r.x - 1, y] = Cell(character: "▏", style: hoverStyle)
+            let drawX = r.x - 1
+            if drawX > 0 {
+                let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+                for y in r.y..<min(r.y + r.height, buffer.height) {
+                    buffer[drawX, y] = Cell(character: "▏", style: hoverStyle)
+                }
             }
         }
+    }
+
+    /// Find the nearest scroll ancestor's viewport rect for clipping focus indicators.
+    private static func scrollAncestorRect(of node: AttributeNode) -> Rect? {
+        var current = node.parent
+        while let p = current {
+            if case .layout(let info) = p.kind, case .scroll = info.kind {
+                return p.rect
+            }
+            current = p.parent
+        }
+        return nil
     }
 
     // MARK: - Rect Offset (for modal hit testing)

@@ -377,6 +377,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let view = buildView()
         graph.update(from: view)
 
+        // Adjust scroll offsets to keep focused child visible — must run before render
+        GraphRenderer.adjustScrollForFocus(
+            root: graph.root, focusedID: focusEngine.keyboardFocusID,
+            viewportWidth: size.cols, viewportHeight: size.rows
+        )
+
         // Render from graph — no Any, no as?, enum dispatch only
         var buffer = CellBuffer(width: size.cols, height: size.rows)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
@@ -442,6 +448,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
             // Render if graph changed OR if we were explicitly told to (key press, etc.)
             if graphChanged || previousBuffer == nil || needsRender {
+                // Adjust scroll offsets to keep focused child visible
+                GraphRenderer.adjustScrollForFocus(
+                    root: graph.root, focusedID: focusEngine.keyboardFocusID,
+                    viewportWidth: size.cols, viewportHeight: size.rows
+                )
+
                 var buffer = CellBuffer(width: size.cols, height: size.rows)
                 let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
                 if let root = graph.root {
@@ -581,6 +593,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
             case .vstack: kind = "VStack[\(node.children.count)]"
             case .hstack: kind = "HStack[\(node.children.count)]"
             case .zstack: kind = "ZStack[\(node.children.count)]"
+            case .scroll(let axis):
+                kind = "ScrollView(\(axis == .horizontal ? "H" : "V"))[\(node.children.count)]"
             }
         case .modifier(let effect):
             kind = ".\(effect)"

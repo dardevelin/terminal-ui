@@ -157,6 +157,7 @@ public final class DebugStream: @unchecked Sendable {
             case .vstack: kind = "vstack"
             case .hstack: kind = "hstack"
             case .zstack: kind = "zstack"
+            case .scroll(let axis): kind = axis == .horizontal ? "scroll(h)" : "scroll(v)"
             }
             value = "\(node.children.count) children"
         case .modifier(let effect):

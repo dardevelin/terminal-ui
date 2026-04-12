@@ -63,6 +63,14 @@ extension HStack: _GraphHStack {
     }
 }
 
+// MARK: - ScrollView
+
+extension ScrollView: _GraphScrollView {
+    var scrollAxis: ScrollAxis { axes }
+
+    func graphChild() -> Any { content }
+}
+
 // MARK: - ModifiedView
 
 extension ModifiedView: _GraphModified {
