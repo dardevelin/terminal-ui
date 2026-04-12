@@ -17,47 +17,7 @@ public enum GraphRenderer {
         node.rect = context.rect
 
         #if DEBUG
-        let tracer = DevTracer.shared
-        let nodeName: String
-        switch node.kind {
-        case .primitive(let c):
-            switch c {
-            case .text: nodeName = "Text"
-            case .spacer: nodeName = "Spacer"
-            case .divider: nodeName = "Divider"
-            case .progressBar: nodeName = "ProgressBar"
-            case .spinner: nodeName = "Spinner"
-            case .empty: nodeName = "Empty"
-            }
-        case .layout(let info):
-            switch info.kind {
-            case .vstack: nodeName = "VStack"
-            case .hstack: nodeName = "HStack"
-            case .zstack: nodeName = "ZStack"
-            }
-        case .modifier(let effect):
-            switch effect {
-            case .foreground: nodeName = "fg"
-            case .background: nodeName = "bg"
-            case .bold: nodeName = "bold"
-            case .italic: nodeName = "italic"
-            case .underline: nodeName = "underline"
-            case .padding: nodeName = "padding"
-            case .border: nodeName = "border"
-            case .frame: nodeName = "frame"
-            case .explicitID: nodeName = "id"
-            case .overlay: nodeName = "overlay"
-            case .backgroundView: nodeName = "bgView"
-            case .modal: nodeName = "modal"
-            case .focusable: nodeName = "focusable"
-            case .onKeyPress: nodeName = "onKeyPress"
-            case .onAppear: nodeName = "onAppear"
-            case .onClick: nodeName = "onClick"
-            }
-        case .viewBody(let info):
-            nodeName = info.viewTypeName
-        }
-        tracer.traceLayoutPlace(nodeName, rect: context.rect)
+        DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
         #endif
 
         switch node.kind {
@@ -72,7 +32,7 @@ public enum GraphRenderer {
 
         case .viewBody(let info):
             #if DEBUG
-            tracer.traceBodyEvaluated(info.viewTypeName)
+            DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
             #endif
             for child in node.children {
                 render(child, into: &buffer, context: context)

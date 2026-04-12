@@ -85,6 +85,51 @@ public enum NodeKind {
     }
 }
 
+#if DEBUG
+extension NodeKind {
+    var debugName: String {
+        switch self {
+        case .primitive(let c):
+            switch c {
+            case .text: "Text"
+            case .spacer: "Spacer"
+            case .divider: "Divider"
+            case .progressBar: "ProgressBar"
+            case .spinner: "Spinner"
+            case .empty: "Empty"
+            }
+        case .layout(let info):
+            switch info.kind {
+            case .vstack: "VStack"
+            case .hstack: "HStack"
+            case .zstack: "ZStack"
+            }
+        case .modifier(let effect):
+            switch effect {
+            case .foreground: "fg"
+            case .background: "bg"
+            case .bold: "bold"
+            case .italic: "italic"
+            case .underline: "underline"
+            case .padding: "padding"
+            case .border: "border"
+            case .frame: "frame"
+            case .explicitID: "id"
+            case .overlay: "overlay"
+            case .backgroundView: "bgView"
+            case .modal: "modal"
+            case .focusable: "focusable"
+            case .onKeyPress: "onKeyPress"
+            case .onAppear: "onAppear"
+            case .onClick: "onClick"
+            }
+        case .viewBody(let info):
+            info.viewTypeName
+        }
+    }
+}
+#endif
+
 // MARK: - Primitive
 
 public enum PrimitiveContent {
