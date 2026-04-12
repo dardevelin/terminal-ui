@@ -1,7 +1,14 @@
-/// Hit testing — find which node owns a given screen coordinate.
-/// After layout/render, each node has a resolved rect.
-/// Hit test walks the graph depth-first (last child first for z-order)
-/// and returns the deepest node containing the point.
+/// Hit testing — map (x,y) screen coordinates to graph nodes.
+///
+/// After rendering, every node has a resolved rect (set by GraphRenderer).
+/// Hit test walks the graph depth-first, children in reverse order
+/// (last child = highest z-order, matching render order where last
+/// child paints on top). Returns the deepest node containing the point.
+///
+/// Modal occlusion: when a modal is presented, clicks inside the modal
+/// bounds search only the modal subtree. Clicks in the dimmed area
+/// (outside modal content) are consumed by the modal node — no
+/// passthrough to the base app underneath.
 
 public enum HitTest {
 

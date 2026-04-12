@@ -61,9 +61,17 @@ public struct OutputBuffer {
         }
     }
 
-    // MARK: - ANSI helpers
+    // MARK: - ANSI Terminal Control
+    //
+    // Reference: ECMA-48 (ISO/IEC 6429), xterm ctlseqs.
+    // CSI = Control Sequence Introducer: ESC [ (0x1B 0x5B)
+    // SGR = Select Graphic Rendition: CSI Ps m
+    //   Ps: 0=reset, 1=bold, 3=italic, 4=underline
+    //   FG: 30-37 standard, 90-97 bright, 38;5;N 256-color, 38;2;R;G;B truecolor
+    //   BG: 40-47 standard, 100-107 bright, 48;5;N 256-color, 48;2;R;G;B truecolor
+    // CUP = Cursor Position: CSI row ; col H (1-indexed)
 
-    /// ESC[
+    /// CSI: ESC [ — prefix for all cursor/color/attribute sequences
     public mutating func writeCSI() {
         write(0x1B)  // ESC
         write(0x5B)  // [
@@ -207,7 +215,15 @@ public struct OutputBuffer {
 
     // MARK: - Flush to file descriptor
 
-    /// Single write() syscall — the whole frame in one shot
+    /// Flush the entire buffer in a single POSIX write() syscall.
+    ///
+    /// One atomic write matters because:
+    /// - Minimizes kernel context switches vs N individual print() calls
+    /// - Reduces terminal round-trip latency (critical over SSH)
+    /// - Prevents partial-frame tearing in the terminal emulator
+    ///
+    /// Handles partial writes: if write() returns fewer bytes than requested
+    /// (e.g. interrupted by a signal), retries with the remaining bytes.
     public func flush(to fd: Int32 = STDOUT_FILENO) {
         bytes.withUnsafeBufferPointer { buf in
             var written = 0

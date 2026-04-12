@@ -1,13 +1,21 @@
 import Observation
 import Synchronization
 
-/// The attribute graph — persistent DAG of typed nodes.
-/// Owns the root node, manages reconciliation, tracks dirty state.
-/// First frame: builds from scratch. Subsequent frames: updates in place.
+/// Persistent DAG of typed nodes — the core data structure.
+///
+/// First frame: builds the full tree from the view hierarchy.
+/// Subsequent frames: reconciles in place — reuses existing nodes,
+/// updates values, rebuilds only when structure changes.
 public final class AttributeGraph {
     public var root: AttributeNode?
-    /// Atomic dirty flag — set from observation onChange callbacks which may fire
-    /// on any thread. Read/cleared on MainActor during update().
+
+    /// Set during update() — tracks whether any primitive values actually changed.
+    var changed = false
+
+    /// Atomic<Bool> from the Synchronization module — a lock-free boolean
+    /// safe to read/write from any thread or signal handler.
+    /// Set by Observation onChange callbacks (which fire on the thread that
+    /// mutated the @Observable property). Read/cleared on MainActor in update().
     private let _hasDirtyNodes = Atomic<Bool>(false)
     public var hasDirtyNodes: Bool {
         get { _hasDirtyNodes.load(ordering: .relaxed) }
@@ -36,26 +44,30 @@ public final class AttributeGraph {
         }
     }
 
-    /// Tracks whether any values changed during update
-    var changed = false
-
     // MARK: - Body Evaluation with Observation
 
-    /// Evaluate a composite view's body with observation tracking.
-    /// Sets GraphContext so @TerminalState can connect to storage.
-    /// Uses withObservationTracking so state access creates dependency edges.
+    /// Evaluate a composite view's body with Observation tracking.
+    ///
+    /// `withObservationTracking` (from the Observation framework) records every
+    /// @Observable property accessed during the `apply` closure. When any of
+    /// those properties mutate later, the `onChange` closure fires — once, on
+    /// whatever thread performed the mutation.
+    ///
+    /// The onChange closure must be thread-safe:
+    /// - `hasDirtyNodes` is Atomic — safe from any thread.
+    /// - `markDirty()` walks the mutable parent chain, so it dispatches
+    ///   to @MainActor via Task.
+    /// - `weak` captures prevent retain cycles when nodes are removed
+    ///   from the graph between frames.
+    /// - `nonisolated(unsafe)` on the weak lets is required because the
+    ///   closure crosses isolation boundaries (captured on MainActor,
+    ///   called on mutation thread).
     func evaluateBody<V: TerminalView>(node: AttributeNode, view: V) {
-        // Set context so @TerminalState finds this node's storage
         let prevNode = GraphContext.currentNode
         let prevGraph = GraphContext.currentGraph
         GraphContext.currentNode = node
         GraphContext.currentGraph = self
 
-        // Evaluate body with observation tracking.
-        // onChange fires on whatever thread triggers the state mutation.
-        // - hasDirtyNodes uses Atomic internally, safe from any thread.
-        // - markDirty() dispatched to MainActor since it walks the mutable parent chain.
-        // - Weak captures prevent memory leaks when nodes are removed from the graph.
         nonisolated(unsafe) weak let weakNode = node
         nonisolated(unsafe) weak let weakGraph = self
         let body: V.Body = withObservationTracking {

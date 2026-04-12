@@ -4,6 +4,25 @@ import Observation
 /// Works like SwiftUI's @State: the value is owned by the graph,
 /// persists across body re-evaluations, and triggers re-render on mutation.
 ///
+/// ## Storage identity
+///
+/// State slots are keyed by source location (`#file:#line:#column`).
+/// This gives each `@TerminalState` a stable identity across frames
+/// without requiring explicit keys — same source location always maps
+/// to the same slot, even when the view body is re-evaluated.
+///
+/// ## Projected value ($binding)
+///
+/// Swift property wrappers expose a `projectedValue` via the `$` prefix.
+/// `$count` returns a `Binding<Int>` — a two-way reference that can be
+/// passed to child views or captured in event handler closures.
+///
+/// The critical subtlety: `GraphContext.currentNode` is only set during
+/// body evaluation. Event handlers (onKeyPress, onClick) fire later,
+/// when GraphContext.currentNode is nil. The projected value eagerly
+/// captures the node at body evaluation time so the Binding works in
+/// both contexts.
+///
 /// Usage:
 /// ```
 /// struct Counter: TerminalView {
@@ -11,6 +30,10 @@ import Observation
 ///
 ///     var body: some TerminalView {
 ///         Text("Count: \(count)")
+///             .onKeyPress { [$count] event in
+///                 $count.set($count.get() + 1)  // Works: node captured eagerly
+///                 return .handled
+///             }
 ///     }
 /// }
 /// ```
@@ -21,7 +44,6 @@ public struct TerminalState<Value> {
 
     public init(wrappedValue: Value, file: String = #file, line: Int = #line, column: Int = #column) {
         self.initialValue = wrappedValue
-        // Unique key from source location — stable across frames
         self.key = "\(file):\(line):\(column)"
     }
 
@@ -33,7 +55,6 @@ public struct TerminalState<Value> {
             if let slot = node.stateSlots[key] as? StateSlot<Value> {
                 return slot.storage.value
             }
-            // First evaluation — create storage
             let slot = StateSlot(key: key, initialValue: initialValue)
             node.stateSlots[key] = slot
             return initialValue
@@ -46,14 +67,16 @@ public struct TerminalState<Value> {
         }
     }
 
+    /// Projected value: `$myState` returns a Binding<Value>.
+    ///
+    /// Eagerly captures GraphContext.currentNode so the binding works
+    /// in handler closures where the context is no longer set.
+    /// Falls back to GraphContext.currentNode for direct body-evaluation access.
     public var projectedValue: Binding<Value> {
-        // Capture the current node eagerly so the Binding works outside body evaluation
-        // (e.g., in onKeyPress/onClick closures where GraphContext.currentNode is nil).
         let capturedNode = GraphContext.currentNode
         let capturedKey = key
         let fallback = initialValue
 
-        // Ensure the state slot exists — projectedValue may be accessed before wrappedValue
         if let node = capturedNode, node.stateSlots[capturedKey] == nil {
             node.stateSlots[capturedKey] = StateSlot(key: capturedKey, initialValue: fallback)
         }
@@ -76,8 +99,6 @@ public struct TerminalState<Value> {
             }
         )
     }
-
-    // State slot lookup is now O(1) via dictionary keyed by source location.
 }
 
 /// A two-way reference to state owned elsewhere.

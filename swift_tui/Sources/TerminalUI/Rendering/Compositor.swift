@@ -1,17 +1,26 @@
 /// A rendering layer with its own cell buffer and position.
+///
+/// Layers enable z-ordered compositing for modals and overlays.
+/// Each layer renders into an isolated CellBuffer, then layers
+/// are composited bottom-to-top into the final output buffer.
 public struct Layer {
     public var buffer: CellBuffer
     public var x: Int
     public var y: Int
     public var style: LayerStyle
-    /// Previous buffer for delta detection
     public var previousBuffer: CellBuffer?
-    /// Dirty rect — nil means fully dirty, empty rect means clean
     public var dirtyRect: DirtyRegion
 
     public enum LayerStyle {
+        /// Replace all cells in the destination (standard app content).
         case opaque
+        /// Skip empty cells — only write cells that have content.
+        /// Used for floating windows and overlays that sit atop background.
         case transparent
+        /// Reduce color intensity of the destination (dim the background).
+        /// Takes a fallback color for terminals that don't render dimmed RGB.
+        /// Uses manual color reduction rather than SGR 2 (faint), which is
+        /// unsupported or inconsistent across many terminal emulators.
         case dim(Color)
     }
 

@@ -188,8 +188,15 @@ public struct CellBuffer: Sendable {
         out.writeReset()
     }
 
-    /// Render diff into an OutputBuffer — only changed cells.
-    /// Coalesces adjacent changes on the same row into a single cursor move + run.
+    /// Delta rendering: compare against the previous frame's buffer, emit only changed cells.
+    ///
+    /// Optimization: gap bridging. When a small gap (< 4 cells) of unchanged cells
+    /// separates two runs of changes on the same row, we overwrite the gap rather
+    /// than emitting a new cursor position sequence.
+    ///
+    /// Cost model: cursor move (CSI row;colH) costs ~8-10 bytes. Overwriting 1-3
+    /// unchanged cells costs 1-3 bytes. Bridging small gaps saves bytes and reduces
+    /// terminal parse overhead — especially important over SSH where latency dominates.
     public func renderDiff(from previous: CellBuffer?, into out: inout OutputBuffer) {
         out.reset()
         guard let previous, previous.width == width, previous.height == height else {

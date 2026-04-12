@@ -1,26 +1,31 @@
-/// Context set by the graph during body evaluation.
-/// @State property wrappers read this to connect to their graph-owned storage.
+/// Implicit context available during view body evaluation.
 ///
-/// These are thread-local-like: set before body evaluation, restored after.
-/// All access happens on @MainActor (body evaluation, focus registration, rendering).
-/// Marked nonisolated(unsafe) because enforcing @MainActor on the static properties
-/// would require @MainActor on every view struct and modifier protocol, which is
-/// architecturally infeasible. Safety is guaranteed by the runtime's single-threaded
-/// graph evaluation on MainActor.
+/// Property wrappers (@TerminalState, @TerminalEnvironment) and modifiers
+/// (.focusable, .onKeyPress) read these statics to connect to graph-owned
+/// storage, focus registration, and layout constraints.
+///
+/// ## Threading model
+///
+/// `nonisolated(unsafe)` tells Swift's concurrency checker to skip Sendability
+/// enforcement on these statics. Without it, every TerminalView struct and
+/// ViewModifier protocol would need @MainActor annotation — which Swift does
+/// not allow on protocols with associated types.
+///
+/// Safety relies on a runtime invariant: body evaluation, focus registration,
+/// and rendering all run on @MainActor. The compiler cannot verify this.
+/// If any code path evaluates a view body off-MainActor, data races will
+/// occur silently. Consider @TaskLocal migration (HYP-8) for compiler
+/// enforcement.
+///
+/// ## Lifecycle
+///
+/// Set by TerminalRuntime before `buildView()`, read during body evaluation,
+/// cleared implicitly when the call returns. Analogous to thread-local storage
+/// but scoped to the MainActor call stack.
 public enum GraphContext {
-    /// The current node being evaluated.
     nonisolated(unsafe) public static var currentNode: AttributeNode?
-
-    /// The current graph instance.
     nonisolated(unsafe) public static var currentGraph: AttributeGraph?
-
-    /// Current environment values — propagated during rendering.
     nonisolated(unsafe) public static var currentEnvironment: EnvironmentValues?
-
-    /// Current focus engine — set by runtime so modifiers can register handlers.
     nonisolated(unsafe) public static var currentFocusEngine: FocusEngine?
-
-    /// Current proposed size — set by the renderer so GeometryReader can read
-    /// the actual available space rather than the full terminal size.
     nonisolated(unsafe) public static var currentProposedSize: Size?
 }

@@ -1,6 +1,17 @@
 // Connect existing view types to the attribute graph.
 
 // MARK: - TupleView unpacking
+//
+// @TerminalViewBuilder produces TupleView<(V0, V1, ...)> wrapping a tuple.
+// To get individual children, we use Swift's Mirror API (runtime reflection)
+// to inspect the tuple's elements.
+//
+// Two-stage check:
+// 1. Protocol check — TupleView conforms to _TupleViewProtocol for explicit extraction.
+// 2. Mirror fallback — raw tuples from nested result builders.
+// 3. Single view — if neither, it's one child.
+//
+// This is the [Any] boxing hot path (HYP-5). Parameter packs will replace it.
 
 func extractChildren(from value: Any) -> [Any] {
     let mirror = Mirror(reflecting: value)
