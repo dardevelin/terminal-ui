@@ -41,16 +41,17 @@ public enum GraphMeasurer {
             }
 
         case .layout(let info):
+            let children = GraphRenderer.effectiveChildren(of: node)
             switch info.kind {
             case .vstack, .zstack:
                 var maxW = 0
-                for child in node.children {
+                for child in children {
                     maxW = max(maxW, measureWidth(child))
                 }
                 return maxW
             case .hstack:
                 var total = 0
-                for child in node.children {
+                for child in children {
                     total += measureWidth(child)
                 }
                 return total
@@ -88,16 +89,17 @@ public enum GraphMeasurer {
             }
 
         case .layout(let info):
+            let children = GraphRenderer.effectiveChildren(of: node)
             switch info.kind {
             case .vstack:
                 var total = 0
-                for child in node.children {
+                for child in children {
                     total += measureHeight(child, proposedWidth: proposedWidth)
                 }
                 return total
             case .hstack, .zstack:
                 var maxH = 0
-                for child in node.children {
+                for child in children {
                     maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
                 }
                 return maxH

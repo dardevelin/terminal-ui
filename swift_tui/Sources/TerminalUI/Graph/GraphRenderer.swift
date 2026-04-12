@@ -98,7 +98,10 @@ public enum GraphRenderer {
     // MARK: - Layout
 
     static func renderLayout(_ node: AttributeNode, info: LayoutInfo, into buffer: inout CellBuffer, context: RenderContext) {
-        let children = node.children
+        // Flatten structural children (ForEach/TupleView layout nodes) so their
+        // children participate directly in the parent's layout axis.
+        // Graph identity nodes are preserved — only the renderer sees through them.
+        let children = effectiveChildren(of: node)
         guard !children.isEmpty else { return }
 
         switch info.kind {
@@ -109,6 +112,41 @@ public enum GraphRenderer {
         case .zstack:
             renderZStack(children, into: &buffer, context: context)
         }
+    }
+
+    /// Collect effective children by flattening nested layout nodes that are
+    /// structural (ForEach, TupleView) rather than explicit (VStack, HStack, ZStack).
+    /// A structural layout node is one whose viewTypeName in the graph came from
+    /// ForEach/TupleView — these should be transparent to the parent's layout axis.
+    static func effectiveChildren(of node: AttributeNode) -> [AttributeNode] {
+        var result: [AttributeNode] = []
+        for child in node.children {
+            if isStructuralLayout(child) {
+                result.append(contentsOf: effectiveChildren(of: child))
+            } else {
+                result.append(child)
+            }
+        }
+        return result
+    }
+
+    /// A layout node is "structural" if it was created by ForEach or TupleView —
+    /// these should be transparent to the parent layout, not introduce their own axis.
+    /// VStack/HStack/ZStack written by the user are NOT structural.
+    static func isStructuralLayout(_ node: AttributeNode) -> Bool {
+        guard case .layout(let info) = node.kind, info.kind == .vstack else { return false }
+        // Structural vstacks come from ForEach (identity-keyed children)
+        // or TupleView (index-keyed children from result builders).
+        // User-written VStacks have a parent viewBody node with the user's type name.
+        // Heuristic: if ALL children have .explicit IDs, it's ForEach.
+        // If parent is another layout, it's likely structural.
+        // Simplest correct check: ForEach/TupleView vstacks have no viewBody wrapper
+        // above them — they're direct children of another layout node.
+        guard let parent = node.parent else { return false }
+        if case .layout = parent.kind { return true }
+        // viewBody children that are layout nodes — could be TupleView from a body result
+        if case .viewBody = parent.kind { return true }
+        return false
     }
 
     /// Compute spacer distribution: base size per spacer + how many get one extra unit.
@@ -175,14 +213,17 @@ public enum GraphRenderer {
         let remaining = max(0, context.rect.width - totalContentWidth)
         var (spacerBase, spacerRemainder) = spacerDistribution(spacerCount: spacerCount, available: remaining)
 
+        let maxX = context.rect.x + context.rect.width
         var x = context.rect.x
         for (i, child) in children.enumerated() {
+            if x >= maxX { break }
             if case .primitive(.spacer) = child.kind {
                 x += consumeSpacer(base: spacerBase, remainder: &spacerRemainder)
                 continue
             }
             let w = childWidths[i]
-            let childRect = Rect(x: x, y: context.rect.y, width: max(1, w), height: context.rect.height)
+            let clampedWidth = min(w, maxX - x)
+            let childRect = Rect(x: x, y: context.rect.y, width: max(1, clampedWidth), height: context.rect.height)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w
         }

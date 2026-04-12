@@ -41,6 +41,12 @@ extension TupleView: _TupleViewProtocol {
     }
 }
 
+extension TupleView: _GraphVStack {
+    func graphChildren() -> [Any] {
+        extractChildren(from: value)
+    }
+}
+
 // MARK: - VStack
 
 extension VStack: _GraphVStack {

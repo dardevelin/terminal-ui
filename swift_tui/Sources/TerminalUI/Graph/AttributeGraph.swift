@@ -300,6 +300,7 @@ public final class AttributeGraph {
         if view is any _GraphModified { return node.kind.isModifier }
         if view is any _GraphConditional { return node.kind.isViewBody } // conditionals are viewBody("Conditional") nodes
         if view is any _GraphForEach { return node.kind.isLayout(.vstack) } // ForEach builds as vstack
+        if view is any _TupleViewProtocol { return node.kind.isLayout(.vstack) } // TupleView builds as vstack
         // Composite views — check viewBody
         if !(V.Body.self == Never.self) { return node.kind.isViewBody }
         return true // default: allow update

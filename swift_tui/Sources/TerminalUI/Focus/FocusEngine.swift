@@ -307,10 +307,14 @@ public final class FocusEngine {
         return nil
     }
 
+    /// Find the nearest non-structural layout parent.
+    /// Skips ForEach/TupleView layout nodes (structural — transparent to navigation).
     private func findLayoutParent(of node: AttributeNode) -> AttributeNode? {
         var current = node.parent
         while let p = current {
-            if case .layout = p.kind { return p }
+            if case .layout = p.kind, !GraphRenderer.isStructuralLayout(p) {
+                return p
+            }
             current = p.parent
         }
         return nil
