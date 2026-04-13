@@ -1,5 +1,5 @@
 .build/
-.swift_tui/
+.terminalui/
 .swiftpm/
 *.xcodeproj/
 xcuserdata/

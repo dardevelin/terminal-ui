@@ -5,6 +5,7 @@ import Darwin
 #endif
 
 import Foundation
+import TerminalUIConfig
 
 // MARK: - Debug Protocol
 
@@ -284,7 +285,7 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
     private let encoder = JSONEncoder()
     private let path: String
 
-    public init(path: String = "/tmp/swift_tui_debug.sock") {
+    public init(path: String = DiagPaths.socketPath(useTmp: DiagPaths.loadConfig().useTmp)) {
         self.path = path
         // Socket setup is deferred to avoid blocking
         setupSocket()

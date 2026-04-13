@@ -5,6 +5,7 @@ import Darwin
 #endif
 
 import Foundation
+import TerminalUIConfig
 
 // MARK: - Events
 
@@ -113,9 +114,31 @@ public final class TerminalRuntime<RootView: TerminalView> {
         self.tracer = DevTracer.shared
         self.size = Terminal.size()
 
+        #if DEBUG
+        // Load .terminalui/terminalui.toml and merge with programmatic overrides
+        let fileConfig = DiagPaths.loadConfig()
+        DiagPaths.ensureDirectories(config: fileConfig)
+
+        if let devTrace {
+            tracer.configure(devTrace, diagConfig: fileConfig)
+        } else {
+            tracer.configure(
+                DevTraceConfig(
+                    enabled: fileConfig.traceEnabled,
+                    screenshotDir: DiagPaths.screenshotsDir(useTmp: fileConfig.useTmp),
+                    traceDir: DiagPaths.tracesDir(useTmp: fileConfig.useTmp),
+                    captureScreenshots: fileConfig.captureScreenshots,
+                    captureTrace: fileConfig.traceEnabled,
+                    captureEvents: fileConfig.captureEvents,
+                    frameLimit: fileConfig.frameLimit
+                )
+            )
+        }
+        #else
         if let devTrace {
             tracer.configure(devTrace)
         }
+        #endif
     }
 
     public func run() async {
@@ -553,7 +576,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     }
 
     private func captureFrame(buffer: CellBuffer) {
-        let captureDir = ".swift_tui/captures"
+        let fileConfig = DiagPaths.loadConfig()
+        let captureDir = DiagPaths.capturesDir(useTmp: fileConfig.useTmp)
         try? FileManager.default.createDirectory(atPath: captureDir, withIntermediateDirectories: true)
         let ts = Int(ProcessInfo.processInfo.systemUptime * 1000)
 

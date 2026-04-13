@@ -1,4 +1,5 @@
 import Foundation
+import TerminalUIConfig
 
 // Development-only instrumentation.
 // Everything in this file compiles to nothing in release builds.
@@ -14,15 +15,30 @@ public struct DevTraceConfig: Sendable {
     public var captureEvents: Bool
     public var frameLimit: Int?  // stop capturing after N frames
 
-    public static let `default` = DevTraceConfig(
-        enabled: false,
-        screenshotDir: ".swift_tui/screenshots",
-        traceDir: ".swift_tui/traces",
-        captureScreenshots: true,
-        captureTrace: true,
-        captureEvents: true,
-        frameLimit: nil
-    )
+    public static let `default`: DevTraceConfig = {
+        #if DEBUG
+        let config = DiagPaths.loadConfig()
+        return DevTraceConfig(
+            enabled: false,
+            screenshotDir: DiagPaths.screenshotsDir(useTmp: config.useTmp),
+            traceDir: DiagPaths.tracesDir(useTmp: config.useTmp),
+            captureScreenshots: true,
+            captureTrace: true,
+            captureEvents: true,
+            frameLimit: nil
+        )
+        #else
+        return DevTraceConfig(
+            enabled: false,
+            screenshotDir: ".terminalui/screenshots",
+            traceDir: ".terminalui/traces",
+            captureScreenshots: true,
+            captureTrace: true,
+            captureEvents: true,
+            frameLimit: nil
+        )
+        #endif
+    }()
 }
 
 // MARK: - Trace entry types
@@ -60,6 +76,15 @@ public final class DevTracer: @unchecked Sendable {
         if config.enabled {
             setupDirectories()
         }
+    }
+
+    /// Configure from programmatic DevTraceConfig with DiagConfig for path resolution.
+    /// Programmatic values win, DiagConfig provides output directory paths.
+    public func configure(_ programmatic: DevTraceConfig, diagConfig: DiagConfig) {
+        var merged = programmatic
+        merged.screenshotDir = DiagPaths.screenshotsDir(useTmp: diagConfig.useTmp)
+        merged.traceDir = DiagPaths.tracesDir(useTmp: diagConfig.useTmp)
+        configure(merged)
     }
 
     public var isEnabled: Bool { config.enabled }
@@ -202,8 +227,8 @@ public final class DevTracer: @unchecked Sendable {
 
     public func writeSummary() {
         guard config.enabled else { return }
-        var output = "swift_tui dev trace summary\n"
-        output += "===========================\n"
+        var output = "TerminalUI dev trace summary\n"
+        output += "============================\n"
         output += "total frames: \(frameCount)\n\n"
 
         for (i, entries) in traces.enumerated() {
@@ -276,6 +301,7 @@ public final class DevTracer: Sendable {
 
     @inline(__always) public var isEnabled: Bool { false }
     @inline(__always) public func configure(_ config: DevTraceConfig) {}
+    @inline(__always) public func configure(_ programmatic: DevTraceConfig, diagConfig: DiagConfig) {}
     @inline(__always) public func beginFrame() {}
     @inline(__always) public func endFrame(buffer: CellBuffer, previousBuffer: CellBuffer?) {}
     @inline(__always) public func traceBodyEvaluated(_ viewType: String) {}

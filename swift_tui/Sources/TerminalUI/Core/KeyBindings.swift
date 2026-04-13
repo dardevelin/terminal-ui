@@ -30,8 +30,6 @@ public final class KeyBindings {
         bind(.character("f"), modifiers: .ctrl, to: .toggleDebugPanel)
         // ctrl+g for inspector (ctrl+i = tab, can't use)
         bind(.character("g"), modifiers: .ctrl, to: .toggleInspector)
-        // ctrl+s = capture current frame to disk
-        bind(.character("s"), modifiers: .ctrl, to: .captureFrame)
     }
 
     public func bind(_ key: Key, modifiers: KeyModifiers = [], to action: KeyAction) {

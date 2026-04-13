@@ -24,9 +24,23 @@ let package = Package(
         .library(name: "TerminalUI", targets: ["TerminalUI"]),
     ],
     targets: [
+        // Shared config module — used by TerminalUI (debug-only) and swtui CLI
+        .target(
+            name: "TerminalUIConfig",
+            path: "Sources/TerminalUIConfig",
+            swiftSettings: strictSettings
+        ),
         .target(
             name: "TerminalUI",
+            dependencies: ["TerminalUIConfig"],
             path: "Sources/TerminalUI",
+            swiftSettings: strictSettings
+        ),
+        // Developer CLI tool for managing .terminalui/ config
+        .executableTarget(
+            name: "swtui",
+            dependencies: ["TerminalUIConfig"],
+            path: "Sources/swtui",
             swiftSettings: strictSettings
         ),
         .executableTarget(
