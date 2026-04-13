@@ -9,6 +9,7 @@ swift run Demo              # debug build — Ctrl+D overlay, Ctrl+F panel, Ctrl
 swift run -c release Demo   # release build — debug tools erased
 swift run ComponentsDemo    # component showcase
 swift run DotMatrixDemo     # dot matrix / morse demo
+swift run swtui help        # diagnostic config CLI
 ```
 
 ## Constraints
@@ -44,6 +45,7 @@ swift run DotMatrixDemo     # dot matrix / morse demo
 | **Views** | `Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar |
 | **Charts** | `Views/Charts/` | BarChart, Sparkline, HeatMap, BrailleCanvas, DotMatrixText, DotFont, MorseTicker |
 | **DevTools** | `DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` erased |
+| **Config** | `TerminalUIConfig/` | `DiagConfig`, `TOMLParser`, `DiagPaths` — shared with `swtui` CLI |
 | **Modifiers** | `Modifiers/` | ModifiedView, OverlayModifiers, OverlayProtocols, LifecycleModifiers |
 
 ### Dead Code (delete pending — HYP-7)
@@ -64,6 +66,21 @@ swift run DotMatrixDemo     # dot matrix / morse demo
 .capped(.fps60)     // sleep remaining budget per frame
 .onDemand           // zero CPU when idle, render only on events
 ```
+
+### Diagnostics (.terminalui/)
+
+Config-driven diagnostic system. All debug machinery is `#if DEBUG` — zero release overhead.
+
+```bash
+swift run swtui init              # create .terminalui/terminalui.toml
+swift run swtui enable trace      # enable frame tracing
+swift run swtui disable trace     # disable
+swift run swtui set frame_limit 50
+swift run swtui status            # show config + running app status
+swift run swtui clean             # wipe ephemeral output
+```
+
+Layout: config in `.terminalui/terminalui.toml`, ephemeral output in `/tmp/terminalui-{hash}/` with symlink at `.terminalui/data`. Features: `trace`, `capture`, `screenshots`, `events`, `socket`.
 
 ## Code Standards
 
@@ -102,6 +119,8 @@ Sources/TerminalUI/
 ├── Views/          22 view types
 ├── Views/Charts/   7 chart components
 └── DevTools/       DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream
+Sources/TerminalUIConfig/   DiagConfig, TOMLParser, DiagPaths (shared with swtui CLI)
+Sources/swtui/              Developer CLI for .terminalui/ config management
 Examples/
 ├── Demo/           11-tab showcase (970 lines)
 ├── ComponentsDemo/ Component gallery (480 lines)
