@@ -21,6 +21,8 @@ case "disable":
     toggleCommand(args: Array(args.dropFirst()), enable: false)
 case "set":
     setCommand(args: Array(args.dropFirst()))
+case "bind":
+    bindCommand(args: Array(args.dropFirst()))
 case "config":
     configCommand()
 case "clean":
@@ -94,6 +96,17 @@ func statusCommand() {
     print()
     print("[socket]")
     print("  enabled      = \(config.socketEnabled)")
+
+    print()
+    print("[keybindings]")
+    for action in DiagConfig.keybindingActions {
+        if let key = config.keybindings[action] {
+            let isDefault = DiagConfig.defaultKeybindings[action] == key
+            print("  \(action) = \(key)\(isDefault ? "" : " (custom)")")
+        } else {
+            print("  \(action) = (unbound)")
+        }
+    }
 
     // Probe for running app via socket
     let sockPath = DiagPaths.socketPath(useTmp: config.useTmp)
@@ -169,6 +182,42 @@ func setCommand(args: [String]) {
     }
 }
 
+func bindCommand(args: [String]) {
+    guard args.count >= 2 else {
+        printError("Usage: swtui bind <action> <key>")
+        print()
+        print("Actions:")
+        for action in DiagConfig.keybindingActions {
+            if let key = DiagConfig.defaultKeybindings[action] {
+                print("  \(action)  (default: \(key))")
+            } else {
+                print("  \(action)  (unbound)")
+            }
+        }
+        print()
+        print("Key format: F1, ctrl+d, alt+F2, ctrl+shift+x, etc.")
+        exit(1)
+    }
+
+    let action = args[0]
+    let keyString = args.dropFirst().joined(separator: " ")
+
+    guard DiagConfig.keybindingActions.contains(action) else {
+        printError("Unknown action: \(action)")
+        print("Actions: \(DiagConfig.keybindingActions.joined(separator: ", "))")
+        exit(1)
+    }
+
+    guard KeyCombo.parse(keyString) != nil else {
+        printError("Invalid key: \(keyString)")
+        print("Examples: F1, ctrl+d, alt+F2, ctrl+shift+x")
+        exit(1)
+    }
+
+    DiagPaths.updateConfigValue(section: "keybindings", key: action, value: keyString)
+    print("\(action) = \(keyString)")
+}
+
 func configCommand() {
     let configFile = DiagPaths.configFile
 
@@ -194,14 +243,15 @@ func printUsage() {
     swtui — TerminalUI diagnostic manager
 
     Usage:
-      swtui init                Create .terminalui/ with default config
-      swtui status              Show current config and app status
-      swtui enable <feature>    Enable a feature (trace, capture, screenshots, events, socket)
-      swtui disable <feature>   Disable a feature
-      swtui set <key> <value>   Set a config value (frame_limit, use_tmp, or section.key)
-      swtui config              Print current config file
-      swtui clean               Remove all diagnostic output
-      swtui help                Show this help
+      swtui init                  Create .terminalui/ with default config
+      swtui status                Show current config and app status
+      swtui enable <feature>      Enable a feature (trace, capture, screenshots, events, socket)
+      swtui disable <feature>     Disable a feature
+      swtui set <key> <value>     Set a config value (frame_limit, use_tmp, or section.key)
+      swtui bind <action> <key>   Remap a debug keybinding (e.g. swtui bind toggle_inspector F5)
+      swtui config                Print current config file
+      swtui clean                 Remove all diagnostic output
+      swtui help                  Show this help
     """)
 }
 

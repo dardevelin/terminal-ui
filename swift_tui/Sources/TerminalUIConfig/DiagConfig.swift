@@ -23,6 +23,11 @@ public struct DiagConfig: Sendable {
 
     public var socketEnabled: Bool
 
+    // MARK: - [keybindings]
+
+    /// Action name → key string. E.g. "toggle_debug_overlay" → "F1", "toggle_debug_panel" → "ctrl+F2"
+    public var keybindings: [String: String]
+
     // MARK: - Memberwise init
 
     public init(
@@ -32,7 +37,8 @@ public struct DiagConfig: Sendable {
         frameLimit: Int?,
         captureEnabled: Bool,
         useTmp: Bool,
-        socketEnabled: Bool
+        socketEnabled: Bool,
+        keybindings: [String: String] = DiagConfig.defaultKeybindings
     ) {
         self.traceEnabled = traceEnabled
         self.captureScreenshots = captureScreenshots
@@ -41,7 +47,20 @@ public struct DiagConfig: Sendable {
         self.captureEnabled = captureEnabled
         self.useTmp = useTmp
         self.socketEnabled = socketEnabled
+        self.keybindings = keybindings
     }
+
+    /// F-keys don't collide with standard terminal shortcuts (Ctrl+D=EOF, Ctrl+F=search, etc.)
+    public static let defaultKeybindings: [String: String] = [
+        "toggle_debug_overlay": "F1",
+        "toggle_debug_panel": "F2",
+        "toggle_inspector": "F3",
+    ]
+
+    /// All recognized keybinding action names. capture_frame is available but unbound by default.
+    public static let keybindingActions = [
+        "toggle_debug_overlay", "toggle_debug_panel", "toggle_inspector", "capture_frame",
+    ]
 
     // MARK: - Defaults
 
@@ -85,6 +104,15 @@ public struct DiagConfig: Sendable {
         self.useTmp = Self.parseBool(output["use_tmp"]) ?? DiagConfig.default.useTmp
 
         self.socketEnabled = Self.parseBool(socket["enabled"]) ?? DiagConfig.default.socketEnabled
+
+        // Keybindings: start from defaults, override with file values
+        var bindings = DiagConfig.defaultKeybindings
+        if let fileBindings = sections["keybindings"] {
+            for (action, key) in fileBindings {
+                bindings[action] = key
+            }
+        }
+        self.keybindings = bindings
     }
 
     /// Serialize to TOML sections for writing.
@@ -111,6 +139,17 @@ public struct DiagConfig: Sendable {
         sections["socket"] = [
             "enabled": String(socketEnabled),
         ]
+
+        // Only write keybindings that differ from defaults
+        var customBindings: [String: String] = [:]
+        for (action, key) in keybindings {
+            if DiagConfig.defaultKeybindings[action] != key {
+                customBindings[action] = key
+            }
+        }
+        if !customBindings.isEmpty {
+            sections["keybindings"] = customBindings
+        }
 
         return sections
     }
