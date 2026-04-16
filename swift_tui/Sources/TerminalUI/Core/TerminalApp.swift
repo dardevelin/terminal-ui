@@ -147,10 +147,28 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enterAlternateScreen()
         Terminal.enableMouseTracking()
 
+        // Self-pipe for shutdown signaling (HYP-41).
+        // A blocked read() on STDIN doesn't respect Task.cancel() on Linux;
+        // we wake it by writing a byte to this pipe, which poll() sees.
+        var shutdownPipeFDs: [Int32] = [-1, -1]
+        let pipeResult = shutdownPipeFDs.withUnsafeMutableBufferPointer { buf in
+            pipe(buf.baseAddress)
+        }
+        if pipeResult == 0 {
+            StdinByteSource.shutdownReadFD = shutdownPipeFDs[0]
+        }
+
         defer {
             tracer.writeSummary()
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
+
+            // Tear down shutdown pipe. Clear the FD first so any lingering
+            // readByte() call falls back to the plain read() path instead of
+            // polling a closed fd.
+            StdinByteSource.shutdownReadFD = nil
+            if shutdownPipeFDs[0] >= 0 { close(shutdownPipeFDs[0]) }
+            if shutdownPipeFDs[1] >= 0 { close(shutdownPipeFDs[1]) }
         }
 
         // Make focus engine accessible during graph construction
@@ -313,6 +331,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
 
         inputTask.cancel()
+        // Wake the input task out of any blocked read() — HYP-41.
+        if shutdownPipeFDs[1] >= 0 {
+            var wake: UInt8 = 1
+            _ = write(shutdownPipeFDs[1], &wake, 1)
+        }
         for t in timerTasks { t.cancel() }
         resizeTask.cancel()
     }

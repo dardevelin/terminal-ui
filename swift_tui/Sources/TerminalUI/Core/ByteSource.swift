@@ -13,14 +13,58 @@ public protocol ByteSource {
 }
 
 /// Runtime source — reads one byte at a time from STDIN in raw mode.
-/// Returns nil when the 100ms VTIME poll expires with no input.
+///
+/// Normally relies on VTIME=1 (100ms poll) in raw mode for interruptibility.
+/// If `shutdownReadFD` is set (HYP-41), `poll()` watches both STDIN and the
+/// shutdown pipe; writing any byte to the pipe wakes a blocked readByte()
+/// and causes it to return nil, letting the caller check Task.isCancelled.
+///
+/// Without the shutdown pipe, quitting would hang up to one VTIME interval
+/// because Task.cancel() can't interrupt a blocked read() syscall on Linux.
 public struct StdinByteSource: ByteSource {
+    /// Read end of a self-pipe used to wake a blocked readByte() at shutdown.
+    /// Shared state: TerminalApp.run() opens the pipe and stores the read end
+    /// here before starting the input task, then writes to the write end on
+    /// exit. nil when no runtime is active (tests, or before run() starts).
+    nonisolated(unsafe) public static var shutdownReadFD: Int32?
+
     public init() {}
 
     public mutating func readByte() -> UInt8? {
+        if let shutdownFD = Self.shutdownReadFD {
+            return readByteWithShutdown(shutdownFD: shutdownFD)
+        }
         var byte: UInt8 = 0
         let bytesRead = read(STDIN_FILENO, &byte, 1)
         return bytesRead == 1 ? byte : nil
+    }
+
+    /// poll() wakes on either stdin input OR the shutdown pipe.
+    /// POSIX guarantees pollfd layout across Darwin and Glibc.
+    private func readByteWithShutdown(shutdownFD: Int32) -> UInt8? {
+        var fds = [
+            pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: shutdownFD,   events: Int16(POLLIN), revents: 0),
+        ]
+
+        // Timeout matches VTIME=1 (100ms) so callers that loop on nil still
+        // make progress on cancellation checks without a pipe write.
+        let ready = poll(&fds, nfds_t(fds.count), 100)
+        guard ready > 0 else { return nil }
+
+        // Shutdown pipe readable → drop the wake byte, return nil to caller.
+        if fds[1].revents & Int16(POLLIN) != 0 {
+            var discard: UInt8 = 0
+            _ = read(shutdownFD, &discard, 1)
+            return nil
+        }
+
+        if fds[0].revents & Int16(POLLIN) != 0 {
+            var byte: UInt8 = 0
+            let bytesRead = read(STDIN_FILENO, &byte, 1)
+            return bytesRead == 1 ? byte : nil
+        }
+        return nil
     }
 }
 
