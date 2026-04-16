@@ -61,5 +61,11 @@ let package = Package(
             path: "Examples/DotMatrixDemo",
             swiftSettings: strictSettings
         ),
+        .testTarget(
+            name: "TerminalUITests",
+            dependencies: ["TerminalUI", "TerminalUIConfig"],
+            path: "Tests/TerminalUITests",
+            swiftSettings: strictSettings
+        ),
     ]
 )
