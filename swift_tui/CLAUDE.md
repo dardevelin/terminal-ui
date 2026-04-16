@@ -5,11 +5,12 @@ SwiftUI-paradigm TUI framework for Swift. North star: can someone who knows Swif
 ## Quickstart
 
 ```bash
-swift run Demo              # debug build — Ctrl+D overlay, Ctrl+F panel, Ctrl+G inspector
+swift run Demo              # debug build — F1 overlay, F2 panel, F3 inspector
 swift run -c release Demo   # release build — debug tools erased
 swift run ComponentsDemo    # component showcase
 swift run DotMatrixDemo     # dot matrix / morse demo
 swift run swtui help        # diagnostic config CLI
+swift test                  # 146 tests across parsers, compositor, graph, focus
 ```
 
 ## Constraints
@@ -40,13 +41,23 @@ swift run swtui help        # diagnostic config CLI
 | **Graph** | `Graph/` | `AttributeGraph`, `AttributeNode`, `NodeKind` (enum dispatch), `NodeID`, `GraphRenderer`, `GraphMeasurer`, `GraphConformances`, `HitTest` |
 | **State** | `State/` | `@TerminalState`, `Binding<Value>`, `StateStorage`, `GraphContext` (5 `nonisolated(unsafe)` statics), `EnvironmentValues` |
 | **Rendering** | `Rendering/` | `CellBuffer`, `Compositor` (layers + delta), `OutputBuffer` (raw bytes), `Terminal` (raw mode, ANSI modes) |
-| **Focus** | `Focus/` | `FocusEngine` (dual keyboard/mouse), `FocusModifiers`, `FocusGraphIntegration` |
-| **Input** | `Core/` | `InputParser` (ANSI, SGR 1006 mouse, kitty keyboard, UTF-8), `KeyEvent`, `MouseEvent`, `KeyBindings` |
+| **Focus** | `Focus/` | `FocusEngine` (dual keyboard/mouse, scope-aware arrows), `FocusModifiers` (`.focusable`, `.focusScope`), `FocusGraphIntegration` |
+| **Input** | `Core/` | `InputParser` (ANSI, SGR 1006 mouse, kitty keyboard, UTF-8) — drives off `ByteSource` (stdin or test array), `KeyEvent`, `MouseEvent`, `KeyBindings` |
 | **Views** | `Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar |
 | **Charts** | `Views/Charts/` | BarChart, Sparkline, HeatMap, BrailleCanvas, DotMatrixText, DotFont, MorseTicker |
 | **DevTools** | `DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` erased |
 | **Config** | `TerminalUIConfig/` | `DiagConfig`, `TOMLParser`, `DiagPaths` — shared with `swtui` CLI |
 | **Modifiers** | `Modifiers/` | ModifiedView, OverlayModifiers, OverlayProtocols, LifecycleModifiers |
+
+### Tests
+
+`Tests/TerminalUITests/` — 146 assertions across 20 suites, Swift Testing
+(`import Testing`, `@Test`, `#expect`). Covers TOMLParser, KeyCombo, CellBuffer,
+InputParser (ASCII + CSI + SS3 + tilde + kitty + SGR mouse + UTF-8),
+Compositor delta, AttributeGraph reconciliation/identity, GraphRenderer/Measurer,
+FocusEngine baseline + scope-aware navigation. Run with `swift test`. Graph tests
+are `@MainActor` with a `resetGraphContext()` helper that clears the five
+`nonisolated(unsafe)` statics between cases.
 
 ### Dead Code (delete pending — HYP-7)
 
@@ -121,10 +132,11 @@ Sources/TerminalUI/
 └── DevTools/       DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream
 Sources/TerminalUIConfig/   DiagConfig, TOMLParser, DiagPaths (shared with swtui CLI)
 Sources/swtui/              Developer CLI for .terminalui/ config management
+Tests/TerminalUITests/      146 assertions / 20 suites — Swift Testing
 Examples/
-├── Demo/           11-tab showcase (970 lines)
-├── ComponentsDemo/ Component gallery (480 lines)
-└── DotMatrixDemo/  Dot matrix + morse (257 lines)
+├── Demo/           12-tab showcase including Scopes (focus scope demo)
+├── ComponentsDemo/ Component gallery
+└── DotMatrixDemo/  Dot matrix + morse
 ```
 
 ## Orientation for New Sessions
@@ -148,13 +160,15 @@ Don't explore the codebase from scratch. Use these tools to get current state:
 
 ## Known Issues & Top Priorities
 
-Check Linear (`list_issues team="Hyperlocalwave" project="Developer Experience Tooling"`) for current state. As of last update:
+Check Linear (`list_issues team="Hyperlocalwave" project="Developer Experience Tooling"`) for current state.
+
+**Closed in v0.8 hardening pass:** HYP-6 (test coverage — 146 assertions), HYP-40 (focus scopes — `.focusScope(_:)`), HYP-41 (quit hang — self-pipe wakes blocked stdin read).
 
 | Priority | Key Issues |
 |----------|------------|
-| **Urgent** | HYP-5: [Any] boxing (44% active frame cost) — 7 live instances in graph protocol chain |
-| **High** | HYP-6: Zero test coverage, HYP-7: Dead renderer to delete, HYP-18/19: Debug shortcut conflicts + config, HYP-22: Complex demos, HYP-23: SPM packaging |
-| **Medium** | HYP-8: GraphContext thread safety, HYP-10: ForEach virtualization, HYP-12: .disabled(), HYP-13: Color downgrade, HYP-14: NavigationStack, HYP-20/21: Standardized debug output + remote debugger |
+| **Urgent** | HYP-5: [Any] boxing (44% active frame cost) — 7 live instances in graph protocol chain (deferred from v0.8: prior visitor-pattern attempt reverted, needs parameter packs) |
+| **High** | HYP-7: Dead renderer to delete, HYP-22: Complex demos, HYP-23: SPM packaging |
+| **Medium** | HYP-8: GraphContext thread safety, HYP-10: ForEach virtualization, HYP-12: .disabled(), HYP-13: Color downgrade, HYP-14: NavigationStack, HYP-20/21: Standardized debug output + remote debugger, HYP-37: DiffView stale cells |
 
 ### GraphContext Thread Safety
 5 `nonisolated(unsafe)` static properties in `GraphContext.swift`. Safety depends on runtime discipline that body evaluation only happens on `@MainActor`. No compiler enforcement. Consider `@TaskLocal` migration.
@@ -169,10 +183,13 @@ Check Linear (`list_issues team="Hyperlocalwave" project="Developer Experience T
 ```bash
 swift build                          # debug build
 swift build -c release               # release build (debug tools erased)
+swift test                           # 146 tests / 20 suites — must pass
 swift package clean && swift build   # full clean rebuild (must pass 0err/0warn)
 ```
 
 ### Linux verification
 ```bash
-docker run --rm -v $(pwd):/app -w /app swift:6.0 swift build
+docker run --rm -v $(pwd):/app -w /app swift:6.2 swift build
+docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test
 ```
+Note: image tag must be `swift:6.2` (Package.swift requires Swift 6.2). Older `swift:6.0` will reject the manifest.
