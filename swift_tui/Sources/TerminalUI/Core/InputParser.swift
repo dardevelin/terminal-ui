@@ -132,14 +132,28 @@ private enum UTF8 {
 
 /// Parses raw terminal bytes into KeyEvents or MouseEvents.
 /// Handles ANSI escape sequences, SGR 1006 mouse protocol, kitty keyboard protocol, and UTF-8.
+///
+/// The state machine is decoupled from the byte source via `ByteSource`. Runtime
+/// callers use the no-arg `readEvent()` / `readKey()` shims, which wrap stdin.
+/// Tests drive `parseEvent(from:)` directly with an `ArrayByteSource`.
 public enum InputParser {
 
     public static func readEvent() -> TerminalEvent? {
-        var buf = [UInt8](repeating: 0, count: 6)
-        let bytesRead = read(STDIN_FILENO, &buf, 1)
-        guard bytesRead == 1 else { return nil }
+        var source = StdinByteSource()
+        return parseEvent(from: &source)
+    }
 
-        let byte = buf[0]
+    public static func readKey() -> KeyEvent? {
+        guard let event = readEvent() else { return nil }
+        if case .key(let keyEvent) = event { return keyEvent }
+        return nil
+    }
+
+    /// Drive the parser state machine from an arbitrary byte source.
+    /// Returns nil when the source yields no first byte (stdin timeout in raw mode,
+    /// or ArrayByteSource exhausted).
+    public static func parseEvent(from source: inout some ByteSource) -> TerminalEvent? {
+        guard let byte = source.readByte() else { return nil }
 
         if ASCII.ctrlKeyRange.contains(byte) {
             if byte == ASCII.carriageReturn { return .key(KeyEvent(key: .enter)) }
@@ -150,21 +164,15 @@ public enum InputParser {
         }
 
         if byte == ASCII.escape {
-            return parseEscapeSequence(&buf)
+            return parseEscapeSequence(from: &source)
         }
 
         if byte == ASCII.delete {
             return .key(KeyEvent(key: .backspace))
         }
 
-        let char = parseUtf8Character(firstByte: byte, buf: &buf)
+        let char = parseUtf8Character(firstByte: byte, from: &source)
         return .key(KeyEvent(key: .character(char)))
-    }
-
-    public static func readKey() -> KeyEvent? {
-        guard let event = readEvent() else { return nil }
-        if case .key(let keyEvent) = event { return keyEvent }
-        return nil
     }
 
     // MARK: - Escape Sequences
@@ -177,19 +185,17 @@ public enum InputParser {
     //   'O' → SS3 (Single Shift 3): F1-F4 on most terminals
     //   other → Alt+key (terminals send ESC followed by the key byte for Alt combos)
 
-    static func parseEscapeSequence(_ buf: inout [UInt8]) -> TerminalEvent {
-        var secondByte: UInt8 = 0
-        let bytesRead = read(STDIN_FILENO, &secondByte, 1)
-        if bytesRead == 0 {
+    static func parseEscapeSequence(from source: inout some ByteSource) -> TerminalEvent {
+        guard let secondByte = source.readByte() else {
             return .key(KeyEvent(key: .escape))
         }
 
         if secondByte == UInt8(ascii: "[") {
-            return parseCsiSequence(&buf)
+            return parseCsiSequence(from: &source)
         }
 
         if secondByte == UInt8(ascii: "O") {
-            return parseSsSequence(&buf)
+            return parseSsSequence(from: &source)
         }
 
         if secondByte == ASCII.carriageReturn {
@@ -200,14 +206,14 @@ public enum InputParser {
         return .key(KeyEvent(key: .character(char), modifiers: .alt))
     }
 
-    static func parseCsiSequence(_ buf: inout [UInt8]) -> TerminalEvent {
-        var thirdByte: UInt8 = 0
-        let bytesRead = read(STDIN_FILENO, &thirdByte, 1)
-        guard bytesRead == 1 else { return .key(KeyEvent(key: .escape)) }
+    static func parseCsiSequence(from source: inout some ByteSource) -> TerminalEvent {
+        guard let thirdByte = source.readByte() else {
+            return .key(KeyEvent(key: .escape))
+        }
 
         // SGR 1006 mouse: ESC [ < Cb ; Cx ; Cy M/m
         if thirdByte == UInt8(ascii: "<") {
-            return parseSgrMouse()
+            return parseSgrMouse(from: &source)
         }
 
         switch thirdByte {
@@ -220,20 +226,16 @@ public enum InputParser {
         case UInt8(ascii: "Z"):
             return .key(KeyEvent(key: .tab, modifiers: .shift))
         case UInt8(ascii: "1")...UInt8(ascii: "9"):
-            return parseExtendedCsi(thirdByte)
+            return parseExtendedCsi(thirdByte, from: &source)
         default:
             return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), thirdByte])))
         }
     }
 
     /// Accumulate numeric parameters: ESC [ N ; M ~ or ESC [ 1 ; M A/B/C/D or ESC [ N ; M u
-    static func parseExtendedCsi(_ thirdByte: UInt8) -> TerminalEvent {
+    static func parseExtendedCsi(_ thirdByte: UInt8, from source: inout some ByteSource) -> TerminalEvent {
         var params: [UInt8] = [thirdByte]
-        while true {
-            var nextByte: UInt8 = 0
-            let bytesRead = read(STDIN_FILENO, &nextByte, 1)
-            guard bytesRead == 1 else { break }
-
+        while let nextByte = source.readByte() {
             if nextByte == UInt8(ascii: "~") {
                 return parseTildeKey(params)
             }
@@ -348,14 +350,12 @@ public enum InputParser {
     /// Bitfield decoding order matters: scroll and motion flags are checked before
     /// press/release because they override button interpretation. A scroll event
     /// with button=0 means scroll-up, not left-click.
-    static func parseSgrMouse() -> TerminalEvent {
+    static func parseSgrMouse(from source: inout some ByteSource) -> TerminalEvent {
         var rawBytes: [UInt8] = []
         var finalByte: UInt8 = 0
 
         while true {
-            var byte: UInt8 = 0
-            let bytesRead = read(STDIN_FILENO, &byte, 1)
-            guard bytesRead == 1 else {
+            guard let byte = source.readByte() else {
                 return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), UInt8(ascii: "<")] + rawBytes)))
             }
             if byte == UInt8(ascii: "M") || byte == UInt8(ascii: "m") {
@@ -420,10 +420,10 @@ public enum InputParser {
     // Historical VT100 convention. F5+ use CSI tilde sequences instead.
     // Some terminals send CSI P/Q/R/S for F1-F4 — those are handled in parseModifiedKey.
 
-    static func parseSsSequence(_ buf: inout [UInt8]) -> TerminalEvent {
-        var thirdByte: UInt8 = 0
-        let bytesRead = read(STDIN_FILENO, &thirdByte, 1)
-        guard bytesRead == 1 else { return .key(KeyEvent(key: .escape)) }
+    static func parseSsSequence(from source: inout some ByteSource) -> TerminalEvent {
+        guard let thirdByte = source.readByte() else {
+            return .key(KeyEvent(key: .escape))
+        }
 
         switch thirdByte {
         case UInt8(ascii: "P"): return .key(KeyEvent(key: .f(1)))
@@ -437,7 +437,7 @@ public enum InputParser {
     // MARK: - UTF-8 Decoding
     // Reference: RFC 3629 — lead byte bit pattern determines sequence length.
 
-    static func parseUtf8Character(firstByte: UInt8, buf: inout [UInt8]) -> Character {
+    static func parseUtf8Character(firstByte: UInt8, from source: inout some ByteSource) -> Character {
         var bytes = [firstByte]
         let expectedLength: Int
 
@@ -448,9 +448,7 @@ public enum InputParser {
         else { return Character(UnicodeScalar(firstByte)) }
 
         for _ in 1..<expectedLength {
-            var nextByte: UInt8 = 0
-            let bytesRead = read(STDIN_FILENO, &nextByte, 1)
-            guard bytesRead == 1 else { break }
+            guard let nextByte = source.readByte() else { break }
             bytes.append(nextByte)
         }
 
