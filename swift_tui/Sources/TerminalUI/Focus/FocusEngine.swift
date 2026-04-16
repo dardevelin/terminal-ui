@@ -121,7 +121,16 @@ public final class FocusEngine {
             }
 
             if axisMatches {
-                let siblings = collectFocusables(parentLayout)
+                // HYP-40: if the focused node lives in a named scope, restrict
+                // candidates to siblings in the same scope. Outside scopes, keep
+                // the pre-HYP-40 behavior (all focusables under the layout parent).
+                let allSiblings = collectFocusables(parentLayout)
+                let siblings: [AttributeNode]
+                if let scope = currentNode.scopeID {
+                    siblings = allSiblings.filter { $0.scopeID == scope }
+                } else {
+                    siblings = allSiblings
+                }
                 guard let idx = siblings.firstIndex(where: { $0.id == current }) else {
                     return
                 }
@@ -137,6 +146,10 @@ public final class FocusEngine {
                     }
                 }
             } else {
+                // HYP-40: when in a scope, arrow on wrong axis is a no-op rather
+                // than falling back to Tab order — otherwise arrows would leak
+                // out of the scope.
+                if currentNode.scopeID != nil { return }
                 switch direction {
                 case .up, .left: focusPrevious()
                 case .down, .right: focusNext()

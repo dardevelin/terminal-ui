@@ -141,6 +141,9 @@ public final class AttributeGraph {
                 if case .focusable = newEffect {
                     node.isFocusable = true
                 }
+                if case .focusScope(let scopeID) = newEffect {
+                    stampScopeID(scopeID, on: node.children)
+                }
 
                 // Update base child
                 if let child = node.children.first {
@@ -451,7 +454,23 @@ public final class AttributeGraph {
             node.children.append(extraNode)
         }
 
+        // HYP-40: stamp scope onto focusable descendants after children exist.
+        if case .focusScope(let scopeID) = effect {
+            stampScopeID(scopeID, on: node.children)
+        }
+
         return node
+    }
+
+    /// Walk the subtree and record scopeID on every focusable descendant.
+    /// Called during construction and reconciliation of a .focusScope modifier.
+    /// Stops descending into nested scopes — inner .focusScope wins for its subtree.
+    func stampScopeID(_ id: String, on nodes: [AttributeNode]) {
+        for node in nodes {
+            if case .modifier(.focusScope) = node.kind { continue }
+            if node.isFocusable { node.scopeID = id }
+            stampScopeID(id, on: node.children)
+        }
     }
 
     func constructComposite<V: TerminalView>(_ view: V, id: NodeID) -> AttributeNode {

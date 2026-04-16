@@ -89,6 +89,7 @@ extension ModifiedView: _GraphModified {
         case is any _BackgroundViewModifierProtocol: .backgroundView
         case let modal as any _ModalModifierProtocol: .modal(isPresented: modal.modalIsPresented)
         case is FocusableModifier: .focusable
+        case let scope as FocusScopeModifier: .focusScope(scope.id)
         case is OnKeyPressModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
         case is OnClickModifier: .onClick

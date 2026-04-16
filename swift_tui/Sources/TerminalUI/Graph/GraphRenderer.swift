@@ -545,6 +545,11 @@ public enum GraphRenderer {
             // Just render the child — focus ring is drawn after main render pass.
             render(child, into: &buffer, context: ctx)
 
+        case .focusScope:
+            // Scope ids are stamped on focusable descendants during construction.
+            // No visual effect — navigation-only modifier.
+            render(child, into: &buffer, context: ctx)
+
         case .onKeyPress:
             // Handler is registered on FocusEngine during graph update,
             // not during rendering. Just pass through.

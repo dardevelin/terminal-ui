@@ -28,6 +28,12 @@ public class AttributeNode {
     /// Whether this node can receive focus (set by .focusable() modifier).
     public var isFocusable: Bool = false
 
+    /// Identifier of the nearest enclosing focus scope (HYP-40), or nil if not in one.
+    /// Set during reconciliation by .focusScope(id) — the modifier propagates its id
+    /// to every focusable descendant. FocusEngine uses it to clamp directional
+    /// navigation: arrows stay within a scope, Tab still crosses scopes.
+    public var scopeID: String?
+
     /// Whether onAppear has already fired for this node.
     public var didAppear: Bool = false
 
@@ -125,6 +131,7 @@ extension NodeKind {
             case .backgroundView: "bgView"
             case .modal: "modal"
             case .focusable: "focusable"
+            case .focusScope: "focusScope"
             case .onKeyPress: "onKeyPress"
             case .onAppear: "onAppear"
             case .onClick: "onClick"
@@ -193,6 +200,7 @@ public enum ModifierEffect {
     case backgroundView  // child[0] = background content, child[1] = base (render bg first)
     case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
     case focusable   // marks the child as able to receive focus
+    case focusScope(String) // HYP-40: groups focusable descendants; arrows stay within
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
     case onAppear    // fires action on first graph construction (tracked on node)
     case onClick     // attaches click handler (handler stored on FocusEngine)

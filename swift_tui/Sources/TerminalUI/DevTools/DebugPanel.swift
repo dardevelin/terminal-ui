@@ -373,6 +373,7 @@ public final class DebugPanel {
             case .backgroundView: kind = "bg"; detail = ""
             case .modal(let p): kind = "mdl"; detail = p ? "on" : "off"
             case .focusable: kind = "fcs"; detail = ""
+            case .focusScope(let id): kind = "scope"; detail = id
             case .onKeyPress: kind = "key"; detail = ""
             case .onAppear: kind = "app"; detail = ""
             case .onClick: kind = "clk"; detail = ""

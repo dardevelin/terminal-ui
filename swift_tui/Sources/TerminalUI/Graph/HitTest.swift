@@ -119,6 +119,7 @@ public struct HitResult {
             case .backgroundView: values.append(("modifier", "backgroundView"))
             case .modal(let p): values.append(("modifier", "modal(\(p))"))
             case .focusable: values.append(("modifier", "focusable"))
+            case .focusScope(let id): values.append(("modifier", "focusScope(\(id))"))
             case .onKeyPress: values.append(("modifier", "onKeyPress"))
             case .onAppear: values.append(("modifier", "onAppear"))
             case .onClick: values.append(("modifier", "onClick"))
@@ -154,6 +155,7 @@ public struct HitResult {
                 case .backgroundView: return "bgView"
                 case .modal(_): return "modal"
                 case .focusable: return "focusable"
+                case .focusScope(let id): return "focusScope(\(id))"
                 case .onKeyPress: return "onKeyPress"
                 case .onAppear: return "onAppear"
                 case .onClick: return "onClick"

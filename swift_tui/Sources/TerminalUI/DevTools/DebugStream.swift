@@ -176,6 +176,7 @@ public final class DebugStream: @unchecked Sendable {
             case .backgroundView: kind = "bgView"; value = ""
             case .modal(let p): kind = "modal"; value = p ? "shown" : "hidden"
             case .focusable: kind = "focusable"; value = ""
+            case .focusScope(let id): kind = "focusScope"; value = id
             case .onKeyPress: kind = "onKeyPress"; value = ""
             case .onAppear: kind = "onAppear"; value = ""
             case .onClick: kind = "onClick"; value = ""

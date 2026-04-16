@@ -795,40 +795,45 @@ struct TextAreaTab: TerminalView {
     }
 }
 
-// MARK: - Tab 12: StatusBar Demo
+// MARK: - Tab 12: Focus Scopes Demo
 
-struct StatusBarTab: TerminalView {
+// HYP-40: three .focusScope("...") rows. Arrow keys stay within a row,
+// Tab/Shift+Tab crosses rows.
+
+struct FocusScopesTab: TerminalView {
     var body: some TerminalView {
         VStack {
-            Text("StatusBar Component")
+            Text("Focus Scopes")
                 .bold()
             Divider()
-            Text("  Key hints style:")
-            StatusBar.keyHints([
-                ("^C", "Quit"),
-                ("^S", "Save"),
-                ("Tab", "Focus"),
-                ("^D", "Debug"),
-                ("^F", "Panel"),
-            ])
-            Text("")
-            Text("  Custom sections style:")
-            StatusBar {
-                StatusBar.Section(.left) {
-                    " NORMAL ".fg(.white).bg(.blue).bolded()
-                }
-                StatusBar.Section(.center) {
-                    "main.swift".fg(.white)
-                }
-                StatusBar.Section(.right) {
-                    "Ln 42, Col 8".fg(.gray)
-                }
-            }
-            Text("")
-            Text("  These bars pin to a single row and fill the available width.")
+            Text("Tab between rows · Arrow keys within a row")
                 .foreground(.gray)
+            Text("")
+            ScopedRow(label: "row A", id: "row-a")
+            Text("")
+            ScopedRow(label: "row B", id: "row-b")
+            Text("")
+            ScopedRow(label: "row C", id: "row-c")
             Spacer()
         }
+    }
+}
+
+struct ScopedRow: TerminalView {
+    let label: String
+    let id: String
+
+    var body: some TerminalView {
+        HStack {
+            Text(label + ": ").foreground(.cyan)
+            Button(" one ") {}.focusable()
+            Text(" ")
+            Button(" two ") {}.focusable()
+            Text(" ")
+            Button(" three ") {}.focusable()
+            Spacer()
+        }
+        .focusScope(id)
     }
 }
 
@@ -854,7 +859,7 @@ struct ActiveTab: TerminalView {
         else if index == 8 { HunkDiffTab() }
         else if index == 9 { TreeTab() }
         else if index == 10 { TextAreaTab(state: state) }
-        else { StatusBarTab() }
+        else { FocusScopesTab() }
     }
 }
 
@@ -911,7 +916,7 @@ struct App: TerminalView {
 
     static let tabNames = [
         "Build", "Logs", "Controls", "Charts", "Heatmap",
-        "Processes", "Table", "Diff", "HunkDiff", "Tree", "Editor", "StatusBar",
+        "Processes", "Table", "Diff", "HunkDiff", "Tree", "Editor", "Scopes",
     ]
 
     var body: some TerminalView {
