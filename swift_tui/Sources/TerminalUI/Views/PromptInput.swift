@@ -2,13 +2,14 @@
 /// Designed for CLI tool prompts — Claude Code, Codex, OpenCode style.
 ///
 /// Features:
-/// - Full-width, multi-line with word wrapping
-/// - `>` prompt indicator on the left
-/// - Visible block cursor
-/// - Enter submits, Shift+Enter inserts newline
-/// - Up arrow recalls previous prompts (history)
-/// - Optional context badge on the right (project name, mode)
-/// - Grows vertically as content expands
+/// - Soft-wraps content at the container width; input grows downward.
+/// - `❯` prompt indicator on the left, continuation rows indent to match.
+/// - Visible block cursor with per-display-row projection.
+/// - Enter submits; Shift+Enter / Option+Enter / Ctrl+Enter insert a newline.
+///   (Shift+Enter detection requires a terminal with kitty keyboard or similar;
+///    Option+Enter is the universal fallback — sent as `ESC\r`.)
+/// - Up arrow from the top display row recalls history.
+/// - Optional context badge on the right (project name, mode).
 ///
 /// Usage:
 /// ```
@@ -18,22 +19,61 @@
 /// PromptInput(
 ///     text: $input,
 ///     state: $promptState,
-///     prompt: ">",
+///     prompt: "❯",
 ///     onSubmit: { text in print("Submitted: \(text)") }
 /// )
 /// ```
+
+/// Which axis arrow Up/Down navigates on.
+///
+/// `.display` matches editors (vim visual lines, VS Code, Claude Code):
+/// one arrow step = one terminal row, so a soft-wrapped logical line splits
+/// into several navigable rows. `.logical` treats each `\n`-delimited line
+/// as a single step; soft-wrapped rows are skipped.
+public enum PromptArrowMode: Sendable, Equatable {
+    case display
+    case logical
+}
+
+/// How the prompt picks its rendered height.
+///
+/// Default `.fixed(8)` grows with content up to 8 display rows and scrolls
+/// once content exceeds the cap — matches Claude Code / Codex. Use
+/// `.unbounded` when the parent layout can absorb arbitrary growth (chat
+/// panel in a ScrollView). `.container` and `.containerCapped` honour the
+/// container's reported height, which is only reliable when the parent
+/// explicitly sizes the prompt via `.frame()`.
+public enum PromptHeightPolicy: Sendable, Equatable {
+    /// Fixed ceiling in display rows. Recommended for VStack layouts.
+    /// Content beyond the ceiling scrolls vertically to keep the cursor
+    /// visible.
+    case fixed(Int)
+    /// Grow with content without any cap. The prompt's height equals the
+    /// wrapped display-row count. Pair with an outer `ScrollView` if the
+    /// parent cannot absorb arbitrary growth.
+    case unbounded
+    /// Grow to the container's reported height, with no hard ceiling. Use
+    /// when the parent explicitly sizes the prompt with `.frame()`.
+    case container
+    /// Grow up to `min(cap, container.height)`. Use inside fixed-frame
+    /// parents only.
+    case containerCapped(Int)
+}
+
 public struct PromptInputState: Equatable, Sendable {
-    /// Cursor column within the current text
+    /// Cursor column within the current text (logical, counts characters
+    /// left of the cursor in `lines[cursorRow]`).
     public var cursorCol: Int = 0
-    /// Cursor row (for multi-line input)
+    /// Cursor row within the logical `\n`-split `lines` array.
     public var cursorRow: Int = 0
-    /// Scroll offset for long text
-    public var scrollRow: Int = 0
-    /// Command history
+    /// Top visible display row (post-wrap). Unit is display rows, not
+    /// logical lines, so scrolling inside a single long wrapped line works.
+    public var scrollDisplayRow: Int = 0
+    /// Command history — index 0 is most recent.
     public var history: [String] = []
-    /// Current history navigation index (-1 = current input, 0 = most recent)
+    /// Current history navigation index (-1 = live input, 0 = most recent).
     public var historyIndex: Int = -1
-    /// Text saved when navigating history (so we can return to it)
+    /// Text saved when entering history so arrow-down can restore it.
     public var savedInput: String = ""
 
     public init() {}
@@ -44,10 +84,11 @@ public struct PromptInput: TerminalView {
     public let state: Binding<PromptInputState>
     public let prompt: String
     public let badge: String?
-    /// Cap on visible display rows (post-wrap). `nil` grows to fit container
-    /// via `GeometryReader`. Override to pin a taller/shorter input inside a
-    /// parent that would stretch.
+    /// Legacy cap kept for source compatibility. When non-nil, overrides
+    /// `heightPolicy` with `.fixed(n)` — matches the pre-HYP-84 constructor.
     public let maxVisibleLines: Int?
+    public let heightPolicy: PromptHeightPolicy
+    public let arrowMode: PromptArrowMode
     public let onSubmit: ((String) -> Void)?
 
     private static let cursorChar: Character = "\u{2588}"  // █
@@ -64,6 +105,8 @@ public struct PromptInput: TerminalView {
         prompt: String = "\u{276F}",
         badge: String? = nil,
         maxVisibleLines: Int? = nil,
+        heightPolicy: PromptHeightPolicy = .fixed(8),
+        arrowMode: PromptArrowMode = .display,
         onSubmit: ((String) -> Void)? = nil
     ) {
         self.text = text
@@ -71,31 +114,48 @@ public struct PromptInput: TerminalView {
         self.prompt = prompt
         self.badge = badge
         self.maxVisibleLines = maxVisibleLines
+        self.heightPolicy = heightPolicy
+        self.arrowMode = arrowMode
         self.onSubmit = onSubmit
     }
 
     public var body: some TerminalView {
-        // Wrap in GeometryReader so scroll math operates on DISPLAY rows
-        // (wrapped) rather than logical rows. Without the container width,
-        // a single long logical line would wrap inside `writeSpans` but the
-        // logical-row scroll offset would leave the cursor off-screen.
+        // Soft-wrap needs the container width; `GeometryReader` supplies it.
+        // We do NOT apply `.frame(height:)` — the spans emitted by
+        // `buildDisplay` already contain exactly `renderedHeight` newline-
+        // separated display rows, and `Text` sizes itself from span
+        // newlines (TextArea uses the same trick). Wrapping in `.frame`
+        // would force VStack to give us a fixed allocation on the FIRST
+        // frame and then lock that size in, because GR reports last
+        // frame's height.
         GeometryReader { size in
             let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
-            // Resolve max visible lines: caller-supplied > container height >
-            // legacy 8-line default. Empty input stays at a single row.
-            let capacity = self.maxVisibleLines ?? (size.height > 0 ? size.height : 8)
-            let displayRows = self.displayRowCount(wrapWidth: contentWidth)
-            let renderedHeight = min(max(1, capacity), max(1, displayRows))
-            let spans = self.buildDisplay(wrapWidth: contentWidth, visibleLines: renderedHeight)
+            let lines = Self.splitLines(self.text.get())
+            let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
+            let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
+            let ceiling = Self.resolveCeiling(
+                policy: self.heightPolicy,
+                legacy: self.maxVisibleLines,
+                containerHeight: size.height,
+                contentRows: totalDisplayRows
+            )
+            let renderedHeight = min(max(1, ceiling), max(1, totalDisplayRows))
+            let spans = self.buildDisplay(
+                lines: lines,
+                wraps: wraps,
+                totalDisplayRows: totalDisplayRows,
+                wrapWidth: contentWidth,
+                visibleLines: renderedHeight
+            )
             return Text(spans: spans)
-                .frame(height: renderedHeight)
                 .focusable()
-                .onKeyPress { [text, state, onSubmit, prompt] event in
+                .onKeyPress { [text, state, onSubmit, prompt, arrowMode] event in
                     Self.handleKey(
                         event, text: text, state: state,
                         onSubmit: onSubmit, promptWidth: prompt.count + 1,
                         maxVisibleLines: renderedHeight,
-                        wrapWidth: contentWidth
+                        wrapWidth: contentWidth,
+                        arrowMode: arrowMode
                     )
                 }
         }
@@ -107,85 +167,172 @@ public struct PromptInput: TerminalView {
         prompt.count + 1
     }
 
-    /// Total display rows produced by `content` at the given wrap width.
-    /// A logical line of length L at width W needs `ceil(L / W)` display rows
-    /// (minimum 1 for empty lines).
-    private func displayRowCount(wrapWidth: Int) -> Int {
-        let lines = Self.splitLines(text.get())
-        var total = 0
-        for line in lines {
-            total += max(1, (line.count + wrapWidth - 1) / wrapWidth)
+    /// Picks the display-row ceiling. Legacy `maxVisibleLines` wins for
+    /// source compatibility, then the policy.
+    private static func resolveCeiling(
+        policy: PromptHeightPolicy,
+        legacy: Int?,
+        containerHeight: Int,
+        contentRows: Int
+    ) -> Int {
+        if let legacy { return max(1, legacy) }
+        switch policy {
+        case .fixed(let n): return max(1, n)
+        case .unbounded: return max(1, contentRows)
+        case .container: return max(1, containerHeight > 0 ? containerHeight : 8)
+        case .containerCapped(let cap):
+            let container = containerHeight > 0 ? containerHeight : cap
+            return max(1, min(cap, container))
         }
-        return total
+    }
+
+    // MARK: - Soft wrap
+
+    /// Splits a logical line into ≤`width`-character chunks. Empty input
+    /// still yields one empty chunk so the row is navigable.
+    static func wrapLine(_ line: String, width: Int) -> [String] {
+        guard width > 0 else { return [line] }
+        if line.isEmpty { return [""] }
+        var chunks: [String] = []
+        var idx = line.startIndex
+        while idx < line.endIndex {
+            let end = line.index(idx, offsetBy: width, limitedBy: line.endIndex) ?? line.endIndex
+            chunks.append(String(line[idx..<end]))
+            idx = end
+        }
+        return chunks
+    }
+
+    /// Pre-computes wrapped chunks for every logical line. Used by both the
+    /// renderer and the scroll/navigation math so they agree on display rows.
+    static func wrapPerLine(lines: [String], width: Int) -> [[String]] {
+        lines.map { wrapLine($0, width: width) }
+    }
+
+    /// Maps a logical cursor to its (displayRow, displayCol) in the flattened
+    /// post-wrap grid. `displayRow` is summed across all preceding logical
+    /// lines' chunk counts plus the wrap-index within the current line.
+    /// `displayCol` is the cursor's column within that chunk.
+    static func projectCursor(
+        logicalRow: Int,
+        logicalCol: Int,
+        wraps: [[String]]
+    ) -> (displayRow: Int, displayCol: Int) {
+        var displayRow = 0
+        for row in 0..<min(logicalRow, wraps.count) {
+            displayRow += max(1, wraps[row].count)
+        }
+        let chunks = wraps[min(logicalRow, wraps.count - 1)]
+        // `chunks[i]` covers logical columns [i*W, (i+1)*W). The cursor's
+        // position inside the chunk is `logicalCol - i*W`. When the cursor
+        // sits at the boundary (`logicalCol == chunkLen` and another chunk
+        // follows), prefer the start of the next chunk — matches how editors
+        // position a trailing cursor after a word-wrap.
+        var remaining = logicalCol
+        for (i, chunk) in chunks.enumerated() {
+            if remaining < chunk.count {
+                return (displayRow + i, remaining)
+            }
+            if remaining == chunk.count {
+                // End of a chunk: if another chunk follows, move to its start;
+                // otherwise render at the end of this chunk (cursor block
+                // drawn to the right of the last character).
+                if i + 1 < chunks.count {
+                    return (displayRow + i + 1, 0)
+                }
+                return (displayRow + i, remaining)
+            }
+            remaining -= chunk.count
+        }
+        // Defensive: cursor past end — pin at end of last chunk.
+        let lastIdx = max(0, chunks.count - 1)
+        return (displayRow + lastIdx, chunks[lastIdx].count)
     }
 
     // MARK: - Display
 
-    private func buildDisplay(wrapWidth: Int, visibleLines: Int) -> [TextSpan] {
-        let content = text.get()
+    private func buildDisplay(
+        lines: [String],
+        wraps: [[String]],
+        totalDisplayRows: Int,
+        wrapWidth: Int,
+        visibleLines: Int
+    ) -> [TextSpan] {
         let st = state.get()
-        let lines = Self.splitLines(content)
-        let cursorRow = min(st.cursorRow, lines.count - 1)
+        let cursorRow = min(st.cursorRow, max(0, lines.count - 1))
         let cursorCol = min(st.cursorCol, lines[cursorRow].count)
+        let (cursorDisplayRow, cursorDisplayCol) = Self.projectCursor(
+            logicalRow: cursorRow, logicalCol: cursorCol, wraps: wraps
+        )
+
+        // Flatten (logicalRow, chunkIndex) pairs for the visible window.
+        let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, totalDisplayRows - visibleLines)))
+        let endDisplayRow = min(totalDisplayRows, startDisplayRow + visibleLines)
 
         var spans: [TextSpan] = []
+        var currentDisplayRow = 0
+        var emittedRows = 0
 
-        // Badge on the right of the first line (if provided)
-        // We'll render it after the prompt line
+        outer: for (logicalIdx, chunks) in wraps.enumerated() {
+            for (chunkIdx, chunk) in chunks.enumerated() {
+                defer { currentDisplayRow += 1 }
+                if currentDisplayRow < startDisplayRow { continue }
+                if currentDisplayRow >= endDisplayRow { break outer }
 
-        let lineCount = lines.count
-        let startRow = max(0, min(st.scrollRow, lineCount - visibleLines))
-        let endRow = min(lineCount, startRow + visibleLines)
-
-        for row in startRow..<endRow {
-            if row > startRow {
-                spans.append(TextSpan("\n"))
-            }
-
-            let line = lines[row]
-
-            // Prompt indicator on first visible line, continuation indent on others
-            if row == 0 {
-                spans.append(TextSpan("\(prompt) ", foreground: Self.promptColor, bold: true))
-            } else {
-                // Indent continuation lines to align with text after prompt
-                let indent = String(repeating: " ", count: prompt.count + 1)
-                spans.append(TextSpan(indent, foreground: Self.dimColor))
-            }
-
-            // Render line content with cursor
-            if row == cursorRow {
-                // Before cursor
-                if cursorCol > 0 {
-                    let before = String(line.prefix(cursorCol))
-                    spans.append(TextSpan(before, foreground: Self.textColor))
+                if emittedRows > 0 {
+                    spans.append(TextSpan("\n"))
                 }
-                // Cursor
-                if cursorCol < line.count {
-                    let cursorChar = line[line.index(line.startIndex, offsetBy: cursorCol)]
-                    spans.append(TextSpan(String(cursorChar), foreground: Self.cursorColor, background: Self.promptColor, bold: true))
-                    // After cursor
-                    if cursorCol + 1 < line.count {
-                        let after = String(line.suffix(from: line.index(line.startIndex, offsetBy: cursorCol + 1)))
-                        spans.append(TextSpan(after, foreground: Self.textColor))
+                emittedRows += 1
+
+                // Prompt on the first chunk of the first logical line,
+                // dim continuation indent everywhere else.
+                if logicalIdx == 0 && chunkIdx == 0 {
+                    spans.append(TextSpan("\(prompt) ", foreground: Self.promptColor, bold: true))
+                } else {
+                    let indent = String(repeating: " ", count: prompt.count + 1)
+                    spans.append(TextSpan(indent, foreground: Self.dimColor))
+                }
+
+                let isCursorRow = (currentDisplayRow == cursorDisplayRow)
+                if isCursorRow {
+                    // Split the chunk around the cursor column.
+                    let col = min(cursorDisplayCol, chunk.count)
+                    if col > 0 {
+                        let before = String(chunk.prefix(col))
+                        spans.append(TextSpan(before, foreground: Self.textColor))
+                    }
+                    if col < chunk.count {
+                        let idx = chunk.index(chunk.startIndex, offsetBy: col)
+                        let cursorGlyph = chunk[idx]
+                        spans.append(TextSpan(
+                            String(cursorGlyph),
+                            foreground: Self.cursorColor,
+                            background: Self.promptColor,
+                            bold: true
+                        ))
+                        if col + 1 < chunk.count {
+                            let after = String(chunk.suffix(from: chunk.index(after: idx)))
+                            spans.append(TextSpan(after, foreground: Self.textColor))
+                        }
+                    } else {
+                        // Cursor sits past the last character of this chunk —
+                        // render the block glyph. `projectCursor` only lands
+                        // here for the last chunk of the last logical line
+                        // (otherwise it rolls to the next chunk's col 0).
+                        spans.append(TextSpan(String(Self.cursorChar), foreground: Self.promptColor))
                     }
                 } else {
-                    // Cursor at end of line
-                    spans.append(TextSpan(String(Self.cursorChar), foreground: Self.promptColor))
+                    spans.append(TextSpan(chunk, foreground: Self.textColor))
                 }
-            } else {
-                spans.append(TextSpan(line, foreground: Self.textColor))
             }
         }
 
-        // Badge on the right side (rendered as a separate span on the first line)
-        if let badge, !badge.isEmpty {
-            // Add badge info — we put it on the first line's right side
-            // For simplicity, add it as a note after all content
-            if lines.count <= 1 {
-                spans.append(TextSpan("  "))
-                spans.append(TextSpan(" \(badge) ", foreground: Self.badgeColor, background: Self.badgeBgColor))
-            }
+        // Badge only fits cleanly on single-row empty input; otherwise the
+        // render would overlap wrapped content. Wide-screen callers can use
+        // an explicit HStack instead.
+        if let badge, !badge.isEmpty, totalDisplayRows == 1 {
+            spans.append(TextSpan("  "))
+            spans.append(TextSpan(" \(badge) ", foreground: Self.badgeColor, background: Self.badgeBgColor))
         }
 
         return spans
@@ -200,7 +347,8 @@ public struct PromptInput: TerminalView {
         onSubmit: ((String) -> Void)?,
         promptWidth: Int,
         maxVisibleLines: Int,
-        wrapWidth: Int = .max
+        wrapWidth: Int = .max,
+        arrowMode: PromptArrowMode = .display
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
@@ -214,7 +362,9 @@ public struct PromptInput: TerminalView {
         switch event.key {
         // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
         case .enter where !event.modifiers.isEmpty:
-            // Any modified Enter = insert newline (expand the input box)
+            // Any modified Enter = insert newline (expand the input box).
+            // Option+Enter is the universal fallback — Terminal.app cannot
+            // distinguish Shift+Enter from plain Enter without kitty keyboard.
             let line = lines[st.cursorRow]
             let idx = line.index(line.startIndex, offsetBy: st.cursorCol)
             let before = String(line[..<idx])
@@ -239,7 +389,7 @@ public struct PromptInput: TerminalView {
                 text.set("")
                 st.cursorRow = 0
                 st.cursorCol = 0
-                st.scrollRow = 0
+                st.scrollDisplayRow = 0
             }
             state.set(st)
             return .handled
@@ -255,6 +405,7 @@ public struct PromptInput: TerminalView {
             st.cursorCol += 1
             st.historyIndex = -1
             text.set(lines.joined(separator: "\n"))
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -319,21 +470,21 @@ public struct PromptInput: TerminalView {
             return .handled
 
         case .up:
-            if st.cursorRow > 0 {
-                st.cursorRow -= 1
-                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-            } else if !st.history.isEmpty {
-                // Navigate history
-                if st.historyIndex == -1 {
-                    st.savedInput = text.get()
-                }
-                let nextIdx = min(st.historyIndex + 1, st.history.count - 1)
-                if nextIdx != st.historyIndex {
-                    st.historyIndex = nextIdx
-                    text.set(st.history[nextIdx])
-                    let newLines = splitLines(st.history[nextIdx])
-                    st.cursorRow = newLines.count - 1
-                    st.cursorCol = newLines.last?.count ?? 0
+            let moved = moveCursorUp(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
+            if !moved {
+                // At the visual top of the current input → recall history.
+                if !st.history.isEmpty {
+                    if st.historyIndex == -1 {
+                        st.savedInput = text.get()
+                    }
+                    let nextIdx = min(st.historyIndex + 1, st.history.count - 1)
+                    if nextIdx != st.historyIndex {
+                        st.historyIndex = nextIdx
+                        text.set(st.history[nextIdx])
+                        let newLines = splitLines(st.history[nextIdx])
+                        st.cursorRow = newLines.count - 1
+                        st.cursorCol = newLines.last?.count ?? 0
+                    }
                 }
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
@@ -341,11 +492,8 @@ public struct PromptInput: TerminalView {
             return .handled
 
         case .down:
-            if st.cursorRow < lineCount - 1 {
-                st.cursorRow += 1
-                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-            } else if st.historyIndex >= 0 {
-                // Navigate history back
+            let moved = moveCursorDown(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
+            if !moved && st.historyIndex >= 0 {
                 st.historyIndex -= 1
                 if st.historyIndex < 0 {
                     text.set(st.savedInput)
@@ -385,65 +533,133 @@ public struct PromptInput: TerminalView {
         return text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 
-    /// Scroll logic operates on DISPLAY rows (post-wrap) rather than logical
-    /// rows. `wrapWidth` is the render column width available for content;
-    /// `.max` disables wrapping entirely (pre-HYP-83 behavior for callers that
-    /// don't know the container width). The cursor's display row = sum of
-    /// display rows for lines before `cursorRow` + `cursorCol / wrapWidth`.
-    private static func adjustScroll(_ st: inout PromptInputState,
-                                     maxVisibleLines: Int,
-                                     wrapWidth: Int,
-                                     lines: [String]) {
-        // Compute display rows used by each logical line and the cursor's
-        // display-row position within that flattened layout.
-        var displayRowsPerLine: [Int] = []
-        displayRowsPerLine.reserveCapacity(lines.count)
-        for line in lines {
-            let rows: Int
-            if wrapWidth <= 0 || wrapWidth == .max {
-                rows = 1
-            } else {
-                rows = max(1, (line.count + wrapWidth - 1) / wrapWidth)
+    /// Moves the cursor up one step under the selected arrow mode. Returns
+    /// false if it could not move (already at top) so the caller can fall
+    /// through to history recall.
+    private static func moveCursorUp(
+        _ st: inout PromptInputState,
+        lines: [String],
+        wrapWidth: Int,
+        arrowMode: PromptArrowMode
+    ) -> Bool {
+        switch arrowMode {
+        case .logical:
+            if st.cursorRow > 0 {
+                st.cursorRow -= 1
+                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+                return true
             }
-            displayRowsPerLine.append(rows)
-        }
-
-        // Display row of the cursor: all preceding lines' display rows, plus
-        // the wrap offset within the cursor's logical line.
-        let cursorLineIdx = min(st.cursorRow, max(0, lines.count - 1))
-        var cursorDisplayRow = 0
-        for i in 0..<cursorLineIdx {
-            cursorDisplayRow += displayRowsPerLine[i]
-        }
-        if wrapWidth > 0, wrapWidth != .max {
-            cursorDisplayRow += st.cursorCol / wrapWidth
-        }
-
-        // Logical scroll row needs to satisfy: the cursor's display row is
-        // inside [scrollDisplayRow, scrollDisplayRow + maxVisibleLines).
-        // Convert back from display-row cursor position to logical scrollRow.
-        var scrollDisplayRow = 0
-        for i in 0..<min(st.scrollRow, displayRowsPerLine.count) {
-            scrollDisplayRow += displayRowsPerLine[i]
-        }
-
-        if cursorDisplayRow < scrollDisplayRow {
-            // Scroll up: walk scrollRow backwards until cursor is visible.
-            var idx = st.scrollRow
-            while idx > 0 {
-                idx -= 1
-                scrollDisplayRow -= displayRowsPerLine[idx]
-                if scrollDisplayRow <= cursorDisplayRow { break }
+            return false
+        case .display:
+            guard wrapWidth > 0, wrapWidth != .max else {
+                // No wrap info → fall back to logical.
+                if st.cursorRow > 0 {
+                    st.cursorRow -= 1
+                    st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+                    return true
+                }
+                return false
             }
-            st.scrollRow = idx
-        } else if cursorDisplayRow >= scrollDisplayRow + maxVisibleLines {
-            // Scroll down: advance scrollRow until cursor fits.
-            var idx = st.scrollRow
-            while idx < lines.count - 1 && cursorDisplayRow >= scrollDisplayRow + maxVisibleLines {
-                scrollDisplayRow += displayRowsPerLine[idx]
-                idx += 1
+            // Inside a soft-wrapped logical line: step back by `wrapWidth`.
+            if st.cursorCol >= wrapWidth {
+                st.cursorCol -= wrapWidth
+                return true
             }
-            st.scrollRow = idx
+            // At the top display row of this logical line → jump to the
+            // bottom display row of the previous logical line, preserving
+            // the desired column as closely as possible.
+            if st.cursorRow > 0 {
+                st.cursorRow -= 1
+                let prevLine = lines[st.cursorRow]
+                let prevLen = prevLine.count
+                let lastChunkStart = (prevLen / wrapWidth) * wrapWidth
+                // If prevLen is an exact multiple of wrapWidth, `lastChunkStart`
+                // lands on the empty trailing chunk; back up one row.
+                let adjustedStart: Int
+                if prevLen > 0 && prevLen % wrapWidth == 0 {
+                    adjustedStart = prevLen - wrapWidth
+                } else {
+                    adjustedStart = lastChunkStart
+                }
+                let desiredCol = st.cursorCol  // carry column intent
+                let chunkLen = prevLen - adjustedStart
+                st.cursorCol = min(adjustedStart + desiredCol, adjustedStart + chunkLen)
+                return true
+            }
+            return false
         }
+    }
+
+    private static func moveCursorDown(
+        _ st: inout PromptInputState,
+        lines: [String],
+        wrapWidth: Int,
+        arrowMode: PromptArrowMode
+    ) -> Bool {
+        let lineCount = lines.count
+        switch arrowMode {
+        case .logical:
+            if st.cursorRow < lineCount - 1 {
+                st.cursorRow += 1
+                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+                return true
+            }
+            return false
+        case .display:
+            guard wrapWidth > 0, wrapWidth != .max else {
+                if st.cursorRow < lineCount - 1 {
+                    st.cursorRow += 1
+                    st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+                    return true
+                }
+                return false
+            }
+            let line = lines[st.cursorRow]
+            let remainingInLine = line.count - st.cursorCol
+            if remainingInLine >= wrapWidth {
+                // Another wrapped chunk exists in this logical line.
+                st.cursorCol += wrapWidth
+                return true
+            }
+            // Bottom chunk of current line → jump to first chunk of next line.
+            if st.cursorRow < lineCount - 1 {
+                st.cursorRow += 1
+                let colInChunk = st.cursorCol % wrapWidth
+                st.cursorCol = min(colInChunk, lines[st.cursorRow].count)
+                return true
+            }
+            return false
+        }
+    }
+
+    /// Scrolls so the cursor's display row is visible. Works on DISPLAY rows
+    /// throughout: a single long soft-wrapped line scrolls row-by-row, a
+    /// short line with lots of `\n`s still scrolls correctly.
+    private static func adjustScroll(
+        _ st: inout PromptInputState,
+        maxVisibleLines: Int,
+        wrapWidth: Int,
+        lines: [String]
+    ) {
+        let wraps: [[String]]
+        if wrapWidth <= 0 || wrapWidth == .max {
+            wraps = lines.map { [$0] }
+        } else {
+            wraps = wrapPerLine(lines: lines, width: wrapWidth)
+        }
+        let (cursorDisplayRow, _) = projectCursor(
+            logicalRow: min(st.cursorRow, max(0, lines.count - 1)),
+            logicalCol: min(st.cursorCol, lines[min(st.cursorRow, max(0, lines.count - 1))].count),
+            wraps: wraps
+        )
+        let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
+        let maxScroll = max(0, totalDisplayRows - maxVisibleLines)
+
+        if cursorDisplayRow < st.scrollDisplayRow {
+            st.scrollDisplayRow = cursorDisplayRow
+        } else if cursorDisplayRow >= st.scrollDisplayRow + maxVisibleLines {
+            st.scrollDisplayRow = cursorDisplayRow - maxVisibleLines + 1
+        }
+        st.scrollDisplayRow = max(0, min(st.scrollDisplayRow, maxScroll))
     }
 }

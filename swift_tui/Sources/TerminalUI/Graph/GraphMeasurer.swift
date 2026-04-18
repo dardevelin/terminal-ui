@@ -14,11 +14,29 @@ public enum GraphMeasurer {
         return result
     }
 
-    /// Intrinsic height — cached on the node, recomputed only when dirty.
+    /// Intrinsic height — cached on the node, recomputed only when dirty or
+    /// when the proposed width changes. The `cachedHeight` value is only
+    /// valid for the width it was computed at; a narrow `VStack` proposing
+    /// 41 cells must not reuse a height computed for 140. ViewBody nodes
+    /// (GeometryReader, any composite view with a body that reads live
+    /// state inside a rebuild closure) bypass the cache because their
+    /// subtree can change between measurement calls even when the width
+    /// hasn't — the cache key would need to include the observed state
+    /// fingerprint, which we don't have here.
     public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
-        if let cached = node.cachedHeight { return cached }
+        let skipCache: Bool
+        switch node.kind {
+        case .viewBody: skipCache = true
+        default: skipCache = false
+        }
+        if !skipCache,
+           let cached = node.cachedHeight,
+           node.cachedHeightWidth == proposedWidth {
+            return cached
+        }
         let result = computeHeight(node, proposedWidth: proposedWidth)
         node.cachedHeight = result
+        node.cachedHeightWidth = proposedWidth
         return result
     }
 
@@ -173,6 +191,21 @@ public enum GraphMeasurer {
             return base
 
         case .viewBody:
+            // GeometryReader nodes carry a `geometryRebuilder` closure that
+            // constructs the content subtree from a live size. The seeded
+            // child was built once at graph-construction with `terminalSize`,
+            // so its measurement is only correct when the allocated rect
+            // happens to match the seed. Rebuild with the current proposed
+            // width (height is flexible from the parent's perspective, so
+            // pass it through as-is) before measuring. Fixes PromptInput
+            // soft-wrap: on narrow previews the seed reports 1 row but the
+            // live rebuild with the true width reports the wrapped count.
+            if let rebuild = node.geometryRebuilder {
+                let width = proposedWidth > 0 ? proposedWidth : (GraphContext.currentEnvironment?.terminalSize.cols ?? 80)
+                let height = GraphContext.currentProposedSize?.height ?? (GraphContext.currentEnvironment?.terminalSize.rows ?? 24)
+                let rebuilt = rebuild(Size(width: width, height: height))
+                return measureHeight(rebuilt, proposedWidth: proposedWidth)
+            }
             return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
         }
     }

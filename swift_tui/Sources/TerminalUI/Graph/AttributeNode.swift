@@ -24,6 +24,10 @@ public class AttributeNode {
 
     /// Cached intrinsic height — nil means needs recomputation.
     public var cachedHeight: Int?
+    /// Proposed width the `cachedHeight` was computed at. Height is
+    /// width-dependent whenever wrapping is involved, so the measurer must
+    /// recompute when the width changes.
+    public var cachedHeightWidth: Int?
 
     /// Whether this node can receive focus (set by .focusable() modifier).
     public var isFocusable: Bool = false
@@ -60,6 +64,7 @@ public class AttributeNode {
         isDirty = true
         cachedWidth = nil
         cachedHeight = nil
+        cachedHeightWidth = nil
         parent?.markLayoutDirty()
     }
 
@@ -67,6 +72,7 @@ public class AttributeNode {
     func markLayoutDirty() {
         cachedWidth = nil
         cachedHeight = nil
+        cachedHeightWidth = nil
         if case .layout = kind {
             isDirty = true
         }

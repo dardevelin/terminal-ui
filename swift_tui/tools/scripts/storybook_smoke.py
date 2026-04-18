@@ -261,6 +261,29 @@ def storybook_textinput_validation_colors(app: Client) -> None:
     )
 
 
+def storybook_promptinput_long_input_soft_wraps(app: Client) -> None:
+    """Typing past the container width must soft-wrap downward — Claude
+    Code / Codex style. Supersedes the 2026-04-18 horizontal-scroll test
+    after the HYP-84 soft-wrap rewrite: the long input produces at least
+    two visible content rows in the preview (the Storybook preview pane
+    is too short to fit all four wrapped rows, so the exact tail may be
+    scrolled out; wrapping is the invariant we actually care about)."""
+    app.goto_storybook_page(13)  # PromptInput
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("abcdefghijklmnopqrstuvwxyz0123456789" * 3)
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    content_rows = [
+        row for row in preview.splitlines()
+        if "abcdef" in row or "vwxyz" in row or "6789" in row or "mnopqr" in row
+    ]
+    assert_true(
+        len(content_rows) >= 2,
+        f"PromptInput didn't soft-wrap — expected ≥2 content rows, got {len(content_rows)}:\n{preview}",
+    )
+
+
 def storybook_promptinput_submit_clears(app: Client) -> None:
     """PromptInput: type text, press Enter, the field clears and the
     'last submitted' display updates. Covers the whole submit path +
@@ -719,6 +742,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
     SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),
     SmokeCase("storybook.textinput_validation_colors", "Storybook", storybook_textinput_validation_colors),
+    SmokeCase("storybook.promptinput_long_input_soft_wraps", "Storybook", storybook_promptinput_long_input_soft_wraps),
     SmokeCase("storybook.promptinput_submit_clears", "Storybook", storybook_promptinput_submit_clears),
     SmokeCase("storybook.list_selection_advances", "Storybook", storybook_list_selection_advances),
     SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
