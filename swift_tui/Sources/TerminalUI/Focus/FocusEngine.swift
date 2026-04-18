@@ -111,59 +111,72 @@ public final class FocusEngine {
         }
 
         guard let currentNode = findNode(id: current, in: root) else { return }
-        guard let parentLayout = findLayoutParent(of: currentNode) else {
-            guard crossStack else { return }
-            switch direction {
-            case .up, .left: focusPrevious()
-            case .down, .right: focusNext()
-            }
-            return
+
+        let axisKind: LayoutKind
+        switch direction {
+        case .up, .down: axisKind = .vstack
+        case .left, .right: axisKind = .hstack
         }
 
-        if case .layout(let info) = parentLayout.kind {
-            let axisMatches: Bool
-            switch (info.kind, direction) {
-            case (.vstack, .up), (.vstack, .down): axisMatches = true
-            case (.hstack, .left), (.hstack, .right): axisMatches = true
-            default: axisMatches = false
-            }
-
-            if axisMatches {
-                // HYP-40: if the focused node lives in a named scope, restrict
-                // candidates to siblings in the same scope. Outside scopes, keep
-                // the pre-HYP-40 behavior (all focusables under the layout parent).
-                let allSiblings = collectFocusables(parentLayout)
+        // Walk up to find the innermost non-structural layout parent. If it
+        // matches the arrow axis but holds only the current focusable (which
+        // happens when a composite view's body introduces its own wrapping
+        // VStack — TextInput, Button, etc.), keep climbing through
+        // axis-matching layouts until we find one with a sibling. Stop as
+        // soon as we hit a MISMATCHED axis layout: arrows must not tunnel
+        // past a perpendicular stack (that's how the scope tests survive —
+        // pressing down inside an HStack shouldn't jump to a VStack above).
+        var search: AttributeNode? = currentNode.parent
+        while let candidate = search {
+            if case .layout(let info) = candidate.kind, !info.isStructural {
+                if info.kind != axisKind {
+                    // Hit a perpendicular-axis layout. `focusable` at the
+                    // edge of its scope/stack should stay put. Do not
+                    // continue upward — jumping past a perpendicular layout
+                    // is exactly the "leaks out" behavior the policy
+                    // forbids. Fall through to the Tab-order fallback,
+                    // which is itself gated by `crossStack` + scopeID.
+                    break
+                }
+                let allSiblings = collectFocusables(candidate)
                 let siblings: [AttributeNode]
                 if let scope = currentNode.scopeID {
                     siblings = allSiblings.filter { $0.scopeID == scope }
                 } else {
                     siblings = allSiblings
                 }
-                guard let idx = siblings.firstIndex(where: { $0.id == current }) else {
+                if let idx = siblings.firstIndex(where: { $0.id == current }),
+                   siblings.count > 1 {
+                    switch direction {
+                    case .down, .right:
+                        if idx + 1 < siblings.count {
+                            keyboardFocusID = siblings[idx + 1].id
+                            return
+                        }
+                    case .up, .left:
+                        if idx > 0 {
+                            keyboardFocusID = siblings[idx - 1].id
+                            return
+                        }
+                    }
+                    // At the edge of this layout — "stay inside" per rule.
                     return
                 }
-
-                switch direction {
-                case .down, .right:
-                    if idx + 1 < siblings.count {
-                        keyboardFocusID = siblings[idx + 1].id
-                    }
-                case .up, .left:
-                    if idx > 0 {
-                        keyboardFocusID = siblings[idx - 1].id
-                    }
-                }
-            } else {
-                // Axis mismatch — fall back to Tab order only when the host
-                // app opts in. Inside a scope this is always a no-op so
-                // arrows can't leak out (HYP-40 rule preserved).
-                if currentNode.scopeID != nil { return }
-                guard crossStack else { return }
-                switch direction {
-                case .up, .left: focusPrevious()
-                case .down, .right: focusNext()
-                }
+                // Same-axis layout but no sibling at this level: keep
+                // climbing so composite views whose bodies introduce a
+                // same-axis VStack don't kill arrow nav.
             }
+            search = candidate.parent
+        }
+
+        // No axis match anywhere, OR axis was perpendicular at some level.
+        // Fall back to Tab order only when the host app opted in; arrows
+        // inside a scope always no-op so they can't leak out (HYP-40).
+        if currentNode.scopeID != nil { return }
+        guard crossStack else { return }
+        switch direction {
+        case .up, .left: focusPrevious()
+        case .down, .right: focusNext()
         }
     }
 

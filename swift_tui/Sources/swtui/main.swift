@@ -448,7 +448,12 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
     _ = bytes.withUnsafeBytes { buf in
         write(fd, buf.baseAddress!, buf.count)
     }
-    // Read response lines until we hit one ending in '\n'
+    // Read until the response's terminating newline appears anywhere in
+    // the buffer — the protocol is one JSON line per response, so any
+    // `\n` ends it. Earlier we checked `response.last == 0x0A`, which
+    // broke for multi-chunk reads where the final chunk didn't end on a
+    // newline boundary — swtui hung reading empty-socket bytes that never
+    // came.
     var response = Data()
     var scratch = [UInt8](repeating: 0, count: 4096)
     while true {
@@ -457,7 +462,7 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
         }
         if n <= 0 { break }
         response.append(scratch, count: n)
-        if response.last == 0x0A { break }
+        if response.contains(0x0A) { break }
     }
     return String(data: response, encoding: .utf8) ?? ""
 }

@@ -117,9 +117,8 @@ def storybook_tab_crosses_to_preview(app: Client) -> None:
     preview. Historical complaint: the 34 sidebar rows sat in the Tab order,
     so crossing took 34 presses. Now the sidebar has exactly one focusable
     (the hint-line handler) and Tab reaches the preview in one press."""
-    # Button page is the tenth in declaration order, after the six layout
-    # primitives and the two Primitives-category pages.
-    for _ in range(10):
+    # Button page is index 9 in declaration order (0=VStack, ..., 9=Button).
+    for _ in range(9):
         app.send_key("down")
         time.sleep(0.05)
     app.wait_for_frame(1, timeout=0.5)
@@ -139,7 +138,8 @@ def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     (in-stack sibling nav), and Up arrow must move back. Regression test
     for HYP-82 #4's unintended consequence where arrows on Button were
     completely dead because cross-stack gating swallowed them too."""
-    for _ in range(10):  # navigate to Button page
+    # Button is the tenth page in declaration order (index 9).
+    for _ in range(9):
         app.send_key("down")
         time.sleep(0.05)
     app.wait_for_frame(1, timeout=0.5)

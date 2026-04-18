@@ -182,22 +182,19 @@ public enum GraphRenderer {
         return result
     }
 
-    /// A layout node is "structural" if it was created by ForEach or TupleView —
-    /// these should be transparent to the parent layout, not introduce their own axis.
-    /// VStack/HStack/ZStack written by the user are NOT structural.
+    /// A layout node is "structural" if it was synthesised by ForEach or the
+    /// `@TerminalViewBuilder` TupleView machinery. User-written
+    /// `VStack`/`HStack`/`ZStack` are NOT structural.
+    ///
+    /// Previously this used a heuristic based on parent-node kind, which mis-
+    /// classified user-written VStacks nested inside composite-view bodies
+    /// as structural — that broke Button-page arrow navigation because the
+    /// outer VStack holding the sibling Buttons was treated as transparent
+    /// and `findLayoutParent` walked past it. Now we read the explicit
+    /// `isStructural` flag set at graph construction, so the distinction is
+    /// reliable.
     static func isStructuralLayout(_ node: AttributeNode) -> Bool {
-        guard case .layout(let info) = node.kind, info.kind == .vstack else { return false }
-        // Structural vstacks come from ForEach (identity-keyed children)
-        // or TupleView (index-keyed children from result builders).
-        // User-written VStacks have a parent viewBody node with the user's type name.
-        // Heuristic: if ALL children have .explicit IDs, it's ForEach.
-        // If parent is another layout, it's likely structural.
-        // Simplest correct check: ForEach/TupleView vstacks have no viewBody wrapper
-        // above them — they're direct children of another layout node.
-        guard let parent = node.parent else { return false }
-        if case .layout = parent.kind { return true }
-        // viewBody children that are layout nodes — could be TupleView from a body result
-        if case .viewBody = parent.kind { return true }
+        if case .layout(let info) = node.kind, info.isStructural { return true }
         return false
     }
 
@@ -805,7 +802,13 @@ public enum GraphRenderer {
             let r = node.rect
             let drawX = r.x - 1
             guard drawX > 0 else { return }
-            for y in r.y..<min(r.y + r.height, buffer.height) {
+            // Clamp to buffer bounds: focused node may have an off-screen
+            // rect (e.g. after a layout rebuild where a child landed below
+            // the viewport), in which case `r.y > buffer.height` inverts
+            // the range and crashes. Same class of fix as CellBuffer.fill.
+            let startY = max(0, min(r.y, buffer.height))
+            let endY = max(startY, min(r.y + r.height, buffer.height))
+            for y in startY..<endY {
                 buffer[drawX, y] = Cell(character: glyph, style: cellStyle)
             }
 
@@ -814,8 +817,10 @@ public enum GraphRenderer {
             // exclusion needed — .bar is always inside the rect, so the
             // clip that enforces scroll viewports accepts it.
             let r = node.rect
-            guard r.width > 0, r.x >= 0 else { return }
-            for y in r.y..<min(r.y + r.height, buffer.height) {
+            guard r.width > 0, r.x >= 0, r.x < buffer.width else { return }
+            let startY = max(0, min(r.y, buffer.height))
+            let endY = max(startY, min(r.y + r.height, buffer.height))
+            for y in startY..<endY {
                 buffer[r.x, y] = Cell(character: glyph, style: cellStyle)
             }
         }

@@ -446,7 +446,10 @@ public final class AttributeGraph {
     }
 
     func constructVStack(_ vstack: any _GraphVStack, id: NodeID) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(
+            kind: .vstack,
+            isStructural: vstack.isStructuralVStack
+        )))
         let children = vstack.graphChildren()
         for (i, child) in children.enumerated() {
             let childID = id.appending(.index(i))
@@ -589,6 +592,14 @@ public final class AttributeGraph {
 
 protocol _GraphVStack {
     func graphChildren() -> [Any]
+    /// True for TupleView-style synthetic vstacks (result builder output).
+    /// User-written `VStack` returns false — it's a real layout boundary.
+    /// Defaulted so existing conformances (user VStack) don't need updates.
+    var isStructuralVStack: Bool { get }
+}
+
+extension _GraphVStack {
+    var isStructuralVStack: Bool { false }
 }
 
 protocol _GraphHStack {

@@ -42,6 +42,15 @@ extension TupleView: _TupleViewProtocol {
 }
 
 extension TupleView: _GraphVStack {
+    /// TupleView is a synthetic grouping from the `@TerminalViewBuilder`
+    /// result builder — several sibling views packaged into a single
+    /// `Content` associatedtype. It's NOT a user-written VStack even
+    /// though the graph represents it as one for layout convenience.
+    /// `structuralVStack` opts the construction into
+    /// `LayoutInfo.isStructural = true` so focus navigation and
+    /// measurement routing treat it as transparent.
+    var isStructuralVStack: Bool { true }
+
     func graphChildren() -> [Any] {
         extractChildren(from: value)
     }
@@ -232,7 +241,9 @@ extension ZStack: _GraphZStack {
 
 extension ForEach: _GraphForEach {
     func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
+        // ForEach is a structural layout — transparent to focus navigation
+        // + measurement routing (`isStructural: true`).
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack, isStructural: true)))
         for element in data {
             let childID = id.appending(.explicit(AnyHashable(element.id)))
             let childView = content(element)
@@ -288,7 +299,7 @@ extension ForEach: _GraphForEach {
 
 extension ForEachWithID: _GraphForEach {
     func constructForEachNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack)))
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack, isStructural: true)))
         for element in data {
             let key = element[keyPath: idKeyPath]
             let childID = id.appending(.explicit(AnyHashable(key)))

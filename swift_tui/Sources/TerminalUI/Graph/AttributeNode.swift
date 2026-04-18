@@ -168,9 +168,18 @@ public enum PrimitiveContent {
 public struct LayoutInfo {
     public var kind: LayoutKind
     public var childSizes: [Size] = []
+    /// `true` when the layout node was synthesized by a result builder
+    /// (TupleView) or by `ForEach`. Structural vstacks are transparent
+    /// to focus navigation and measurement routing — they don't
+    /// introduce a new axis the way a user-written `VStack` does. Set
+    /// at construction time so the heuristic-based detector (which mis-
+    /// classified user VStacks nested inside composite bodies) is
+    /// replaced by a hard, reliable flag.
+    public var isStructural: Bool = false
 
-    public init(kind: LayoutKind) {
+    public init(kind: LayoutKind, isStructural: Bool = false) {
         self.kind = kind
+        self.isStructural = isStructural
     }
 }
 

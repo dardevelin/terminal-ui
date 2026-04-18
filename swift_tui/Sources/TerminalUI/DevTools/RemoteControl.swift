@@ -269,10 +269,31 @@ public final class RemoteControlServer: @unchecked Sendable {
     private func send(_ response: RemoteResponse) {
         guard var data = try? encoder.encode(response) else { return }
         data.append(RemoteControlProtocol.newline)
-        let result = data.withUnsafeBytes { buf in
-            posixWrite(clientFd, buf.baseAddress!, buf.count)
+        // Loop on write — the client socket is non-blocking, so a single
+        // write can drain short. Large responses (query_tree over a full
+        // Storybook app) are tens of kilobytes; without this loop, clients
+        // hung waiting for the missing tail. EAGAIN spins briefly; a hard
+        // failure (EPIPE, etc.) tears down the connection.
+        var sent = 0
+        data.withUnsafeBytes { buf in
+            let base = buf.baseAddress!
+            let total = buf.count
+            while sent < total {
+                let n = posixWrite(clientFd, base + sent, total - sent)
+                if n > 0 {
+                    sent += n
+                } else if errno == EAGAIN || errno == EINTR {
+                    // Socket buffer full. Yield very briefly; the client is
+                    // actively reading so this clears in microseconds. We
+                    // don't have a poll loop here — this is the hot path
+                    // for command responses, so a tight retry is cheapest.
+                    usleep(200)
+                } else {
+                    break
+                }
+            }
         }
-        if result <= 0 {
+        if sent == 0 {
             disconnect()
         }
     }
