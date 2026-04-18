@@ -482,12 +482,40 @@ public final class AttributeGraph {
     }
 
     func constructScrollView(_ scroll: any _GraphScrollView, id: NodeID) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .scroll(scroll.scrollAxis))))
+        let axis = scroll.scrollAxis
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .scroll(axis))))
         let childID = id.appending(.index(0))
         let childNode = constructAnyView(scroll.graphChild(), id: childID)
         childNode.parent = node
         node.children.append(childNode)
+
+        // Implicit focusability (HYP-92): a ScrollView with no focusable
+        // descendants becomes focusable itself, so keyboard users can Tab
+        // into plain-text content and scroll it with arrows / PageUp /
+        // PageDown / Home / End. When a descendant is focusable, stay out
+        // of its way — scroll-to-focused already keeps the right cell
+        // visible, and stealing Tab would break existing interactions.
+        if !hasFocusableDescendant(childNode) {
+            node.isFocusable = true
+            nonisolated(unsafe) weak let weakNode = node
+            GraphContext.currentFocusEngine?.registerKeyHandler(for: node.id) { event in
+                guard let n = weakNode else { return .ignored }
+                return handleScrollKeyEvent(event, on: n, axis: axis)
+            }
+        }
+
         return node
+    }
+
+    /// Return true if any descendant of `node` is focusable. Used by
+    /// `constructScrollView` to decide whether to make the ScrollView itself
+    /// focusable as an implicit keyboard-scroll affordance.
+    private func hasFocusableDescendant(_ node: AttributeNode) -> Bool {
+        if node.isFocusable { return true }
+        for child in node.children where hasFocusableDescendant(child) {
+            return true
+        }
+        return false
     }
 
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
@@ -621,4 +649,49 @@ protocol _GraphScrollView {
 /// render with the node's actual rect size, NOT at graph-build time.
 protocol _GraphGeometryReader {
     func rebuild(with size: Size) -> any TerminalView
+}
+
+/// Handler fired when a focused bare ScrollView receives a key event. Moves
+/// `scrollOffset` along the scroll axis and clamps against the content size
+/// measured from the first child. Page size defaults to the rect's extent in
+/// the scroll direction so `PageUp` / `PageDown` scroll a viewport at a time.
+///
+/// Declared at file scope so `constructScrollView` can register it without
+/// passing the graph instance through a closure — rect + content size come
+/// from the node's cached rect and its child's intrinsic size.
+fileprivate func handleScrollKeyEvent(_ event: KeyEvent, on node: AttributeNode, axis: ScrollAxis) -> KeyEventResult {
+    guard let content = node.children.first else { return .ignored }
+    let viewport = node.rect
+    let contentExtent: Int
+    let viewportExtent: Int
+    switch axis {
+    case .vertical:
+        contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
+        viewportExtent = viewport.height
+    case .horizontal:
+        contentExtent = GraphMeasurer.measureWidth(content)
+        viewportExtent = viewport.width
+    }
+    let maxOffset = max(0, contentExtent - viewportExtent)
+    let pageStep = max(1, viewportExtent - 1)
+
+    // Recognise keys that match the scroll axis — an HStack-wrapped ScrollView
+    // responds to left/right, a VStack-wrapped one to up/down. PageUp/PageDown
+    // apply to both; Home/End jump to the extremes.
+    let delta: Int?
+    switch (axis, event.key) {
+    case (.vertical, .up), (.horizontal, .left): delta = -1
+    case (.vertical, .down), (.horizontal, .right): delta = 1
+    case (_, .pageUp): delta = -pageStep
+    case (_, .pageDown): delta = pageStep
+    case (_, .home): node.scrollOffset = 0; return .handled
+    case (_, .end): node.scrollOffset = maxOffset; return .handled
+    default: return .ignored
+    }
+
+    if let delta {
+        node.scrollOffset = max(0, min(maxOffset, node.scrollOffset + delta))
+        return .handled
+    }
+    return .ignored
 }
