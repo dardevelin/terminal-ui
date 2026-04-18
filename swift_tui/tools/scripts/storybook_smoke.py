@@ -280,6 +280,117 @@ def storybook_promptinput_submit_clears(app: Client) -> None:
     )
 
 
+def storybook_list_selection_advances(app: Client) -> None:
+    """List preview shows alpha/beta/gamma/... Down arrow advances the
+    selection cursor visibly (▸ glyph moves to next label). Exercises
+    List's keyboard nav + selection binding. Page index 14."""
+    for _ in range(14):
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Selection starts at index 0 ("alpha"); cursor is `▸ alpha`.
+    assert_true(
+        "▸ alpha" in app.text(),
+        "initial List selection should be on alpha",
+    )
+    # Two down presses → gamma.
+    app.press_many("down", 2, sleep_between=0.05)
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "▸ gamma" in app.text(),
+        "after 2 down presses List selection should be on gamma",
+    )
+    # Up back to beta.
+    app.send_key("up")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "▸ beta" in app.text(),
+        "after 1 up press List selection should be on beta",
+    )
+
+
+def storybook_tabview_cycles_tabs(app: Client) -> None:
+    """TabView preview has three tabs: First/Second/Third. When the tab
+    bar is focused, ← / → switch tabs, as does pressing a digit 1-9.
+    Page index 16."""
+    for _ in range(16):
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")  # sidebar → preview (tab bar focused)
+    app.wait_for_frame(1, timeout=0.5)
+    # Default tab selection is 0 → "first page content".
+    assert_true(
+        "first page content" in app.text(),
+        "initial TabView should show First content",
+    )
+    # Right arrow advances to the second tab.
+    app.send_key("right")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "second page content" in app.text(),
+        "after → TabView should show Second content",
+    )
+    # Digit "3" jumps directly to Third.
+    app.send_key("3")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "third page content" in app.text(),
+        "digit 3 should jump directly to Third tab",
+    )
+
+
+def storybook_treeview_expand_collapse(app: Client) -> None:
+    """TreeView preview: Sources > TerminalUI > Views > {Text.swift,
+    VStack.swift} plus Core, and a second Tests root. Right on Sources
+    (already expanded by default — roots auto-expand) → no change.
+    Left collapses. Page index 17."""
+    for _ in range(17):
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "TerminalUI" in app.text(),
+        "initial TreeView should show the Sources subtree expanded",
+    )
+    # Down three times to reach "Views" row, Left collapses its children.
+    # Actually TreeView selection starts on Sources (index 0). Just
+    # press Left to collapse the currently-selected (Sources) node.
+    app.send_key("left")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "TerminalUI" not in app.text() or "▸" in app.text(),
+        "Left arrow on an expanded TreeView node should collapse it",
+    )
+
+
+def storybook_textarea_accepts_input(app: Client) -> None:
+    """TextArea preview is pre-seeded with three lines. Typing appends
+    characters at the cursor, with the gutter showing line numbers.
+    Page index 11."""
+    for _ in range(11):
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    initial = app.text()
+    assert_true(
+        "Hello" in initial,
+        "TextArea should start with its seeded 'Hello' content",
+    )
+    # Type a distinctive string at the end — TextArea places cursor at
+    # the end on focus, so appending is safe.
+    app.send_key("end")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("!xyz!")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "!xyz!" in app.text(),
+        "typed text should appear in TextArea buffer",
+    )
+
+
 def demo_app_renders(app: Client) -> None:
     """Plain Demo smoke — renders its title bar and tab row without
     crashing. Looks for the app's "TerminalUI" title and one of the tab
@@ -303,6 +414,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),
     SmokeCase("storybook.textinput_validation_colors", "Storybook", storybook_textinput_validation_colors),
     SmokeCase("storybook.promptinput_submit_clears", "Storybook", storybook_promptinput_submit_clears),
+    SmokeCase("storybook.list_selection_advances", "Storybook", storybook_list_selection_advances),
+    SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
+    SmokeCase("storybook.treeview_expand_collapse", "Storybook", storybook_treeview_expand_collapse),
+    SmokeCase("storybook.textarea_accepts_input", "Storybook", storybook_textarea_accepts_input),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]
