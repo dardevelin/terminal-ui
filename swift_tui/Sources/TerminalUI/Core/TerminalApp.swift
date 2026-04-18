@@ -387,19 +387,27 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let handledByView = focusEngine.routeKeyEvent(keyEvent, root: graph.root)
 
         if !handledByView {
-            // Focus navigation — Tab/Shift+Tab always navigate, arrow keys only if view didn't handle
+            // Focus navigation — Tab/Shift+Tab always navigate. Arrows only
+            // move focus when the current subtree opts in via the
+            // `allowArrowFocusNavigation` environment value. Default is OFF:
+            // arrows pressed while a view is focused stay inside that view
+            // (or bubble to a parent handler) rather than yanking focus to
+            // a sibling. Matches the user's 2026-04-18 direction: "tab is
+            // the focus changer, unless marked as allow".
             if keyEvent.key == .tab && keyEvent.modifiers.contains(.shift) {
                 focusEngine.focusPrevious()
             } else if keyEvent.key == .tab {
                 focusEngine.focusNext()
-            } else if keyEvent.key == .up {
-                focusEngine.focusInDirection(.up, root: graph.root)
-            } else if keyEvent.key == .down {
-                focusEngine.focusInDirection(.down, root: graph.root)
-            } else if keyEvent.key == .left {
-                focusEngine.focusInDirection(.left, root: graph.root)
-            } else if keyEvent.key == .right {
-                focusEngine.focusInDirection(.right, root: graph.root)
+            } else if GraphContext.currentEnvironment?.allowArrowFocusNavigation == true {
+                if keyEvent.key == .up {
+                    focusEngine.focusInDirection(.up, root: graph.root)
+                } else if keyEvent.key == .down {
+                    focusEngine.focusInDirection(.down, root: graph.root)
+                } else if keyEvent.key == .left {
+                    focusEngine.focusInDirection(.left, root: graph.root)
+                } else if keyEvent.key == .right {
+                    focusEngine.focusInDirection(.right, root: graph.root)
+                }
             }
 
             #if DEBUG
@@ -501,6 +509,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // Rebuild focus index after graph changes
             if let root = graph.root {
                 focusEngine.rebuildIndex(root: root)
+                // Auto-focus the first focusable on startup (HYP-82 #4). With
+                // arrows no longer moving focus by default, an app whose
+                // arrow handler lives on a `.focusable()` view would receive
+                // nothing until the user pressed Tab. Mirrors SwiftUI's
+                // implicit first-responder — the app boots with a focused
+                // element so per-view handlers fire on the very first key.
+                if focusEngine.keyboardFocusID == nil {
+                    focusEngine.focusNext()
+                }
             }
 
             // Render if graph changed OR if we were explicitly told to (key press, etc.)

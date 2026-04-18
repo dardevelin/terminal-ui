@@ -38,6 +38,11 @@ public struct EnvironmentValues: Sendable {
     /// Used by `DotMatrixText`, `MorseTicker`, and other fixed-geometry views
     /// to prevent measurement-driven height inflation at narrow widths.
     public var textWrap: TextWrapMode = .wrap
+    /// Whether arrow keys are allowed to move keyboard focus between views
+    /// when the focused view didn't handle them. Default `false` — only
+    /// Tab / Shift+Tab move focus, arrows stay within the focused view.
+    /// Set `.true` on a subtree that wants SwiftUI-style 2D navigation.
+    public var allowArrowFocusNavigation: Bool = false
 
     public init() {}
 }

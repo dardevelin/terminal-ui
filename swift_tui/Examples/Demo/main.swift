@@ -233,10 +233,10 @@ struct TabItem: TerminalView {
                     return .handled
                 case .right:
                     if index + 1 < tabCount { onSelectTab(index + 1) }
-                    return .ignored
+                    return .handled
                 case .left:
                     if index > 0 { onSelectTab(index - 1) }
-                    return .ignored
+                    return .handled
                 default:
                     return .ignored
                 }

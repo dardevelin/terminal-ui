@@ -1,0 +1,159 @@
+import Foundation
+import Observation
+import TerminalUI
+
+// MARK: - State
+
+@Observable
+final class StorybookState {
+    var selectedIndex: Int = 0
+
+    // Per-page interactive state — kept on the state so switching pages
+    // doesn't reset progress.
+    var buttonMessage: String = "(nothing yet)"
+    var textInputValue: String = ""
+    var toggleValue: Bool = false
+    var listSelection: Int? = 0
+    var listScroll: Int = 0
+    var tabSelection: Int = 0
+    var morseScroll: Int = 0
+    // Extra state for previously-stub pages
+    var textAreaContent: String = "Hello\nThis is a TextArea.\nTry typing, arrows, and Enter."
+    var textAreaState: TextAreaState = TextAreaState()
+    var promptValue: String = ""
+    var promptState: PromptInputState = PromptInputState()
+    var promptSubmitted: String = "(nothing yet)"
+    var treeSelection: Int? = 0
+    var hunkFileName: String = "example.swift"
+}
+
+nonisolated(unsafe) let state = StorybookState()
+
+// MARK: - Sidebar
+
+/// Left pane: grouped category list. Up/Down arrows navigate. Enter selects.
+struct Sidebar: TerminalView {
+    let state: StorybookState
+
+    var body: some TerminalView {
+        let st = state
+        return VStack {
+            Text("TerminalUI Storybook").bold().foreground(.cyan)
+            Text("\(Storybook.allPages.count) pages").foreground(.gray)
+            Divider()
+            ScrollView(.vertical) {
+                VStack {
+                    ForEachWithID(Array(PageInfo.Category.allCases), id: \.self) { category in
+                        Text(category.rawValue).foreground(.yellow).bold()
+                        ForEach(pagesIn(category)) { entry in
+                            SidebarRow(
+                                label: entry.page.name,
+                                isSelected: entry.index == st.selectedIndex,
+                                state: st
+                            )
+                        }
+                        Text(" ")
+                    }
+                }
+            }
+            Divider()
+            Text(" ↑↓ navigate").foreground(.gray)
+            Text(" Tab → preview").foreground(.gray)
+            Text(" Esc: quit").foreground(.gray)
+                .focusable()
+                .onKeyPress { event in
+                    switch event.key {
+                    case .up:
+                        if st.selectedIndex > 0 { st.selectedIndex -= 1 }
+                        return .handled
+                    case .down:
+                        if st.selectedIndex < Storybook.allPages.count - 1 {
+                            st.selectedIndex += 1
+                        }
+                        return .handled
+                    default:
+                        return .ignored
+                    }
+                }
+        }
+    }
+
+    private func pagesIn(_ category: PageInfo.Category) -> [IndexedPage] {
+        Storybook.allPages.enumerated()
+            .compactMap { (index, id) in
+                let info = id.info
+                return info.category == category
+                    ? IndexedPage(id: id.rawValue, index: index, page: info)
+                    : nil
+            }
+    }
+}
+
+struct IndexedPage: Identifiable {
+    let id: String
+    let index: Int
+    let page: PageInfo
+}
+
+/// Sidebar row — focus + selection are unified. The currently-selected
+/// row is the focusable; arrow keys on it commit-immediately: ↓ sets
+/// selectedIndex to next, ↑ to previous. Since selection flows through
+/// state → re-render, the focusable "moves" to the new row on next frame.
+///
+/// This makes focus VISIBLE (via the ▸ cursor) without requiring the
+/// framework to show a focus indicator inside ScrollView-clipped content.
+/// Only ONE focusable exists in the sidebar at a time, so Tab crosses
+/// into the preview in one press instead of walking 34 rows.
+struct SidebarRow: TerminalView {
+    let label: String
+    let isSelected: Bool
+    let state: StorybookState
+
+    var body: some TerminalView {
+        let prefix = isSelected ? "▸ " : "  "
+        // Rows are plain non-focusable Text. Arrow handling lives on the
+        // sidebar's outer container (Sidebar view) so every row uses the
+        // same single key handler — no reconciliation confusion.
+        return Text("\(prefix)\(label)")
+            .foreground(isSelected ? .white : .default)
+    }
+}
+
+// MARK: - App
+
+struct StorybookApp: TerminalView {
+    let state: StorybookState
+
+    var body: some TerminalView {
+        let currentID = Storybook.allPages[state.selectedIndex]
+        return HStack {
+            Sidebar(state: state)
+                .frame(width: 28)
+            Divider()
+            PageDetail(pageID: currentID, state: state)
+                .padding()
+        }
+    }
+}
+
+// MARK: - Entry point
+
+@main
+struct StorybookMain: TerminalAppProtocol {
+    static func onEvent(_ event: TerminalEvent) -> Bool {
+        // Global-only binding: Esc quits. Arrow keys are handled by the
+        // sidebar's hint-line `.onKeyPress` when focused (see Sidebar).
+        // Arrow focus navigation is opted in at the root via
+        // `.allowArrowFocusNavigation` below so unhandled arrows in the
+        // preview still fall through to focus navigation rather than being
+        // silently dropped.
+        if case .key(let k) = event, k.key == .escape {
+            return false
+        }
+        return true
+    }
+
+    static func content() -> some TerminalView {
+        StorybookApp(state: state)
+    }
+}
