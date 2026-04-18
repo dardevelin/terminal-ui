@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path("/Users/dbrasdasilva/workspace/swift-workspace/swift_tui")
-SMOKE_TIMEOUT_SECONDS = 90
+SMOKE_TIMEOUT_SECONDS = 240
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
 
@@ -90,7 +90,16 @@ def step(name: str, cmd: list[str], timeout: int) -> tuple[int, str]:
         )
         return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
     except subprocess.TimeoutExpired as err:
-        out = (err.stdout or "") + (err.stderr or "")
+        # `TimeoutExpired.stdout/stderr` can come back as bytes when the
+        # child hit the deadline mid-stream; decode defensively so the
+        # error message stays a str.
+        def _decode(value: object) -> str:
+            if value is None:
+                return ""
+            if isinstance(value, bytes):
+                return value.decode("utf-8", errors="replace")
+            return str(value)
+        out = _decode(err.stdout) + _decode(err.stderr)
         return 124, f"{name} timed out after {timeout}s\n{out}"
 
 

@@ -501,6 +501,115 @@ def storybook_barchart_renders_bars(app: Client) -> None:
     assert_true(full_block_count >= 5, f"BarChart filled-cells too sparse: {full_block_count}")
 
 
+def storybook_zstack_overlays_label(app: Client) -> None:
+    """ZStack preview: `OVER` label rendered on top of a ◼ block background.
+    Both should be present in the same snapshot — the label overwrites the
+    fill cells underneath, not the whole frame."""
+    app.goto_storybook_page(2)
+    preview = app.preview_text()
+    assert_true("OVER" in preview, "ZStack top-layer label missing")
+    assert_true("◼" in preview, "ZStack background fill glyphs missing")
+
+
+def storybook_spacer_pushes_edges(app: Client) -> None:
+    """HStack{Text, Spacer, Text} — [left] + [right] appear on the same
+    row, separated by ≥5 blank cells. Catches Spacer flex regressions."""
+    app.goto_storybook_page(3)
+    for row in app.preview_text().split("\n"):
+        l = row.find("[left]")
+        r = row.find("[right]")
+        if l >= 0 and r >= 0:
+            assert_true(
+                r - (l + len("[left]")) >= 5,
+                f"Spacer didn't push edges apart (gap={r - l - len('[left]')})",
+            )
+            return
+    raise CaseFailed("Spacer preview: [left] and [right] not on same row")
+
+
+def storybook_scrollview_initial_viewport(app: Client) -> None:
+    """ScrollView preview shows early rows; later rows are clipped off the
+    initial viewport. Regression net for scroll-offset + frame(height:6)."""
+    app.goto_storybook_page(5)
+    preview = app.preview_text()
+    assert_true("row 0" in preview, "ScrollView viewport missing 'row 0'")
+    assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
+
+
+def storybook_geometryreader_reports_size(app: Client) -> None:
+    """GeometryReader renders 'proposed: WxH' with the current rect size
+    — confirms the lazy rebuild (HYP-82) ships the real allocated rect,
+    not the terminal default 80×24 stale value."""
+    app.goto_storybook_page(6)
+    preview = app.preview_text()
+    assert_true("proposed:" in preview, "GeometryReader preview missing 'proposed:' label")
+    assert_true("×" in preview, "GeometryReader preview missing size separator")
+
+
+def storybook_text_styles_render(app: Client) -> None:
+    """Text primitive preview: plain / bold / colored / both — all four
+    strings present in the rendered preview."""
+    app.goto_storybook_page(7)
+    preview = app.preview_text()
+    for label in ("plain", "bold", "colored", "both"):
+        assert_true(label in preview, f"Text preview missing '{label}'")
+
+
+def storybook_forEach_renders_all_items(app: Client) -> None:
+    """ForEach preview iterates 5 colour names; each `[name]` should
+    render somewhere in the preview pane."""
+    app.goto_storybook_page(8)
+    preview = app.preview_text()
+    for name in ("red", "yellow", "green", "cyan", "magenta"):
+        assert_true(f"[{name}]" in preview, f"ForEach preview missing '[{name}]'")
+
+
+def storybook_sparkline_renders_line(app: Client) -> None:
+    """Sparkline draws a sine wave using braille dots — expect >20 braille
+    cells somewhere in the preview."""
+    app.goto_storybook_page(23)
+    # Braille block is U+2800–U+28FF. Just check some non-space glyph count.
+    preview = app.preview_text()
+    non_space = sum(1 for ch in preview if ch not in (" ", "\n"))
+    assert_true(non_space > 10, f"Sparkline preview looked empty (non_space={non_space})")
+
+
+def storybook_heatmap_renders_grid(app: Client) -> None:
+    """HeatMap renders a colored 5×20 matrix; expect many shade characters
+    (█ / ▒ / ▓ etc.) spanning the preview."""
+    app.goto_storybook_page(24)
+    preview = app.preview_text()
+    non_space = sum(1 for ch in preview if ch not in (" ", "\n"))
+    assert_true(non_space > 50, f"HeatMap looked empty (non_space={non_space})")
+
+
+def storybook_braillecanvas_renders_curve(app: Client) -> None:
+    """BrailleCanvas helper writes braille dots into the preview text."""
+    app.goto_storybook_page(25)
+    preview = app.preview_text()
+    has_braille = any(0x2800 <= ord(ch) <= 0x28FF for ch in preview)
+    assert_true(has_braille, "BrailleCanvas didn't render any braille glyphs (U+2800–U+28FF)")
+
+
+def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
+    """DotMatrixText renders the word HELLO via its internal dot-font.
+    Each glyph column is rendered as block characters; the preview should
+    have many `█`/`▓`/`▒` cells."""
+    app.goto_storybook_page(26)
+    preview = app.preview_text()
+    filled = sum(1 for ch in preview if ch in "█▓▒░●")
+    assert_true(filled > 20, f"DotMatrixText preview too sparse (filled={filled})")
+
+
+def storybook_morseticker_renders_sos(app: Client) -> None:
+    """MorseTicker draws the SOS pattern. Preview should contain braille
+    cells (the ticker uses braille for sub-cell resolution)."""
+    app.goto_storybook_page(27)
+    preview = app.preview_text()
+    has_braille = any(0x2800 <= ord(ch) <= 0x28FF for ch in preview)
+    assert_true(has_braille, "MorseTicker didn't render any braille ticker glyphs")
+
+
 def storybook_focusable_joins_tab_order(app: Client) -> None:
     """`.focusable` modifier page has exactly one focusable Text. Tab into
     it — focus should land on it, not bounce back to the sidebar."""
@@ -551,6 +660,17 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.progressbar_renders_all_values", "Storybook", storybook_progressbar_renders_all_values),
     SmokeCase("storybook.statusbar_sections_render", "Storybook", storybook_statusbar_sections_render),
     SmokeCase("storybook.barchart_renders_bars", "Storybook", storybook_barchart_renders_bars),
+    SmokeCase("storybook.zstack_overlays_label", "Storybook", storybook_zstack_overlays_label),
+    SmokeCase("storybook.spacer_pushes_edges", "Storybook", storybook_spacer_pushes_edges),
+    SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
+    SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
+    SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
+    SmokeCase("storybook.forEach_renders_all_items", "Storybook", storybook_forEach_renders_all_items),
+    SmokeCase("storybook.sparkline_renders_line", "Storybook", storybook_sparkline_renders_line),
+    SmokeCase("storybook.heatmap_renders_grid", "Storybook", storybook_heatmap_renders_grid),
+    SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
+    SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
+    SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
     SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),

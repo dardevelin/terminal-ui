@@ -390,23 +390,16 @@ class Client:
             time.sleep(interval)
         return predicate(self)
 
-    def goto_storybook_page(self, index: int, settle_between: float = 0.04) -> None:
+    def goto_storybook_page(self, index: int) -> None:
         """Drive Storybook's sidebar to the page at ``index`` (0-based).
-        Presses Down the right number of times relative to the current
-        selection (detected from the `▸` glyph in the sidebar) so
-        callers don't need to know where the app starts. Idempotent —
-        calling twice with the same index is a no-op."""
-        # Find the sidebar row prefixed with `▸ ` and figure out its 0-
-        # based index among the sidebar's category+row layout. The
-        # simplest robust detection is to compare against the target
-        # page's expected sidebar label after the press: we advance one
-        # step at a time and give up once the preview header changes.
+        Sends ``index`` down-arrow events back-to-back and then waits
+        one frame for the final page's body to render. Previous versions
+        slept 40ms between each press — unnecessary, the runtime drains
+        the event queue in a single frame tick and any work done inside
+        a page's body is already deterministic."""
         for _ in range(index):
             self.send_key("down")
-            if settle_between > 0:
-                time.sleep(settle_between)
-        # One extra frame for the preview to stabilise.
-        self.wait_for_frame(1, timeout=0.5)
+        self.wait_for_frame(1, timeout=1.0)
 
     def cells(self,
               rect: Optional[Sequence[int]] = None,
