@@ -341,6 +341,13 @@ class Client:
         id returned by ``focus()`` or ``tree()``."""
         self._call("focus_set", text=node_id)
 
+    def text(self, rect: Optional[Sequence[int]] = None) -> str:
+        """Shortcut for ``cells(rect).text()`` — the most common assertion
+        shape is 'does the rendered frame contain this substring?'. Lets
+        tests write ``"OK clicked" in app.text()`` instead of
+        ``"OK clicked" in app.cells().text()``."""
+        return self.cells(rect=rect).text()
+
     def cells(self,
               rect: Optional[Sequence[int]] = None,
               grid: bool = False) -> CellSlice:

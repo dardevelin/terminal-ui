@@ -185,6 +185,101 @@ def storybook_auto_focus_on_boot(app: Client) -> None:
     assert_true(focus.node_id is not None, "no node focused at boot")
 
 
+def storybook_button_click_updates_message(app: Client) -> None:
+    """Pressing Enter on the focused Button fires its action closure, which
+    updates the page's message text. Regression coverage for the whole
+    focus → onKeyPress → @Observable → rerender chain. Covers the same
+    path that was broken when arrow policy landed."""
+    for _ in range(9):  # page 9 = Button
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Focus should now be on the first Button ("OK").
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "OK clicked" in app.text(),
+        "pressing Enter on OK button didn't update the message text",
+    )
+    # Down arrow to sibling + Space → "Cancel clicked".
+    app.send_key("down")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key(" ")  # Space also activates
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "Cancel clicked" in app.text(),
+        "pressing Space on Cancel button didn't update the message text",
+    )
+
+
+def storybook_toggle_alternates_state(app: Client) -> None:
+    """Toggle page: Space flips the @TerminalState binding; the display
+    text shows 'on' or 'off' accordingly. Three presses should cycle
+    off → on → off → on."""
+    for _ in range(12):  # page 12 = toggle
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    initial_text = app.text()
+    # Default is off. Press space; expect 'on'.
+    app.send_key(" ")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "→ on" in app.text(),
+        f"space on Toggle didn't flip to 'on'; text: {initial_text!r} → {app.text()[:200]!r}",
+    )
+    app.send_key(" ")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "→ off" in app.text(),
+        "second space should return Toggle to 'off'",
+    )
+
+
+def storybook_textinput_validation_colors(app: Client) -> None:
+    """TextInput with `validate:` surfaces a red border + 'missing @' row
+    when the value fails. Typing '@' moves it to OK and the error row
+    disappears. Regression coverage for the validation API (HYP-82 #3)."""
+    for _ in range(10):  # page 10 = textInput
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("hello")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "missing @" in app.text(),
+        "validator error message should render after typing a bad value",
+    )
+    app.send_text("@")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "missing @" not in app.text(),
+        "error row should disappear once the value is valid",
+    )
+
+
+def storybook_promptinput_submit_clears(app: Client) -> None:
+    """PromptInput: type text, press Enter, the field clears and the
+    'last submitted' display updates. Covers the whole submit path +
+    state reset — the same cycle that crashed in an earlier commit."""
+    for _ in range(13):  # page 13 = promptInput
+        app.send_key("down")
+        time.sleep(0.05)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("hello world")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "hello world" in app.text(),
+        "last submitted line should include the submitted text",
+    )
+
+
 def demo_app_renders(app: Client) -> None:
     """Plain Demo smoke — renders its title bar and tab row without
     crashing. Looks for the app's "TerminalUI" title and one of the tab
@@ -204,6 +299,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
+    SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
+    SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),
+    SmokeCase("storybook.textinput_validation_colors", "Storybook", storybook_textinput_validation_colors),
+    SmokeCase("storybook.promptinput_submit_clears", "Storybook", storybook_promptinput_submit_clears),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]

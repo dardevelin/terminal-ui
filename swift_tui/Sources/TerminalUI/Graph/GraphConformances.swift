@@ -212,7 +212,12 @@ extension ConditionalView: _GraphConditional {
                 }
             }
         } else {
-            // Branch flipped — rebuild child
+            // Branch flipped — rebuild child and invalidate ancestor
+            // measurements. The new branch may have a different intrinsic
+            // height (e.g. TextInput's validation row appears when the
+            // validator returns an error), and without walking up here
+            // the parent's `cachedHeight` stays at the pre-flip value —
+            // the harness exposed this as a missing "missing @" row.
             graph.changed = true
             node.children.removeAll()
             switch self {
@@ -225,6 +230,7 @@ extension ConditionalView: _GraphConditional {
                 childNode.parent = node
                 node.children = [childNode]
             }
+            node.markDirty()
         }
     }
 }

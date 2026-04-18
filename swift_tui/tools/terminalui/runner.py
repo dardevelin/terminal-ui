@@ -18,9 +18,14 @@ unittest, or whatever you prefer. The runner just handles boilerplate.
 
 from __future__ import annotations
 
+import fcntl
 import os
+import pty
 import signal
+import struct
 import subprocess
+import termios
+import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -71,19 +76,41 @@ def spawn_and_connect(target: str,
     env_full.update(env or {})
     env_full["COLUMNS"] = str(cols)
     env_full["LINES"] = str(rows)
+    env_full["TERM"] = env_full.get("TERM") or "xterm-256color"
 
-    # Spawn detached so signals sent to the parent process group don't
-    # ripple into the app unintentionally. stdin piped so the app doesn't
-    # see an immediate EOF on read — the socket is our only input channel.
+    # Spawn under a PTY so `Terminal.size()` (ioctl TIOCGWINSZ) returns the
+    # geometry we want. Piping stdout to /dev/null makes ioctl fall back to
+    # the VT100 default (80×24) which drops half the test surface off the
+    # bottom of the screen. The PTY lets us control both input and output
+    # geometry and still run headless.
+    master, slave = pty.openpty()
+    # Set window size before spawn so the initial layout pass uses it.
+    winsize = struct.pack("HHHH", rows, cols, 0, 0)
+    fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
     proc = subprocess.Popen(
         [str(exe)],
         cwd=str(root),
         env=env_full,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
+        stdin=slave,
+        stdout=slave,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
+        close_fds=True,
     )
+    os.close(slave)
+    # Drain master to avoid pipe-full blocking when the app renders. The
+    # drained bytes are just the TUI's ANSI output, which we discard —
+    # assertions go through the remote-control socket.
+    def _drain(fd: int) -> None:
+        try:
+            while True:
+                data = os.read(fd, 4096)
+                if not data:
+                    return
+        except OSError:
+            return
+    drain_thread = threading.Thread(target=_drain, args=(master,), daemon=True)
+    drain_thread.start()
 
     try:
         client = _wait_for_client(proc.pid, timeout=connect_timeout)
@@ -94,6 +121,10 @@ def spawn_and_connect(target: str,
         except Exception:
             pass
         _terminate(proc)
+        try:
+            os.close(master)
+        except OSError:
+            pass
 
 
 def _wait_for_client(pid: int, timeout: float) -> Client:
