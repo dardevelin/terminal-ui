@@ -89,14 +89,21 @@ public final class FocusEngine {
     ///
     /// Finds the focused node's nearest layout parent (VStack or HStack) and
     /// checks if the arrow direction matches the layout axis:
-    ///   VStack + up/down → move to sibling above/below
-    ///   HStack + left/right → move to sibling left/right
-    ///   Axis mismatch (e.g. left arrow in VStack) → fall back to Tab order
     ///
-    /// This enables spatial navigation: pressing down in a VStack moves to the
-    /// next item visually below, not just the next in document order. Similar to
-    /// i3wm's focus parent/child navigation within container types.
-    public func focusInDirection(_ direction: FocusDirection, root: AttributeNode?) {
+    ///   VStack + up/down       → move to sibling above/below (always)
+    ///   HStack + left/right    → move to sibling left/right  (always)
+    ///   Axis mismatch or no stack → fall back to Tab order, but ONLY when
+    ///                            `crossStack` is true (gate consumed by
+    ///                            TerminalApp from `EnvironmentValues.
+    ///                            allowArrowFocusNavigation`).
+    ///
+    /// User directive 2026-04-18: "arrow down on an element that has the
+    /// focus shouldn't move focus out of it, tab is the focus changer,
+    /// unless marked as allow". In-stack sibling navigation DOES count as
+    /// "inside" the element's container — pressing right on Button "OK"
+    /// moving to "Cancel" next to it is an expected UX, not a Tab-style
+    /// escape. Cross-stack escape is the only behavior the gate controls.
+    public func focusInDirection(_ direction: FocusDirection, root: AttributeNode?, crossStack: Bool = false) {
         guard let root else { return }
         guard let current = keyboardFocusID else {
             focusNext()
@@ -105,6 +112,7 @@ public final class FocusEngine {
 
         guard let currentNode = findNode(id: current, in: root) else { return }
         guard let parentLayout = findLayoutParent(of: currentNode) else {
+            guard crossStack else { return }
             switch direction {
             case .up, .left: focusPrevious()
             case .down, .right: focusNext()
@@ -146,10 +154,11 @@ public final class FocusEngine {
                     }
                 }
             } else {
-                // HYP-40: when in a scope, arrow on wrong axis is a no-op rather
-                // than falling back to Tab order — otherwise arrows would leak
-                // out of the scope.
+                // Axis mismatch — fall back to Tab order only when the host
+                // app opts in. Inside a scope this is always a no-op so
+                // arrows can't leak out (HYP-40 rule preserved).
                 if currentNode.scopeID != nil { return }
+                guard crossStack else { return }
                 switch direction {
                 case .up, .left: focusPrevious()
                 case .down, .right: focusNext()

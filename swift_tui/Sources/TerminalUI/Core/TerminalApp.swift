@@ -193,6 +193,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
             StdinByteSource.shutdownReadFD = nil
             if shutdownPipeFDs[0] >= 0 { close(shutdownPipeFDs[0]) }
             if shutdownPipeFDs[1] >= 0 { close(shutdownPipeFDs[1]) }
+
+            #if DEBUG
+            // HYP-71: drop the remote-control server explicitly so its
+            // deinit unlinks the PID socket + latest.sock symlink. Without
+            // this, killing the app left stale sockets that confused the
+            // next debug run. Clearing the ref triggers deinit now rather
+            // than on class dealloc (which can be delayed arbitrarily).
+            remoteControl = nil
+            let latest = "\(DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp))/latest.sock"
+            _ = unlink(latest)
+            #endif
         }
 
         // Make focus engine accessible during graph construction
@@ -422,26 +433,29 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let handledByView = focusEngine.routeKeyEvent(keyEvent, root: graph.root)
 
         if !handledByView {
-            // Focus navigation — Tab/Shift+Tab always navigate. Arrows only
-            // move focus when the current subtree opts in via the
-            // `allowArrowFocusNavigation` environment value. Default is OFF:
-            // arrows pressed while a view is focused stay inside that view
-            // (or bubble to a parent handler) rather than yanking focus to
-            // a sibling. Matches the user's 2026-04-18 direction: "tab is
-            // the focus changer, unless marked as allow".
+            // Focus navigation — Tab/Shift+Tab always navigate.
+            //
+            // Arrows always attempt in-stack sibling navigation (HStack L/R,
+            // VStack U/D): a focused Button pressed with → moves to the
+            // next Button next to it, which is "inside" the container per
+            // the user's 2026-04-18 rule. Cross-stack fallback (arrow
+            // escaping its layout into global Tab order) still requires
+            // `allowArrowFocusNavigation=true` since that's the behavior
+            // the rule forbids by default.
             if keyEvent.key == .tab && keyEvent.modifiers.contains(.shift) {
                 focusEngine.focusPrevious()
             } else if keyEvent.key == .tab {
                 focusEngine.focusNext()
-            } else if GraphContext.currentEnvironment?.allowArrowFocusNavigation == true {
+            } else {
+                let crossStack = GraphContext.currentEnvironment?.allowArrowFocusNavigation == true
                 if keyEvent.key == .up {
-                    focusEngine.focusInDirection(.up, root: graph.root)
+                    focusEngine.focusInDirection(.up, root: graph.root, crossStack: crossStack)
                 } else if keyEvent.key == .down {
-                    focusEngine.focusInDirection(.down, root: graph.root)
+                    focusEngine.focusInDirection(.down, root: graph.root, crossStack: crossStack)
                 } else if keyEvent.key == .left {
-                    focusEngine.focusInDirection(.left, root: graph.root)
+                    focusEngine.focusInDirection(.left, root: graph.root, crossStack: crossStack)
                 } else if keyEvent.key == .right {
-                    focusEngine.focusInDirection(.right, root: graph.root)
+                    focusEngine.focusInDirection(.right, root: graph.root, crossStack: crossStack)
                 }
             }
 

@@ -112,15 +112,53 @@ def storybook_arrow_navigation(app: Client) -> None:
 
 
 def storybook_tab_crosses_to_preview(app: Client) -> None:
-    """One Tab press must move focus from sidebar into the preview — user's
-    historical complaint was that Tab took 34 presses through sidebar rows."""
+    """Navigate to a page that puts a focusable in the preview (the Button
+    page), press Tab, and verify focus crosses from the sidebar into the
+    preview. Historical complaint: the 34 sidebar rows sat in the Tab order,
+    so crossing took 34 presses. Now the sidebar has exactly one focusable
+    (the hint-line handler) and Tab reaches the preview in one press."""
+    # Button page is the tenth in declaration order, after the six layout
+    # primitives and the two Primitives-category pages.
+    for _ in range(10):
+        app.send_key("down")
+        time.sleep(0.05)
+    app.wait_for_frame(1, timeout=0.5)
     initial = app.focus()
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     after = app.focus()
     assert_true(
         initial.node_id != after.node_id,
-        f"Tab didn't move focus: still on {initial.node_id}",
+        f"Tab from Button page didn't move focus: still on {initial.node_id}",
+    )
+
+
+def storybook_button_arrows_traverse_siblings(app: Client) -> None:
+    """On the Button page the preview is a VStack of two Buttons. After
+    Tab into the preview, Down arrow must move focus to the next Button
+    (in-stack sibling nav), and Up arrow must move back. Regression test
+    for HYP-82 #4's unintended consequence where arrows on Button were
+    completely dead because cross-stack gating swallowed them too."""
+    for _ in range(10):  # navigate to Button page
+        app.send_key("down")
+        time.sleep(0.05)
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("tab")  # sidebar → preview
+    app.wait_for_frame(1, timeout=0.5)
+    first = app.focus()
+    app.send_key("down")
+    app.wait_for_frame(1, timeout=0.5)
+    second = app.focus()
+    assert_true(
+        first.node_id != second.node_id,
+        f"Down arrow did not move focus within Button VStack (stuck on {first.node_id})",
+    )
+    app.send_key("up")
+    app.wait_for_frame(1, timeout=0.5)
+    back = app.focus()
+    assert_true(
+        back.node_id == first.node_id,
+        f"Up arrow did not return focus to original sibling (now on {back.node_id})",
     )
 
 
@@ -148,9 +186,12 @@ def storybook_auto_focus_on_boot(app: Client) -> None:
 
 
 def demo_app_renders(app: Client) -> None:
-    """Plain Demo smoke — renders its title bar and doesn't crash."""
-    snap = app.cells(rect=[0, 0, 60, 3])
-    assert_contains(snap, "Demo", context="Demo title bar")
+    """Plain Demo smoke — renders its title bar and tab row without
+    crashing. Looks for the app's "TerminalUI" title and one of the tab
+    labels to catch both a blank screen AND a broken header row."""
+    snap = app.cells(rect=[0, 0, 80, 4])
+    assert_contains(snap, "TerminalUI", context="Demo title cell")
+    assert_contains(snap, "Build", context="Demo Build tab label")
 
 
 # ---------------------------------------------------------------------------
@@ -162,6 +203,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
+    SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]

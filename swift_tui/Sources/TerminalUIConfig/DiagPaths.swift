@@ -28,7 +28,7 @@ public enum DiagPaths {
 
     // MARK: - Subdirectories inside the data root
 
-    private static let subdirectories = ["captures", "screenshots", "traces"]
+    private static let subdirectories = ["captures", "screenshots", "traces", "remote"]
 
     // MARK: - Resolved paths
 

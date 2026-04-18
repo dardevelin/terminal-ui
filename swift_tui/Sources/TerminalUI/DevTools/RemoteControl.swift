@@ -344,6 +344,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case "scan":            return scan(request, runtime: runtime)
         case "frame_number":return frameNumber(request, runtime: runtime)
         case "screenshot":  return screenshot(request, runtime: runtime)
+        case "quit":        return quit(request, runtime: runtime)
         case "ping":        return RemoteResponse(id: request.id, ok: true)
         default:
             return RemoteResponse(id: request.id, ok: false, error: "unknown cmd: \(request.cmd)")
@@ -691,6 +692,15 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         runtime.remoteRequestCapture()
         // Path isn't known until captureFrame fires — client polls `query_cells`
         // or uses `frame_number` + filesystem sidechannel to locate the file.
+        return RemoteResponse(id: request.id, ok: true)
+    }
+
+    /// Tell the runtime to exit cleanly. We inject a Ctrl+C so the runtime's
+    /// existing "universal quit" path fires (same as a user pressing Ctrl+C).
+    /// That tears down raw mode, the alternate screen, and sockets — avoids
+    /// the orphaned-socket mess that `pkill -9` leaves behind.
+    private func quit(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        runtime.enqueueEvent(.key(KeyEvent(key: .character("c"), modifiers: [.ctrl], source: .remote)))
         return RemoteResponse(id: request.id, ok: true)
     }
 

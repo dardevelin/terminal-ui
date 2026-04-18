@@ -49,16 +49,27 @@ def dirty_relevant_sources() -> bool:
 
 
 def kill_strays() -> None:
-    """Kill any debug builds left running from a previous turn + clean up
-    stale sockets. Smoke tests spawn their own processes and expect a
-    clean data/remote directory."""
-    for name in ("Storybook", "Demo"):
+    """Ask every running debug app to exit cleanly via the HYP-71 socket,
+    then clean up the socket directory. Uses `swtui ctl kill` so the
+    teardown happens through the same channel the tests themselves use —
+    no more pkill hunts for binaries behaving incorrectly."""
+    swtui = REPO_ROOT / ".build" / "debug" / "swtui"
+    if swtui.exists():
         subprocess.run(
-            ["pkill", "-9", "-f", f".build/debug/{name}"],
-            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            [str(swtui), "ctl", "kill", "all"],
+            cwd=str(REPO_ROOT), check=False,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-    remote_dir = REPO_ROOT / ".terminalui" / "data" / "remote"
-    if remote_dir.is_dir():
+    # Belt-and-suspenders: also reap stale socket files from /tmp that the
+    # ctl listing couldn't see (e.g. apps that died before writing their
+    # socket). The glob covers both the project-local and /tmp directories
+    # the config might point at.
+    for remote_dir in (
+        REPO_ROOT / ".terminalui" / "data" / "remote",
+        *Path("/tmp").glob("terminalui-*/remote"),
+    ):
+        if not remote_dir.is_dir():
+            continue
         for entry in remote_dir.iterdir():
             try:
                 entry.unlink()
