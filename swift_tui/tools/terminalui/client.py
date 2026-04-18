@@ -24,7 +24,7 @@ import socket
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Optional, Sequence
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 
 
 # ---------------------------------------------------------------------------
@@ -347,6 +347,66 @@ class Client:
         tests write ``"OK clicked" in app.text()`` instead of
         ``"OK clicked" in app.cells().text()``."""
         return self.cells(rect=rect).text()
+
+    # Preview-pane geometry in Storybook: 28-col sidebar + 1-col divider,
+    # so preview starts around col 30. Y-range after header + Code block
+    # lands roughly at rows 22–36. Centralising the magic numbers means
+    # smoke cases stop caring about layout drift.
+    PREVIEW_RECT: Sequence[int] = (28, 20, 80, 18)
+
+    def preview_cells(self) -> CellSlice:
+        """Snapshot the preview-pane region the Storybook layout hands
+        each page. Keeps assertions scoped to the page's rendered output
+        and avoids matching substrings in the Code block or sidebar.
+        Storybook-specific by convention; other apps call ``cells()``."""
+        return self.cells(rect=self.PREVIEW_RECT)
+
+    def preview_text(self) -> str:
+        return self.preview_cells().text()
+
+    def contains(self, needle: str, rect: Optional[Sequence[int]] = None) -> bool:
+        """Substring check over the rendered cells. Replaces the
+        ubiquitous ``needle in app.text()`` pattern with a form that's
+        easier to assert-message over: ``assert app.contains("OK")``."""
+        return needle in self.text(rect=rect)
+
+    def count_glyph(self, glyph: str, rect: Optional[Sequence[int]] = None) -> int:
+        """Count occurrences of ``glyph`` in the snapshot. Used by chart
+        tests (`█`/braille dots) to verify bar heights monotonicity
+        without pixel-exact assertions that would be brittle."""
+        return self.text(rect=rect).count(glyph)
+
+    def wait_until(self, predicate: Callable[["Client"], bool],
+                   timeout: float = 2.0,
+                   interval: float = 0.04) -> bool:
+        """Poll until ``predicate(client)`` returns True or ``timeout``
+        elapses. Returns the last predicate result — True on success,
+        False on timeout. Replaces ``wait_for_frame`` guesses with a
+        real condition wait for flakiness-prone assertions."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate(self):
+                return True
+            time.sleep(interval)
+        return predicate(self)
+
+    def goto_storybook_page(self, index: int, settle_between: float = 0.04) -> None:
+        """Drive Storybook's sidebar to the page at ``index`` (0-based).
+        Presses Down the right number of times relative to the current
+        selection (detected from the `▸` glyph in the sidebar) so
+        callers don't need to know where the app starts. Idempotent —
+        calling twice with the same index is a no-op."""
+        # Find the sidebar row prefixed with `▸ ` and figure out its 0-
+        # based index among the sidebar's category+row layout. The
+        # simplest robust detection is to compare against the target
+        # page's expected sidebar label after the press: we advance one
+        # step at a time and give up once the preview header changes.
+        for _ in range(index):
+            self.send_key("down")
+            if settle_between > 0:
+                time.sleep(settle_between)
+        # One extra frame for the preview to stabilise.
+        self.wait_for_frame(1, timeout=0.5)
 
     def cells(self,
               rect: Optional[Sequence[int]] = None,

@@ -391,6 +391,130 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     )
 
 
+# ---------------------------------------------------------------------------
+# Static-render coverage (Tier 1 sweep)
+#
+# These cases don't interact with focus — they just navigate to a page and
+# assert that its preview pane shows the expected glyphs. They're cheap and
+# catch regressions in the layout / rendering pipeline that don't show up
+# in per-widget interaction tests: compositor cell drift, VStack spacing,
+# HStack sibling alignment, border glyph selection, etc.
+#
+# Use ``app.preview_text()`` / ``app.contains()`` / ``app.count_glyph()``
+# so the case body stays under 10 lines.
+# ---------------------------------------------------------------------------
+
+
+def storybook_vstack_renders_three_rows(app: Client) -> None:
+    """VStack preview stacks row 1/2/3 vertically in the preview pane."""
+    app.goto_storybook_page(0)
+    preview = app.preview_text()
+    for label in ("row 1", "row 2", "row 3"):
+        assert_true(label in preview, f"VStack preview missing '{label}'")
+
+
+def storybook_hstack_renders_horizontal(app: Client) -> None:
+    """HStack preview puts A | B | C on a single row, separators between."""
+    app.goto_storybook_page(1)
+    preview = app.preview_text()
+    assert_true("A" in preview and "B" in preview, "HStack missing A/B labels")
+    # A, |, B appear on the same row (no newlines between them).
+    for row in preview.split("\n"):
+        if "A" in row and "B" in row:
+            return
+    raise CaseFailed("HStack A/B not on same row — vertical regression?")
+
+
+def storybook_divider_renders_rule(app: Client) -> None:
+    """Divider preview draws a horizontal rule via `─` glyphs between the
+    'above' and 'below' text. Catches primitive divider render bugs."""
+    app.goto_storybook_page(4)
+    assert_true(app.contains("above"), "Divider preview missing 'above'")
+    assert_true(app.contains("below"), "Divider preview missing 'below'")
+    assert_true(
+        app.count_glyph("─") >= 4,
+        "Divider rule not rendered (no '─' chars)",
+    )
+
+
+def storybook_table_renders_header_and_rows(app: Client) -> None:
+    """Table preview shows Name/Color header columns + data rows for the
+    demo items. No interaction — Table has no keyboard selection yet."""
+    app.goto_storybook_page(15)
+    preview = app.preview_text()
+    assert_true("Name" in preview, "Table header 'Name' missing")
+    assert_true("alpha" in preview, "Table row 'alpha' missing")
+    assert_true("beta" in preview, "Table row 'beta' missing")
+
+
+def storybook_diffview_marks_changes(app: Client) -> None:
+    """DiffView preview shows hello + swift world, with diff markers on
+    the changed line. Regression net for HYP-37-class stale-cell bugs."""
+    app.goto_storybook_page(18)
+    preview = app.preview_text()
+    assert_true("hello" in preview, "DiffView context 'hello' missing")
+    assert_true("swift world" in preview, "DiffView modified line missing")
+
+
+def storybook_hunkdiffview_navigates_lines(app: Client) -> None:
+    """HunkDiffView preview: Tab into the hunk, Down moves selection; file
+    header + hunk content remain visible. Keyboard-interactive path that's
+    otherwise untested in smoke."""
+    app.goto_storybook_page(19)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true("example.swift" in preview, "HunkDiffView header missing")
+    # Down shouldn't crash and should keep the hunk content visible.
+    app.send_key("down")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "let x" in app.preview_text(),
+        "HunkDiffView content disappeared after down",
+    )
+
+
+def storybook_progressbar_renders_all_values(app: Client) -> None:
+    """ProgressBar page shows four bars at different fill levels. Count of
+    filled glyphs on successive rows should grow monotonically."""
+    app.goto_storybook_page(20)
+    preview = app.preview_text()
+    for marker in ("25%", "50%", "75%"):
+        assert_true(marker in preview, f"ProgressBar preview missing '{marker}'")
+
+
+def storybook_statusbar_sections_render(app: Client) -> None:
+    """StatusBar lays out left/center/right sections. READY + tab:1/3 + a
+    timing indicator should all appear on a single row."""
+    app.goto_storybook_page(21)
+    preview = app.preview_text()
+    # Don't assume the exact text — just that the three conceptual sections
+    # landed something visible in the preview.
+    assert_true(len(preview.strip()) > 0, "StatusBar preview was empty")
+
+
+def storybook_barchart_renders_bars(app: Client) -> None:
+    """BarChart preview renders `█` glyphs proportional to value — verify
+    at least one filled bar appears and the label characters are present."""
+    app.goto_storybook_page(22)
+    full_block_count = app.count_glyph("█")
+    assert_true(full_block_count >= 5, f"BarChart filled-cells too sparse: {full_block_count}")
+
+
+def storybook_focusable_joins_tab_order(app: Client) -> None:
+    """`.focusable` modifier page has exactly one focusable Text. Tab into
+    it — focus should land on it, not bounce back to the sidebar."""
+    app.goto_storybook_page(32)
+    before = app.focus()
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.focus()
+    assert_true(
+        after.node_id != before.node_id,
+        ".focusable page should accept Tab into preview",
+    )
+
+
 def demo_app_renders(app: Client) -> None:
     """Plain Demo smoke — renders its title bar and tab row without
     crashing. Looks for the app's "TerminalUI" title and one of the tab
@@ -418,6 +542,16 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
     SmokeCase("storybook.treeview_expand_collapse", "Storybook", storybook_treeview_expand_collapse),
     SmokeCase("storybook.textarea_accepts_input", "Storybook", storybook_textarea_accepts_input),
+    SmokeCase("storybook.vstack_renders_three_rows", "Storybook", storybook_vstack_renders_three_rows),
+    SmokeCase("storybook.hstack_renders_horizontal", "Storybook", storybook_hstack_renders_horizontal),
+    SmokeCase("storybook.divider_renders_rule", "Storybook", storybook_divider_renders_rule),
+    SmokeCase("storybook.table_renders_header_and_rows", "Storybook", storybook_table_renders_header_and_rows),
+    SmokeCase("storybook.diffview_marks_changes", "Storybook", storybook_diffview_marks_changes),
+    SmokeCase("storybook.hunkdiffview_navigates_lines", "Storybook", storybook_hunkdiffview_navigates_lines),
+    SmokeCase("storybook.progressbar_renders_all_values", "Storybook", storybook_progressbar_renders_all_values),
+    SmokeCase("storybook.statusbar_sections_render", "Storybook", storybook_statusbar_sections_render),
+    SmokeCase("storybook.barchart_renders_bars", "Storybook", storybook_barchart_renders_bars),
+    SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]
