@@ -28,9 +28,10 @@ public struct TextInput: TerminalView {
         GeometryReader { size in
             let value = text.get()
             let showPlaceholder = value.isEmpty && !placeholder.isEmpty
-            // Reserve cells: prompt + cursor marker + 2 for padding/border
-            // that the renderer might clip. Keep at least 4 for input.
-            let available = max(4, size.width - prompt.count - 3)
+            // The whole post-prompt rect is available for value + cursor.
+            // `composeSpans` reserves its own cell for the cursor glyph; HYP-90
+            // rect-clip keeps any residual writes inside the assigned rect.
+            let available = max(1, size.width - prompt.count)
             return Text(spans: composeSpans(
                 value: value,
                 showPlaceholder: showPlaceholder,

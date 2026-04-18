@@ -123,6 +123,7 @@ public struct HitResult {
             case .onKeyPress: values.append(("modifier", "onKeyPress"))
             case .onAppear: values.append(("modifier", "onAppear"))
             case .onClick: values.append(("modifier", "onClick"))
+            case .environment: values.append(("modifier", "environment"))
             }
 
         case .viewBody(let info):
@@ -159,6 +160,7 @@ public struct HitResult {
                 case .onKeyPress: return "onKeyPress"
                 case .onAppear: return "onAppear"
                 case .onClick: return "onClick"
+                case .environment: return "environment"
                 }
             }
             return nil

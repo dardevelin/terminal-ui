@@ -200,6 +200,23 @@ public final class AttributeGraph {
             }
         }
 
+        // GeometryReader — refresh the closure so captures (like an updated
+        // `text` binding) stay in sync. Children are rebuilt by the renderer
+        // each frame; leave them alone here.
+        if let geom = view as? any _GraphGeometryReader {
+            nonisolated(unsafe) weak let weakSelf = self
+            let childID = node.id.appending(.index(0))
+            node.geometryRebuilder = { size in
+                let view = geom.rebuild(with: size)
+                guard let graph = weakSelf else {
+                    return AttributeNode(id: childID, kind: .primitive(.empty))
+                }
+                return graph.constructAnyTerminalView(view, id: childID)
+            }
+            node.isDirty = false
+            return
+        }
+
         // Composite view — re-evaluate body with observation tracking
         if !(V.Body.self == Never.self) {
             evaluateBody(node: node, view: view)
@@ -361,7 +378,47 @@ public final class AttributeGraph {
         if let scroll = view as? any _GraphScrollView {
             return constructScrollView(scroll, id: id)
         }
+        if let geom = view as? any _GraphGeometryReader {
+            return constructGeometryReader(geom, id: id)
+        }
         return constructComposite(view, id: id)
+    }
+
+    /// GeometryReader is built as a bare `viewBody` node carrying the
+    /// content rebuilder closure. At graph-build time we construct a
+    /// placeholder subtree with the root proposed size so measurements can
+    /// proceed; the renderer calls `geometryRebuilder` each frame with the
+    /// real rect and rebuilds children from scratch. This keeps descendants'
+    /// view of `Size` in sync with the actual allocated region rather than
+    /// the root terminal size.
+    func constructGeometryReader(_ geom: any _GraphGeometryReader, id: NodeID) -> AttributeNode {
+        let info = ViewBodyInfo(viewTypeName: "GeometryReader")
+        let node = AttributeNode(id: id, kind: .viewBody(info))
+
+        // Capture graph + id so the renderer can rebuild without going
+        // through `GraphContext.currentGraph` (which is only scoped during
+        // `graph.update`, not during render).
+        nonisolated(unsafe) weak let weakSelf = self
+        let childID = id.appending(.index(0))
+        node.geometryRebuilder = { size in
+            let view = geom.rebuild(with: size)
+            guard let graph = weakSelf else {
+                return AttributeNode(id: childID, kind: .primitive(.empty))
+            }
+            return graph.constructAnyTerminalView(view, id: childID)
+        }
+
+        // Seed with an initial subtree using whatever proposed size is
+        // current — allows first-pass measurement without a render. The
+        // subtree is replaced on every render via `geometryRebuilder`.
+        let termSize = GraphContext.currentEnvironment?.terminalSize ?? .default
+        let seedSize = GraphContext.currentProposedSize
+            ?? Size(width: termSize.cols, height: termSize.rows)
+        let seed = geom.rebuild(with: seedSize)
+        let childNode = constructAnyView(seed, id: childID)
+        childNode.parent = node
+        node.children.append(childNode)
+        return node
     }
 
     func constructPrimitive<V: TerminalView>(for view: V, id: NodeID) -> AttributeNode? {
@@ -557,4 +614,11 @@ protocol _GraphForEach {
 protocol _GraphScrollView {
     var scrollAxis: ScrollAxis { get }
     func graphChild() -> Any
+}
+
+/// Marks `GeometryReader` so the graph can detect it and install its lazy
+/// rebuilder on the constructed node. `rebuild(with:)` is called during
+/// render with the node's actual rect size, NOT at graph-build time.
+protocol _GraphGeometryReader {
+    func rebuild(with size: Size) -> any TerminalView
 }

@@ -180,6 +180,7 @@ public final class DebugStream: @unchecked Sendable {
             case .onKeyPress: kind = "onKeyPress"; value = ""
             case .onAppear: kind = "onAppear"; value = ""
             case .onClick: kind = "onClick"; value = ""
+            case .environment: kind = "environment"; value = ""
             }
         case .viewBody(let info):
             kind = "view"

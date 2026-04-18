@@ -41,6 +41,14 @@ public class AttributeNode {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// GeometryReader rebuild hook. When non-nil the renderer invokes this
+    /// with the node's actual rect size each frame. The closure captures the
+    /// owning `AttributeGraph` and constructs a fresh child subtree rooted at
+    /// `node.id.appending(.index(0))`, returning the new child. Lets the
+    /// descendants of `GeometryReader` observe the real allocated rect rather
+    /// than the root terminal size that was current at graph-build time.
+    public var geometryRebuilder: ((Size) -> AttributeNode)?
+
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind
@@ -135,6 +143,7 @@ extension NodeKind {
             case .onKeyPress: "onKeyPress"
             case .onAppear: "onAppear"
             case .onClick: "onClick"
+            case .environment: "environment"
             }
         case .viewBody(let info):
             info.viewTypeName
@@ -204,6 +213,12 @@ public enum ModifierEffect {
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
     case onAppear    // fires action on first graph construction (tracked on node)
     case onClick     // attaches click handler (handler stored on FocusEngine)
+    /// Environment-value setter. The closure applies the modifier's keyPath
+    /// and value to a mutable `EnvironmentValues` during render so descendants
+    /// observe the new value via `GraphContext.currentEnvironment`. Boxing as
+    /// a closure keeps the ModifierEffect enum free of generic parameters
+    /// (the keypath/value pair is type-erased at construction time).
+    case environment((inout EnvironmentValues) -> Void)
 }
 
 // MARK: - View Body

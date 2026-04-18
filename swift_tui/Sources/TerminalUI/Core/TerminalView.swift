@@ -64,3 +64,31 @@ public struct EmptyView: TerminalView {
     public init() {}
     public var body: Never { fatalError() }
 }
+
+/// A transparent container that groups multiple views without affecting layout.
+///
+/// `Group` has no visual representation of its own — it renders exactly like
+/// its content would if the `Group` weren't there. The point is to provide a
+/// single view on which to apply modifiers (`.wrap(.none)`, `.foreground(...)`,
+/// environment sets) so they propagate to every descendant.
+///
+/// ```swift
+/// Group {
+///     Text("row 1")
+///     Text("row 2")
+/// }
+/// .foreground(.cyan)   // both rows cyan
+/// ```
+///
+/// Under if/else in a builder, `Group` collapses return-type differences when
+/// combined with a modifier — apply the modifier once to the group rather than
+/// to every branch of the switch.
+public struct Group<Content: TerminalView>: TerminalView {
+    public let content: Content
+
+    public init(@TerminalViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    public var body: Content { content }
+}

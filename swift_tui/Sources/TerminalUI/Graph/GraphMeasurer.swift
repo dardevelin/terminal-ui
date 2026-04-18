@@ -71,6 +71,15 @@ public enum GraphMeasurer {
 
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
+            if case .environment(let apply) = effect {
+                let previous = GraphContext.currentEnvironment
+                var nextEnv = previous ?? EnvironmentValues()
+                apply(&nextEnv)
+                GraphContext.currentEnvironment = nextEnv
+                let result = measureWidth(child)
+                GraphContext.currentEnvironment = previous
+                return result
+            }
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
@@ -92,7 +101,16 @@ public enum GraphMeasurer {
             switch content {
             case .text(let spans):
                 let text = spans.count == 1 ? spans[0].text : spans.map(\.text).joined()
-                return countWrappedLines(text, width: proposedWidth)
+                // Under `.none` wrap mode (set by DotMatrixText, MorseTicker,
+                // and other fixed-geometry views), count only newline-separated
+                // rows so measurement doesn't inflate when a logical row
+                // exceeds proposedWidth. Overflow is clipped at render time
+                // by HYP-90 rect enforcement. See `TextWrapMode`.
+                let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
+                switch mode {
+                case .wrap: return countWrappedLines(text, width: proposedWidth)
+                case .none: return countLines(text)
+                }
             case .spacer: return 1
             case .divider: return 1
             case .empty: return 0
@@ -131,6 +149,19 @@ public enum GraphMeasurer {
 
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
+            // Environment modifiers must influence measurement as well as
+            // render (e.g. `.wrap(.none)` on a Text must stop the measurer
+            // from inflating height at narrow widths). Push the modifier's
+            // env over the current one, measure, then restore.
+            if case .environment(let apply) = effect {
+                let previous = GraphContext.currentEnvironment
+                var nextEnv = previous ?? EnvironmentValues()
+                apply(&nextEnv)
+                GraphContext.currentEnvironment = nextEnv
+                let result = measureHeight(child, proposedWidth: proposedWidth)
+                GraphContext.currentEnvironment = previous
+                return result
+            }
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }

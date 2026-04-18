@@ -30,12 +30,21 @@ public struct DotMatrixText: TerminalView {
     }
 
     public var body: some TerminalView {
-        switch mode {
-        case .braille:
-            Text(renderBraille())
-        case .bullet(let dot, let empty):
-            Text(renderBullet(dot: dot, empty: empty))
+        // `.wrap(.none)` — dot-matrix glyphs are fixed geometry (7 rows ×
+        // N columns). Without this the measurer would inflate height when
+        // the container is narrower than the glyph row width, starving
+        // Spacer siblings and collapsing the visible output to one row.
+        // Group wraps both branches in a single transparent container so the
+        // modifier applies once.
+        Group {
+            switch mode {
+            case .braille:
+                Text(renderBraille())
+            case .bullet(let dot, let empty):
+                Text(renderBullet(dot: dot, empty: empty))
+            }
         }
+        .wrap(.none)
     }
 
     // MARK: - Braille Rendering

@@ -1,8 +1,12 @@
 /// Reads the available size and passes it to a content builder.
-/// Uses the current terminal size from the environment.
 ///
-/// Usage:
-/// ```
+/// The closure is evaluated LAZILY at render time with the actual assigned
+/// rect — not at graph-build time with the root terminal size. A nested
+/// `GeometryReader` inside padding/border/etc. reports the shrunk inner
+/// rect, letting callers (TextInput's virtual scroll, PromptInput soft-wrap,
+/// BarChart flex width) compute against true room available.
+///
+/// ```swift
 /// GeometryReader { size in
 ///     Text("Width: \(size.width)")
 /// }
@@ -14,12 +18,9 @@ public struct GeometryReader<Content: TerminalView>: TerminalView {
         self.content = content
     }
 
-    public var body: some TerminalView {
-        // Read proposed size from render context if available, otherwise fall back to terminal size
-        if let proposed = GraphContext.currentProposedSize {
-            return content(proposed)
-        }
-        let termSize = GraphContext.currentEnvironment?.terminalSize ?? .default
-        return content(Size(width: termSize.cols, height: termSize.rows))
-    }
+    /// `body` is never consulted by the renderer — `GeometryReader` is
+    /// handled via a dedicated path that re-evaluates `content` with the
+    /// render-time rect. The fallback value exists so graph construction
+    /// emits a placeholder node before the rebuild happens.
+    public var body: Never { fatalError("GeometryReader is rebuilt at render time; body should not be called") }
 }

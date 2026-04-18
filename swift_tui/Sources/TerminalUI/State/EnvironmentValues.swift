@@ -32,6 +32,12 @@ public struct EnvironmentValues: Sendable {
     /// maxLength reached). Default `.bounce` — visible cursor animation.
     /// Scaffolding exists; per-component wiring lands incrementally.
     public var boundaryFeedback: BoundaryFeedback = .bounce
+    /// Text overflow behavior for enclosed `Text` primitives. Default `.wrap`
+    /// keeps long logical rows flowing to additional display rows; `.none`
+    /// clips each row and counts only explicit newlines in measurement.
+    /// Used by `DotMatrixText`, `MorseTicker`, and other fixed-geometry views
+    /// to prevent measurement-driven height inflation at narrow widths.
+    public var textWrap: TextWrapMode = .wrap
 
     public init() {}
 }
@@ -51,11 +57,23 @@ public struct TerminalEnvironment<Value> {
     }
 }
 
+/// Marker protocol that hides `EnvironmentModifier<Value>`'s generic parameter
+/// so the graph layer can pattern-match on it without knowing `Value`. The
+/// `apply` method is the only thing the renderer needs — mutate an in-flight
+/// `EnvironmentValues` so descendants observe the new value.
+public protocol _AnyEnvironmentModifier {
+    func apply(to env: inout EnvironmentValues)
+}
+
 /// Modifier that sets an environment value for a subtree.
-public struct EnvironmentModifier<Value>: ViewModifier {
+public struct EnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier {
     public typealias ModifierType = Value
     public let keyPath: WritableKeyPath<EnvironmentValues, Value>
     public let value: Value
+
+    public func apply(to env: inout EnvironmentValues) {
+        env[keyPath: keyPath] = value
+    }
 }
 
 extension TerminalView {

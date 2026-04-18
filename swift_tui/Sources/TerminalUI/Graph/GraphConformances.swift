@@ -71,6 +71,16 @@ extension ScrollView: _GraphScrollView {
     func graphChild() -> Any { content }
 }
 
+// MARK: - GeometryReader
+
+extension GeometryReader: _GraphGeometryReader {
+    /// Erase `Content` by returning an `any TerminalView`. The graph's
+    /// `constructAnyView` handles the rebuild on the fresh value each frame.
+    func rebuild(with size: Size) -> any TerminalView {
+        content(size)
+    }
+}
+
 // MARK: - ModifiedView
 
 extension ModifiedView: _GraphModified {
@@ -93,6 +103,7 @@ extension ModifiedView: _GraphModified {
         case is OnKeyPressModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
         case is OnClickModifier: .onClick
+        case let env as any _AnyEnvironmentModifier: .environment(env.apply(to:))
         default:
             #if DEBUG
             fatalError("Unmapped modifier: \(type(of: modifier))")

@@ -59,8 +59,13 @@ public struct MorseTicker: TerminalView {
     public var body: some TerminalView {
         let offset = scrollBinding.get()
         let spans = renderTicker(offset: offset)
+        // `.wrap(.none)` — MorseTicker is fixed-height (2 braille rows) with
+        // explicit `width`. Without it the measurer would inflate the row
+        // count at narrow container widths and the parent VStack would over-
+        // allocate vertical space, starving downstream siblings.
         Text(spans: spans)
             .background(bgColor)
+            .wrap(.none)
     }
 
     // MARK: - Morse Table

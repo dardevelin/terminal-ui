@@ -20,6 +20,16 @@ public enum GraphRenderer {
         DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
         #endif
 
+        // Propagate proposed size to this node's subtree so `GeometryReader`
+        // reports the actual allocated rect rather than the root terminal
+        // size. Without this, a `GeometryReader` inside a narrow nested
+        // layout would still think it had the whole screen to work with —
+        // the bug that left `TextInput` over-budgeting its horizontal
+        // scroll window in the Storybook preview pane.
+        let previousProposed = GraphContext.currentProposedSize
+        GraphContext.currentProposedSize = Size(width: context.rect.width, height: context.rect.height)
+        defer { GraphContext.currentProposedSize = previousProposed }
+
         // Rect-clip enforcement (HYP-90). Every node's writes are bounded to its
         // assigned rect intersected with all ancestors' rects. Prevents a child
         // from punching through a parent's border/frame when it miscalculates
@@ -39,6 +49,18 @@ public enum GraphRenderer {
                 #if DEBUG
                 DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
                 #endif
+                // GeometryReader rebuild path: if the node carries a
+                // `geometryRebuilder` closure, invoke it with the actual
+                // rect size so the subtree is constructed AFTER layout has
+                // been assigned. The rebuilder captures its owning graph
+                // and returns a freshly-constructed child node; we re-parent
+                // it and replace any previous build.
+                if let rebuild = node.geometryRebuilder {
+                    let size = Size(width: context.rect.width, height: context.rect.height)
+                    let newChild = rebuild(size)
+                    newChild.parent = node
+                    node.children = [newChild]
+                }
                 for child in node.children {
                     render(child, into: &buffer, context: context)
                 }
@@ -625,6 +647,19 @@ public enum GraphRenderer {
 
         case .onClick:
             render(child, into: &buffer, context: ctx)
+
+        case .environment(let apply):
+            // Push a modified EnvironmentValues for the duration of this
+            // subtree. Descendants read via `GraphContext.currentEnvironment`
+            // (e.g. `GraphMeasurer.computeHeight` consulting `textWrap`).
+            // Restore the prior environment on return so sibling subtrees
+            // observe their own settings rather than inheriting from us.
+            let previousEnv = GraphContext.currentEnvironment
+            var newEnv = previousEnv ?? EnvironmentValues()
+            apply(&newEnv)
+            GraphContext.currentEnvironment = newEnv
+            render(child, into: &buffer, context: ctx)
+            GraphContext.currentEnvironment = previousEnv
 
         case .modal(let isPresented):
             // Always render base app

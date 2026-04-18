@@ -38,6 +38,20 @@ struct DotMatrixTextTests {
                 "row 6 col 0 should be ● — got '\(buffer[0, 6].character)'")
     }
 
+    @Test("DotMatrixText measurement at narrow proposed width stays at 7 rows")
+    func dotMatrixNarrowMeasure() {
+        resetGraphContext()
+        let graph = AttributeGraph()
+        graph.update(from: DotMatrixText("HELLO"))
+        // "HELLO" is 5 letters × 5 glyph cols + 4 letter-gaps = 29 chars wide.
+        // At proposedWidth = 20, wrap-mode measurement would inflate height
+        // to ~14 rows (each row wraps). Under `.wrap(.none)` the measurer
+        // should report exactly `DotFont.glyphHeight` (7).
+        let h = GraphMeasurer.measureHeight(graph.root!, proposedWidth: 20)
+        #expect(h == DotFont.glyphHeight,
+                "expected 7 rows under .wrap(.none), got \(h)")
+    }
+
     @Test("DotMatrixText inside a VStack preserves its 7-row height")
     func dotMatrixInVStack() {
         resetGraphContext()

@@ -377,6 +377,7 @@ public final class DebugPanel {
             case .onKeyPress: kind = "key"; detail = ""
             case .onAppear: kind = "app"; detail = ""
             case .onClick: kind = "clk"; detail = ""
+            case .environment: kind = "env"; detail = ""
             }
             style = node.isDirty ? dirtyStyle : dimStyle
 
