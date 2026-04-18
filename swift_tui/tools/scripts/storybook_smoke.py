@@ -610,6 +610,53 @@ def storybook_morseticker_renders_sos(app: Client) -> None:
     assert_true(has_braille, "MorseTicker didn't render any braille ticker glyphs")
 
 
+def storybook_foreground_renders_colored_words(app: Client) -> None:
+    """`.foreground` modifier page: red/green/blue side by side. Glyph
+    text is what we assert; colour-byte verification is out of scope
+    until the client exposes per-cell style (future work)."""
+    app.goto_storybook_page(28)
+    preview = app.preview_text()
+    for word in ("red", "green", "blue"):
+        assert_true(word in preview, f".foreground preview missing '{word}'")
+
+
+def storybook_bold_distinguishes_styles(app: Client) -> None:
+    """`.bold` modifier page: both the plain and bolded label render.
+    Style bit verification (bold true on 'is bold' cells) belongs in a
+    richer probe API; for now assert both lines land."""
+    app.goto_storybook_page(29)
+    preview = app.preview_text()
+    for label in ("not bold", "is bold"):
+        assert_true(label in preview, f".bold preview missing '{label}'")
+
+
+def storybook_border_wraps_text(app: Client) -> None:
+    """`.border` page: ' bordered ' text wrapped by a box-drawing frame.
+    Verify the border-corner or horizontal glyphs land alongside the text."""
+    app.goto_storybook_page(30)
+    preview = app.preview_text()
+    assert_true("bordered" in preview, ".border preview missing label")
+    # Rounded border uses ╭ ╮ ╰ ╯ — at least one corner should appear.
+    has_corner = any(ch in preview for ch in "╭╮╰╯")
+    assert_true(has_corner, ".border preview missing corner glyphs")
+
+
+def storybook_padding_wraps_text(app: Client) -> None:
+    """`.padding` page: 'padded' label sits inside a blank padding frame."""
+    app.goto_storybook_page(31)
+    preview = app.preview_text()
+    assert_true("padded" in preview, ".padding preview missing label")
+
+
+def storybook_frame_sizes_bordered_box(app: Client) -> None:
+    """`.frame(width:10, height:3).border()` page: 'x' centered in a
+    bordered 10-wide, 3-tall box. Corners + 'x' must both show."""
+    app.goto_storybook_page(33)
+    preview = app.preview_text()
+    assert_true("x" in preview, ".frame preview missing 'x' label")
+    assert_true(any(ch in preview for ch in "╭╮╰╯"), ".frame preview missing border corners")
+
+
 def storybook_focusable_joins_tab_order(app: Client) -> None:
     """`.focusable` modifier page has exactly one focusable Text. Tab into
     it — focus should land on it, not bounce back to the sidebar."""
@@ -671,6 +718,11 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
+    SmokeCase("storybook.foreground_renders_colored_words", "Storybook", storybook_foreground_renders_colored_words),
+    SmokeCase("storybook.bold_distinguishes_styles", "Storybook", storybook_bold_distinguishes_styles),
+    SmokeCase("storybook.border_wraps_text", "Storybook", storybook_border_wraps_text),
+    SmokeCase("storybook.padding_wraps_text", "Storybook", storybook_padding_wraps_text),
+    SmokeCase("storybook.frame_sizes_bordered_box", "Storybook", storybook_frame_sizes_bordered_box),
     SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
