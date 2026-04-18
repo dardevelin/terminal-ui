@@ -1,78 +1,127 @@
+/// Result of validating a `TextInput`'s current value (HYP-82 #3).
+///
+/// The severity drives the input's visual state — `.ok` renders with default
+/// chrome, `.warning` tints the border yellow, `.error` tints it red. The
+/// optional `message` is shown below the input when present so users can read
+/// why their value was rejected.
+public struct TextInputValidation: Sendable, Equatable {
+    public enum Severity: Sendable, Equatable {
+        case ok, warning, error
+    }
+    public let severity: Severity
+    public let message: String?
+
+    public init(_ severity: Severity, _ message: String? = nil) {
+        self.severity = severity
+        self.message = message
+    }
+
+    /// Shorthand for "the value is valid, no message."
+    public static let ok = TextInputValidation(.ok)
+}
+
 /// An editable single-line text field with cursor.
 /// Handles character input, backspace, delete, and cursor movement.
 ///
 /// The first positional argument is a persistent **prompt/label** rendered
 /// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
 /// `placeholder:` for ghost text that disappears once the user types.
+/// Attach a `validate:` closure to colour the input's border and surface a
+/// short error message when the value fails validation.
 ///
 /// Usage:
 /// ```
 /// @TerminalState var name = ""
 /// TextInput("Name: ", text: $name)
 /// TextInput(text: $name, placeholder: "type here...")
+/// TextInput(text: $email, validate: { v in
+///     v.contains("@") ? .ok : TextInputValidation(.error, "missing @")
+/// })
 /// ```
 public struct TextInput: TerminalView {
     public let prompt: String
     public let placeholder: String
     public let text: Binding<String>
+    public let validate: ((String) -> TextInputValidation)?
 
-    public init(_ prompt: String = "", text: Binding<String>, placeholder: String = "") {
+    public init(
+        _ prompt: String = "",
+        text: Binding<String>,
+        placeholder: String = "",
+        validate: ((String) -> TextInputValidation)? = nil
+    ) {
         self.prompt = prompt
         self.text = text
         self.placeholder = placeholder
+        self.validate = validate
     }
 
     public var body: some TerminalView {
-        // GeometryReader supplies the container width so we can slide the
-        // visible window when the value exceeds the field.
-        GeometryReader { size in
-            let value = text.get()
-            let showPlaceholder = value.isEmpty && !placeholder.isEmpty
-            // The whole post-prompt rect is available for value + cursor.
-            // `composeSpans` reserves its own cell for the cursor glyph; HYP-90
-            // rect-clip keeps any residual writes inside the assigned rect.
-            let available = max(1, size.width - prompt.count)
-            return Text(spans: composeSpans(
-                value: value,
-                showPlaceholder: showPlaceholder,
-                maxValueWidth: available))
-                .focusable()
-        .onKeyPress { [text] event in
-            switch event.key {
-            case .character(let c):
-                // Don't insert control characters
-                guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
-                    return .ignored
-                }
-                text.set(text.get() + String(c))
-                return .handled
+        // Run validation once per render so severity drives both chrome
+        // colour and the optional diagnostic row. Nil when no validator was
+        // supplied — omit decoration entirely.
+        let validation = validate?(text.get())
+        let accent = validationColor(validation)
 
-            case .backspace:
-                var current = text.get()
-                if !current.isEmpty {
-                    current.removeLast()
-                    text.set(current)
-                }
-                return .handled
+        // Input + optional error row are stacked vertically so callers can
+        // just drop `TextInput(... validate:)` and see the full UX.
+        return VStack {
+            GeometryReader { size in
+                let value = text.get()
+                let showPlaceholder = value.isEmpty && !placeholder.isEmpty
+                // The whole post-prompt rect is available for value + cursor.
+                // `composeSpans` reserves its own cell for the cursor glyph;
+                // HYP-90 rect-clip keeps any residual writes inside the rect.
+                let available = max(1, size.width - prompt.count)
+                return Text(spans: composeSpans(
+                    value: value,
+                    showPlaceholder: showPlaceholder,
+                    maxValueWidth: available))
+                    .focusable()
+                    .onKeyPress { [text] event in
+                        switch event.key {
+                        case .character(let c):
+                            guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
+                                return .ignored
+                            }
+                            text.set(text.get() + String(c))
+                            return .handled
 
-            case .delete:
-                // Delete is same as backspace for single-cursor implementation
-                var current = text.get()
-                if !current.isEmpty {
-                    current.removeLast()
-                    text.set(current)
-                }
-                return .handled
+                        case .backspace, .delete:
+                            var current = text.get()
+                            if !current.isEmpty {
+                                current.removeLast()
+                                text.set(current)
+                            }
+                            return .handled
 
-            case .enter:
-                // Enter could submit — let it bubble up to parent handlers
-                return .ignored
+                        case .enter:
+                            // Let Enter bubble up so parent handlers can submit.
+                            return .ignored
 
-            default:
-                return .ignored
+                        default:
+                            return .ignored
+                        }
+                    }
+            }
+            .frame(height: 1)
+            .foreground(accent ?? .default)
+
+            if let message = validation?.message {
+                Text(message).foreground(accent ?? .gray)
             }
         }
-        }.frame(height: 1)
+    }
+
+    /// Map validation severity to an accent colour. Returns `nil` when no
+    /// validator was attached so the callers keep their default appearance.
+    private func validationColor(_ validation: TextInputValidation?) -> Color? {
+        guard let validation else { return nil }
+        switch validation.severity {
+        case .ok: return nil
+        case .warning: return .yellow
+        case .error: return .red
+        }
     }
 
     /// Compose the rendered spans, sliding the visible value window when

@@ -370,8 +370,12 @@ public enum GraphRenderer {
                 // ▶ when content extends past the right edge. Painted in the
                 // first/last cell of the viewport's top row for visibility
                 // without stealing a content row.
-                let indicatorStyle = Style(foreground: .gray, background: nil,
-                                           bold: false, italic: false, underline: false)
+                // Indicator glyphs use cyan+bold to match the focus-ring
+                // colour — dim grey was too subtle in live Storybook and
+                // users mistook clipped content for missing content
+                // (HYP-82 #8).
+                let indicatorStyle = Style(foreground: .cyan, background: nil,
+                                           bold: true, italic: false, underline: false)
                 if offset > 0 {
                     buffer[viewport.x, viewport.y] = Cell(character: "◀", style: indicatorStyle)
                 }
@@ -410,8 +414,12 @@ public enum GraphRenderer {
                 // top/bottom-right cell of the viewport — right edge keeps
                 // the indicator out of the way of content readers scanning
                 // left-to-right.
-                let indicatorStyle = Style(foreground: .gray, background: nil,
-                                           bold: false, italic: false, underline: false)
+                // Indicator glyphs use cyan+bold to match the focus-ring
+                // colour — dim grey was too subtle in live Storybook and
+                // users mistook clipped content for missing content
+                // (HYP-82 #8).
+                let indicatorStyle = Style(foreground: .cyan, background: nil,
+                                           bold: true, italic: false, underline: false)
                 if offset > 0 {
                     buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▲", style: indicatorStyle)
                 }
