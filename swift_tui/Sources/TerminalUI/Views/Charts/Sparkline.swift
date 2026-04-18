@@ -8,16 +8,18 @@
 /// ```
 public struct Sparkline: TerminalView {
     public let data: [Double]
-    public let chartWidth: Int
-    public let chartHeight: Int
+    /// Explicit cell width. `nil` (default) fits to container width.
+    public let chartWidth: Int?
+    /// Explicit cell height. `nil` (default) fits to container height.
+    public let chartHeight: Int?
     public let minValue: Double?
     public let maxValue: Double?
     public let filled: Bool
 
     public init(
         data: [Double],
-        width: Int = 40,
-        height: Int = 5,
+        width: Int? = nil,
+        height: Int? = nil,
         min: Double? = nil,
         max: Double? = nil,
         filled: Bool = false
@@ -31,15 +33,19 @@ public struct Sparkline: TerminalView {
     }
 
     public var body: some TerminalView {
-        Text(renderSparkline())
+        GeometryReader { size in
+            Text(self.renderSparkline(containerWidth: size.width, containerHeight: size.height))
+        }
     }
 
-    func renderSparkline() -> String {
+    func renderSparkline(containerWidth: Int = 40, containerHeight: Int = 5) -> String {
+        let w = max(1, chartWidth ?? containerWidth)
+        let h = max(1, chartHeight ?? containerHeight)
         guard !data.isEmpty else {
-            return String(repeating: "⠀", count: chartWidth)
+            return String(repeating: "⠀", count: w)
         }
 
-        var canvas = BrailleCanvas(width: chartWidth, height: chartHeight)
+        var canvas = BrailleCanvas(width: w, height: h)
         let dotW = canvas.dotWidth
         let dotH = canvas.dotHeight
 

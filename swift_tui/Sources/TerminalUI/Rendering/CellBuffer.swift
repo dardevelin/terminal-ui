@@ -52,10 +52,22 @@ public struct CellBuffer: Sendable {
     public var height: Int
     public var cells: [Cell]
 
+    /// Optional clip rectangle — when set, writes to cells outside this rect are
+    /// dropped silently. Renderer pushes the current component's assigned rect
+    /// before descending and pops on return, giving framework-enforced rect
+    /// boundaries without asking every component to self-clip (HYP-90).
+    ///
+    /// The bounds check in the subscript setter AND in text-writing helpers
+    /// (`write`, `writeSpans`) consults this rect intersected with the buffer
+    /// dimensions. Reads are never clipped — they return `.empty` outside the
+    /// buffer but are otherwise unrestricted.
+    public var clipRect: Rect?
+
     public init(width: Int, height: Int) {
         self.width = width
         self.height = height
         self.cells = Array(repeating: .empty, count: width * height)
+        self.clipRect = nil
     }
 
     public subscript(x: Int, y: Int) -> Cell {
@@ -65,8 +77,24 @@ public struct CellBuffer: Sendable {
         }
         set {
             guard x >= 0, x < width, y >= 0, y < height else { return }
+            if let clip = clipRect {
+                guard x >= clip.x, x < clip.x + clip.width,
+                      y >= clip.y, y < clip.y + clip.height else { return }
+            }
             cells[y * width + x] = newValue
         }
+    }
+
+    /// Run `body` with `clipRect` temporarily set to the intersection of the
+    /// existing clip and `rect`. Restores the prior clip on return, even if
+    /// body throws. Intersection (not replacement) is critical — a child
+    /// cannot escape its ancestors' clips.
+    @inlinable
+    public mutating func withClip<R>(_ rect: Rect, _ body: (inout CellBuffer) throws -> R) rethrows -> R {
+        let prev = clipRect
+        clipRect = prev.map { $0.intersected(with: rect) } ?? rect
+        defer { clipRect = prev }
+        return try body(&self)
     }
 
     public mutating func write(_ text: String, x: Int, y: Int, style: Style) {

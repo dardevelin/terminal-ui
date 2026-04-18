@@ -21,6 +21,17 @@ public struct EnvironmentValues: Sendable {
     public var colorSupport: ColorSupport = .trueColor
     public var isFocused: Bool = false
     public var focusedID: NodeID? = nil
+    /// Keyboard-focus indicator style (HYP-91). Default `.overlay` preserves
+    /// pre-HYP-91 visuals (cyan `▎` bar at `rect.x - 1`). Set via
+    /// `.focusIndicator(_:)` on any view to override app-wide or per subtree.
+    public var focusIndicatorStyle: FocusIndicatorStyle = .overlay
+    /// Whether `ScrollView` paints its edge indicator glyphs (▲▼◀▶) when more
+    /// content exists off-viewport. Default `.visible` — drop-in affordance.
+    public var scrollIndicators: ScrollIndicatorVisibility = .visible
+    /// How text-input components react to boundary hits (cursor at start/end,
+    /// maxLength reached). Default `.bounce` — visible cursor animation.
+    /// Scaffolding exists; per-component wiring lands incrementally.
+    public var boundaryFeedback: BoundaryFeedback = .bounce
 
     public init() {}
 }

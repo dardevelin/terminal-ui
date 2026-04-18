@@ -23,6 +23,10 @@ let package = Package(
     products: [
         .library(name: "TerminalUI", targets: ["TerminalUI"]),
     ],
+    dependencies: [
+        // DocC — documentation generator. Only used at `swift package generate-documentation` time.
+        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.3.0"),
+    ],
     targets: [
         // Shared config module — used by TerminalUI (debug-only) and swtui CLI
         .target(
@@ -59,6 +63,12 @@ let package = Package(
             name: "DotMatrixDemo",
             dependencies: ["TerminalUI"],
             path: "Examples/DotMatrixDemo",
+            swiftSettings: strictSettings
+        ),
+        .executableTarget(
+            name: "Storybook",
+            dependencies: ["TerminalUI"],
+            path: "Examples/Storybook",
             swiftSettings: strictSettings
         ),
         .testTarget(

@@ -76,7 +76,10 @@ public struct TextArea: TerminalView {
     public let text: Binding<String>
     public let state: Binding<TextAreaState>
     public let lineNumbers: Bool
-    public let visibleHeight: Int
+    /// Explicit visible height in rows. `nil` (default) fits to container.
+    /// Old int-default (10) preserved as the fallback when no container
+    /// height is known.
+    public let visibleHeight: Int?
 
     // -- Display constants --
 
@@ -99,7 +102,7 @@ public struct TextArea: TerminalView {
         text: Binding<String>,
         state: Binding<TextAreaState>,
         lineNumbers: Bool = false,
-        visibleHeight: Int = 10
+        visibleHeight: Int? = nil
     ) {
         self.text = text
         self.state = state
@@ -110,6 +113,20 @@ public struct TextArea: TerminalView {
     // MARK: - Body
 
     public var body: some TerminalView {
+        GeometryReader { size in
+            self.renderEditor(containerHeight: size.height)
+        }
+    }
+
+    /// Resolve visible height: caller-supplied > container > 10-fallback.
+    private func effectiveVisibleHeight(containerHeight: Int) -> Int {
+        if let explicit = visibleHeight { return max(1, explicit) }
+        if containerHeight > 0 { return containerHeight }
+        return 10
+    }
+
+    private func renderEditor(containerHeight: Int) -> some TerminalView {
+        let visibleHeight = effectiveVisibleHeight(containerHeight: containerHeight)
         let content = text.get()
         let editorState = state.get()
         let lines = Self.splitLines(content)
@@ -127,7 +144,7 @@ public struct TextArea: TerminalView {
             visibleHeight: visibleHeight,
             lineNumbers: lineNumbers
         )
-        Text(spans: displaySpans)
+        return Text(spans: displaySpans)
             .focusable()
             .onKeyPress { [text, state] event in
                 Self.handleKey(event, text: text, state: state, visibleHeight: visibleHeight)
@@ -238,13 +255,18 @@ public struct TextArea: TerminalView {
             }
         }
 
-        // Fill empty rows below content with tilde markers
+        // Fill empty rows below content with tilde markers.
+        //
+        // Alignment contract: the ▏ gutter separator must land in the SAME
+        // column on every row. Real rows emit `<pad><num> │ ` where
+        // `pad.count = gutter - gutterPadding - num.count`. For an empty
+        // row the glyph is `~` (1 char) so pad must be `gutter - gutterPadding - 1`.
         let renderedRows = endRow - scrollOffset
         if renderedRows < visibleHeight {
             for _ in 0..<(visibleHeight - renderedRows) {
                 spans.append(TextSpan("\n"))
                 if lineNumbers {
-                    let pad = String(repeating: " ", count: max(0, gutter - gutterPadding))
+                    let pad = String(repeating: " ", count: max(0, gutter - gutterPadding - 1))
                     spans.append(TextSpan(pad + "~ \u{2502} ", foreground: emptyRowMarkerFg))
                 } else {
                     spans.append(TextSpan("~", foreground: emptyRowMarkerFg))

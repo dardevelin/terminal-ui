@@ -51,7 +51,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     public let data: Data
     public let childrenKeyPath: KeyPath<Data.Element, Data?>
     public let selection: Binding<Data.Element.ID?>?
-    public let visibleCount: Int
+    /// Cap on visible rows. `nil` (default) fits to container height.
+    public let visibleCount: Int?
     public let style: TreeViewStyle
     public let content: (Data.Element) -> Content
 
@@ -64,7 +65,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         _ data: Data,
         children: KeyPath<Data.Element, Data?>,
         selection: Binding<Data.Element.ID?>? = nil,
-        visibleCount: Int = 20,
+        visibleCount: Int? = nil,
         style: TreeViewStyle = .default,
         @TerminalViewBuilder content: @escaping (Data.Element) -> Content
     ) {
@@ -77,6 +78,12 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     }
 
     public var body: some TerminalView {
+        GeometryReader { size in
+            self.renderTree(visibleCount: self.visibleCount ?? max(1, size.height))
+        }
+    }
+
+    private func renderTree(visibleCount: Int) -> some TerminalView {
         // Capture bindings for use in closures
         let expandedBinding = $expandedIDs
         let selectedIdxBinding = $selectedIndex

@@ -224,6 +224,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
         while running {
             let events = eventQueue.drain()
             for event in events {
+                // Universal Ctrl+C — equivalent to the SIGINT we disabled via
+                // `ISIG` in raw mode. Users expect Ctrl+C to kill any TUI;
+                // apps can still intercept it before this check by returning
+                // true from onEvent for `.character("c")` with `.ctrl` — but
+                // the default has to be "it quits".
+                if case .key(let k) = event,
+                   k.key == .character("c"),
+                   k.modifiers.contains(.ctrl) {
+                    running = false
+                    break
+                }
                 let shouldContinue = onEvent(event)
 
                 switch event {

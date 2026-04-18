@@ -44,7 +44,10 @@ public struct PromptInput: TerminalView {
     public let state: Binding<PromptInputState>
     public let prompt: String
     public let badge: String?
-    public let maxVisibleLines: Int
+    /// Cap on visible display rows (post-wrap). `nil` grows to fit container
+    /// via `GeometryReader`. Override to pin a taller/shorter input inside a
+    /// parent that would stretch.
+    public let maxVisibleLines: Int?
     public let onSubmit: ((String) -> Void)?
 
     private static let cursorChar: Character = "\u{2588}"  // █
@@ -60,7 +63,7 @@ public struct PromptInput: TerminalView {
         state: Binding<PromptInputState>,
         prompt: String = "\u{276F}",
         badge: String? = nil,
-        maxVisibleLines: Int = 8,
+        maxVisibleLines: Int? = nil,
         onSubmit: ((String) -> Void)? = nil
     ) {
         self.text = text
@@ -72,21 +75,53 @@ public struct PromptInput: TerminalView {
     }
 
     public var body: some TerminalView {
-        let spans = buildDisplay()
-        Text(spans: spans)
-            .focusable()
-            .onKeyPress { [text, state, onSubmit, prompt, maxVisibleLines] event in
-                Self.handleKey(
-                    event, text: text, state: state,
-                    onSubmit: onSubmit, promptWidth: prompt.count + 1,
-                    maxVisibleLines: maxVisibleLines
-                )
-            }
+        // Wrap in GeometryReader so scroll math operates on DISPLAY rows
+        // (wrapped) rather than logical rows. Without the container width,
+        // a single long logical line would wrap inside `writeSpans` but the
+        // logical-row scroll offset would leave the cursor off-screen.
+        GeometryReader { size in
+            let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
+            // Resolve max visible lines: caller-supplied > container height >
+            // legacy 8-line default. Empty input stays at a single row.
+            let capacity = self.maxVisibleLines ?? (size.height > 0 ? size.height : 8)
+            let displayRows = self.displayRowCount(wrapWidth: contentWidth)
+            let renderedHeight = min(max(1, capacity), max(1, displayRows))
+            let spans = self.buildDisplay(wrapWidth: contentWidth, visibleLines: renderedHeight)
+            return Text(spans: spans)
+                .frame(height: renderedHeight)
+                .focusable()
+                .onKeyPress { [text, state, onSubmit, prompt] event in
+                    Self.handleKey(
+                        event, text: text, state: state,
+                        onSubmit: onSubmit, promptWidth: prompt.count + 1,
+                        maxVisibleLines: renderedHeight,
+                        wrapWidth: contentWidth
+                    )
+                }
+        }
+    }
+
+    /// Cells reserved at the start of each display row for the prompt glyph
+    /// and its trailing space. Wrap width for content is `container.width - this`.
+    static func promptReservedWidth(_ prompt: String) -> Int {
+        prompt.count + 1
+    }
+
+    /// Total display rows produced by `content` at the given wrap width.
+    /// A logical line of length L at width W needs `ceil(L / W)` display rows
+    /// (minimum 1 for empty lines).
+    private func displayRowCount(wrapWidth: Int) -> Int {
+        let lines = Self.splitLines(text.get())
+        var total = 0
+        for line in lines {
+            total += max(1, (line.count + wrapWidth - 1) / wrapWidth)
+        }
+        return total
     }
 
     // MARK: - Display
 
-    private func buildDisplay() -> [TextSpan] {
+    private func buildDisplay(wrapWidth: Int, visibleLines: Int) -> [TextSpan] {
         let content = text.get()
         let st = state.get()
         let lines = Self.splitLines(content)
@@ -99,8 +134,8 @@ public struct PromptInput: TerminalView {
         // We'll render it after the prompt line
 
         let lineCount = lines.count
-        let startRow = max(0, min(st.scrollRow, lineCount - maxVisibleLines))
-        let endRow = min(lineCount, startRow + maxVisibleLines)
+        let startRow = max(0, min(st.scrollRow, lineCount - visibleLines))
+        let endRow = min(lineCount, startRow + visibleLines)
 
         for row in startRow..<endRow {
             if row > startRow {
@@ -164,7 +199,8 @@ public struct PromptInput: TerminalView {
         state: Binding<PromptInputState>,
         onSubmit: ((String) -> Void)?,
         promptWidth: Int,
-        maxVisibleLines: Int
+        maxVisibleLines: Int,
+        wrapWidth: Int = .max
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
@@ -188,7 +224,7 @@ public struct PromptInput: TerminalView {
             st.cursorRow += 1
             st.cursorCol = 0
             text.set(lines.joined(separator: "\n"))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -239,7 +275,7 @@ public struct PromptInput: TerminalView {
                 st.cursorCol = prevLen
             }
             text.set(lines.joined(separator: "\n"))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -266,7 +302,7 @@ public struct PromptInput: TerminalView {
                 st.cursorRow -= 1
                 st.cursorCol = lines[st.cursorRow].count
             }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -278,7 +314,7 @@ public struct PromptInput: TerminalView {
                 st.cursorRow += 1
                 st.cursorCol = 0
             }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -300,7 +336,7 @@ public struct PromptInput: TerminalView {
                     st.cursorCol = newLines.last?.count ?? 0
                 }
             }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -323,7 +359,7 @@ public struct PromptInput: TerminalView {
                     st.cursorCol = newLines.last?.count ?? 0
                 }
             }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
 
@@ -349,11 +385,65 @@ public struct PromptInput: TerminalView {
         return text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
     }
 
-    private static func adjustScroll(_ st: inout PromptInputState, maxVisibleLines: Int) {
-        if st.cursorRow < st.scrollRow {
-            st.scrollRow = st.cursorRow
-        } else if st.cursorRow >= st.scrollRow + maxVisibleLines {
-            st.scrollRow = st.cursorRow - maxVisibleLines + 1
+    /// Scroll logic operates on DISPLAY rows (post-wrap) rather than logical
+    /// rows. `wrapWidth` is the render column width available for content;
+    /// `.max` disables wrapping entirely (pre-HYP-83 behavior for callers that
+    /// don't know the container width). The cursor's display row = sum of
+    /// display rows for lines before `cursorRow` + `cursorCol / wrapWidth`.
+    private static func adjustScroll(_ st: inout PromptInputState,
+                                     maxVisibleLines: Int,
+                                     wrapWidth: Int,
+                                     lines: [String]) {
+        // Compute display rows used by each logical line and the cursor's
+        // display-row position within that flattened layout.
+        var displayRowsPerLine: [Int] = []
+        displayRowsPerLine.reserveCapacity(lines.count)
+        for line in lines {
+            let rows: Int
+            if wrapWidth <= 0 || wrapWidth == .max {
+                rows = 1
+            } else {
+                rows = max(1, (line.count + wrapWidth - 1) / wrapWidth)
+            }
+            displayRowsPerLine.append(rows)
+        }
+
+        // Display row of the cursor: all preceding lines' display rows, plus
+        // the wrap offset within the cursor's logical line.
+        let cursorLineIdx = min(st.cursorRow, max(0, lines.count - 1))
+        var cursorDisplayRow = 0
+        for i in 0..<cursorLineIdx {
+            cursorDisplayRow += displayRowsPerLine[i]
+        }
+        if wrapWidth > 0, wrapWidth != .max {
+            cursorDisplayRow += st.cursorCol / wrapWidth
+        }
+
+        // Logical scroll row needs to satisfy: the cursor's display row is
+        // inside [scrollDisplayRow, scrollDisplayRow + maxVisibleLines).
+        // Convert back from display-row cursor position to logical scrollRow.
+        var scrollDisplayRow = 0
+        for i in 0..<min(st.scrollRow, displayRowsPerLine.count) {
+            scrollDisplayRow += displayRowsPerLine[i]
+        }
+
+        if cursorDisplayRow < scrollDisplayRow {
+            // Scroll up: walk scrollRow backwards until cursor is visible.
+            var idx = st.scrollRow
+            while idx > 0 {
+                idx -= 1
+                scrollDisplayRow -= displayRowsPerLine[idx]
+                if scrollDisplayRow <= cursorDisplayRow { break }
+            }
+            st.scrollRow = idx
+        } else if cursorDisplayRow >= scrollDisplayRow + maxVisibleLines {
+            // Scroll down: advance scrollRow until cursor fits.
+            var idx = st.scrollRow
+            while idx < lines.count - 1 && cursorDisplayRow >= scrollDisplayRow + maxVisibleLines {
+                scrollDisplayRow += displayRowsPerLine[idx]
+                idx += 1
+            }
+            st.scrollRow = idx
         }
     }
 }

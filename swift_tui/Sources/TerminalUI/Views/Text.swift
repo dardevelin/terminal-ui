@@ -120,6 +120,19 @@ public struct SpanBuilder {
 
 // MARK: - Text view
 
+/// A run of styled text, optionally composed of multiple `TextSpan`s.
+///
+/// `Text` wraps on newlines and supports per-character styling via spans.
+/// Apply styling via modifiers (`.foreground`, `.bold`, `.italic`, `.underline`).
+///
+/// ```swift
+/// Text("hello").bold().foreground(.cyan)
+/// Text(spans: [
+///     TextSpan("red", foreground: .red),
+///     TextSpan(" + "),
+///     TextSpan("blue", foreground: .blue),
+/// ])
+/// ```
 public struct Text: TerminalView {
     public let spans: [TextSpan]
 

@@ -5,9 +5,10 @@ SwiftUI-paradigm TUI framework for Swift. North star: can someone who knows Swif
 ## Quickstart
 
 ```bash
+swift run Storybook         # every public API, one page each (canonical showcase)
 swift run Demo              # debug build — F1 overlay, F2 panel, F3 inspector
 swift run -c release Demo   # release build — debug tools erased
-swift run ComponentsDemo    # component showcase
+swift run ComponentsDemo    # component showcase with realistic data
 swift run DotMatrixDemo     # dot matrix / morse demo
 swift run swtui help        # diagnostic config CLI
 swift test                  # 146 tests across parsers, compositor, graph, focus
@@ -17,7 +18,7 @@ swift test                  # 146 tests across parsers, compositor, graph, focus
 
 - **Swift 6+ only** (swift-tools-version: 6.2, `.swiftLanguageMode(.v6)`)
 - **macOS 15+ / Linux** — cross-platform, Docker-verified
-- **Zero external dependencies**
+- **Zero runtime dependencies** (swift-docc-plugin is dev-only, not shipped to consumers)
 - **Strict compiler flags**: StrictConcurrency, ExistentialAny, -warnings-as-errors
 - **0 errors, 0 warnings** — always. DX is paramount.
 
@@ -58,10 +59,6 @@ Compositor delta, AttributeGraph reconciliation/identity, GraphRenderer/Measurer
 FocusEngine baseline + scope-aware navigation. Run with `swift test`. Graph tests
 are `@MainActor` with a `resetGraphContext()` helper that clears the five
 `nonisolated(unsafe)` statics between cases.
-
-### Dead Code (delete pending — HYP-7)
-
-`Rendering/Renderer.swift` and `Rendering/ViewConformances.swift` are the old pre-graph `Any`-based renderer. Fully replaced by `GraphRenderer`. Do not reference or extend these files.
 
 ### Performance
 
@@ -121,7 +118,7 @@ Protocol-as-type must use `any` keyword: `[any DebugSink]`, `any AnyStateStorage
 Sources/TerminalUI/
 ├── Core/           TerminalApp, TerminalView, InputParser, KeyEvent, MouseEvent, KeyBindings, FrameStats, Environment
 ├── Graph/          AttributeGraph, AttributeNode, GraphRenderer, GraphMeasurer, HitTest, GraphConformances, NodeID
-├── Rendering/      CellBuffer, Compositor, OutputBuffer, Terminal, Rect, [Renderer.swift, ViewConformances.swift — DEAD]
+├── Rendering/      CellBuffer, Compositor, OutputBuffer, Terminal, Rect
 ├── State/          State, StateStorage, GraphContext, EnvironmentValues
 ├── Focus/          FocusEngine, FocusModifiers, FocusGraphIntegration
 ├── Modifiers/      ModifiedView, OverlayModifiers, OverlayProtocols, LifecycleModifiers
@@ -134,8 +131,9 @@ Sources/TerminalUIConfig/   DiagConfig, TOMLParser, DiagPaths (shared with swtui
 Sources/swtui/              Developer CLI for .terminalui/ config management
 Tests/TerminalUITests/      146 assertions / 20 suites — Swift Testing
 Examples/
+├── Storybook/      35-page component catalog — split-pane sidebar + live preview
 ├── Demo/           12-tab showcase including Scopes (focus scope demo)
-├── ComponentsDemo/ Component gallery
+├── ComponentsDemo/ Component gallery with realistic data
 └── DotMatrixDemo/  Dot matrix + morse
 ```
 

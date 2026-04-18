@@ -55,7 +55,11 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
 
     /// Precomputed as single multi-line Text — one node, one measurement.
     public var body: some TerminalView {
-        Text(renderTable())
+        if data.isEmpty {
+            _EmptyPlaceholder("— no rows —")
+        } else {
+            Text(renderTable())
+        }
     }
 
     func renderTable() -> String {

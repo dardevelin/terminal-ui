@@ -18,14 +18,16 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     public let data: Data
     public let selection: Binding<Data.Element.ID?>?
     public let scroll: Binding<Int>?
-    public let visibleCount: Int
+    /// Explicit visible-item cap. `nil` (default) fits to container height;
+    /// set to pin the height cheaply for nested layouts.
+    public let visibleCount: Int?
     public let content: (Data.Element) -> Content
 
     public init(
         _ data: Data,
         selection: Binding<Data.Element.ID?>? = nil,
         scroll: Binding<Int>? = nil,
-        visibleCount: Int = 20,
+        visibleCount: Int? = nil,
         @TerminalViewBuilder content: @escaping (Data.Element) -> Content
     ) {
         self.data = data
@@ -36,6 +38,16 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     }
 
     public var body: some TerminalView {
+        GeometryReader { size in
+            if self.data.isEmpty {
+                _EmptyPlaceholder()
+            } else {
+                self.renderList(visibleCount: self.visibleCount ?? max(1, size.height))
+            }
+        }
+    }
+
+    private func renderList(visibleCount: Int) -> some TerminalView {
         let elements = Array(data)
         let total = elements.count
         let selectedID = selection?.get()
@@ -45,7 +57,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         var scrollOffset = scroll?.get() ?? 0
 
         // Adjust scroll offset only if selection is outside visible window
-        let adjusted = adjustScrollOffset(scrollOffset: scrollOffset, selectedIndex: selectedIndex, total: total)
+        let adjusted = adjustScrollOffset(scrollOffset: scrollOffset, selectedIndex: selectedIndex, total: total, visibleCount: visibleCount)
         scrollOffset = adjusted
 
         // Write back adjusted offset
@@ -99,7 +111,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                 sel.set(elements[itemIndex].id)
             }
         }
-        .onKeyPress { [selection] event in
+        .onKeyPress { [selection, visibleCount] event in
             guard let sel = selection else { return .ignored }
             let elements = Array(data)
             let total = elements.count
@@ -146,7 +158,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
 
     /// Adjust scroll offset so the selected item is visible.
     /// Only moves the window when selection goes outside it — does not jump.
-    func adjustScrollOffset(scrollOffset: Int, selectedIndex: Int, total: Int) -> Int {
+    func adjustScrollOffset(scrollOffset: Int, selectedIndex: Int, total: Int, visibleCount: Int) -> Int {
         guard total > visibleCount else { return 0 }
 
         var offset = scrollOffset

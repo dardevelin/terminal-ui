@@ -1,3 +1,15 @@
+/// Stacks its children horizontally, left to right.
+///
+/// Children are laid out in declaration order. `Spacer` children expand
+/// to fill remaining horizontal space; siblings split slack equally.
+///
+/// ```swift
+/// HStack {
+///     Text("left")
+///     Spacer()
+///     Text("right")
+/// }
+/// ```
 public struct HStack<Content: TerminalView>: TerminalView {
     public let content: Content
 

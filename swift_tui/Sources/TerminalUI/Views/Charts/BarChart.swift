@@ -14,7 +14,10 @@
 /// ```
 public struct BarChart: TerminalView {
     public let items: [Item]
-    public let barWidth: Int
+    /// Explicit bar width in cells. `nil` (default) fits the chart to its
+    /// container: bar width = `container.width - labelWidth - valueWidth - 2`.
+    /// Pass an explicit integer to pin the width (benchmarks, fixed layouts).
+    public let barWidth: Int?
     public let maxValue: Double?
     public let showValues: Bool
 
@@ -35,7 +38,7 @@ public struct BarChart: TerminalView {
 
     public init(
         items: [Item],
-        barWidth: Int = 30,
+        barWidth: Int? = nil,
         maxValue: Double? = nil,
         showValues: Bool = true
     ) {
@@ -46,14 +49,34 @@ public struct BarChart: TerminalView {
     }
 
     public var body: some TerminalView {
-        Text(renderChart())
+        GeometryReader { size in
+            Text(self.renderChart(containerWidth: size.width))
+        }
     }
 
-    func renderChart() -> String {
+    /// Resolve bar width against the container. Caller-supplied `barWidth`
+    /// always wins; `nil` fits to container by subtracting label + value +
+    /// separators. Minimum 1 so the chart still has something to draw in
+    /// absurdly narrow containers.
+    func effectiveBarWidth(containerWidth: Int, labelWidth: Int, valueWidth: Int) -> Int {
+        if let explicit = barWidth { return max(1, explicit) }
+        let reserved = labelWidth + valueWidth + (showValues ? 2 : 1)
+        return max(1, containerWidth - reserved)
+    }
+
+    func renderChart(containerWidth: Int = 80) -> String {
         guard !items.isEmpty else { return "" }
 
         let hi = maxValue ?? (items.map(\.value).max() ?? 1)
         let labelWidth = items.map(\.label.count).max() ?? 0
+        let valueWidth = showValues
+            ? items.map { formatValue($0.value).count }.max() ?? 0
+            : 0
+        let width = effectiveBarWidth(
+            containerWidth: containerWidth,
+            labelWidth: labelWidth,
+            valueWidth: valueWidth
+        )
 
         var lines: [String] = []
         for item in items {
@@ -61,7 +84,7 @@ public struct BarChart: TerminalView {
             let ratio = hi > 0 ? item.value / hi : 0
 
             // Full cells + fractional part
-            let totalEighths = Int(ratio * Double(barWidth * 8))
+            let totalEighths = Int(ratio * Double(width * 8))
             let fullCells = totalEighths / 8
             let remainder = totalEighths % 8
 
@@ -70,7 +93,7 @@ public struct BarChart: TerminalView {
                 bar.append(Self.blockChars[remainder])
             }
             // Pad to full width
-            let barPad = max(0, barWidth - bar.count)
+            let barPad = max(0, width - bar.count)
             bar += String(repeating: " ", count: barPad)
 
             if showValues {

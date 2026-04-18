@@ -20,22 +20,28 @@ public enum GraphRenderer {
         DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
         #endif
 
-        switch node.kind {
-        case .primitive(let content):
-            renderPrimitive(content, into: &buffer, context: context)
+        // Rect-clip enforcement (HYP-90). Every node's writes are bounded to its
+        // assigned rect intersected with all ancestors' rects. Prevents a child
+        // from punching through a parent's border/frame when it miscalculates
+        // measurement or paints past its bounds. Opt out with `.overflowOK()`.
+        buffer.withClip(context.rect) { buffer in
+            switch node.kind {
+            case .primitive(let content):
+                renderPrimitive(content, into: &buffer, context: context)
 
-        case .layout(let info):
-            renderLayout(node, info: info, into: &buffer, context: context)
+            case .layout(let info):
+                renderLayout(node, info: info, into: &buffer, context: context)
 
-        case .modifier(let effect):
-            renderModifier(node, effect: effect, into: &buffer, context: context)
+            case .modifier(let effect):
+                renderModifier(node, effect: effect, into: &buffer, context: context)
 
-        case .viewBody(let info):
-            #if DEBUG
-            DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
-            #endif
-            for child in node.children {
-                render(child, into: &buffer, context: context)
+            case .viewBody(let info):
+                #if DEBUG
+                DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
+                #endif
+                for child in node.children {
+                    render(child, into: &buffer, context: context)
+                }
             }
         }
     }
@@ -53,8 +59,15 @@ public enum GraphRenderer {
                 for (i, line) in lines.enumerated() {
                     let y = context.rect.y + i
                     guard y < context.rect.y + context.rect.height else { break }
+                    // Pad to rect width with spaces so the trailing region is
+                    // cleared when content shrank from a longer previous frame
+                    // (HYP-84 — "epsilone" → "epsilon" stale-cell bug). The
+                    // HYP-90 rect clip keeps the padding within the rect even
+                    // if the shape is oddly sized.
                     let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
-                    buffer.write(clipped, x: context.rect.x, y: y, style: context.style)
+                    let padCount = max(0, maxWidth - clipped.count)
+                    let padded = clipped + String(repeating: " ", count: padCount)
+                    buffer.write(padded, x: context.rect.x, y: y, style: context.style)
                 }
             } else {
                 // Styled path: write each span with its own resolved style
@@ -103,6 +116,21 @@ public enum GraphRenderer {
         // Graph identity nodes are preserved — only the renderer sees through them.
         let children = effectiveChildren(of: node)
         guard !children.isEmpty else { return }
+
+        // Clear-before-layout to prevent shrunk-content bleed (HYP-84).
+        // A VStack whose rows can change length (e.g. List swapping "epsilone"
+        // for "epsilon") must blank its rect before re-laying children so
+        // the vacated trailing cells aren't left with stale glyphs. ZStack
+        // is SKIPPED because its semantics are stacking — each child draws on
+        // top of the previous, blanking would wipe the layers below. Scroll
+        // is SKIPPED because it composites via a local buffer, already
+        // producing a clean viewport.
+        switch info.kind {
+        case .vstack, .hstack:
+            buffer.fill(context.rect, character: " ", style: context.style)
+        case .zstack, .scroll:
+            break
+        }
 
         switch info.kind {
         case .vstack:
@@ -275,11 +303,17 @@ public enum GraphRenderer {
     ///
     /// Two-phase approach prevents content bleeding past the viewport boundary
     /// (e.g. into border columns). The local buffer acts as a clip mask.
+    ///
+    /// After blitting, a small edge-indicator glyph is painted in the last
+    /// viewport cell of each direction that has scrollable content remaining
+    /// (HYP-83). Indicator visibility is controlled by the `scrollIndicators`
+    /// environment value.
     static func renderScroll(_ node: AttributeNode, axis: ScrollAxis, children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
         guard let contentChild = node.children.first else { return }
         let offset = node.scrollOffset
         let viewport = context.rect
+        let showIndicators = (GraphContext.currentEnvironment?.scrollIndicators ?? .visible) == .visible
 
         switch axis {
         case .horizontal:
@@ -309,6 +343,21 @@ public enum GraphRenderer {
             // Offset child rects so hit testing works in screen coordinates
             offsetRects(of: contentChild, dx: viewport.x - offset, dy: viewport.y)
 
+            if showIndicators {
+                // ◀ when content extends before the viewport's left edge,
+                // ▶ when content extends past the right edge. Painted in the
+                // first/last cell of the viewport's top row for visibility
+                // without stealing a content row.
+                let indicatorStyle = Style(foreground: .gray, background: nil,
+                                           bold: false, italic: false, underline: false)
+                if offset > 0 {
+                    buffer[viewport.x, viewport.y] = Cell(character: "◀", style: indicatorStyle)
+                }
+                if contentWidth > offset + viewport.width {
+                    buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▶", style: indicatorStyle)
+                }
+            }
+
         case .vertical:
             let contentHeight = measureHeight(contentChild, proposedWidth: viewport.width)
             guard contentHeight > 0, viewport.width > 0, viewport.height > 0 else { return }
@@ -332,6 +381,22 @@ public enum GraphRenderer {
             }
 
             offsetRects(of: contentChild, dx: viewport.x, dy: viewport.y - offset)
+
+            if showIndicators {
+                // ▲ when content extends above the viewport's top row,
+                // ▼ when content extends below the bottom row. Painted in the
+                // top/bottom-right cell of the viewport — right edge keeps
+                // the indicator out of the way of content readers scanning
+                // left-to-right.
+                let indicatorStyle = Style(foreground: .gray, background: nil,
+                                           bold: false, italic: false, underline: false)
+                if offset > 0 {
+                    buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▲", style: indicatorStyle)
+                }
+                if contentHeight > offset + viewport.height {
+                    buffer[viewport.x + viewport.width - 1, viewport.y + viewport.height - 1] = Cell(character: "▼", style: indicatorStyle)
+                }
+            }
         }
     }
 
@@ -641,39 +706,74 @@ public enum GraphRenderer {
     // MARK: - Focus Rendering
 
     /// Draw focus indicators after the main render pass.
-    /// Keyboard focus: cyan left edge bar on focused node's rect.
-    /// Mouse hover: subtle bar on hovered node's rect.
+    ///
+    /// Style is read from the environment (HYP-91). Each of the four styles
+    /// has different semantics:
+    ///
+    /// - `.overlay` — bar at `rect.x - 1` outside the focused view's rect.
+    ///   Matches pre-HYP-91 behavior; top-level pass has no clip so the cell
+    ///   adjacent to the focused view is overwritten (often a parent's
+    ///   border/padding). Best visual for forms.
+    /// - `.bar` — bar at `rect.x` INSIDE the focused view's first column.
+    ///   Costs the view one cell of content width. Survives rect clipping.
+    /// - `.prefix` — framework draws nothing. Views that own a `▸`-style
+    ///   prefix (List) render their own focus visual.
+    /// - `.none` — no indicator.
+    ///
+    /// Skips nodes inside scroll containers in `.overlay` mode — scroll
+    /// content provides its own affordance and the bar fights with clipping.
     public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine, root: AttributeNode?) {
         guard let root else { return }
 
-        // Keyboard focus — cyan left edge bar.
-        // Skip for nodes inside scroll containers — scroll content provides its own
-        // focus indicator (e.g. ▸ arrow prefix). The ▎ bar fights with viewport clipping.
+        let style = GraphContext.currentEnvironment?.focusIndicatorStyle ?? .overlay
+
+        // Keyboard focus — cyan bar
         if let focusedID = focusEngine.keyboardFocusID,
-           let node = focusEngine.findNode(id: focusedID, in: root),
-           scrollAncestorRect(of: node) == nil {
-            let r = node.rect
-            let drawX = r.x - 1
-            if drawX > 0 {
-                let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
-                for y in r.y..<min(r.y + r.height, buffer.height) {
-                    buffer[drawX, y] = Cell(character: "▎", style: focusStyle)
-                }
-            }
+           let node = focusEngine.findNode(id: focusedID, in: root) {
+            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
+            drawIndicator(node: node, style: style, glyph: "▎", cellStyle: focusStyle,
+                          into: &buffer, skipInScroll: true)
         }
 
         // Mouse hover — subtle underline bar (only if different from keyboard focus)
         if let hoverID = focusEngine.mouseHoverID,
            hoverID != focusEngine.keyboardFocusID,
-           let node = focusEngine.findNode(id: hoverID, in: root),
-           scrollAncestorRect(of: node) == nil {
+           let node = focusEngine.findNode(id: hoverID, in: root) {
+            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+            drawIndicator(node: node, style: style, glyph: "▏", cellStyle: hoverStyle,
+                          into: &buffer, skipInScroll: true)
+        }
+    }
+
+    /// Paint a single indicator according to the configured `FocusIndicatorStyle`.
+    /// Called for both keyboard focus and mouse hover with different glyphs/styles.
+    private static func drawIndicator(node: AttributeNode, style: FocusIndicatorStyle,
+                                      glyph: Character, cellStyle: Style,
+                                      into buffer: inout CellBuffer, skipInScroll: Bool) {
+        switch style {
+        case .none, .prefix:
+            return
+
+        case .overlay:
+            // Outside the focused child's rect — one cell to the left.
+            // Skip inside scroll containers: the scroll viewport's clipping
+            // fights with indicator cells drawn outside the content area.
+            if skipInScroll, scrollAncestorRect(of: node) != nil { return }
             let r = node.rect
             let drawX = r.x - 1
-            if drawX > 0 {
-                let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
-                for y in r.y..<min(r.y + r.height, buffer.height) {
-                    buffer[drawX, y] = Cell(character: "▏", style: hoverStyle)
-                }
+            guard drawX > 0 else { return }
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                buffer[drawX, y] = Cell(character: glyph, style: cellStyle)
+            }
+
+        case .bar:
+            // Inside the focused view's first column. No scroll-ancestor
+            // exclusion needed — .bar is always inside the rect, so the
+            // clip that enforces scroll viewports accepts it.
+            let r = node.rect
+            guard r.width > 0, r.x >= 0 else { return }
+            for y in r.y..<min(r.y + r.height, buffer.height) {
+                buffer[r.x, y] = Cell(character: glyph, style: cellStyle)
             }
         }
     }

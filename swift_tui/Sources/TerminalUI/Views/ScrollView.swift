@@ -32,3 +32,19 @@ public enum ScrollAxis: Sendable, Equatable {
     case horizontal
     case vertical
 }
+
+/// Whether the framework paints the small edge glyphs that tell the user
+/// "there is more content in this direction." Default `.visible` — the user
+/// gets affordance out of the box. Hide per-view via `.scrollIndicators(.hidden)`.
+public enum ScrollIndicatorVisibility: Sendable, Equatable {
+    case visible
+    case hidden
+}
+
+extension TerminalView {
+    /// Show or hide the scroll-indicator glyphs on enclosed `ScrollView`s.
+    public func scrollIndicators(_ visibility: ScrollIndicatorVisibility)
+        -> ModifiedView<Self, EnvironmentModifier<ScrollIndicatorVisibility>> {
+        environment(\.scrollIndicators, visibility)
+    }
+}

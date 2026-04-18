@@ -1,29 +1,41 @@
 /// An editable single-line text field with cursor.
 /// Handles character input, backspace, delete, and cursor movement.
 ///
+/// The first positional argument is a persistent **prompt/label** rendered
+/// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
+/// `placeholder:` for ghost text that disappears once the user types.
+///
 /// Usage:
 /// ```
 /// @TerminalState var name = ""
 /// TextInput("Name: ", text: $name)
+/// TextInput(text: $name, placeholder: "type here...")
 /// ```
 public struct TextInput: TerminalView {
     public let prompt: String
+    public let placeholder: String
     public let text: Binding<String>
 
-    public init(_ prompt: String = "", text: Binding<String>) {
+    public init(_ prompt: String = "", text: Binding<String>, placeholder: String = "") {
         self.prompt = prompt
         self.text = text
+        self.placeholder = placeholder
     }
 
     public var body: some TerminalView {
-        // Display: prompt + text with cursor indicator
-        // The cursor position is managed by the key handler
-        HStack {
-            Text(prompt)
-                .foreground(.gray)
-            Text(text.get().isEmpty ? "│" : text.get() + "│")
-        }
-        .focusable()
+        // GeometryReader supplies the container width so we can slide the
+        // visible window when the value exceeds the field.
+        GeometryReader { size in
+            let value = text.get()
+            let showPlaceholder = value.isEmpty && !placeholder.isEmpty
+            // Reserve cells: prompt + cursor marker + 2 for padding/border
+            // that the renderer might clip. Keep at least 4 for input.
+            let available = max(4, size.width - prompt.count - 3)
+            return Text(spans: composeSpans(
+                value: value,
+                showPlaceholder: showPlaceholder,
+                maxValueWidth: available))
+                .focusable()
         .onKeyPress { [text] event in
             switch event.key {
             case .character(let c):
@@ -59,5 +71,40 @@ public struct TextInput: TerminalView {
                 return .ignored
             }
         }
+        }.frame(height: 1)
+    }
+
+    /// Compose the rendered spans, sliding the visible value window when
+    /// `value.count + 1` (cursor) exceeds `maxValueWidth`. Keeps cursor visible
+    /// at the right edge and clips from the left (classic shell-prompt behavior).
+    private func composeSpans(value: String, showPlaceholder: Bool,
+                               maxValueWidth: Int) -> [TextSpan] {
+        var spans: [TextSpan] = []
+        if !prompt.isEmpty {
+            spans.append(TextSpan(prompt, foreground: .gray))
+        }
+        if showPlaceholder {
+            // When field is empty, cursor at left then placeholder clipped to fit.
+            spans.append(TextSpan("│", foreground: .default))
+            let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
+            spans.append(TextSpan(clipped, foreground: .gray))
+        } else if value.isEmpty {
+            spans.append(TextSpan("│", foreground: .default))
+        } else {
+            // Virtual horizontal scroll: cursor always pinned at the right edge
+            // once the value exceeds available width. Left edge clips older chars.
+            // Keep 1 cell for the cursor, so value occupies at most (maxValueWidth - 1).
+            let valueRoom = max(1, maxValueWidth - 1)
+            let visible: String
+            if value.count <= valueRoom {
+                visible = value
+            } else {
+                // Drop leading chars so tail + cursor fit
+                visible = String(value.suffix(valueRoom))
+            }
+            spans.append(TextSpan(visible))
+            spans.append(TextSpan("│"))
+        }
+        return spans
     }
 }

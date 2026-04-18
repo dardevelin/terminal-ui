@@ -44,9 +44,34 @@ public struct HeatMap: TerminalView {
     }
 
     public var body: some TerminalView {
-        // HeatMap needs per-cell coloring — can't use single Text node.
-        // Use precomputed multi-line text with consistent widths.
-        Text(renderPlain())
+        // Colored by default (HYP-88 I24) — build per-cell TextSpans so each
+        // cell gets its palette-mapped foreground. Previous default went
+        // through the grayscale `renderPlain()` path which threw away color
+        // even though `colorForValue` was already available.
+        Text(spans: renderSpans())
+    }
+
+    /// Emit colored spans, one per cell, with row breaks. Used by the default
+    /// `body`; `renderPlain()` remains for callers that want the flat text.
+    func renderSpans() -> [TextSpan] {
+        guard !data.isEmpty else { return [] }
+        let allValues = data.flatMap { $0 }
+        let lo = minValue ?? (allValues.min() ?? 0)
+        let hi = maxValue ?? (allValues.max() ?? 1)
+        let range = hi - lo > 0 ? hi - lo : 1.0
+
+        var spans: [TextSpan] = []
+        spans.reserveCapacity(data.reduce(0) { $0 + $1.count } + data.count)
+        for (rowIndex, row) in data.enumerated() {
+            if rowIndex > 0 { spans.append(TextSpan("\n")) }
+            for value in row {
+                let normalized = (value - lo) / range
+                let char = shadeChar(normalized)
+                let color = colorForValue(normalized)
+                spans.append(TextSpan(String(char), foreground: color))
+            }
+        }
+        return spans
     }
 
     /// Render as plain text (shade chars only, no color).

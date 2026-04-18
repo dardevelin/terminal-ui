@@ -25,6 +25,25 @@ public struct LayoutRect<C: Coordinate>: Equatable, Sendable, Hashable {
             height: (height - amount * C(2)).max(C.zero)
         )
     }
+
+    /// Intersection of two rects. Returns an empty rect (width or height <= 0)
+    /// when the inputs don't overlap. Clip stacks use this so a child's clip
+    /// can never extend beyond an ancestor's.
+    public func intersected(with other: LayoutRect<C>) -> LayoutRect<C> {
+        let x1 = x > other.x ? x : other.x
+        let y1 = y > other.y ? y : other.y
+        let x2a = x + width
+        let x2b = other.x + other.width
+        let x2 = x2a < x2b ? x2a : x2b
+        let y2a = y + height
+        let y2b = other.y + other.height
+        let y2 = y2a < y2b ? y2a : y2b
+        return LayoutRect(
+            x: x1, y: y1,
+            width: (x2 - x1).max(C.zero),
+            height: (y2 - y1).max(C.zero)
+        )
+    }
 }
 
 // MARK: - Default typealiases
