@@ -33,6 +33,12 @@ public final class FocusEngine {
     /// Pre-computed ordered list of focusable nodes (depth-first, pre-order).
     private var focusableList: [AttributeNode] = []
 
+    /// The root against which `rebuildIndex` last ran. Exposed so tooling
+    /// built on top of FocusEngine (`.scrollable()` modifier's key handler,
+    /// inspector probes, remote-control tree queries) can walk subtrees
+    /// without threading `root` through every call site.
+    public private(set) var lastIndexedRoot: AttributeNode?
+
     public init() {}
 
     // MARK: - Index Rebuilding
@@ -42,6 +48,7 @@ public final class FocusEngine {
     public func rebuildIndex(root: AttributeNode) {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
+        lastIndexedRoot = root
         buildIndexRecursive(root)
     }
 

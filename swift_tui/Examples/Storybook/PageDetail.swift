@@ -152,6 +152,7 @@ struct PreviewPane: TerminalView {
                     }
                 }
             }
+            .scrollable()
             .frame(height: 6)
         case .geometryreader:
             GeometryReader { size in

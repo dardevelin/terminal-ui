@@ -536,6 +536,32 @@ def storybook_scrollview_initial_viewport(app: Client) -> None:
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
 
 
+def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
+    """ScrollView page has no focusable descendants — the ScrollView itself
+    should accept Tab focus and respond to arrow/PageDown keys to scroll.
+    Reported 2026-04-18: 'pressing tab when cursor is in ScrollView to see
+    the preview doesn't work' — Tab cycled back to the sidebar because
+    no focusable existed in the preview."""
+    app.goto_storybook_page(5)
+    before = app.focus()
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.focus()
+    assert_true(
+        after.node_id != before.node_id,
+        "Tab from ScrollView page should land inside the preview",
+    )
+    # Down arrow should scroll the viewport so later rows become visible.
+    app.send_key("down")
+    app.send_key("down")
+    app.send_key("down")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "row 3" in app.preview_text() or "row 4" in app.preview_text(),
+        "Down arrow on focused ScrollView should advance the viewport",
+    )
+
+
 def storybook_geometryreader_reports_size(app: Client) -> None:
     """GeometryReader renders 'proposed: WxH' with the current rect size
     — confirms the lazy rebuild (HYP-82) ships the real allocated rect,
@@ -710,6 +736,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.zstack_overlays_label", "Storybook", storybook_zstack_overlays_label),
     SmokeCase("storybook.spacer_pushes_edges", "Storybook", storybook_spacer_pushes_edges),
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
+    SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
     SmokeCase("storybook.forEach_renders_all_items", "Storybook", storybook_forEach_renders_all_items),
