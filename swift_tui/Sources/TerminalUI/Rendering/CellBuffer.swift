@@ -143,8 +143,20 @@ public struct CellBuffer: Sendable {
     }
 
     public mutating func fill(_ rect: Rect, character: Character = " ", style: Style = .plain) {
-        for row in rect.y..<min(rect.y + rect.height, height) {
-            for col in rect.x..<min(rect.x + rect.width, width) {
+        // Clamp origin + extent to the buffer so negative, overflowing, or
+        // fully-off-screen rects produce an empty range instead of crashing
+        // with `Range requires lowerBound <= upperBound`. Layout passes
+        // sometimes hand a rect that sits past the buffer (e.g. when a
+        // VStack allocates beyond its parent under tight measurements);
+        // the renderer should silently no-op rather than panic. The
+        // subscript setter already bounds per-cell writes.
+        let startRow = max(0, min(rect.y, height))
+        let endRow = max(startRow, min(rect.y + rect.height, height))
+        let startCol = max(0, min(rect.x, width))
+        let endCol = max(startCol, min(rect.x + rect.width, width))
+        guard endRow > startRow, endCol > startCol else { return }
+        for row in startRow..<endRow {
+            for col in startCol..<endCol {
                 self[col, row] = Cell(character: character, style: style)
             }
         }
