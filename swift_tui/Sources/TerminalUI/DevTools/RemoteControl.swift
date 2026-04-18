@@ -423,20 +423,30 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         guard let buffer = runtime.remotePreviousBuffer() else {
             return RemoteResponse(id: request.id, ok: false, error: "no rendered frame yet")
         }
-        let (x, y, w, h) = parseRect(request.rect, defaultWidth: buffer.width, defaultHeight: buffer.height)
+        // `parseRect` already clamps to buffer size for an `ok: false` signal
+        // never to panic the runtime — rect rejection is a soft error, not
+        // a precondition failure. Hostile or buggy clients sending
+        // `[-1, -1, 999_999, 999_999]` should get a non-empty ok response
+        // instead of crashing the app.
+        let (x, y, w, h) = clampRect(request.rect, bufferWidth: buffer.width, bufferHeight: buffer.height)
         var rows: [String] = []
-        for row in y..<min(y + h, buffer.height) {
-            var line = ""
-            for col in x..<min(x + w, buffer.width) {
-                line.append(buffer[col, row].character)
+        let lastRow = min(y + h, buffer.height)
+        let lastCol = min(x + w, buffer.width)
+        if lastRow > y && lastCol > x {
+            for row in y..<lastRow {
+                var line = ""
+                for col in x..<lastCol {
+                    line.append(buffer[col, row].character)
+                }
+                rows.append(line)
             }
-            rows.append(line)
         }
 
         var rulerTop: [String]? = nil
         var rulerLeft: [String]? = nil
         if request.grid == true {
-            rulerTop = buildColumnRuler(startX: x, width: min(w, buffer.width - x))
+            let safeWidth = max(0, lastCol - x)
+            rulerTop = buildColumnRuler(startX: x, width: safeWidth)
             rulerLeft = buildRowRuler(startY: y, height: rows.count)
         }
         let slice = CellSlice(x: x, y: y, width: w, height: h, rows: rows,
@@ -456,14 +466,21 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             return RemoteResponse(id: request.id, ok: false, error: "no graph root")
         }
         let buffer = runtime.remotePreviousBuffer()
-        let defaultW = buffer?.width ?? 80
-        let defaultH = buffer?.height ?? 24
+        let bufferW = buffer?.width ?? 80
+        let bufferH = buffer?.height ?? 24
+        // Clamp width/height to non-negative + buffer-bounded, so a client
+        // asking for `[0, 0, 999999, 999999]` gets a constrained response
+        // instead of a 999999²-cell allocation. Clients that want the whole
+        // frame can omit rect entirely.
         let (rx, ry, rw, rh): (Int, Int, Int, Int)
         if let r = request.rect, r.count == 4 {
-            (rx, ry, rw, rh) = (r[0], r[1], r[2], r[3])
+            rx = max(0, min(bufferW, r[0]))
+            ry = max(0, min(bufferH, r[1]))
+            rw = max(0, min(bufferW - rx, r[2]))
+            rh = max(0, min(bufferH - ry, r[3]))
         } else {
-            let x = request.x ?? runtime.remoteInspector().cursorX
-            let y = request.y ?? runtime.remoteInspector().cursorY
+            let x = max(0, min(bufferW - 1, request.x ?? runtime.remoteInspector().cursorX))
+            let y = max(0, min(bufferH - 1, request.y ?? runtime.remoteInspector().cursorY))
             (rx, ry, rw, rh) = (x, y, 1, 1)
         }
 
@@ -471,13 +488,16 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         // user watching the app sees where MCP is probing.
         let inspector = runtime.remoteInspector()
         inspector.moveCursor(dx: rx - inspector.cursorX, dy: ry - inspector.cursorY,
-                             maxX: defaultW, maxY: defaultH)
+                             maxX: bufferW, maxY: bufferH)
 
         var probes: [InspectorProbe] = []
-        probes.reserveCapacity(min(rw * rh, 4096))  // guardrail for huge rects
-        for y in ry..<(ry + rh) where probes.count < 4096 {
-            for x in rx..<(rx + rw) where probes.count < 4096 {
-                probes.append(makeProbe(x: x, y: y, root: root, inspector: inspector))
+        let capacity = min(rw * rh, 4096)
+        probes.reserveCapacity(capacity)  // guardrail for huge rects
+        if rh > 0 && rw > 0 {
+            for y in ry..<(ry + rh) where probes.count < 4096 {
+                for x in rx..<(rx + rw) where probes.count < 4096 {
+                    probes.append(makeProbe(x: x, y: y, root: root, inspector: inspector))
+                }
             }
         }
         return RemoteResponse(id: request.id, ok: true, result: RemoteResult(probes: probes))
@@ -717,6 +737,22 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             return (0, 0, defaultWidth, defaultHeight)
         }
         return (r[0], r[1], r[2], r[3])
+    }
+
+    /// Normalise a remote-supplied rect to non-negative, buffer-relative
+    /// coordinates. The dispatcher treats rect arguments as hints, never
+    /// preconditions — any adversarial or buggy client that sends a
+    /// negative origin or a width larger than the buffer ends up with an
+    /// ok response containing the intersection with the buffer, not a
+    /// panic. Returns (x, y, w, h) after clamping but preserves the
+    /// caller's requested (w, h) in the response so they can verify clip.
+    private func clampRect(_ raw: [Int]?, bufferWidth: Int, bufferHeight: Int) -> (Int, Int, Int, Int) {
+        let (rx, ry, rw, rh) = parseRect(raw, defaultWidth: bufferWidth, defaultHeight: bufferHeight)
+        let x = max(0, min(bufferWidth, rx))
+        let y = max(0, min(bufferHeight, ry))
+        let w = max(0, rw)
+        let h = max(0, rh)
+        return (x, y, w, h)
     }
 
     private func nodeValue(_ node: AttributeNode) -> String? {
