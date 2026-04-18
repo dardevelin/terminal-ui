@@ -17,13 +17,26 @@ public enum Key: Equatable, Sendable {
     case unknown([UInt8])
 }
 
+/// Where a key event came from. Used by the debug input log and audit
+/// trails so remote-control injected input is distinguishable from real
+/// terminal stdin. Regular app code doesn't need to branch on this — it's
+/// observability, not logic.
+public enum KeyEventSource: Sendable, Equatable {
+    /// The app's stdin reader parsed this from the terminal. Default.
+    case stdin
+    /// HYP-71 remote control socket injected this event.
+    case remote
+}
+
 public struct KeyEvent: Sendable {
     public let key: Key
     public let modifiers: KeyModifiers
+    public let source: KeyEventSource
 
-    public init(key: Key, modifiers: KeyModifiers = []) {
+    public init(key: Key, modifiers: KeyModifiers = [], source: KeyEventSource = .stdin) {
         self.key = key
         self.modifiers = modifiers
+        self.source = source
     }
 }
 

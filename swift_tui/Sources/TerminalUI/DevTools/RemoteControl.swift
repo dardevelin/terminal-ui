@@ -360,7 +360,10 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             return RemoteResponse(id: request.id, ok: false, error: "unknown key: \(keyName)")
         }
         let modifiers = parseModifiers(request.modifiers ?? [])
-        runtime.enqueueEvent(.key(KeyEvent(key: key, modifiers: modifiers)))
+        // `source: .remote` tags every dispatcher-injected event so the
+        // debug input log + downstream audit machinery can distinguish MCP
+        // from stdin presses without heuristics.
+        runtime.enqueueEvent(.key(KeyEvent(key: key, modifiers: modifiers, source: .remote)))
         return RemoteResponse(id: request.id, ok: true)
     }
 
@@ -375,7 +378,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             case "\t": key = .tab
             default: key = .character(char)
             }
-            runtime.enqueueEvent(.key(KeyEvent(key: key)))
+            runtime.enqueueEvent(.key(KeyEvent(key: key, source: .remote)))
         }
         return RemoteResponse(id: request.id, ok: true)
     }

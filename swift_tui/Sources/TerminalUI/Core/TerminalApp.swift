@@ -385,8 +385,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
     private func handleKeyEvent(_ keyEvent: KeyEvent) {
         #if DEBUG
+        let sourceTag: String
+        switch keyEvent.source {
+        case .stdin:  sourceTag = ""
+        case .remote: sourceTag = "mcp "
+        }
         debugPanel.recordInput(
-            describeKeyEvent(keyEvent),
+            sourceTag + describeKeyEvent(keyEvent),
             timestamp: ProcessInfo.processInfo.systemUptime
         )
         // Handle debug key bindings
@@ -729,6 +734,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// remote-control dispatcher so test scripts can drive keystrokes without
     /// a PTY. Goes through the same queue as real stdin input, so handlers
     /// run exactly as they would for a user press.
+    ///
+    /// Remote-origin events carry `KeyEvent.source == .remote`. The debug
+    /// input log reads the source and prefixes the breadcrumb accordingly
+    /// so the audit trail distinguishes MCP-injected keys from real stdin
+    /// — critical when pairing a smoke-test failure with the captured frame.
     public func enqueueEvent(_ event: TerminalEvent) {
         eventQueue.push(event)
     }
