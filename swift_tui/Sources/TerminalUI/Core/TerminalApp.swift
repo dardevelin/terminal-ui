@@ -96,6 +96,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let keyBindings = KeyBindings()
     public let focusEngine = FocusEngine()
 
+    #if DEBUG
+    /// Remote-control server (HYP-71). Nil unless `.terminalui/terminalui.toml`
+    /// enables the `remote_control` feature — zero overhead otherwise. Pumped
+    /// once per frame before event drain so injected keystrokes land in the
+    /// same frame they arrive.
+    private var remoteControl: RemoteControlServer?
+    #endif
+
     public init(
         renderMode: RenderMode = .fps60,
         timers: [TerminalTimer] = [],
@@ -146,6 +154,22 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableRawMode()
         Terminal.enterAlternateScreen()
         Terminal.enableMouseTracking()
+
+        #if DEBUG
+        // Auto-attach the remote-control server (HYP-71). Every TerminalUI
+        // debug build becomes MCP-drivable without any per-app setup. Socket
+        // path is PID-scoped so multiple apps running concurrently don't
+        // collide. The server is non-blocking: no client = no overhead.
+        let socketDir = DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp)
+        try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
+        let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
+        attachRemoteControl(socketPath: socketPath)
+        // Also publish a stable `latest.sock` symlink so CLIs can find the
+        // most-recently-started app without scanning PIDs.
+        let latest = "\(socketDir)/latest.sock"
+        _ = unlink(latest)
+        _ = symlink("\(ProcessInfo.processInfo.processIdentifier).sock", latest)
+        #endif
 
         // Self-pipe for shutdown signaling (HYP-41).
         // A blocked read() on STDIN doesn't respect Task.cancel() on Linux;
@@ -222,6 +246,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         var running = true
 
         while running {
+            #if DEBUG
+            // HYP-71: pump the remote-control server before draining events
+            // so anything the MCP client just injected (send_key, send_text)
+            // lands in this frame's event batch rather than the next frame.
+            remoteControl?.pump()
+            #endif
             let events = eventQueue.drain()
             for event in events {
                 // Universal Ctrl+C — equivalent to the SIGINT we disabled via
@@ -681,8 +711,58 @@ public final class TerminalRuntime<RootView: TerminalView> {
             dumpNode(child, depth: depth + 1, into: &output)
         }
     }
+
+    // MARK: - Remote control (HYP-71)
+
+    /// Attach a remote-control server to this runtime. Called by the runtime
+    /// at startup in every debug build (zero opt-in) — the server is
+    /// non-blocking so a running app with no connected client has no
+    /// overhead beyond one `accept()` call per frame.
+    public func attachRemoteControl(socketPath: String) {
+        remoteControl = RemoteControlServer(
+            path: socketPath,
+            dispatcher: RuntimeRemoteDispatcher(runtime: self)
+        )
+    }
+
+    /// Inject a `TerminalEvent` from outside the event loop. Called by the
+    /// remote-control dispatcher so test scripts can drive keystrokes without
+    /// a PTY. Goes through the same queue as real stdin input, so handlers
+    /// run exactly as they would for a user press.
+    public func enqueueEvent(_ event: TerminalEvent) {
+        eventQueue.push(event)
+    }
+
+    /// Expose the graph root for remote queries. Callers treat the returned
+    /// node as read-only — mutating it would race the render pass.
+    public func remoteCurrentGraphRoot() -> AttributeNode? { graph.root }
+
+    /// Expose the focus engine for remote queries (focused node id, rect).
+    public func remoteFocusEngine() -> FocusEngine { focusEngine }
+
+    /// Expose the inspector for remote probing.
+    public func remoteInspector() -> Inspector { inspector }
+
+    /// Expose the last rendered buffer for `query_cells`. The runtime keeps
+    /// `previousBuffer` around between frames; after the first render it
+    /// mirrors what's on screen.
+    public func remotePreviousBuffer() -> CellBuffer? { previousBuffer }
+
+    /// Ask for a full-frame capture on the next render. The dispatcher
+    /// returns the file path once the capture flushes. Matches the F4 debug
+    /// key binding that already exists.
+    public func remoteRequestCapture() { captureCurrentFrame = true }
+
+    /// Current frame number — the dispatcher reports it for `wait_for_frame`
+    /// bookkeeping on the client side. Pulled from the global `frameStats`
+    /// updated once per frame by `FrameCounter.endFrame`.
+    public func remoteCurrentFrameNumber() -> Int { frameStats.frameCount }
     #endif
 }
+
+#if DEBUG
+extension TerminalRuntime: RemoteControlRuntime {}
+#endif
 
 // MARK: - @main entry point protocol
 

@@ -80,6 +80,13 @@ public enum DiagPaths {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.sock")
     }
 
+    /// Directory holding per-app remote-control sockets. Each running debug
+    /// build creates `<pid>.sock` here and maintains a `latest.sock` symlink
+    /// pointing to the newest one. Default resolver used by HYP-71.
+    public static func socketDir(useTmp: Bool) -> String {
+        (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("remote")
+    }
+
     public static func jsonlPath(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.jsonl")
     }
