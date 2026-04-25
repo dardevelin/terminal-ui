@@ -189,96 +189,11 @@ public struct PromptInput: TerminalView {
     // MARK: - Soft wrap
 
     /// Splits a logical line into ≤`width`-character chunks, breaking
-    /// on whitespace boundaries when possible. Words longer than
-    /// `width` (URLs, identifiers) fall back to a character-level
-    /// break. Empty input yields one empty chunk so the row is
-    /// navigable.
-    ///
-    /// Word-aware wrapping mirrors how chat clients (Claude Code,
-    /// Codex) lay out long input. Pre-2026-04-25 this was a simple
-    /// char-stride wrap that split mid-word — visible as "righ"+"t"
-    /// in the user's screenshot.
+    /// on whitespace boundaries. Now a thin wrapper over the shared
+    /// `TextLayout.wrapWords` primitive so PromptInput, Text, and
+    /// future text-view components share one wrap algorithm.
     static func wrapLine(_ line: String, width: Int) -> [String] {
-        guard width > 0 else { return [line] }
-        if line.isEmpty { return [""] }
-        // Pure-character path for lines containing no spaces (URLs,
-        // identifiers, paste-bombed tokens). Falls through to char-
-        // stride; matches pre-existing behaviour for those inputs.
-        if !line.contains(" ") {
-            return charStrideChunks(line, width: width)
-        }
-
-        var chunks: [String] = []
-        var current = ""
-        var i = line.startIndex
-        while i < line.endIndex {
-            // Find the next break point: end of word OR end of line.
-            // A "word" here is a maximal run of non-space chars; a
-            // "gap" is a maximal run of spaces. Both are emitted as
-            // single tokens so trailing spaces inside the line are
-            // preserved across word boundaries.
-            let isSpace = line[i] == " "
-            var j = i
-            while j < line.endIndex && (line[j] == " ") == isSpace {
-                j = line.index(after: j)
-            }
-            let token = String(line[i..<j])
-            i = j
-
-            // Token longer than `width`: this is a long word that
-            // must be hard-broken. Flush current chunk first, then
-            // emit the token in width-sized slices.
-            if token.count > width {
-                if !current.isEmpty {
-                    chunks.append(current)
-                    current = ""
-                }
-                chunks.append(contentsOf: charStrideChunks(token, width: width))
-                continue
-            }
-
-            // Token fits within `width`. Append to current chunk if
-            // there's room; otherwise start a new chunk.
-            if current.count + token.count <= width {
-                current += token
-            } else {
-                // Flush current and start a new chunk with the token.
-                // Drop a leading space on the new chunk so wrapped
-                // lines don't start with a stray space — we preserve
-                // it logically but visually we want clean lefts.
-                if !current.isEmpty {
-                    chunks.append(current)
-                    current = ""
-                }
-                if token.first == " " {
-                    // Pure-whitespace token at chunk boundary: drop it.
-                    // Reassembly tests tolerate one space lost per wrap
-                    // point, matching SwiftUI's behaviour.
-                    continue
-                }
-                current = token
-            }
-        }
-        if !current.isEmpty {
-            chunks.append(current)
-        }
-        if chunks.isEmpty {
-            chunks.append("")
-        }
-        return chunks
-    }
-
-    /// Char-stride helper used by `wrapLine` for spaceless inputs and
-    /// for slicing long words.
-    private static func charStrideChunks(_ s: String, width: Int) -> [String] {
-        var out: [String] = []
-        var idx = s.startIndex
-        while idx < s.endIndex {
-            let end = s.index(idx, offsetBy: width, limitedBy: s.endIndex) ?? s.endIndex
-            out.append(String(s[idx..<end]))
-            idx = end
-        }
-        return out.isEmpty ? [""] : out
+        TextLayout.wrapWords(line, width: width)
     }
 
     /// Pre-computes wrapped chunks for every logical line. Used by both the
