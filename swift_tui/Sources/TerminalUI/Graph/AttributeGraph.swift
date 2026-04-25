@@ -109,7 +109,25 @@ public final class AttributeGraph {
         bodyEvaluationCount = 0
         rootWalkCount = 0
         dirtyDrainCount = 0
+        lastFiredKeypath = nil
     }
+
+    /// Snapshot of the current dirty-queue keys. Used by tests to
+    /// assert that an observable mutation routed to exactly one
+    /// composite node, not the entire ancestor chain. The queue is
+    /// drained on `drain()`, so call this before draining to inspect
+    /// what's pending.
+    public var dirtyQueueNodeIDs: [NodeID] {
+        dirtyQueue.values.map { $0.id }
+    }
+
+    /// The keypath that fired the most recent observation `willSet`,
+    /// if AttributeGraph captured it. Today this is always `nil` —
+    /// surfacing `ObservationTracking.changed` (currently
+    /// `@_spi(SwiftUI)`) is the parity-completion work tracked
+    /// separately. Reading this in tests pins the gap so it doesn't
+    /// silently regress to "good enough" again.
+    public private(set) var lastFiredKeypath: AnyKeyPath?
     #endif
 
     // MARK: - Public API
