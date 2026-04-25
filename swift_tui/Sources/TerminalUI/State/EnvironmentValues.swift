@@ -44,6 +44,14 @@ public struct EnvironmentValues: Sendable {
     /// Set `.true` on a subtree that wants SwiftUI-style 2D navigation.
     public var allowArrowFocusNavigation: Bool = false
 
+    /// How TextInput-class views handle text that exceeds the field's
+    /// width. Default `.byClipping` matches Apple HIG's prescription
+    /// for single-line text fields: "System clips text extending
+    /// beyond field bounds." Apps wanting non-default break behaviour
+    /// (`.byCharWrapping`, `.byWordWrapping`, truncation) override
+    /// via `.lineBreakMode(_:)` on any ancestor. See `LineBreakMode`.
+    public var lineBreakMode: LineBreakMode = .byClipping
+
     public init() {}
 }
 

@@ -48,6 +48,12 @@ public struct TextInput: TerminalView {
     public let text: Binding<String>
     public let validate: ((String) -> TextInputValidation)?
 
+    /// HIG line-break behaviour for content that exceeds the field
+    /// width. Default `.byClipping` matches HIG's prescription for
+    /// single-line text fields. App authors override via
+    /// `.lineBreakMode(_:)` on this view or any ancestor.
+    @TerminalEnvironment(\.lineBreakMode) var lineBreakMode
+
     public init(
         _ prompt: String = "",
         text: Binding<String>,
@@ -66,6 +72,11 @@ public struct TextInput: TerminalView {
         // supplied — omit decoration entirely.
         let validation = validate?(text.get())
         let accent = validationColor(validation)
+        // Capture env-driven line-break mode at body-eval time. The
+        // GR closure runs at rebuild time when GraphContext's env may
+        // be nil — projecting here mirrors the pattern documented in
+        // `feedback_bindings_in_geometryreader.md`.
+        let mode = lineBreakMode
 
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
@@ -80,7 +91,8 @@ public struct TextInput: TerminalView {
                 return Text(spans: composeSpans(
                     value: value,
                     showPlaceholder: showPlaceholder,
-                    maxValueWidth: available))
+                    maxValueWidth: available,
+                    mode: mode))
                     .focusable()
                     .onKeyPress { [text] event in
                         switch event.key {
@@ -128,11 +140,19 @@ public struct TextInput: TerminalView {
         }
     }
 
-    /// Compose the rendered spans, sliding the visible value window when
-    /// `value.count + 1` (cursor) exceeds `maxValueWidth`. Keeps cursor visible
-    /// at the right edge and clips from the left (classic shell-prompt behavior).
+    /// Compose the rendered spans, applying the env-driven
+    /// `LineBreakMode` to fit the value into `maxValueWidth`. Default
+    /// `.byClipping` keeps the legacy "virtual horizontal scroll"
+    /// behaviour (tail + cursor pinned right). Truncation modes
+    /// transform the value with an ellipsis at head / middle / tail
+    /// while leaving the cursor at the right edge of the visible
+    /// content. Wrap modes (`.byCharWrapping`, `.byWordWrapping`)
+    /// are accepted for symmetry but currently render as if
+    /// `.byClipping` — multi-row TextInput needs the SwiftUI-style
+    /// `axis: .vertical` shape, tracked separately.
     private func composeSpans(value: String, showPlaceholder: Bool,
-                               maxValueWidth: Int) -> [TextSpan] {
+                               maxValueWidth: Int,
+                               mode: LineBreakMode) -> [TextSpan] {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
             spans.append(TextSpan(prompt, foreground: .gray))
@@ -142,20 +162,36 @@ public struct TextInput: TerminalView {
             spans.append(TextSpan("│", foreground: .default))
             let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
             spans.append(TextSpan(clipped, foreground: .gray))
-        } else if value.isEmpty {
+            return spans
+        }
+        if value.isEmpty {
             spans.append(TextSpan("│", foreground: .default))
-        } else {
-            // Virtual horizontal scroll: cursor always pinned at the right edge
-            // once the value exceeds available width. Left edge clips older chars.
-            // Keep 1 cell for the cursor, so value occupies at most (maxValueWidth - 1).
-            let valueRoom = max(1, maxValueWidth - 1)
+            return spans
+        }
+        // Reserve 1 cell for the cursor glyph so the visible value
+        // fits in `valueRoom` cells.
+        let valueRoom = max(1, maxValueWidth - 1)
+
+        switch mode {
+        case .byClipping, .byCharWrapping, .byWordWrapping:
+            // Virtual horizontal scroll: cursor always pinned at the
+            // right edge once the value exceeds available width. Left
+            // edge clips older chars. Wrap modes degrade to clipping
+            // on a single-line input (axis:.vertical work tracked
+            // separately).
             let visible: String
             if value.count <= valueRoom {
                 visible = value
             } else {
-                // Drop leading chars so tail + cursor fit
                 visible = String(value.suffix(valueRoom))
             }
+            spans.append(TextSpan(visible))
+            spans.append(TextSpan("│"))
+        case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
+            // Apply the truncation mode to fit the value into
+            // `valueRoom`. Cursor lands at the right edge of the
+            // truncated string for visual consistency with clipping.
+            let visible = mode.apply(to: value, width: valueRoom)
             spans.append(TextSpan(visible))
             spans.append(TextSpan("│"))
         }
