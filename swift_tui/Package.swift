@@ -1,8 +1,19 @@
 // swift-tools-version: 6.2
 
 import PackageDescription
+import Foundation
 
 // MARK: - Strict compiler settings (Swift 6+)
+
+// HYP-102: -warnings-as-errors used to live in `strictSettings` via
+// `.unsafeFlags`. That propagates the policy to downstream consumers'
+// builds and is forbidden for libraries on the Swift Package Index.
+// Now opt-in via the `TUI_WARNINGS_AS_ERRORS` env var so this repo's
+// CI keeps the strict gate while consumers don't inherit it.
+let warningsAsErrors: [SwiftSetting] = ProcessInfo.processInfo
+    .environment["TUI_WARNINGS_AS_ERRORS"] == "1"
+    ? [.unsafeFlags(["-warnings-as-errors"])]
+    : []
 
 let strictSettings: [SwiftSetting] = [
     // Strict concurrency — full actor isolation, Sendable enforcement
@@ -12,10 +23,7 @@ let strictSettings: [SwiftSetting] = [
     .enableUpcomingFeature("ExistentialAny"),           // require 'any' keyword for existentials
     // InternalImportsByDefault — disabled, too aggressive with @Observable macro re-exports
     // GlobalConcurrency — already enabled by default in Swift 6
-
-    // Treat all warnings as errors
-    .unsafeFlags(["-warnings-as-errors"]),
-]
+] + warningsAsErrors
 
 let package = Package(
     name: "swift_tui",

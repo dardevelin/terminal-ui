@@ -20,8 +20,12 @@ public struct TextInputValidation: Sendable, Equatable {
     public static let ok = TextInputValidation(.ok)
 }
 
-/// An editable single-line text field with cursor.
-/// Handles character input, backspace, delete, and cursor movement.
+/// An editable single-line text field.
+/// Currently appends typed characters and removes from the tail on
+/// backspace / delete. A real cursor model (insertion index, left/right,
+/// home/end, delete-forward) is tracked under HYP-73; until then arrow
+/// keys are routed to the parent and the visible cursor sits at the
+/// right edge of the value. HYP-103 corrected this doc to match.
 ///
 /// The first positional argument is a persistent **prompt/label** rendered
 /// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
