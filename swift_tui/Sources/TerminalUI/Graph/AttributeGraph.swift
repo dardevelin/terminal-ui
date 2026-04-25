@@ -24,12 +24,40 @@ public final class AttributeGraph {
 
     public init() {}
 
+    #if DEBUG
+    // HYP-124 — Frame-stat counters wired into the invalidation hot path.
+    // Tests for HYP-125 (reflective compare) and HYP-126 (dirty drain)
+    // assert against these. Release builds elide the entire #if DEBUG
+    // block so consumers pay nothing.
+    //
+    // bodyEvaluationCount — every composite body that runs inside a
+    //   withObservationTracking scope (both evaluateBody and the first-
+    //   build path in constructComposite).
+    // rootWalkCount       — every call to update(from:); HYP-126's drain
+    //   path will not bump this.
+    // dirtyDrainCount     — placeholder zero until HYP-126 lands the
+    //   in-place drain entry point.
+    public private(set) var bodyEvaluationCount: Int = 0
+    public private(set) var rootWalkCount: Int = 0
+    public private(set) var dirtyDrainCount: Int = 0
+
+    /// Reset every counter to zero. Tests call this between scenarios.
+    public func resetFrameStats() {
+        bodyEvaluationCount = 0
+        rootWalkCount = 0
+        dirtyDrainCount = 0
+    }
+    #endif
+
     // MARK: - Public API
 
     /// Build or update the graph from a view tree.
     /// Returns true if any node values actually changed.
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
+        #if DEBUG
+        rootWalkCount += 1
+        #endif
         if let existing = root {
             changed = false
             updateNode(existing, from: view)
@@ -70,6 +98,9 @@ public final class AttributeGraph {
 
         nonisolated(unsafe) weak let weakNode = node
         nonisolated(unsafe) weak let weakGraph = self
+        #if DEBUG
+        bodyEvaluationCount += 1
+        #endif
         let body: V.Body = withObservationTracking {
             view.body
         } onChange: {
@@ -737,6 +768,9 @@ public final class AttributeGraph {
 
         nonisolated(unsafe) weak let weakNode2 = node
         nonisolated(unsafe) weak let weakGraph2 = self
+        #if DEBUG
+        bodyEvaluationCount += 1
+        #endif
         let body: V.Body = withObservationTracking {
             view.body
         } onChange: {
