@@ -37,6 +37,14 @@ public struct RemoteRequest: Codable, Sendable {
     public var y: Int?
     // wait_for_frame payload
     public var frames: Int?
+    // send_mouse payload — `kind` is one of:
+    //   "move"   — mouse cursor at (x, y), no button state change
+    //   "click"  — press+release of `button` at (x, y) (defaults to "left")
+    //   "press"  — press only
+    //   "release"— release only
+    //   "wheel_up" / "wheel_down" — scroll at (x, y)
+    public var kind: String?
+    public var button: String?
     // grid overlay for query_cells / screenshot (coordinate rulers)
     public var grid: Bool?
     // scan criteria — first non-nil match wins. `match_kind` e.g. "Text",
@@ -354,6 +362,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         switch request.cmd {
         case "send_key":    return sendKey(request, runtime: runtime)
         case "send_text":   return sendText(request, runtime: runtime)
+        case "send_mouse":  return sendMouse(request, runtime: runtime)
         case "focus_get":   return focusGet(request, runtime: runtime)
         case "focus_set":   return focusSet(request, runtime: runtime)
         case "query_cells": return queryCells(request, runtime: runtime)
@@ -401,6 +410,52 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             default: key = .character(char)
             }
             runtime.enqueueEvent(.key(KeyEvent(key: key, source: .remote)))
+        }
+        return RemoteResponse(id: request.id, ok: true)
+    }
+
+    /// Inject a mouse event so smoke tests can drive hover/click/scroll
+    /// over the remote-control socket. SGR 1006 byte sequences are not
+    /// reproducible from the test harness (no PTY mouse emulation), so
+    /// we synthesise `MouseEvent` values directly. The runtime's event
+    /// loop handles them identically to real terminal mouse input.
+    private func sendMouse(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        guard let kind = request.kind else {
+            return RemoteResponse(id: request.id, ok: false, error: "send_mouse requires `kind`")
+        }
+        guard let x = request.x, let y = request.y else {
+            return RemoteResponse(id: request.id, ok: false, error: "send_mouse requires `x` + `y`")
+        }
+        let modifiers = parseModifiers(request.modifiers ?? [])
+        let buttonName = request.button ?? "left"
+        let button: MouseButton
+        switch buttonName {
+        case "left":   button = .left
+        case "middle": button = .middle
+        case "right":  button = .right
+        default:
+            return RemoteResponse(id: request.id, ok: false, error: "unknown button: \(buttonName)")
+        }
+
+        switch kind {
+        case "move":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .moved, x: x, y: y, modifiers: modifiers)))
+        case "press":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .press(button), x: x, y: y, modifiers: modifiers)))
+        case "release":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .release(button), x: x, y: y, modifiers: modifiers)))
+        case "click":
+            // A click is press + release at the same coordinate. Most
+            // handlers respond to .press; emitting both keeps drag-aware
+            // listeners happy too.
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .press(button), x: x, y: y, modifiers: modifiers)))
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .release(button), x: x, y: y, modifiers: modifiers)))
+        case "wheel_up":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .scrollUp, x: x, y: y, modifiers: modifiers)))
+        case "wheel_down":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .scrollDown, x: x, y: y, modifiers: modifiers)))
+        default:
+            return RemoteResponse(id: request.id, ok: false, error: "unknown mouse kind: \(kind)")
         }
         return RemoteResponse(id: request.id, ok: true)
     }

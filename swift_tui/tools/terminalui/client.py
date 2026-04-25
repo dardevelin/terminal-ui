@@ -258,6 +258,36 @@ class Client:
         tab becomes ``tab``."""
         self._call("send_text", text=text)
 
+    def mouse_move(self, x: int, y: int, *modifiers: str) -> None:
+        """Inject a mouse-move event at (x, y). 0-indexed cell coordinates.
+        Updates hover target without changing button state."""
+        self._call("send_mouse", kind="move", x=x, y=y,
+                   modifiers=list(modifiers) or None)
+
+    def mouse_click(self, x: int, y: int, button: str = "left",
+                    *modifiers: str) -> None:
+        """Inject a press+release at (x, y). ``button`` is left/middle/right."""
+        self._call("send_mouse", kind="click", x=x, y=y, button=button,
+                   modifiers=list(modifiers) or None)
+
+    def mouse_press(self, x: int, y: int, button: str = "left",
+                    *modifiers: str) -> None:
+        """Inject a press only — pair with ``mouse_release`` to test drag."""
+        self._call("send_mouse", kind="press", x=x, y=y, button=button,
+                   modifiers=list(modifiers) or None)
+
+    def mouse_release(self, x: int, y: int, button: str = "left",
+                      *modifiers: str) -> None:
+        self._call("send_mouse", kind="release", x=x, y=y, button=button,
+                   modifiers=list(modifiers) or None)
+
+    def mouse_wheel(self, direction: str, x: int, y: int,
+                    *modifiers: str) -> None:
+        """Inject a scroll-wheel event. ``direction`` is "up" or "down"."""
+        kind = f"wheel_{direction}"
+        self._call("send_mouse", kind=kind, x=x, y=y,
+                   modifiers=list(modifiers) or None)
+
     def press_many(self, key: str, count: int, *modifiers: str,
                    sleep_between: float = 0.02) -> None:
         """Convenience: send ``key`` ``count`` times with a small pause to
