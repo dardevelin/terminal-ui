@@ -341,17 +341,32 @@ public final class AttributeGraph {
         node.isDirty = false
     }
 
-    /// Invalidate cached width/height on `node` and walk up the parent chain
-    /// invalidating each ancestor's cache too. Stops at the root. Does not
-    /// touch `isDirty` — pure measurement-cache eviction. Used when an
-    /// in-place value mutation (e.g. Text spans) changes intrinsic size.
+    /// Invalidate cached width/height on `node` and any **layout** ancestors
+    /// whose intrinsic size genuinely depends on this child's measurement.
+    /// Stops at the first non-layout ancestor (modifier, viewBody) — those
+    /// either pass through or rebuild from `geometryRebuilder`, so their
+    /// caches don't depend on a sibling's stale Text size.
+    ///
+    /// Originally walked all the way to the root. That over-invalidation
+    /// re-measured the whole Storybook tree on every arrow-press in the
+    /// sidebar — the user saw the Code panel width drift 41 → 27 across
+    /// five keystrokes because some unrelated layout's cache was dropped
+    /// and recomputed from a measurement context that had shifted.
     func invalidateMeasurementCache(from node: AttributeNode) {
         var current: AttributeNode? = node
         while let n = current {
             n.cachedWidth = nil
             n.cachedHeight = nil
             n.cachedHeightWidth = nil
-            current = n.parent
+            // Only ascend through layout containers — VStack/HStack/ZStack
+            // /Scroll. Modifier and viewBody nodes either pass through
+            // (modifier) or re-derive from a closure (viewBody/GR) and
+            // shouldn't have their caches invalidated by a leaf Text edit.
+            if let parent = n.parent, case .layout = parent.kind {
+                current = parent
+            } else {
+                current = nil
+            }
         }
     }
 
