@@ -70,6 +70,38 @@ public struct CellBuffer: Sendable {
         self.clipRect = nil
     }
 
+    /// Reset every cell to `.empty` and drop any clip. Cheaper than
+    /// constructing a fresh `CellBuffer` per frame: the underlying
+    /// storage capacity is preserved, so subsequent renders skip the
+    /// allocator entirely (HYP-104). Safe to call from any frame
+    /// boundary — callers that resize between frames should use
+    /// `resize(width:height:)` instead.
+    public mutating func clear() {
+        // `withUnsafeMutableBufferPointer` lets the optimiser turn this
+        // into a single memset-style fill rather than per-element store.
+        cells.withUnsafeMutableBufferPointer { buf in
+            for i in 0..<buf.count {
+                buf[i] = .empty
+            }
+        }
+        clipRect = nil
+    }
+
+    /// Resize in place. Reallocates only if the new dimensions differ from
+    /// the current buffer; otherwise just clears. Frame-stable callers
+    /// (the runtime) prefer this over `init(width:height:)` to keep the
+    /// hot path allocation-free outside of resize events.
+    public mutating func resize(width: Int, height: Int) {
+        if width == self.width && height == self.height {
+            clear()
+            return
+        }
+        self.width = width
+        self.height = height
+        self.cells = Array(repeating: .empty, count: width * height)
+        self.clipRect = nil
+    }
+
     public subscript(x: Int, y: Int) -> Cell {
         get {
             guard x >= 0, x < width, y >= 0, y < height else { return .empty }

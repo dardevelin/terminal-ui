@@ -84,6 +84,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
     private var size: TerminalSize
     private var previousBuffer: CellBuffer?
+    /// Reused render target — one allocation at startup instead of one per
+    /// frame (HYP-104). Cleared at the top of each render pass and resized
+    /// when the terminal geometry changes.
+    private var renderBuffer = CellBuffer(width: 0, height: 0)
     private var needsRender: Bool = true
     private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
@@ -505,31 +509,34 @@ public final class TerminalRuntime<RootView: TerminalView> {
             viewportWidth: size.cols, viewportHeight: size.rows
         )
 
-        // Render from graph — no Any, no as?, enum dispatch only
-        var buffer = CellBuffer(width: size.cols, height: size.rows)
+        // Render from graph — no Any, no as?, enum dispatch only.
+        // HYP-104: reuse the runtime's renderBuffer instead of a fresh
+        // alloc per call. Both renderFullFrame and renderDiffFrame share
+        // the same buffer so consecutive transitions don't churn memory.
+        renderBuffer.resize(width: size.cols, height: size.rows)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
         if let root = graph.root {
-            GraphRenderer.render(root, into: &buffer, context: context)
+            GraphRenderer.render(root, into: &renderBuffer, context: context)
         }
 
         // Focus indicators
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: focusEngine, root: graph.root)
+        GraphRenderer.renderFocusIndicators(into: &renderBuffer, focusEngine: focusEngine, root: graph.root)
 
         // Debug overlays — render directly into buffer, bypass graph
         #if DEBUG
-        debugOverlay.render(into: &buffer, stats: frameStats)
-        debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
-        inspector.render(into: &buffer, graph: graph)
+        debugOverlay.render(into: &renderBuffer, stats: frameStats)
+        debugPanel.render(into: &renderBuffer, graph: graph, stats: frameStats)
+        inspector.render(into: &renderBuffer, graph: graph)
         #endif
 
-        buffer.renderFull(into: &outputBuffer)
+        renderBuffer.renderFull(into: &outputBuffer)
         let buildEnd = monotonicNanoseconds()
 
         outputBuffer.flush()
         let flushEnd = monotonicNanoseconds()
 
-        let totalCells = buffer.width * buffer.height
-        tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
+        let totalCells = renderBuffer.width * renderBuffer.height
+        tracer.endFrame(buffer: renderBuffer, previousBuffer: previousBuffer)
         let stats = frameCounter.endFrame(
             cellsChanged: totalCells, totalCells: totalCells,
             buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
@@ -540,7 +547,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
         debugPanel.recordFrameTime(buildMs)
         #endif
-        previousBuffer = buffer
+        previousBuffer = renderBuffer
     }
 
     private func renderDiffFrame() {
@@ -585,43 +592,48 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     viewportWidth: size.cols, viewportHeight: size.rows
                 )
 
-                var buffer = CellBuffer(width: size.cols, height: size.rows)
+                // Reuse the render buffer across frames (HYP-104). Resize
+                // is a no-op when geometry is stable; clear sets every
+                // cell back to .empty so the renderer paints into a known
+                // baseline. The post-render diff still produces minimal
+                // ANSI output regardless.
+                renderBuffer.resize(width: size.cols, height: size.rows)
                 let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
                 if let root = graph.root {
-                    GraphRenderer.render(root, into: &buffer, context: context)
+                    GraphRenderer.render(root, into: &renderBuffer, context: context)
                 }
 
                 // Focus indicators
-                GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: focusEngine, root: graph.root)
+                GraphRenderer.renderFocusIndicators(into: &renderBuffer, focusEngine: focusEngine, root: graph.root)
 
                 #if DEBUG
-                debugOverlay.render(into: &buffer, stats: frameStats)
-                debugPanel.render(into: &buffer, graph: graph, stats: frameStats)
-                inspector.render(into: &buffer, graph: graph)
+                debugOverlay.render(into: &renderBuffer, stats: frameStats)
+                debugPanel.render(into: &renderBuffer, graph: graph, stats: frameStats)
+                inspector.render(into: &renderBuffer, graph: graph)
 
                 if captureCurrentFrame {
                     captureCurrentFrame = false
-                    captureFrame(buffer: buffer)
+                    captureFrame(buffer: renderBuffer)
                 }
                 #endif
 
-                let changedCells = buffer.countDiff(from: previousBuffer)
-                buffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+                let changedCells = renderBuffer.countDiff(from: previousBuffer)
+                renderBuffer.renderDiff(from: previousBuffer, into: &outputBuffer)
                 let buildEnd = monotonicNanoseconds()
 
                 outputBuffer.flush()
                 let flushEnd = monotonicNanoseconds()
 
-                tracer.endFrame(buffer: buffer, previousBuffer: previousBuffer)
+                tracer.endFrame(buffer: renderBuffer, previousBuffer: previousBuffer)
                 frameStats = frameCounter.endFrame(
-                    cellsChanged: changedCells, totalCells: buffer.width * buffer.height,
+                    cellsChanged: changedCells, totalCells: renderBuffer.width * renderBuffer.height,
                     buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
                     bytesWritten: outputBuffer.size
                 )
                 #if DEBUG
                 debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
                 #endif
-                previousBuffer = buffer
+                previousBuffer = renderBuffer
                 return
             }
         }
