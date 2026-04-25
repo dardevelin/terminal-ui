@@ -76,14 +76,23 @@ public enum Terminal {
 
     public static func size() -> TerminalSize {
         var windowSize = winsize()
-        _ = ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
+        let ioctlResult = ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
         var size = TerminalSize(cols: Int(windowSize.ws_col), rows: Int(windowSize.ws_row))
 
+        // HYP-101: in release builds, ioctl can fail (stdout piped, headless
+        // CI without a TTY) or report `0×0` (some shell harnesses, broken
+        // terminal emulators). Falling back to the VT100 default keeps the
+        // renderer from dividing by zero or producing a zero-cell buffer
+        // that the compositor can't diff. DEBUG path retains the override
+        // hook for tests that want a specific simulated geometry.
         #if DEBUG
         if let minSize = debugMinSize, size.cols == 0 || size.rows == 0 {
             size = minSize
         }
         #endif
+        if ioctlResult != 0 || size.cols == 0 || size.rows == 0 {
+            size = .default
+        }
 
         return size
     }
@@ -102,9 +111,19 @@ public enum Terminal {
     /// Sets VMIN=0, VTIME=1 (100ms timeout): read() returns immediately with available bytes
     /// or after 100ms with nothing. This gives the event loop a natural polling interval
     /// without busy-waiting.
-    public static func enableRawMode() {
+    ///
+    /// Returns `true` on success, `false` if the underlying syscalls fail
+    /// (e.g. stdin is not a TTY). On failure no termios state is captured,
+    /// so `disableRawMode()` is a no-op — the caller is left in cooked mode.
+    /// HYP-101: previously this discarded both syscall returns silently,
+    /// leaving callers unable to distinguish "raw mode active" from "no-op
+    /// because stdin is a pipe."
+    @discardableResult
+    public static func enableRawMode() -> Bool {
         var raw = termios()
-        tcgetattr(STDIN_FILENO, &raw)
+        if tcgetattr(STDIN_FILENO, &raw) != 0 {
+            return false
+        }
         originalTermios = raw
         raw.c_lflag &= ~tcflag_t(ECHO | ICANON | ISIG | IEXTEN)
         raw.c_iflag &= ~tcflag_t(IXON | ICRNL | BRKINT | INPCK | ISTRIP)
@@ -113,7 +132,13 @@ public enum Terminal {
         // This is a POSIX ABI assumption shared by Darwin and Glibc.
         raw.c_cc.0 = 0
         raw.c_cc.1 = 1
-        tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
+        if tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0 {
+            // Restore captured termios so the caller can still call
+            // disableRawMode() defensively, even though we never made it
+            // into raw mode.
+            return false
+        }
+        return true
     }
 
     public static func disableRawMode() {

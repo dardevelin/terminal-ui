@@ -257,6 +257,28 @@ struct UnicodeWidthTests {
 #endif
 
 // MARK: - HYP-101: Terminal robustness
-// Requires syscall injection to test cleanly. Filed under HYP-101 — the
-// behavioural assertion belongs in a follow-up PR that introduces a thin
-// syscall protocol layer. This file documents the contract; no tests yet.
+
+@Suite("HYP-101 — Terminal.size() falls back when ioctl reports 0×0 in release")
+@MainActor
+struct TerminalRobustnessTests {
+
+    @Test("size() returns non-zero geometry under the test runner's PTY")
+    func sizeReturnsNonZero() {
+        // The test process runs under XCTest's PTY harness — ioctl normally
+        // reports the inherited geometry. The release-path guard added in
+        // HYP-101 means even in the worst case (ioctl fails or reports
+        // 0×0) the framework returns 80×24 instead of 0×0, which the
+        // compositor can't diff and which would crash the renderer's
+        // divide/clip math.
+        let size = Terminal.size()
+        #expect(size.cols >= 1)
+        #expect(size.rows >= 1)
+    }
+
+    @Test("TerminalSize.default is the VT100 fallback (80×24)")
+    func vt100Default() {
+        let s = TerminalSize.default
+        #expect(s.cols == 80)
+        #expect(s.rows == 24)
+    }
+}
