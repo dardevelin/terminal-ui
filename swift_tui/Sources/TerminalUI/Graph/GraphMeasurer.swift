@@ -271,31 +271,24 @@ public enum GraphMeasurer {
         return count
     }
 
-    /// Count lines accounting for wrapping at the given width.
-    /// Each line that exceeds width wraps to additional rows. Uses
+    /// Count lines accounting for word-aware wrapping at the given
+    /// width. Each logical line (`\n`-separated) is wrapped by
+    /// `TextLayout.wrapWords` and contributes that many rows. Uses
     /// display-width per grapheme so a 2-cell character is treated as
     /// occupying 2 columns when deciding whether to wrap (HYP-100).
-    /// Mirrors the old "advance, then wrap if past" sequence so ASCII
-    /// counts identically to the pre-HYP-100 implementation.
+    ///
+    /// Aligned with the renderer's word-aware soft-wrap path so the
+    /// measurer's predicted row count matches what the renderer
+    /// actually paints — preventing HEIGHT/RENDER drift that surfaces
+    /// as stale cells or truncated content.
     static func countWrappedLines(_ s: String, width: Int) -> Int {
         if s.isEmpty { return 0 }
         guard width > 0 else { return countLines(s) }
-
         var rows = 0
-        var col = 0
-        for ch in s {
-            if ch == "\n" {
-                rows += 1
-                col = 0
-            } else {
-                let w = ch.displayWidth
-                col += w
-                if col > width {
-                    rows += 1
-                    col = w
-                }
-            }
+        for line in s.split(separator: "\n", omittingEmptySubsequences: false) {
+            let chunks = TextLayout.wrapWords(String(line), width: width)
+            rows += max(1, chunks.count)
         }
-        return rows + 1  // last line (no trailing \n)
+        return rows
     }
 }

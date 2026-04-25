@@ -75,20 +75,37 @@ public enum GraphRenderer {
             // Fast path: single unstyled span — use simple write
             if spans.count == 1 && !spans[0].hasOverrides {
                 let string = spans[0].text
-                let lines = string.split(separator: "\n", omittingEmptySubsequences: false)
+                let logicalLines = string.split(separator: "\n", omittingEmptySubsequences: false)
                 let maxWidth = context.rect.width
-                for (i, line) in lines.enumerated() {
-                    let y = context.rect.y + i
-                    guard y < context.rect.y + context.rect.height else { break }
-                    // Pad to rect width with spaces so the trailing region is
-                    // cleared when content shrank from a longer previous frame
-                    // (HYP-84 — "epsilone" → "epsilon" stale-cell bug). The
-                    // HYP-90 rect clip keeps the padding within the rect even
-                    // if the shape is oddly sized.
-                    let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
-                    let padCount = max(0, maxWidth - clipped.count)
-                    let padded = clipped + String(repeating: " ", count: padCount)
-                    buffer.write(padded, x: context.rect.x, y: y, style: context.style)
+                let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
+                // Word-aware soft-wrap matches SwiftUI's
+                // kCTLineBreakByWordWrapping default and HIG's text-
+                // view prescription. `.none` keeps the legacy clip-
+                // and-pad behaviour for fixed-geometry views (DotMatrix,
+                // MorseTicker) that compose their own glyph rows.
+                var rowOffset = 0
+                for line in logicalLines {
+                    let chunks: [String]
+                    switch mode {
+                    case .wrap:
+                        chunks = TextLayout.wrapWords(String(line), width: maxWidth)
+                    case .none:
+                        // Legacy: clip to rect width, no wrapping.
+                        let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
+                        chunks = [clipped]
+                    }
+                    for chunk in chunks {
+                        let y = context.rect.y + rowOffset
+                        rowOffset += 1
+                        guard y < context.rect.y + context.rect.height else { return }
+                        // Pad to rect width with spaces so the trailing
+                        // region is cleared when content shrank from a
+                        // longer previous frame (HYP-84 — "epsilone" →
+                        // "epsilon" stale-cell bug).
+                        let padCount = max(0, maxWidth - chunk.count)
+                        let padded = chunk + String(repeating: " ", count: padCount)
+                        buffer.write(padded, x: context.rect.x, y: y, style: context.style)
+                    }
                 }
             } else {
                 // Styled path: write each span with its own resolved style
