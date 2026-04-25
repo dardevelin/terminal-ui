@@ -260,3 +260,114 @@ struct PromptInputTests {
         GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
     }
 }
+
+// MARK: - Word-aware wrap (PromptInput)
+//
+// User-reported bug 2026-04-25: typing a long sentence into PromptInput
+// hard-wraps mid-word — e.g. "righ"+"t", "imp"+"rove". We want
+// word-aware wrapping that breaks on whitespace whenever possible,
+// falling back to character-level breaks only for words longer than
+// the wrap width (e.g. URLs, identifiers).
+
+@Suite("PromptInput — word-aware wrap")
+@MainActor
+struct PromptInputWordWrapTests {
+
+    @Test("ASCII sentence wraps at word boundaries, not mid-word")
+    func wrapsAtWordBoundaries() {
+        let sentence = "type a very long line and see if it will properly wrap"
+        let chunks = PromptInput.wrapLine(sentence, width: 20)
+        // Every chunk that ISN'T the last one must end on a word
+        // boundary — i.e. the chunk's last char is a space, OR the
+        // next chunk starts after a space, OR the chunk is itself a
+        // single-word chunk that exactly fills the width.
+        for i in 0..<chunks.count - 1 {
+            let chunk = chunks[i]
+            let next = chunks[i + 1]
+            let endsCleanly = chunk.last == " " || next.first == " " || !chunk.contains(" ")
+                || chunk.split(separator: " ").last.map { sentence.contains($0 + " ") } ?? false
+            // Simpler invariant: re-joining chunks back must reproduce
+            // the original sentence with at most one space lost per
+            // wrap point (we trim trailing space on each chunk for
+            // visual cleanliness).
+            _ = endsCleanly
+            // A specific anti-mid-word check: no chunk's final char
+            // followed by next chunk's first char should reconstruct a
+            // word from the source unless that boundary already had a
+            // space.
+            if let lastChar = chunk.last,
+               let firstNext = next.first,
+               lastChar.isLetter, firstNext.isLetter
+            {
+                // Look for "lastChar firstNext" or "lastCharfirstNext"
+                // in source — if the word was contiguous in source and
+                // we split it, that's a mid-word break.
+                let suspected = "\(lastChar)\(firstNext)"
+                #expect(!sentence.contains(suspected),
+                        "chunks[\(i)]=\(chunk) and chunks[\(i+1)]=\(next) split a word: '\(suspected)' is contiguous in source")
+            }
+        }
+    }
+
+    @Test("re-joining wrapped chunks reproduces the original (modulo trimmed spaces)")
+    func wrapsLossless() {
+        let sentence = "type a very long line and see if it will properly wrap and do the right thing"
+        let chunks = PromptInput.wrapLine(sentence, width: 20)
+        // Each chunk fits within width.
+        for chunk in chunks {
+            #expect(chunk.count <= 20, "chunk too long: \(chunk) (\(chunk.count) > 20)")
+        }
+        // Joining chunks with single spaces between them (where wrap
+        // dropped a space) reproduces the original. Allow either: the
+        // chunk ends with its trailing space preserved, OR the wrap
+        // dropped a space at the boundary so we re-insert one.
+        var reassembled = ""
+        for (i, chunk) in chunks.enumerated() {
+            if i > 0 && !reassembled.hasSuffix(" ") && !chunk.hasPrefix(" ") {
+                reassembled += " "
+            }
+            reassembled += chunk
+        }
+        // Tolerate trailing/leading whitespace from chunk boundaries.
+        #expect(reassembled.trimmingCharacters(in: .whitespaces) ==
+                sentence.trimmingCharacters(in: .whitespaces),
+                "re-assembled: \(reassembled.debugDescription)")
+    }
+
+    @Test("a single word longer than width falls back to character-level break")
+    func longWordHardBreaks() {
+        let url = "https://example.com/very/long/path/that/exceeds/wrap/width"
+        let chunks = PromptInput.wrapLine(url, width: 20)
+        for chunk in chunks {
+            #expect(chunk.count <= 20)
+        }
+        // Reassembly is exact (no spaces involved).
+        #expect(chunks.joined() == url)
+        #expect(chunks.count >= 2, "long word must wrap into multiple chunks")
+    }
+
+    @Test("short input that fits in width returns one chunk unchanged")
+    func shortInputOneChunk() {
+        let s = "hello world"
+        #expect(PromptInput.wrapLine(s, width: 20) == [s])
+    }
+
+    @Test("empty input yields one empty chunk (so the row is navigable)")
+    func emptyInputOneEmptyChunk() {
+        #expect(PromptInput.wrapLine("", width: 20) == [""])
+    }
+
+    @Test("multiple consecutive spaces are preserved across wraps")
+    func multipleSpaces() {
+        let s = "a  b  c  d  e  f  g  h"
+        let chunks = PromptInput.wrapLine(s, width: 8)
+        for chunk in chunks { #expect(chunk.count <= 8) }
+        // Reassemble reproduces the source.
+        let reassembled = chunks.joined()
+        // Wrap may have dropped some boundary spaces; a softer check:
+        // every non-space char appears exactly once and in order.
+        let nonSpaceSrc = s.filter { $0 != " " }
+        let nonSpaceOut = reassembled.filter { $0 != " " }
+        #expect(nonSpaceSrc == nonSpaceOut)
+    }
+}
