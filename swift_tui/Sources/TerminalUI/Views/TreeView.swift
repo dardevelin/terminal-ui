@@ -78,18 +78,35 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     }
 
     public var body: some TerminalView {
-        GeometryReader { size in
-            self.renderTree(visibleCount: self.visibleCount ?? max(1, size.height))
-        }
-    }
-
-    private func renderTree(visibleCount: Int) -> some TerminalView {
-        // Capture bindings for use in closures
+        // Capture bindings here — `body` is evaluated with this view's
+        // node set as `GraphContext.currentNode`, so `$expandedIDs` etc.
+        // resolve to slots on the TreeView's own node. If we projected
+        // them inside the `GeometryReader { … }` closure (which runs at
+        // GR-rebuild time with a different `currentNode`), the slots
+        // would be created on whatever node happened to be current
+        // during the rebuild and state would not persist across frames.
         let expandedBinding = $expandedIDs
         let selectedIdxBinding = $selectedIndex
         let scrollBinding = $scrollOffset
         let initBinding = $initialized
+        return GeometryReader { size in
+            self.renderTree(
+                visibleCount: self.visibleCount ?? max(1, size.height),
+                expandedBinding: expandedBinding,
+                selectedIdxBinding: selectedIdxBinding,
+                scrollBinding: scrollBinding,
+                initBinding: initBinding
+            )
+        }
+    }
 
+    private func renderTree(
+        visibleCount: Int,
+        expandedBinding: Binding<Set<AnyHashableID>>,
+        selectedIdxBinding: Binding<Int>,
+        scrollBinding: Binding<Int>,
+        initBinding: Binding<Bool>
+    ) -> some TerminalView {
         // Auto-expand root items on first render
         let _ = {
             if !initBinding.get() {

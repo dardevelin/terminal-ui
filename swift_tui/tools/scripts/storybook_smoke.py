@@ -776,55 +776,59 @@ def storybook_treeview_click_expand(app: Client) -> None:
     expanded state. The TreeView preview shows two roots ("Sources"
     and "Tests"); both auto-expand. Clicking on the "Sources" row
     should collapse it (children disappear), clicking again expands."""
-    app.goto_storybook_page(20)  # TreeView
+    app.goto_storybook_page(17)  # TreeView
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     preview_before = app.preview_text()
     assert_true(
-        "TerminalUI" in preview_before,
+        "└── ▸ TerminalUI" in preview_before,
         "TreeView should show 'TerminalUI' under expanded 'Sources' root by default",
     )
-    # Find the focused TreeView and the rect of its first row, click
-    # mid-row to fire the click handler.
     f = app.focus()
     if f.rect:
+        # Click row 0 (Sources) — first row of the focused TreeView rect
         x = f.rect[0] + 2
         y = f.rect[1]
         app.mouse_click(x, y)
         app.wait_for_frame(1, timeout=0.5)
     preview_after = app.preview_text()
     assert_true(
-        "TerminalUI" not in preview_after,
+        "└── ▸ TerminalUI" not in preview_after,
         "Click on expanded 'Sources' row should collapse it (TerminalUI child gone)",
     )
 
 
 def storybook_treeview_keyboard_expand_collapse(app: Client) -> None:
     """Bug #2 (sister): keyboard expand/collapse must work in TreeView.
-    Right or Space on an expanded folder collapses; pressing again
-    expands. Currently the existing test only checked Left-collapses
-    and used a too-loose substring assertion."""
-    app.goto_storybook_page(20)  # TreeView
+    Auto-expand on first render shows Sources > TerminalUI. Left on
+    Sources collapses. Right re-expands. Asserts the visible-child
+    name "TerminalUI" goes away when only Tests is showing
+    (Tests has TerminalUITests, so we look for the specific child)."""
+    app.goto_storybook_page(17)  # TreeView
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true(
-        "TerminalUI" in preview,
-        "TreeView should boot with 'Sources > TerminalUI' visible",
+        "└── ▸ TerminalUI" in preview,
+        "TreeView should boot with Sources expanded showing 'TerminalUI' child",
     )
-    app.send_key("left")  # collapse selected (Sources)
+    app.send_key("left")
     app.wait_for_frame(1, timeout=0.5)
     collapsed = app.preview_text()
     assert_true(
-        "TerminalUI" not in collapsed,
-        "Left arrow on expanded TreeView root should hide its children",
+        "└── ▸ TerminalUI" not in collapsed,
+        "Left arrow on expanded Sources root should hide its TerminalUI child",
     )
-    app.send_key("right")  # re-expand
+    assert_true(
+        "▸ Sources" in collapsed,
+        "Sources row should now show the collapsed glyph (▸)",
+    )
+    app.send_key("right")
     app.wait_for_frame(1, timeout=0.5)
     expanded = app.preview_text()
     assert_true(
-        "TerminalUI" in expanded,
-        "Right arrow on collapsed TreeView root should reveal its children again",
+        "└── ▸ TerminalUI" in expanded,
+        "Right arrow on collapsed Sources root should reveal its TerminalUI child",
     )
 
 
