@@ -227,6 +227,12 @@ extension ConditionalView: _GraphConditional {
             // the parent's `cachedHeight` stays at the pre-flip value —
             // the harness exposed this as a missing "missing @" row.
             graph.changed = true
+            // Fire onDisappear on the outgoing branch's subtree before
+            // dropping it (HYP-94). Without this, an .onDisappear inside
+            // a conditional that flips wouldn't fire.
+            for old in node.children {
+                graph.fireDisappear(on: old)
+            }
             node.children.removeAll()
             switch self {
             case .first(let view):

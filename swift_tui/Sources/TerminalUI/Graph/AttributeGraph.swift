@@ -248,6 +248,17 @@ public final class AttributeGraph {
             if case .primitive(.text(let old)) = node.kind {
                 if old != text.spans {
                     node.kind = .primitive(.text(text.spans))
+                    // Invalidate cached measurements on this node and up the
+                    // ancestor chain — text content drives height via
+                    // wrapping, and parent stack heights depend on children.
+                    // Without the walk, an enclosing VStack/HStack keeps its
+                    // pre-change height cached. Surfaced as a PromptInput
+                    // soft-wrap regression once HYP-97 made the node persist
+                    // instead of being rebuilt each frame. We invalidate
+                    // cache fields only — not `isDirty` — to avoid
+                    // ricocheting back into reconciliation paths that read
+                    // dirtiness as a structural-change signal.
+                    invalidateMeasurementCache(from: node)
                     changed = true
                 }
                 node.isDirty = false
@@ -328,6 +339,20 @@ public final class AttributeGraph {
             changed = true
         }
         node.isDirty = false
+    }
+
+    /// Invalidate cached width/height on `node` and walk up the parent chain
+    /// invalidating each ancestor's cache too. Stops at the root. Does not
+    /// touch `isDirty` — pure measurement-cache eviction. Used when an
+    /// in-place value mutation (e.g. Text spans) changes intrinsic size.
+    func invalidateMeasurementCache(from node: AttributeNode) {
+        var current: AttributeNode? = node
+        while let n = current {
+            n.cachedWidth = nil
+            n.cachedHeight = nil
+            n.cachedHeightWidth = nil
+            current = n.parent
+        }
     }
 
     /// Walk a subtree about to be detached and invoke any captured

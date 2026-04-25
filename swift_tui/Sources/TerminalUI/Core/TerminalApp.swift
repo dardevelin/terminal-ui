@@ -160,15 +160,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // debug build becomes MCP-drivable without any per-app setup. Socket
         // path is PID-scoped so multiple apps running concurrently don't
         // collide. The server is non-blocking: no client = no overhead.
-        let socketDir = DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp)
-        try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
-        let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
-        attachRemoteControl(socketPath: socketPath)
-        // Also publish a stable `latest.sock` symlink so CLIs can find the
-        // most-recently-started app without scanning PIDs.
-        let latest = "\(socketDir)/latest.sock"
-        _ = unlink(latest)
-        _ = symlink("\(ProcessInfo.processInfo.processIdentifier).sock", latest)
+        //
+        // HYP-98: gated on `socket.enabled` in `.terminalui/terminalui.toml`.
+        // Default is true (preserves prior behaviour); users who want to
+        // suppress the socket — security review, noisy /tmp, locked-down
+        // environments — set `enabled = false` under `[socket]`.
+        let diagConfig = DiagPaths.loadConfig()
+        if diagConfig.socketEnabled {
+            let socketDir = DiagPaths.socketDir(useTmp: diagConfig.useTmp)
+            try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
+            let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
+            attachRemoteControl(socketPath: socketPath)
+            // Also publish a stable `latest.sock` symlink so CLIs can find
+            // the most-recently-started app without scanning PIDs.
+            let latest = "\(socketDir)/latest.sock"
+            _ = unlink(latest)
+            _ = symlink("\(ProcessInfo.processInfo.processIdentifier).sock", latest)
+        }
         #endif
 
         // Self-pipe for shutdown signaling (HYP-41).

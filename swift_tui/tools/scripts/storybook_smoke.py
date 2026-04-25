@@ -241,7 +241,11 @@ def storybook_toggle_alternates_state(app: Client) -> None:
 def storybook_textinput_validation_colors(app: Client) -> None:
     """TextInput with `validate:` surfaces a red border + 'missing @' row
     when the value fails. Typing '@' moves it to OK and the error row
-    disappears. Regression coverage for the validation API (HYP-82 #3)."""
+    disappears. Regression coverage for the validation API (HYP-82 #3).
+
+    Scoped to the Preview pane via ``preview_text()`` because the Code
+    pane shows the validator source containing the literal "missing @"
+    — using ``app.text()`` would always match the snippet."""
     for _ in range(10):  # page 10 = textInput
         app.send_key("down")
         time.sleep(0.05)
@@ -250,13 +254,13 @@ def storybook_textinput_validation_colors(app: Client) -> None:
     app.send_text("hello")
     app.wait_for_frame(1, timeout=0.5)
     assert_true(
-        "missing @" in app.text(),
+        "missing @" in app.preview_text(),
         "validator error message should render after typing a bad value",
     )
     app.send_text("@")
     app.wait_for_frame(1, timeout=0.5)
     assert_true(
-        "missing @" not in app.text(),
+        "missing @" not in app.preview_text(),
         "error row should disappear once the value is valid",
     )
 
