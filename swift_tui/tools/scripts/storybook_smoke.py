@@ -724,6 +724,179 @@ def storybook_focusable_joins_tab_order(app: Client) -> None:
     )
 
 
+def storybook_layout_stable_under_mouse_hover(app: Client) -> None:
+    """Bug #3: moving the mouse over the screen must NOT change layout.
+    The Code box width must stay constant whether or not the cursor is
+    hovering somewhere. Captures the user-reported regression where
+    moving the mouse on the HStack page shrank the Code panel and
+    forced wrapping in the snippet."""
+    app.goto_storybook_page(1)  # HStack
+    text_before = app.text()
+    width_before = _code_box_width(text_before)
+    app.mouse_move(80, 10)
+    app.wait_for_frame(1, timeout=0.5)
+    text_after = app.text()
+    width_after = _code_box_width(text_after)
+    assert_true(
+        width_before == width_after,
+        f"Code box width changed under mouse-move: {width_before} -> {width_after}",
+    )
+
+
+def storybook_layout_stable_under_arrow_repeat(app: Client) -> None:
+    """Bug #3 (sister): repeatedly pressing arrow keys on a focused
+    sidebar must not re-flow the Preview/Code geometry. Width stays
+    constant across N keystrokes."""
+    app.goto_storybook_page(0)  # VStack
+    width0 = _code_box_width(app.text())
+    for _ in range(5):
+        app.send_key("up")
+    app.wait_for_frame(1, timeout=0.5)
+    widthN = _code_box_width(app.text())
+    assert_true(
+        width0 == widthN,
+        f"Code box width drifted across arrow-up presses: {width0} -> {widthN}",
+    )
+
+
+def _code_box_width(text: str) -> int:
+    """Return the rendered width (column count) of the first bordered
+    box found in `text`. Identifies the box by the top-left corner
+    glyph `╭` and counts columns to the matching `╮`."""
+    for line in text.splitlines():
+        if "╭" in line and "╮" in line:
+            start = line.index("╭")
+            end = line.index("╮", start + 1)
+            return end - start + 1
+    return 0
+
+
+def storybook_treeview_click_expand(app: Client) -> None:
+    """Bug #2: clicking on a TreeView folder row must toggle its
+    expanded state. The TreeView preview shows two roots ("Sources"
+    and "Tests"); both auto-expand. Clicking on the "Sources" row
+    should collapse it (children disappear), clicking again expands."""
+    app.goto_storybook_page(20)  # TreeView
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    preview_before = app.preview_text()
+    assert_true(
+        "TerminalUI" in preview_before,
+        "TreeView should show 'TerminalUI' under expanded 'Sources' root by default",
+    )
+    # Find the focused TreeView and the rect of its first row, click
+    # mid-row to fire the click handler.
+    f = app.focus()
+    if f.rect:
+        x = f.rect[0] + 2
+        y = f.rect[1]
+        app.mouse_click(x, y)
+        app.wait_for_frame(1, timeout=0.5)
+    preview_after = app.preview_text()
+    assert_true(
+        "TerminalUI" not in preview_after,
+        "Click on expanded 'Sources' row should collapse it (TerminalUI child gone)",
+    )
+
+
+def storybook_treeview_keyboard_expand_collapse(app: Client) -> None:
+    """Bug #2 (sister): keyboard expand/collapse must work in TreeView.
+    Right or Space on an expanded folder collapses; pressing again
+    expands. Currently the existing test only checked Left-collapses
+    and used a too-loose substring assertion."""
+    app.goto_storybook_page(20)  # TreeView
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true(
+        "TerminalUI" in preview,
+        "TreeView should boot with 'Sources > TerminalUI' visible",
+    )
+    app.send_key("left")  # collapse selected (Sources)
+    app.wait_for_frame(1, timeout=0.5)
+    collapsed = app.preview_text()
+    assert_true(
+        "TerminalUI" not in collapsed,
+        "Left arrow on expanded TreeView root should hide its children",
+    )
+    app.send_key("right")  # re-expand
+    app.wait_for_frame(1, timeout=0.5)
+    expanded = app.preview_text()
+    assert_true(
+        "TerminalUI" in expanded,
+        "Right arrow on collapsed TreeView root should reveal its children again",
+    )
+
+
+def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
+    """Bug #1: clicking on a sidebar page row must navigate to that
+    page. The page title (row 1, right of sidebar) is the canonical
+    indicator — it must change from "VStack" to "ZStack" after the
+    click. Sidebar list always contains the row label so we cannot
+    use full-screen substring matches."""
+    app.goto_storybook_page(0)  # VStack
+    title_before = app.text().splitlines()[1]
+    assert_true(
+        "VStack" in title_before,
+        f"should boot on VStack page; title was: {title_before!r}",
+    )
+    # ZStack row is at y=7 in the sidebar (rows 5/6/7 = VStack/HStack/ZStack)
+    app.mouse_click(2, 7)
+    app.wait_for_frame(1, timeout=0.5)
+    title_after = app.text().splitlines()[1]
+    assert_true(
+        "ZStack" in title_after and "VStack" not in title_after,
+        f"Click on ZStack sidebar row should navigate to ZStack page; title was: {title_after!r}",
+    )
+
+
+def storybook_mouse_wheel_routes_to_hover_target(app: Client) -> None:
+    """Bug #1 (sister): wheel-scroll must route to the hover target,
+    not the keyboard-focused element. With keyboard focus on the
+    sidebar, scrolling over the Preview pane should affect Preview
+    (or do nothing visible if Preview content is short), NOT advance
+    the sidebar selection. Currently scrollUp/scrollDown route to
+    keyboard focus → sidebar advances when you wheel anywhere."""
+    app.goto_storybook_page(0)  # VStack
+    selected_before = "VStack"
+    # Sidebar focus, wheel-down over preview area (right half of screen)
+    app.mouse_move(100, 20)
+    app.wait_for_frame(1, timeout=0.3)
+    app.mouse_wheel("down", 100, 20)
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.text()[:200]
+    # If wheel routed to focus (current bad behaviour), sidebar selection
+    # advanced from VStack to HStack and the preview now reads "HStack".
+    # Correct behaviour: wheel didn't change page; preview still shows VStack.
+    assert_true(
+        "VStack" in after,
+        f"Wheel-scroll over preview should not advance sidebar selection; got: {after!r}",
+    )
+
+
+def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
+    """Bug #1 (sister): once the user clicks somewhere, hover-only
+    motion should not steal focus or routing — until the next click
+    targets a different region. This protects against the user moving
+    the cursor out of the way after committing focus to a region.
+
+    Setup: click into the preview, then mouse_move to sidebar area,
+    assert the focus didn't drift away from the preview's vicinity."""
+    app.goto_storybook_page(15)  # TextInput — has focusable preview
+    # Tab into preview to give us a stable preview-focus baseline first
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    f_after_tab = app.focus()
+    # Now move the mouse over the sidebar — focus must NOT migrate.
+    app.mouse_move(5, 10)
+    app.wait_for_frame(1, timeout=0.3)
+    f_after_move = app.focus()
+    assert_true(
+        f_after_tab.node_id == f_after_move.node_id,
+        "Mouse-move alone (no click) should not change keyboard focus",
+    )
+
+
 def demo_app_renders(app: Client) -> None:
     """Plain Demo smoke — renders its title bar and tab row without
     crashing. Looks for the app's "TerminalUI" title and one of the tab
@@ -780,6 +953,14 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.frame_sizes_bordered_box", "Storybook", storybook_frame_sizes_bordered_box),
     SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
+    # HYP-93 follow-on: mouse + layout-stability regressions reported 2026-04-25
+    SmokeCase("storybook.layout_stable_under_mouse_hover", "Storybook", storybook_layout_stable_under_mouse_hover),
+    SmokeCase("storybook.layout_stable_under_arrow_repeat", "Storybook", storybook_layout_stable_under_arrow_repeat),
+    SmokeCase("storybook.treeview_click_expand", "Storybook", storybook_treeview_click_expand),
+    SmokeCase("storybook.treeview_keyboard_expand_collapse", "Storybook", storybook_treeview_keyboard_expand_collapse),
+    SmokeCase("storybook.mouse_click_on_sidebar_navigates", "Storybook", storybook_mouse_click_on_sidebar_navigates),
+    SmokeCase("storybook.mouse_wheel_routes_to_hover_target", "Storybook", storybook_mouse_wheel_routes_to_hover_target),
+    SmokeCase("storybook.mouse_click_locks_until_next_click", "Storybook", storybook_mouse_click_locks_until_next_click),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]
 
