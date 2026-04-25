@@ -111,6 +111,8 @@ extension ModifiedView: _GraphModified {
         case let scope as FocusScopeModifier: .focusScope(scope.id)
         case is OnKeyPressModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
+        case is any _OnChangeModifierProtocol: .onChange
+        case is OnDisappearModifier: .onDisappear
         case is OnClickModifier: .onClick
         case let env as any _AnyEnvironmentModifier: .environment(env.apply(to:))
         default:
@@ -133,8 +135,14 @@ extension ModifiedView: _GraphModified {
         graph.updateNode(child, from: content)
         // Re-register on every update since handlers are cleared each frame
         FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: child.id)
-        // Fire lifecycle events
-        FocusGraphIntegration.fireLifecycleIfNeeded(modifier: modifier, node: child)
+    }
+
+    func fireLifecycle(on node: AttributeNode) {
+        // Lifecycle dispatch operates on the modifier node itself — this is
+        // where `didAppear`, `lastObservedValue`, and `onDisappearAction`
+        // live. Called on initial construct AND every update so onChange
+        // can compare current vs stored value.
+        FocusGraphIntegration.fireLifecycleIfNeeded(modifier: modifier, node: node)
     }
 
     func constructExtraChild(id: NodeID, graph: AttributeGraph) -> AttributeNode? {

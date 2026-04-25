@@ -122,6 +122,8 @@ public struct HitResult {
             case .focusScope(let id): values.append(("modifier", "focusScope(\(id))"))
             case .onKeyPress: values.append(("modifier", "onKeyPress"))
             case .onAppear: values.append(("modifier", "onAppear"))
+            case .onChange: values.append(("modifier", "onChange"))
+            case .onDisappear: values.append(("modifier", "onDisappear"))
             case .onClick: values.append(("modifier", "onClick"))
             case .environment: values.append(("modifier", "environment"))
             }
@@ -159,6 +161,8 @@ public struct HitResult {
                 case .focusScope(let id): return "focusScope(\(id))"
                 case .onKeyPress: return "onKeyPress"
                 case .onAppear: return "onAppear"
+                case .onChange: return "onChange"
+                case .onDisappear: return "onDisappear"
                 case .onClick: return "onClick"
                 case .environment: return "environment"
                 }

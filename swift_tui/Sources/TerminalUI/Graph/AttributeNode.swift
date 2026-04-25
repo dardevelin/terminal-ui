@@ -41,6 +41,18 @@ public class AttributeNode {
     /// Whether onAppear has already fired for this node.
     public var didAppear: Bool = false
 
+    /// Last observed value seen by an `.onChange(of:)` modifier on this node.
+    /// Stored as `Any` because the `ModifierEffect` enum is generic-free; the
+    /// modifier carries its own `Equatable` comparator that decides whether a
+    /// stored-vs-current pair represents a change. Nil before the first probe.
+    public var lastObservedValue: Any?
+
+    /// Closure to invoke when this node is detached from the tree. Set by
+    /// `_RemovalLifecycleModifier.captureDisappear` during construct/update;
+    /// invoked from `AttributeGraph` whenever a node leaves the tree (layout
+    /// rebuild, conditional flip, etc.). Nil for nodes without onDisappear.
+    public var onDisappearAction: (() -> Void)?
+
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
@@ -148,6 +160,8 @@ extension NodeKind {
             case .focusScope: "focusScope"
             case .onKeyPress: "onKeyPress"
             case .onAppear: "onAppear"
+            case .onChange: "onChange"
+            case .onDisappear: "onDisappear"
             case .onClick: "onClick"
             case .environment: "environment"
             }
@@ -227,6 +241,8 @@ public enum ModifierEffect {
     case focusScope(String) // HYP-40: groups focusable descendants; arrows stay within
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
     case onAppear    // fires action on first graph construction (tracked on node)
+    case onChange    // fires action when bound value changes (last value stored on node)
+    case onDisappear // fires action when node is removed from the tree
     case onClick     // attaches click handler (handler stored on FocusEngine)
     /// Environment-value setter. The closure applies the modifier's keyPath
     /// and value to a mutable `EnvironmentValues` during render so descendants

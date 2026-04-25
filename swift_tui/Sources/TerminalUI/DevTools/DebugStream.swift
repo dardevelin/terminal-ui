@@ -179,6 +179,8 @@ public final class DebugStream: @unchecked Sendable {
             case .focusScope(let id): kind = "focusScope"; value = id
             case .onKeyPress: kind = "onKeyPress"; value = ""
             case .onAppear: kind = "onAppear"; value = ""
+            case .onChange: kind = "onChange"; value = ""
+            case .onDisappear: kind = "onDisappear"; value = ""
             case .onClick: kind = "onClick"; value = ""
             case .environment: kind = "environment"; value = ""
             }

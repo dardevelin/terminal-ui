@@ -650,6 +650,18 @@ public enum GraphRenderer {
         case .onAppear:
             render(child, into: &buffer, context: ctx)
 
+        case .onChange:
+            // Comparison + dispatch happens in the graph layer during update
+            // (see `FocusGraphIntegration.fireLifecycleIfNeeded`). The
+            // renderer is a pass-through.
+            render(child, into: &buffer, context: ctx)
+
+        case .onDisappear:
+            // Removal-time hook — the closure is captured on the node and
+            // invoked from `AttributeGraph` when the node leaves the tree.
+            // The renderer is a pass-through.
+            render(child, into: &buffer, context: ctx)
+
         case .onClick:
             render(child, into: &buffer, context: ctx)
 

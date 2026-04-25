@@ -168,9 +168,15 @@ public final class AttributeGraph {
                     }
                 } else if hadExtra {
                     // Remove extra child (e.g., modal dismissed)
+                    fireDisappear(on: node.children[1])
                     node.children.removeLast()
                     changed = true
                 }
+
+                // Lifecycle dispatch on every update — onChange compares
+                // current vs stored value here; onAppear is a no-op past
+                // the first frame; onDisappear refreshes its captured action.
+                modified.fireLifecycle(on: node)
 
                 node.isDirty = false
                 return
@@ -286,7 +292,10 @@ public final class AttributeGraph {
                 if canUpdateInPlace(existing, from: newChild) {
                     updateAnyView(existing, from: newChild)
                 } else {
-                    // Type mismatch — rebuild this child
+                    // Type mismatch — rebuild this child. The outgoing
+                    // subtree leaves the tree, so fire onDisappear before
+                    // we forget about it.
+                    fireDisappear(on: existing)
                     let childID = node.id.appending(.index(i))
                     let childNode = constructAnyView(newChild, id: childID)
                     childNode.parent = node
@@ -295,7 +304,10 @@ public final class AttributeGraph {
                 }
             }
         } else {
-            // Child count changed — rebuild all children
+            // Child count changed — rebuild all children. Fire disappear
+            // on every detached subtree first so onDisappear closures
+            // observe the removal.
+            for old in node.children { fireDisappear(on: old) }
             node.children.removeAll(keepingCapacity: true)
             for (i, child) in newChildren.enumerated() {
                 let childID = node.id.appending(.index(i))
@@ -306,6 +318,21 @@ public final class AttributeGraph {
             changed = true
         }
         node.isDirty = false
+    }
+
+    /// Walk a subtree about to be detached and invoke any captured
+    /// `onDisappearAction` closures bottom-up. Mirrors SwiftUI's contract:
+    /// inner views see disappear before their containers do.
+    func fireDisappear(on node: AttributeNode) {
+        for child in node.children {
+            fireDisappear(on: child)
+        }
+        if let action = node.onDisappearAction {
+            action()
+            // Null out so a subsequent re-attach (e.g. modal toggled back
+            // on) doesn't double-fire from the stale capture.
+            node.onDisappearAction = nil
+        }
     }
 
     /// Check if an existing node is structurally compatible with a new view.
@@ -527,6 +554,13 @@ public final class AttributeGraph {
             stampScopeID(scopeID, on: node.children)
         }
 
+        // Fire lifecycle on the modifier node itself (onAppear, onChange's
+        // first probe, onDisappear's closure capture). Without this, an
+        // onAppear attached at the root never fires until the *second*
+        // frame because the construction path doesn't loop back through
+        // updateChild.
+        modified.fireLifecycle(on: node)
+
         return node
     }
 
@@ -613,6 +647,11 @@ protocol _GraphModified {
     /// For overlay/background/modal: construct the extra child node
     func constructExtraChild(id: NodeID, graph: AttributeGraph) -> AttributeNode?
     func updateExtraChild(_ child: AttributeNode, graph: AttributeGraph)
+    /// Lifecycle hook fired against the modifier *node itself* (not its
+    /// child). Called during initial construction and on each update so
+    /// onAppear/onChange/onDisappear can read/write per-node lifecycle
+    /// state (didAppear, lastObservedValue, onDisappearAction).
+    func fireLifecycle(on node: AttributeNode)
 }
 
 protocol _GraphConditional {

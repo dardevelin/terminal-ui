@@ -376,6 +376,8 @@ public final class DebugPanel {
             case .focusScope(let id): kind = "scope"; detail = id
             case .onKeyPress: kind = "key"; detail = ""
             case .onAppear: kind = "app"; detail = ""
+            case .onChange: kind = "chg"; detail = ""
+            case .onDisappear: kind = "dis"; detail = ""
             case .onClick: kind = "clk"; detail = ""
             case .environment: kind = "env"; detail = ""
             }
