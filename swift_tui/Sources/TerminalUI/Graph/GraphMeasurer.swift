@@ -192,7 +192,7 @@ public enum GraphMeasurer {
 
         case .viewBody:
             // GeometryReader nodes carry a `geometryRebuilder` closure that
-            // constructs the content subtree from a live size. The seeded
+            // synchronises the content subtree with a live size. The seeded
             // child was built once at graph-construction with `terminalSize`,
             // so its measurement is only correct when the allocated rect
             // happens to match the seed. Rebuild with the current proposed
@@ -200,11 +200,14 @@ public enum GraphMeasurer {
             // pass it through as-is) before measuring. Fixes PromptInput
             // soft-wrap: on narrow previews the seed reports 1 row but the
             // live rebuild with the true width reports the wrapped count.
+            //
+            // Post-HYP-97 the rebuilder updates the existing child node in
+            // place rather than returning a fresh standalone subtree, so we
+            // measure `node.children.first` after the rebuild has run.
             if let rebuild = node.geometryRebuilder {
                 let width = proposedWidth > 0 ? proposedWidth : (GraphContext.currentEnvironment?.terminalSize.cols ?? 80)
                 let height = GraphContext.currentProposedSize?.height ?? (GraphContext.currentEnvironment?.terminalSize.rows ?? 24)
-                let rebuilt = rebuild(Size(width: width, height: height))
-                return measureHeight(rebuilt, proposedWidth: proposedWidth)
+                rebuild(Size(width: width, height: height), node)
             }
             return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
         }

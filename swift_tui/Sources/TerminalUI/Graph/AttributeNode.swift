@@ -58,12 +58,17 @@ public class AttributeNode {
     public var scrollOffset: Int = 0
 
     /// GeometryReader rebuild hook. When non-nil the renderer invokes this
-    /// with the node's actual rect size each frame. The closure captures the
-    /// owning `AttributeGraph` and constructs a fresh child subtree rooted at
-    /// `node.id.appending(.index(0))`, returning the new child. Lets the
-    /// descendants of `GeometryReader` observe the real allocated rect rather
-    /// than the root terminal size that was current at graph-build time.
-    public var geometryRebuilder: ((Size) -> AttributeNode)?
+    /// with the node's actual rect size each frame. The closure rebuilds the
+    /// `geom.content(size)` view value and *updates* the existing child
+    /// subtree in place — preserving NodeIDs, `@TerminalState` storage,
+    /// focus registrations, and lifecycle bookkeeping (HYP-97). The
+    /// previous implementation replaced `node.children` wholesale on every
+    /// render, which destroyed identity.
+    ///
+    /// The closure receives the owning node so it can locate the existing
+    /// child (`node.children.first`) before deciding whether to update or
+    /// rebuild (e.g. on the very first render before any seed exists).
+    public var geometryRebuilder: ((Size, AttributeNode) -> Void)?
 
     public init(id: NodeID, kind: NodeKind) {
         self.id = id

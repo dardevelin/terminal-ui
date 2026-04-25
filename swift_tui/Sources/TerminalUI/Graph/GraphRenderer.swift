@@ -49,17 +49,16 @@ public enum GraphRenderer {
                 #if DEBUG
                 DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
                 #endif
-                // GeometryReader rebuild path: if the node carries a
-                // `geometryRebuilder` closure, invoke it with the actual
-                // rect size so the subtree is constructed AFTER layout has
-                // been assigned. The rebuilder captures its owning graph
-                // and returns a freshly-constructed child node; we re-parent
-                // it and replace any previous build.
+                // GeometryReader rebuild path: invoke the rebuilder with the
+                // actual allocated rect size. Post-HYP-97 the rebuilder
+                // *updates* the existing child subtree in place, preserving
+                // NodeIDs, @TerminalState storage, focus registrations, and
+                // lifecycle bookkeeping across frames. Previously this
+                // replaced `node.children` on every render, which fired
+                // onAppear repeatedly and reset state every frame.
                 if let rebuild = node.geometryRebuilder {
                     let size = Size(width: context.rect.width, height: context.rect.height)
-                    let newChild = rebuild(size)
-                    newChild.parent = node
-                    node.children = [newChild]
+                    rebuild(size, node)
                 }
                 for child in node.children {
                     render(child, into: &buffer, context: context)

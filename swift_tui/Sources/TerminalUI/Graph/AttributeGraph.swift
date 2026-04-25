@@ -212,17 +212,22 @@ public final class AttributeGraph {
         }
 
         // GeometryReader — refresh the closure so captures (like an updated
-        // `text` binding) stay in sync. Children are rebuilt by the renderer
-        // each frame; leave them alone here.
+        // `text` binding) stay in sync. The renderer invokes the rebuilder
+        // each frame; post-HYP-97 it updates the existing child in place
+        // rather than replacing it, so identity survives across renders.
         if let geom = view as? any _GraphGeometryReader {
             nonisolated(unsafe) weak let weakSelf = self
             let childID = node.id.appending(.index(0))
-            node.geometryRebuilder = { size in
+            node.geometryRebuilder = { size, parent in
                 let view = geom.rebuild(with: size)
-                guard let graph = weakSelf else {
-                    return AttributeNode(id: childID, kind: .primitive(.empty))
+                guard let graph = weakSelf else { return }
+                if let existing = parent.children.first {
+                    graph.updateAnyView(existing, from: view)
+                } else {
+                    let fresh = graph.constructAnyTerminalView(view, id: childID)
+                    fresh.parent = parent
+                    parent.children = [fresh]
                 }
-                return graph.constructAnyTerminalView(view, id: childID)
             }
             node.isDirty = false
             return
@@ -432,12 +437,21 @@ public final class AttributeGraph {
         // `graph.update`, not during render).
         nonisolated(unsafe) weak let weakSelf = self
         let childID = id.appending(.index(0))
-        node.geometryRebuilder = { size in
+        node.geometryRebuilder = { size, parent in
             let view = geom.rebuild(with: size)
-            guard let graph = weakSelf else {
-                return AttributeNode(id: childID, kind: .primitive(.empty))
+            guard let graph = weakSelf else { return }
+            // HYP-97: update existing child in place. Identity (NodeID,
+            // state slots, focus registrations, lifecycle bookkeeping)
+            // survives across renders. Falls back to construction only
+            // when the child is missing (defensive — the seed path
+            // populates children.first during construction).
+            if let existing = parent.children.first {
+                graph.updateAnyView(existing, from: view)
+            } else {
+                let fresh = graph.constructAnyTerminalView(view, id: childID)
+                fresh.parent = parent
+                parent.children = [fresh]
             }
-            return graph.constructAnyTerminalView(view, id: childID)
         }
 
         // Seed with an initial subtree using whatever proposed size is
