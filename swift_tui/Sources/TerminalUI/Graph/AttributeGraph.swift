@@ -24,19 +24,82 @@ public final class AttributeGraph {
 
     public init() {}
 
-    #if DEBUG
-    // HYP-124 — Frame-stat counters wired into the invalidation hot path.
-    // Tests for HYP-125 (reflective compare) and HYP-126 (dirty drain)
-    // assert against these. Release builds elide the entire #if DEBUG
-    // block so consumers pay nothing.
+    // MARK: - Dirty queue (in-place drain)
     //
-    // bodyEvaluationCount — every composite body that runs inside a
-    //   withObservationTracking scope (both evaluateBody and the first-
-    //   build path in constructComposite).
-    // rootWalkCount       — every call to update(from:); HYP-126's drain
-    //   path will not bump this.
-    // dirtyDrainCount     — placeholder zero until HYP-126 lands the
-    //   in-place drain entry point.
+    // SwiftUI parity per WWDC23 *Discover Observation in SwiftUI*:
+    //   "If a property that is used changes, the view will update."
+    //
+    // The view updates — not its parents, not its siblings. The
+    // `update(from:)` path always walks from root, paying parent-
+    // emission cost on the unchanged path. The dirty queue is the
+    // bypass: every per-node `withObservationTracking` `onChange`
+    // enqueues the dirty node; `drain()` re-evaluates only those nodes
+    // in place.
+    //
+    // Keyed by `ObjectIdentifier(node)` so two enqueues of the same
+    // node within a frame collapse to one body evaluation.
+    //
+    // Closures that drive the body re-eval are stashed on the node
+    // itself (`bodyReplay`) so `drain` can invoke them without naming
+    // the generic view type.
+    private var dirtyQueue: [ObjectIdentifier: AttributeNode] = [:]
+    /// Re-entrancy guard: a markDirty fired *during* a drain (because a
+    /// body re-evaluation read+wrote an observable) must enqueue for
+    /// the next drain, not corrupt the current iteration.
+    private var draining: Bool = false
+
+    /// Called from the per-node `onChange` callback to register a
+    /// dirty node for the next `drain()` cycle.
+    func enqueueDirty(_ node: AttributeNode) {
+        dirtyQueue[ObjectIdentifier(node)] = node
+        hasDirtyNodes = true
+    }
+
+    /// Re-evaluate every node that became dirty since the last drain.
+    /// Returns `true` if any work was done. Walks NO part of the tree
+    /// outside the dirty nodes themselves — that's the parity claim.
+    @discardableResult
+    public func drain() -> Bool {
+        guard !dirtyQueue.isEmpty else { return false }
+        guard !draining else {
+            // Re-entry from within an ongoing drain — let the outer
+            // call pick up the new work on its next loop.
+            return true
+        }
+        #if DEBUG
+        dirtyDrainCount += 1
+        #endif
+        draining = true
+        defer { draining = false }
+
+        // Snapshot + clear so a body that re-arms its own observation
+        // can enqueue itself for the *next* drain instead of looping.
+        let pending = dirtyQueue
+        dirtyQueue.removeAll(keepingCapacity: true)
+
+        for (_, node) in pending {
+            // Node may have been detached between markDirty and drain
+            // (e.g. parent flipped an if/else branch). Skip silently.
+            guard node.parent != nil || node === root else { continue }
+            node.bodyReplay?(self, node)
+        }
+
+        hasDirtyNodes = !dirtyQueue.isEmpty
+        return true
+    }
+
+    #if DEBUG
+    // Frame-stat counters wired into the invalidation hot path.
+    // Tests assert against these to pin parity claims; release builds
+    // elide the entire #if DEBUG block so consumers pay nothing.
+    //
+    // bodyEvaluationCount — every composite body run inside a
+    //   `withObservationTracking` scope (both `evaluateBody` and the
+    //   first-build path in `constructComposite`).
+    // rootWalkCount       — every call to `update(from:)`; the
+    //   `drain()` path bypasses this.
+    // dirtyDrainCount     — every `drain()` cycle that re-evaluated
+    //   one or more dirty nodes in place.
     public private(set) var bodyEvaluationCount: Int = 0
     public private(set) var rootWalkCount: Int = 0
     public private(set) var dirtyDrainCount: Int = 0
@@ -105,15 +168,28 @@ public final class AttributeGraph {
             view.body
         } onChange: {
             weakGraph?.hasDirtyNodes = true
-            // Per-node dirty flag (HYP-99 Gate 1). Set synchronously so
-            // that subsequent `graph.update(from:)` on the same actor
-            // sees the dirtiness. Observation's onChange fires on the
-            // mutating thread; in a TUI app that's @MainActor for any
-            // state-driven update. The `nonisolated(unsafe)` weak
-            // capture disables isolation checking for the rare cross-
-            // actor caller — markDirty itself only mutates a Bool +
-            // nil-able cache fields, safe under runtime discipline.
+            // Per-node dirty flag for the in-place drain path. Set
+            // synchronously so a subsequent `graph.update(from:)` on
+            // the same actor sees the dirtiness. Observation's
+            // onChange fires on the mutating thread; in a TUI app
+            // that's @MainActor for any state-driven update. The
+            // `nonisolated(unsafe)` weak capture disables isolation
+            // checking for the rare cross-actor caller — `markDirty`
+            // itself only mutates a Bool + nil-able cache fields,
+            // safe under runtime discipline.
             weakNode?.markDirty()
+            // Enqueue for in-place drain so the next frame doesn't
+            // have to walk from the root.
+            if let n = weakNode {
+                weakGraph?.enqueueDirty(n)
+            }
+        }
+        // Capture a replay closure so `drain()` can re-run the body
+        // with the last-known view value without needing the generic
+        // V in scope.
+        node.bodyReplay = { graph, target in
+            guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
+            graph.evaluateBody(node: target, view: stored)
         }
 
         // Restore context
@@ -270,30 +346,32 @@ public final class AttributeGraph {
             return
         }
 
-        // Composite view — re-evaluate body with observation tracking.
+        // Composite view — re-evaluate body with observation tracking,
+        // unless we can prove inputs and observed state are unchanged.
         //
-        // HYP-99 invalidation gates (mirrors SwiftUI per WWDC21 +
-        // SE-0395):
+        // Two invalidation gates (mirrors SwiftUI per WWDC21 + SE-0395):
         //
-        // Gate 2 (Equatable fast-path): if the view is wrapped in
-        // `.equatable()` AND the new value `==` the cached previous
-        // value AND no @Observable property this body read has been
-        // mutated (`!isDirty`), skip body re-evaluation entirely.
+        // Value-equality gate: if the new view value compares equal to
+        // the cached one AND no @Observable property this body read
+        // has been mutated (`!isDirty`), skip body re-evaluation
+        // entirely. Three paths into the compare, in order: the
+        // user-supplied `==` from `.equatable()`, the user's own
+        // `Equatable` conformance, and Mirror-based field-wise compare.
         //
-        // Gate 1 (per-node Observation, automatic via @Observable):
-        // overrides Gate 2. If `node.isDirty`, the body re-runs even
-        // for an Equatable-equal value — because some property the
-        // body depends on has changed and the rendered output may
-        // differ.
+        // Observation gate: per-node `withObservationTracking`
+        // overrides the value-equality gate. If `node.isDirty`, the
+        // body re-runs even for equal inputs — some property the body
+        // depends on has changed and the rendered output may differ.
         //
-        // HYP-125 Layer 1 — reflective compare extends the skip-
-        // condition to ALL composite views, not just `.equatable()`-
-        // wrapped ones. SwiftUI does this automatically per WWDC21:
+        // Reflective-compare path — extends the skip-condition to ALL
+        // composite views, not just `.equatable()`-wrapped ones.
+        // SwiftUI does this automatically per WWDC21 *Demystify SwiftUI*:
         //   "SwiftUI will keep around a copy of the value to perform a
         //    comparison and know if the view has changed."
         //
         // Order:
-        //   1. `_EquatableTerminalView` wrapper → existing `==` path.
+        //   1. `_EquatableTerminalView` wrapper → existing `==` path
+        //      (fast, exact).
         //   2. Else → Mirror-based field-wise compare via reflectiveEqual.
         //   3. Either way: !isDirty AND !subtreeIsDirty AND !children.isEmpty
         //      → skip body.
@@ -448,10 +526,10 @@ public final class AttributeGraph {
     }
 
     /// True iff any **composite** descendant of `node` has `isDirty
-    /// == true`. Used by the HYP-99 Gate 2 short-circuit to ensure we
-    /// don't skip a body re-evaluation when an inner composite (wrapped
-    /// in our own EquatableTerminalView, for example) has had observed
-    /// state mutate.
+    /// == true`. Used by the skip-condition in `updateNode` to ensure
+    /// we don't skip a body re-evaluation when an inner composite
+    /// (wrapped in EquatableTerminalView, for example) has had
+    /// observed state mutate.
     ///
     /// Only composite (`.viewBody`) nodes carry a meaningful "observed
     /// state changed" signal. Primitives and modifiers default to
@@ -467,7 +545,8 @@ public final class AttributeGraph {
         return false
     }
 
-    /// Mirror-based field-wise compare for HYP-125 Layer 1.
+    /// Mirror-based field-wise compare — the automatic path into the
+    /// composite-view skip-condition.
     ///
     /// SwiftUI parity contract (WWDC21 *Demystify SwiftUI*):
     ///   "SwiftUI will keep around a copy of the value to perform a
@@ -867,10 +946,19 @@ public final class AttributeGraph {
             view.body
         } onChange: {
             weakGraph2?.hasDirtyNodes = true
-            // Per-node dirty flag (HYP-99 Gate 1) — synchronous so the
-            // next graph.update sees it. See evaluateBody for the
+            // Per-node dirty flag — synchronous so the next
+            // graph.update sees it. See `evaluateBody` for the
             // longer note on isolation.
             weakNode2?.markDirty()
+            // Same enqueue dance as evaluateBody.
+            if let n = weakNode2 {
+                weakGraph2?.enqueueDirty(n)
+            }
+        }
+        // Replay closure for drain(); see evaluateBody site.
+        node.bodyReplay = { graph, target in
+            guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
+            graph.evaluateBody(node: target, view: stored)
         }
 
         GraphContext.currentNode = prevNode
@@ -881,14 +969,14 @@ public final class AttributeGraph {
         childNode.parent = node
         node.children.append(childNode)
         node.isDirty = false
-        // HYP-99 Gate 2: prime the Equatable cache on first build so
-        // the second update can short-circuit when the wrapped value
+        // Prime the user-Equatable wrapper cache on first build so the
+        // second update can short-circuit when the wrapped value
         // hasn't changed.
         if let eq = view as? any _EquatableTerminalView {
             node.lastEquatableInput = eq
         }
-        // HYP-125 Layer 1: prime the reflective-compare cache for every
-        // composite view, mirroring SwiftUI's automatic value-diff.
+        // Prime the reflective-compare cache for every composite,
+        // mirroring SwiftUI's automatic value-diff.
         node.lastInputView = view
         return node
     }

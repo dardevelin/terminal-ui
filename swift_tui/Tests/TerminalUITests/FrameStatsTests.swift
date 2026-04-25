@@ -1,18 +1,22 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-124 — Layer 3 frame-stat counters for invalidation parity tests.
+// AttributeGraph exposes three DEBUG-only frame-stat counters that
+// pin the cost of one render cycle:
 //
-// Layers 1 (HYP-125 reflective compare) and 2 (HYP-126 dirty drain)
-// need precise instrumentation to make TDD assertions meaningful.
-// This file ships first; counters are DEBUG-only so release builds
-// elide them entirely.
+//   bodyEvaluationCount — how many composite-view bodies actually ran.
+//                         Increments inside every `withObservationTracking`
+//                         scope; a primitive (Text, Spacer, etc.) leaves
+//                         it untouched.
+//   rootWalkCount       — how many times update(from:) walked the tree
+//                         from the root. The drain path bypasses this.
+//   dirtyDrainCount     — how many times drain() re-evaluated dirty
+//                         nodes in place without a root walk.
 //
-// Counters live on `AttributeGraph`:
-//   - bodyEvaluationCount: total composite-body evaluations since reset.
-//   - rootWalkCount:       frames where graph.update walked from root.
-//   - dirtyDrainCount:     frames where dirtyQueue was drained in place
-//                          (placeholder zero until HYP-126 lands).
+// Tests for the reflective-compare and dirty-drain features assert
+// against these to prove their parity claims; this file pins the
+// counters' own invariants so a regression there is caught before
+// the dependent suites get blamed.
 
 @MainActor
 private func resetGraphContext() {
@@ -29,26 +33,20 @@ private struct LeafComposite: TerminalView {
 }
 
 private struct DepthThreeRoot: TerminalView {
-    var body: some TerminalView {
-        Mid()
-    }
+    var body: some TerminalView { Mid() }
 }
 
 private struct Mid: TerminalView {
-    var body: some TerminalView {
-        Inner()
-    }
+    var body: some TerminalView { Inner() }
 }
 
 private struct Inner: TerminalView {
-    var body: some TerminalView {
-        Text("inner")
-    }
+    var body: some TerminalView { Text("inner") }
 }
 
-@Suite("HYP-124 — Frame-stat counters")
+@Suite("AttributeGraph — frame-stat counters")
 @MainActor
-struct Hyp124FrameStatsTests {
+struct FrameStatsTests {
 
     @Test("bodyEvaluationCount increments when a composite body runs")
     func bodyEvaluationCount_incrementsOnComposite() {
@@ -100,18 +98,18 @@ struct Hyp124FrameStatsTests {
         graph.update(from: LeafComposite(label: "a"))
         graph.update(from: LeafComposite(label: "a"))
         #expect(graph.rootWalkCount == 3,
-                "three update calls = three root walks pre-HYP-126; got \(graph.rootWalkCount)")
+                "three update calls = three root walks; got \(graph.rootWalkCount)")
     }
 
-    @Test("dirtyDrainCount stays zero before HYP-126 ships")
-    func dirtyDrainCount_isZeroBeforeHYP126() {
+    @Test("dirtyDrainCount stays zero when nothing is dirty")
+    func dirtyDrainCount_isZeroWithoutMutation() {
         resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: LeafComposite(label: "a"))
         graph.update(from: LeafComposite(label: "a"))
         #expect(graph.dirtyDrainCount == 0,
-                "drain path doesn't exist yet; counter must be zero; got \(graph.dirtyDrainCount)")
+                "no observable mutated → no drain; got \(graph.dirtyDrainCount)")
     }
 
     @Test("resetFrameStats zeros all three counters")

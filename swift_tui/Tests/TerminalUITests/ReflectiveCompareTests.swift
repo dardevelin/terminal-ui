@@ -2,21 +2,25 @@ import Testing
 import Observation
 @testable import TerminalUI
 
-// HYP-125 — Layer 1: reflective compare for non-Equatable views.
+// AttributeGraph skips a composite view's body re-evaluation when the
+// fresh view value compares equal to the cached one — matching SwiftUI's
+// automatic Gate-2 behaviour from WWDC21 *Demystify SwiftUI*:
 //
-// SwiftUI's Gate-2 default (per WWDC21 Demystify SwiftUI):
-//   "SwiftUI will keep around a copy of the value to perform a comparison
-//    and know if the view has changed. But after that, the value is
-//    destroyed."
+//   "SwiftUI will keep around a copy of the value to perform a
+//    comparison and know if the view has changed. But after that,
+//    the value is destroyed."
 //
-// Today our Gate-2 short-circuit ONLY fires for views wrapped in
-// `.equatable()`. Plain non-Equatable views fall through to
-// evaluateBody on every parent re-evaluation. HYP-125 closes that gap
-// via Mirror-based field-wise compare.
+// Two paths into the skip:
+//   1. `.equatable()` wrapper → user-supplied `==` (fastest).
+//   2. Mirror-based field-wise compare → automatic for any composite
+//      whose stored fields are themselves Equatable / value-typed
+//      structs / zero-field aggregates.
 //
-// Parity ceiling — closures (`() -> Void`) cannot be compared via
-// reflection; views holding action handlers always look "different".
-// SwiftUI has the same limitation. Mitigation: `.equatable()`.
+// Parity ceiling — reference types without Equatable conformance
+// (notably `@Observable` model classes), closures, and other opaque
+// values defeat the Mirror compare. Body re-runs in those cases;
+// the user opt-in via `.equatable()` is the escape hatch. SwiftUI
+// has the same limitation.
 
 @MainActor
 private func resetGraphContext() {
@@ -27,7 +31,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// MARK: - Group A fixtures (reflective-compare gate)
+// MARK: - Reflective-compare fixtures
 
 private struct PlainLabel: TerminalView {
     let title: String
@@ -45,7 +49,7 @@ private struct ClosureView: TerminalView {
     }
 }
 
-// MARK: - Group D fixtures (structural identity)
+// MARK: - Structural-identity fixtures
 
 private struct IfChild: TerminalView {
     var body: some TerminalView { Text("if") }
@@ -62,7 +66,7 @@ private struct Switcher: TerminalView {
     }
 }
 
-// MARK: - Group E fixtures (backward compat with HYP-99 Equatable path)
+// MARK: - Equatable-fast-path fixtures
 
 @Observable
 private final class CounterModel {
@@ -79,11 +83,11 @@ private struct EquatableLeaf: TerminalView, Equatable {
     }
 }
 
-@Suite("HYP-125 — Reflective compare for non-Equatable views")
+@Suite("AttributeGraph — reflective compare for non-Equatable views")
 @MainActor
-struct Hyp125ReflectiveCompareTests {
+struct ReflectiveCompareTests {
 
-    // MARK: - Group A: reflective-compare gate
+    // MARK: - Reflective-compare gate
 
     @Test("non-Equatable view with unchanged fields skips body re-eval")
     func nonEquatable_unchangedFields_skipsBody() {
@@ -120,7 +124,7 @@ struct Hyp125ReflectiveCompareTests {
                 "closures defeat reflective compare; body must re-eval; got \(graph.bodyEvaluationCount)")
     }
 
-    // MARK: - Group D: structural identity
+    // MARK: - Structural identity
 
     @Test("different view type at same position rebuilds subtree")
     func differentViewType_atSamePosition_rebuildsSubtree() {
@@ -165,9 +169,9 @@ struct Hyp125ReflectiveCompareTests {
                 "two unchanged sibling labels both skip; got \(graph.bodyEvaluationCount)")
     }
 
-    // MARK: - Group E: backward compat
+    // MARK: - Equatable fast path (backward compat)
 
-    @Test("Equatable view still skips body (HYP-99 fast path preserved)")
+    @Test("Equatable view still skips body when inputs compare equal")
     func equatableView_stillSkipsBodyOnEqualInputs() {
         resetGraphContext()
         let graph = AttributeGraph()

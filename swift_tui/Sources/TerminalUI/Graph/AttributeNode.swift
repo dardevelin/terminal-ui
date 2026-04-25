@@ -53,20 +53,28 @@ public class AttributeNode {
     /// rebuild, conditional flip, etc.). Nil for nodes without onDisappear.
     public var onDisappearAction: (() -> Void)?
 
-    /// Last `EquatableTerminalView` value cached for HYP-99 Gate 2
-    /// short-circuit. Stored as `Any` so the type-erased reconciler can
-    /// compare new vs cached without naming the generic content type.
-    /// Nil for non-Equatable views (which always re-evaluate).
+    /// Last `EquatableTerminalView` value cached for the user-Equatable
+    /// fast path in `updateNode`. Stored as `Any` so the type-erased
+    /// reconciler can compare new vs cached without naming the generic
+    /// content type. Nil before the first build of a composite.
     public var lastEquatableInput: Any?
 
-    /// Last raw view value cached for HYP-125 Layer 1 reflective compare.
-    /// Stored for every composite — when a fresh value arrives and
-    /// `Mirror`-walking it field-by-field shows equality with this cache,
-    /// `evaluateBody` can be skipped exactly like the Equatable wrapper
-    /// path. Closures and incomparable reference types defeat the
-    /// compare (parity ceiling — see HYP-125). Nil before the first
-    /// `updateNode` for this composite.
+    /// Last raw view value cached for the Mirror-based reflective
+    /// compare in `updateNode`. Stored for every composite — when a
+    /// fresh value arrives and `Mirror`-walking it field-by-field shows
+    /// equality with this cache, `evaluateBody` can be skipped exactly
+    /// like the Equatable wrapper path. Closures and incomparable
+    /// reference types defeat the compare (the documented parity
+    /// ceiling — see `AttributeGraph.reflectiveEqual`). Nil before the
+    /// first `updateNode` for this composite.
     public var lastInputView: Any?
+
+    /// Closure that re-runs this node's body with the cached view value.
+    /// Captured by `evaluateBody` / `constructComposite` where the
+    /// generic view type `V` is still in scope; invoked by
+    /// `AttributeGraph.drain()` to re-evaluate dirty nodes in place
+    /// without reflecting over `V`. Nil for non-composite nodes.
+    public var bodyReplay: ((AttributeGraph, AttributeNode) -> Void)?
 
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
