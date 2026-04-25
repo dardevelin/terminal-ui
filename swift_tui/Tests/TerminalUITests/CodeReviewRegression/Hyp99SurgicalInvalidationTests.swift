@@ -219,8 +219,18 @@ struct EquatableFastPathTests {
         #expect(recorder.leafACount == 2, "lhs != rhs → child body must re-run")
     }
 
-    @Test("non-Equatable views always re-run body (backward-compat)")
-    func nonEquatableAlwaysReevaluates() {
+    @Test("non-Equatable views with class-typed fields fall back to re-run (HYP-125 parity ceiling)")
+    func nonEquatableWithClassFieldAlwaysReevaluates() {
+        // Post-HYP-125: SwiftUI-parity reflective compare extends the
+        // skip-condition to non-Equatable views, BUT only for
+        // value-typed fields. Reference types without Equatable
+        // (the @Observable case is the headline) defeat the compare
+        // and fall through to evaluateBody — Gate 1 is the surgical
+        // path for those, not Gate 2. SwiftUI has the same parity
+        // ceiling.
+        //
+        // `NonEquatableLeaf` here holds a class field (`recorder`),
+        // so reflectiveEqual returns false → body re-runs every update.
         resetGraphContext()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
@@ -229,7 +239,7 @@ struct EquatableFastPathTests {
 
         graph.update(from: NonEquatableLeaf(label: "a", recorder: recorder))
         #expect(recorder.leafBCount == 2,
-                "non-Equatable views must re-evaluate every update — current behaviour preserved")
+                "class-field defeats reflective compare → body re-runs; got \(recorder.leafBCount)")
     }
 }
 

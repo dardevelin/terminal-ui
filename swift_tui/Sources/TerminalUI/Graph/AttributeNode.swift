@@ -59,6 +59,15 @@ public class AttributeNode {
     /// Nil for non-Equatable views (which always re-evaluate).
     public var lastEquatableInput: Any?
 
+    /// Last raw view value cached for HYP-125 Layer 1 reflective compare.
+    /// Stored for every composite — when a fresh value arrives and
+    /// `Mirror`-walking it field-by-field shows equality with this cache,
+    /// `evaluateBody` can be skipped exactly like the Equatable wrapper
+    /// path. Closures and incomparable reference types defeat the
+    /// compare (parity ceiling — see HYP-125). Nil before the first
+    /// `updateNode` for this composite.
+    public var lastInputView: Any?
+
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0

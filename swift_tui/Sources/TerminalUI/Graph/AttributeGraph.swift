@@ -286,22 +286,30 @@ public final class AttributeGraph {
         // body depends on has changed and the rendered output may
         // differ.
         //
-        // Non-Equatable views always re-evaluate (backward-compat).
+        // HYP-125 Layer 1 — reflective compare extends the skip-
+        // condition to ALL composite views, not just `.equatable()`-
+        // wrapped ones. SwiftUI does this automatically per WWDC21:
+        //   "SwiftUI will keep around a copy of the value to perform a
+        //    comparison and know if the view has changed."
+        //
+        // Order:
+        //   1. `_EquatableTerminalView` wrapper → existing `==` path.
+        //   2. Else → Mirror-based field-wise compare via reflectiveEqual.
+        //   3. Either way: !isDirty AND !subtreeIsDirty AND !children.isEmpty
+        //      → skip body.
         if !(V.Body.self == Never.self) {
+            var inputsEqual = false
             if let eq = view as? any _EquatableTerminalView {
-                let inputsEqual: Bool = {
-                    if let cached = node.lastEquatableInput as? any _EquatableTerminalView {
-                        return eq._equatableContentEqual(to: cached)
-                    }
-                    return false
-                }()
-                node.lastEquatableInput = eq
-                if inputsEqual && !node.isDirty && !subtreeIsDirty(node) && !node.children.isEmpty {
-                    // Inputs unchanged AND no observed-state change in
-                    // this node OR any composite descendant AND we
-                    // have a cached body — skip re-evaluation.
-                    return
+                if let cached = node.lastEquatableInput as? any _EquatableTerminalView {
+                    inputsEqual = eq._equatableContentEqual(to: cached)
                 }
+                node.lastEquatableInput = eq
+            } else if let cached = node.lastInputView {
+                inputsEqual = AttributeGraph.reflectiveEqual(view, cached)
+            }
+            node.lastInputView = view
+            if inputsEqual && !node.isDirty && !subtreeIsDirty(node) && !node.children.isEmpty {
+                return
             }
             evaluateBody(node: node, view: view)
             return
@@ -457,6 +465,90 @@ public final class AttributeGraph {
             if subtreeIsDirty(child) { return true }
         }
         return false
+    }
+
+    /// Mirror-based field-wise compare for HYP-125 Layer 1.
+    ///
+    /// SwiftUI parity contract (WWDC21 *Demystify SwiftUI*):
+    ///   "SwiftUI will keep around a copy of the value to perform a
+    ///    comparison and know if the view has changed. But after that,
+    ///    the value is destroyed."
+    ///
+    /// This is automatic — `.equatable()` is the *fast path*, not the
+    /// only path. Walks `Mirror.children` field by field; any field
+    /// pair we cannot prove equal returns false (the body re-runs).
+    ///
+    /// Parity ceiling — closures (`() -> Void`) and reference types
+    /// without `Equatable` defeat the compare. SwiftUI has the same
+    /// limitation; mitigation is the `.equatable()` opt-in or hoisting
+    /// closures to `@State` storage.
+    static func reflectiveEqual(_ lhs: Any, _ rhs: Any) -> Bool {
+        // Different concrete types — never equal.
+        guard type(of: lhs) == type(of: rhs) else { return false }
+        return _reflectiveValueEqual(lhs, rhs)
+    }
+
+    private static func _reflectiveValueEqual(_ a: Any, _ b: Any) -> Bool {
+        // Equatable fast path — value types AND classes that conform.
+        // (`@Observable` classes do NOT auto-conform; storing one as a
+        // view field defeats the compare here — falls through to the
+        // class-reference branch below.)
+        if let lhsEq = a as? any Equatable {
+            return _isEqualByWitness(lhsEq, b)
+        }
+
+        // Reference type WITHOUT Equatable conformance — e.g. an
+        // `@Observable` model class held by the view. We cannot prove
+        // value equality without comparing every observed property,
+        // and observed-state mutation goes through Gate 1 (per-node
+        // onChange) NOT through this compare. To stay correct, return
+        // false so the body re-runs and `withObservationTracking`
+        // re-arms its tracker on the fresh property reads. This is
+        // conservative but matches SwiftUI's behaviour: reference
+        // semantics defeat the value-diff path; mitigation is
+        // `.equatable()` with a user-supplied `==`. (Parity ceiling.)
+        if type(of: a) is AnyClass {
+            return false
+        }
+
+        // Closures present no Equatable witness and Mirror exposes them
+        // as zero-child leaves. We cannot decide equality → say no.
+        let lm = Mirror(reflecting: a)
+        let rm = Mirror(reflecting: b)
+        let lhsKids = Array(lm.children)
+        let rhsKids = Array(rm.children)
+        guard lhsKids.count == rhsKids.count else { return false }
+
+        // No children + no Equatable witness — two cases:
+        //   (a) zero-field struct (e.g. `struct V: TerminalView { var
+        //       body: ... }`) — no fields means no possible difference,
+        //       always equal.
+        //   (b) opaque value (closure, function reference) — Mirror
+        //       reports zero children but Equatable witness was already
+        //       absent. We can't tell (a) and (b) apart structurally,
+        //       so we look at displayStyle: structs/classes report a
+        //       displayStyle, primitives like closures don't.
+        if lhsKids.isEmpty {
+            switch lm.displayStyle {
+            case .struct, .tuple:
+                return true   // zero-field aggregate — guaranteed equal
+            default:
+                return false  // closure / opaque / class without == → parity ceiling
+            }
+        }
+
+        for (lc, rc) in zip(lhsKids, rhsKids) {
+            guard lc.label == rc.label else { return false }
+            if !_reflectiveValueEqual(lc.value, rc.value) { return false }
+        }
+        return true
+    }
+
+    /// Open the existential to call `==` on a value whose static type
+    /// is hidden behind `any Equatable`.
+    private static func _isEqualByWitness<E: Equatable>(_ lhs: E, _ rhs: Any) -> Bool {
+        guard let typed = rhs as? E else { return false }
+        return lhs == typed
     }
 
     /// Walk a subtree about to be detached and invoke any captured
@@ -795,6 +887,9 @@ public final class AttributeGraph {
         if let eq = view as? any _EquatableTerminalView {
             node.lastEquatableInput = eq
         }
+        // HYP-125 Layer 1: prime the reflective-compare cache for every
+        // composite view, mirroring SwiftUI's automatic value-diff.
+        node.lastInputView = view
         return node
     }
 
