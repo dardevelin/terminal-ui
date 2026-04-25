@@ -221,13 +221,7 @@ struct SocketGatingTests {
 }
 
 // MARK: - HYP-100: Unicode width
-// Display-width helper does not exist yet. This test names the API contract
-// that the fix introduces: a `displayWidth` property (or `Terminal.wcwidth`)
-// that returns terminal cells per grapheme. The test is currently a compile
-// failure on `main` — that *is* the failing signal, since the API isn't
-// there. Wrapped in #if false until the fix lands so the suite builds.
 
-#if HYP100_DISPLAYWIDTH_AVAILABLE
 @Suite("HYP-100 — Unicode display width matches terminal cell count")
 @MainActor
 struct UnicodeWidthTests {
@@ -253,8 +247,17 @@ struct UnicodeWidthTests {
         // "e" + combining acute = "é" (NFD form), one cell total
         #expect("e\u{0301}".displayWidth == 1)
     }
+
+    @Test("Mixed ASCII + CJK sums correctly")
+    func mixedAsciiCjk() {
+        #expect("hi 中文".displayWidth == 7) // h(1)+i(1)+ (1)+中(2)+文(2)
+    }
+
+    @Test("Empty string is zero")
+    func emptyZero() {
+        #expect("".displayWidth == 0)
+    }
 }
-#endif
 
 // MARK: - HYP-101: Terminal robustness
 

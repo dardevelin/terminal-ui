@@ -216,6 +216,8 @@ public enum GraphMeasurer {
     // MARK: - String Measurement Helpers
 
     /// Count max line width without allocating an intermediate array.
+    /// Uses display-width per grapheme (HYP-100), so a CJK ideograph
+    /// contributes 2 columns and a combining mark contributes 0.
     static func maxLineWidth(_ s: String) -> Int {
         var maxW = 0
         var current = 0
@@ -224,7 +226,7 @@ public enum GraphMeasurer {
                 maxW = max(maxW, current)
                 current = 0
             } else {
-                current += 1
+                current += ch.displayWidth
             }
         }
         return max(maxW, current)
@@ -241,7 +243,11 @@ public enum GraphMeasurer {
     }
 
     /// Count lines accounting for wrapping at the given width.
-    /// Each line that exceeds width wraps to additional rows.
+    /// Each line that exceeds width wraps to additional rows. Uses
+    /// display-width per grapheme so a 2-cell character is treated as
+    /// occupying 2 columns when deciding whether to wrap (HYP-100).
+    /// Mirrors the old "advance, then wrap if past" sequence so ASCII
+    /// counts identically to the pre-HYP-100 implementation.
     static func countWrappedLines(_ s: String, width: Int) -> Int {
         if s.isEmpty { return 0 }
         guard width > 0 else { return countLines(s) }
@@ -253,10 +259,11 @@ public enum GraphMeasurer {
                 rows += 1
                 col = 0
             } else {
-                col += 1
+                let w = ch.displayWidth
+                col += w
                 if col > width {
                     rows += 1
-                    col = 1
+                    col = w
                 }
             }
         }

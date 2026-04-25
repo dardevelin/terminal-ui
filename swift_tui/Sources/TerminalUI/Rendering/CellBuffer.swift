@@ -101,8 +101,18 @@ public struct CellBuffer: Sendable {
         var col = x
         for char in text {
             guard col < width else { break }
+            let w = char.displayWidth
+            if w == 0 {
+                if col > x {
+                    self[col - 1, y] = Cell(character: char, style: style)
+                }
+                continue
+            }
             self[col, y] = Cell(character: char, style: style)
-            col += 1
+            if w == 2 && col + 1 < width {
+                self[col + 1, y] = Cell(character: " ", style: style)
+            }
+            col += w
         }
     }
 
@@ -125,7 +135,18 @@ public struct CellBuffer: Sendable {
                     guard row < maxY else { return }
                     continue
                 }
-                if col >= maxX {
+                let w = char.displayWidth
+                // Zero-width: compose onto previous base cell, no advance.
+                if w == 0 {
+                    if col > x {
+                        self[col - 1, row] = Cell(character: char, style: style)
+                    }
+                    continue
+                }
+                // Wrap or clip when this grapheme wouldn't fit on the
+                // current line. Double-wide chars wrap as a unit — never
+                // split across rows.
+                if col + w > maxX {
                     if wrap {
                         // Wrap to next line
                         row += 1
@@ -137,7 +158,10 @@ public struct CellBuffer: Sendable {
                 }
                 guard row < maxY else { return }
                 self[col, row] = Cell(character: char, style: style)
-                col += 1
+                if w == 2 && col + 1 < maxX {
+                    self[col + 1, row] = Cell(character: " ", style: style)
+                }
+                col += w
             }
         }
     }
