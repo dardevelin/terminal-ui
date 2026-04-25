@@ -74,9 +74,15 @@ public final class AttributeGraph {
             view.body
         } onChange: {
             weakGraph?.hasDirtyNodes = true
-            if let node = weakNode {
-                Task { @MainActor in node.markDirty() }
-            }
+            // Per-node dirty flag (HYP-99 Gate 1). Set synchronously so
+            // that subsequent `graph.update(from:)` on the same actor
+            // sees the dirtiness. Observation's onChange fires on the
+            // mutating thread; in a TUI app that's @MainActor for any
+            // state-driven update. The `nonisolated(unsafe)` weak
+            // capture disables isolation checking for the rare cross-
+            // actor caller — markDirty itself only mutates a Bool +
+            // nil-able cache fields, safe under runtime discipline.
+            weakNode?.markDirty()
         }
 
         // Restore context
@@ -233,8 +239,39 @@ public final class AttributeGraph {
             return
         }
 
-        // Composite view — re-evaluate body with observation tracking
+        // Composite view — re-evaluate body with observation tracking.
+        //
+        // HYP-99 invalidation gates (mirrors SwiftUI per WWDC21 +
+        // SE-0395):
+        //
+        // Gate 2 (Equatable fast-path): if the view is wrapped in
+        // `.equatable()` AND the new value `==` the cached previous
+        // value AND no @Observable property this body read has been
+        // mutated (`!isDirty`), skip body re-evaluation entirely.
+        //
+        // Gate 1 (per-node Observation, automatic via @Observable):
+        // overrides Gate 2. If `node.isDirty`, the body re-runs even
+        // for an Equatable-equal value — because some property the
+        // body depends on has changed and the rendered output may
+        // differ.
+        //
+        // Non-Equatable views always re-evaluate (backward-compat).
         if !(V.Body.self == Never.self) {
+            if let eq = view as? any _EquatableTerminalView {
+                let inputsEqual: Bool = {
+                    if let cached = node.lastEquatableInput as? any _EquatableTerminalView {
+                        return eq._equatableContentEqual(to: cached)
+                    }
+                    return false
+                }()
+                node.lastEquatableInput = eq
+                if inputsEqual && !node.isDirty && !subtreeIsDirty(node) && !node.children.isEmpty {
+                    // Inputs unchanged AND no observed-state change in
+                    // this node OR any composite descendant AND we
+                    // have a cached body — skip re-evaluation.
+                    return
+                }
+            }
             evaluateBody(node: node, view: view)
             return
         }
@@ -369,6 +406,26 @@ public final class AttributeGraph {
                 current = nil
             }
         }
+    }
+
+    /// True iff any **composite** descendant of `node` has `isDirty
+    /// == true`. Used by the HYP-99 Gate 2 short-circuit to ensure we
+    /// don't skip a body re-evaluation when an inner composite (wrapped
+    /// in our own EquatableTerminalView, for example) has had observed
+    /// state mutate.
+    ///
+    /// Only composite (`.viewBody`) nodes carry a meaningful "observed
+    /// state changed" signal. Primitives and modifiers default to
+    /// `isDirty = true` at construction (needs-first-render) and are
+    /// only cleared on the update path. They must NOT count as dirty
+    /// for the purposes of this check, or the short-circuit can never
+    /// fire on a freshly-built subtree.
+    private func subtreeIsDirty(_ node: AttributeNode) -> Bool {
+        for child in node.children {
+            if case .viewBody = child.kind, child.isDirty { return true }
+            if subtreeIsDirty(child) { return true }
+        }
+        return false
     }
 
     /// Walk a subtree about to be detached and invoke any captured
@@ -684,9 +741,10 @@ public final class AttributeGraph {
             view.body
         } onChange: {
             weakGraph2?.hasDirtyNodes = true
-            if let node = weakNode2 {
-                Task { @MainActor in node.markDirty() }
-            }
+            // Per-node dirty flag (HYP-99 Gate 1) — synchronous so the
+            // next graph.update sees it. See evaluateBody for the
+            // longer note on isolation.
+            weakNode2?.markDirty()
         }
 
         GraphContext.currentNode = prevNode
@@ -697,6 +755,12 @@ public final class AttributeGraph {
         childNode.parent = node
         node.children.append(childNode)
         node.isDirty = false
+        // HYP-99 Gate 2: prime the Equatable cache on first build so
+        // the second update can short-circuit when the wrapped value
+        // hasn't changed.
+        if let eq = view as? any _EquatableTerminalView {
+            node.lastEquatableInput = eq
+        }
         return node
     }
 

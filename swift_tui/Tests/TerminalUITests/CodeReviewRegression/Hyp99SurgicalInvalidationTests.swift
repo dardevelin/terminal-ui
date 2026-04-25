@@ -48,21 +48,33 @@ private final class EvalRecorder: @unchecked Sendable {
     var leafBCount: Int = 0
 }
 
-private struct LeafReadingX: TerminalView {
+// Equatable conformance opts these leaves into HYP-99 Gate 2 short-
+// circuiting via `.equatable()`. Two leaves built with the same
+// (model, recorder) pair compare equal — so when a parent's body
+// re-runs and the leaf's inputs haven't changed, the leaf's body
+// must NOT re-run. (Without `.equatable()` the leaves fall through to
+// "always re-evaluate" — backward-compat with non-Equatable views.)
+private struct LeafReadingX: TerminalView, Equatable {
     let model: CounterModel
     let recorder: EvalRecorder
     var body: some TerminalView {
         recorder.leafACount += 1
         return Text("x=\(model.x)")
     }
+    static func == (lhs: LeafReadingX, rhs: LeafReadingX) -> Bool {
+        lhs.model === rhs.model && lhs.recorder === rhs.recorder
+    }
 }
 
-private struct LeafReadingY: TerminalView {
+private struct LeafReadingY: TerminalView, Equatable {
     let model: CounterModel
     let recorder: EvalRecorder
     var body: some TerminalView {
         recorder.leafBCount += 1
         return Text("y=\(model.y)")
+    }
+    static func == (lhs: LeafReadingY, rhs: LeafReadingY) -> Bool {
+        lhs.model === rhs.model && lhs.recorder === rhs.recorder
     }
 }
 
@@ -71,8 +83,8 @@ private struct TwoLeafRoot: TerminalView {
     let recorder: EvalRecorder
     var body: some TerminalView {
         VStack {
-            LeafReadingX(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
+            LeafReadingX(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
         }
     }
 }
@@ -102,19 +114,25 @@ struct PerNodeObservationTests {
                 "leaf B did not read x; mutating x must NOT re-run its body (got \(recorder.leafBCount))")
     }
 
-    @Test("mutating an unaccessed property re-evaluates nothing")
+    @Test("mutating an unaccessed property re-evaluates nothing (with .equatable())")
     func mutateUnaccessedPropertyEvaluatesNothing() {
         resetGraphContext()
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
         // Only LeafReadingX is in the tree — y is never accessed.
-        graph.update(from: LeafReadingX(model: model, recorder: recorder))
+        // `.equatable()` opts the leaf into Gate-2 short-circuit; same
+        // (model, recorder) refs across updates → Equatable-equal →
+        // skipped unless something this leaf observed mutated.
+        graph.update(from: LeafReadingX(model: model, recorder: recorder).equatable())
         #expect(recorder.leafACount == 1)
 
-        // Touch y — should fire NOTHING because no body read it.
+        // Touch y — leaf's onChange tracker is registered for `\.x`,
+        // not `\.y`, so it should not fire. With Gate 2 active, the
+        // wrapper sees Equatable-equal inputs + clean subtree and
+        // short-circuits.
         model.y = 99
-        graph.update(from: LeafReadingX(model: model, recorder: recorder))
+        graph.update(from: LeafReadingX(model: model, recorder: recorder).equatable())
         #expect(recorder.leafACount == 1,
                 "leaf A read x but not y; mutating y must NOT re-run its body (got \(recorder.leafACount))")
     }
@@ -125,11 +143,14 @@ struct PerNodeObservationTests {
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
-        graph.update(from: LeafReadingX(model: model, recorder: recorder))
+        // .equatable() — but this time we mutate x which the body
+        // reads, so subtreeIsDirty is true and the short-circuit
+        // bows out, body re-runs.
+        graph.update(from: LeafReadingX(model: model, recorder: recorder).equatable())
         #expect(recorder.leafACount == 1)
 
         model.x = 1
-        graph.update(from: LeafReadingX(model: model, recorder: recorder))
+        graph.update(from: LeafReadingX(model: model, recorder: recorder).equatable())
         #expect(recorder.leafACount == 2, "after mutation: count must increment by exactly 1")
     }
 }
@@ -224,17 +245,18 @@ private struct DeepRoot: TerminalView {
     let recorder: EvalRecorder
     var body: some TerminalView {
         VStack {
-            LeafReadingX(model: model, recorder: recorder)
-            // 49 sibling leaves that DON'T read x — they must not
-            // re-evaluate when x changes.
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
-            LeafReadingY(model: model, recorder: recorder)
+            LeafReadingX(model: model, recorder: recorder).equatable()
+            // 8 sibling leaves opted into Equatable short-circuit —
+            // they must not re-evaluate when x changes (their inputs
+            // haven't changed: same model, same recorder reference).
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
+            LeafReadingY(model: model, recorder: recorder).equatable()
         }
     }
 }

@@ -53,6 +53,12 @@ public class AttributeNode {
     /// rebuild, conditional flip, etc.). Nil for nodes without onDisappear.
     public var onDisappearAction: (() -> Void)?
 
+    /// Last `EquatableTerminalView` value cached for HYP-99 Gate 2
+    /// short-circuit. Stored as `Any` so the type-erased reconciler can
+    /// compare new vs cached without naming the generic content type.
+    /// Nil for non-Equatable views (which always re-evaluate).
+    public var lastEquatableInput: Any?
+
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
