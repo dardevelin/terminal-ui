@@ -201,16 +201,25 @@ public final class FocusEngine {
 
     /// Handle mouse click — transfer keyboard focus and invoke click handler.
     ///
-    /// If the clicked node has an onClick handler, invokes it with coordinates
-    /// relative to the node's rect (not screen coordinates).
-    /// If no onClick handler exists, synthesizes an Enter key event instead.
-    /// This gives button-like behavior to focusable nodes without explicit
-    /// click handlers — clicking a focused Button triggers its onKeyPress.
+    /// Two-phase lookup:
+    /// 1. **Focusable hit:** if the cursor is over a focusable node, that
+    ///    node receives keyboard focus. If the focusable has an onClick
+    ///    handler (or an ancestor does), invoke it; otherwise synthesise
+    ///    an Enter key so a focused Button can be triggered by click.
+    /// 2. **Non-focusable click handler:** if no focusable is under the
+    ///    cursor but a node *with a registered click handler* is, invoke
+    ///    that handler. Keyboard focus stays where it was. Lets a list
+    ///    row be clickable (via `.onClick`) without joining the Tab
+    ///    cycle as a focusable.
+    ///
+    /// Used by Storybook's sidebar rows: they're not focusable (the
+    /// single-focusable architecture lives on the bottom hint row), but
+    /// each row has `.onClick { selectedIndex = ... }` so a mouse click
+    /// jumps directly to the corresponding page.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
         guard let root else { return }
         if let target = findFocusableAt(x: x, y: y, in: root) {
             keyboardFocusID = target.id
-
             if let handler = findClickHandler(for: target, root: root) {
                 let relX = x - target.rect.x
                 let relY = y - target.rect.y
@@ -219,7 +228,37 @@ public final class FocusEngine {
                 let syntheticEnter = KeyEvent(key: .enter)
                 _ = routeKeyEvent(syntheticEnter, root: root)
             }
+            return
         }
+        // No focusable under the cursor — try a click handler on any
+        // node containing the click point. Walks deepest-first so a
+        // row's onClick wins over its parent VStack's.
+        if let (target, handler) = findClickableAt(x: x, y: y, in: root) {
+            let relX = x - target.rect.x
+            let relY = y - target.rect.y
+            handler(relX, relY)
+        }
+    }
+
+    /// Walk the tree deepest-first looking for a node that contains
+    /// (x, y) AND has a registered click handler. Used by the
+    /// non-focusable click path so e.g. a sidebar row tagged with
+    /// `.onClick` receives the event without needing to be focusable.
+    private func findClickableAt(x: Int, y: Int, in node: AttributeNode)
+        -> (AttributeNode, (_ relX: Int, _ relY: Int) -> Void)?
+    {
+        for child in node.children.reversed() {
+            if let hit = findClickableAt(x: x, y: y, in: child) {
+                return hit
+            }
+        }
+        let r = node.rect
+        if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height,
+           let handler = clickHandlers[node.id]
+        {
+            return (node, handler)
+        }
+        return nil
     }
 
     private func findClickHandler(for node: AttributeNode, root: AttributeNode) -> ((_ relativeX: Int, _ relativeY: Int) -> Void)? {

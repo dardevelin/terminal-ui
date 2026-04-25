@@ -48,6 +48,7 @@ struct Sidebar: TerminalView {
                         ForEach(pagesIn(category)) { entry in
                             SidebarRow(
                                 label: entry.page.name,
+                                index: entry.index,
                                 isSelected: entry.index == st.selectedIndex,
                                 state: st
                             )
@@ -106,16 +107,23 @@ struct IndexedPage: Identifiable {
 /// into the preview in one press instead of walking 34 rows.
 struct SidebarRow: TerminalView {
     let label: String
+    let index: Int
     let isSelected: Bool
     let state: StorybookState
 
     var body: some TerminalView {
         let prefix = isSelected ? "▸ " : "  "
-        // Rows are plain non-focusable Text. Arrow handling lives on the
-        // sidebar's outer container (Sidebar view) so every row uses the
-        // same single key handler — no reconciliation confusion.
+        // Rows accept clicks so a mouse-driven user can jump straight
+        // to a page. The single-focusable architecture (one focusable
+        // on the bottom hint row) handles keyboard navigation; the
+        // click handler is per-row and sets selectedIndex directly.
+        // Arrow handling stays on the sidebar's outer container so
+        // each row needs no key handler — no reconciliation confusion.
         return Text("\(prefix)\(label)")
             .foreground(isSelected ? .white : .default)
+            .onClick { [state, index] _, _ in
+                state.selectedIndex = index
+            }
     }
 }
 

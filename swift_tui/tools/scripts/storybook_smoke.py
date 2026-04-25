@@ -844,8 +844,8 @@ def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
         "VStack" in title_before,
         f"should boot on VStack page; title was: {title_before!r}",
     )
-    # ZStack row is at y=7 in the sidebar (rows 5/6/7 = VStack/HStack/ZStack)
-    app.mouse_click(2, 7)
+    # Sidebar layout: row 4=VStack, 5=HStack, 6=ZStack, 7=Spacer, ...
+    app.mouse_click(2, 6)
     app.wait_for_frame(1, timeout=0.5)
     title_after = app.text().splitlines()[1]
     assert_true(
