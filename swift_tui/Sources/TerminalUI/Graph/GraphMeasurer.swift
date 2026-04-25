@@ -7,8 +7,17 @@
 public enum GraphMeasurer {
 
     /// Intrinsic width — cached on the node, recomputed only when dirty.
+    /// ViewBody nodes (composite views, GeometryReader) bypass the cache
+    /// because their subtree can change between measurement calls — the
+    /// cache key would need a state fingerprint we don't have. Mirrors
+    /// the equivalent skip in `measureHeight`.
     public static func measureWidth(_ node: AttributeNode) -> Int {
-        if let cached = node.cachedWidth { return cached }
+        let skipCache: Bool
+        switch node.kind {
+        case .viewBody: skipCache = true
+        default: skipCache = false
+        }
+        if !skipCache, let cached = node.cachedWidth { return cached }
         let result = computeWidth(node)
         node.cachedWidth = result
         return result
@@ -27,7 +36,15 @@ public enum GraphMeasurer {
         let skipCache: Bool
         switch node.kind {
         case .viewBody: skipCache = true
-        default: skipCache = false
+        default:
+            // Layout containers that transitively embed a viewBody must
+            // also skip cache: their summed/max height includes the
+            // viewBody's freshly-recomputed value, so a stale parent
+            // cache would freeze them at last frame's child height.
+            // PromptInput soft-wrap was the canary — the GR's parent
+            // VStack reported height=1 from cache even after the GR's
+            // child grew to N rows.
+            skipCache = containsViewBody(node)
         }
         if !skipCache,
            let cached = node.cachedHeight,
@@ -38,6 +55,18 @@ public enum GraphMeasurer {
         node.cachedHeight = result
         node.cachedHeightWidth = proposedWidth
         return result
+    }
+
+    /// True if `node` or any descendant has `.viewBody` kind. Cached on
+    /// the node so we only walk once per node lifetime — the structure
+    /// can't change without `markDirty` clearing the cache, so this
+    /// stays correct across reconciliation.
+    private static func containsViewBody(_ node: AttributeNode) -> Bool {
+        if case .viewBody = node.kind { return true }
+        for child in node.children {
+            if containsViewBody(child) { return true }
+        }
+        return false
     }
 
     // MARK: - Computation (no allocation hot paths)

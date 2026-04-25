@@ -246,13 +246,22 @@ public final class FocusEngine {
     /// handlers on internal structure.
     public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode?) -> Bool {
         guard let focused = keyboardFocusID, let root else { return false }
-        guard let focusedNode = findNode(id: focused, in: root) else { return false }
+        return routeKeyEvent(event, root: root, startingFrom: focused)
+    }
 
-        if let handler = keyHandlers[focused] {
+    /// Route a key event starting from a specific node (instead of
+    /// `keyboardFocusID`). Used to dispatch wheel-scroll to the
+    /// mouse-hover target rather than the keyboard-focused element —
+    /// so scrolling over a long preview pane scrolls *that* preview
+    /// even when keyboard focus is on the sidebar list.
+    public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode, startingFrom nodeID: NodeID) -> Bool {
+        guard let startNode = findNode(id: nodeID, in: root) else { return false }
+
+        if let handler = keyHandlers[nodeID] {
             if handler(event) == .handled { return true }
         }
 
-        var ancestor = focusedNode.parent
+        var ancestor = startNode.parent
         while let node = ancestor {
             if let handler = keyHandlers[node.id] {
                 if handler(event) == .handled { return true }
@@ -260,7 +269,7 @@ public final class FocusEngine {
             ancestor = node.parent
         }
 
-        return routeToSubtree(event, node: focusedNode)
+        return routeToSubtree(event, node: startNode)
     }
 
     private func routeToSubtree(_ event: KeyEvent, node: AttributeNode) -> Bool {
@@ -316,6 +325,15 @@ public final class FocusEngine {
         for child in node.children {
             collectFocusablesRecursive(child, into: &result)
         }
+    }
+
+    /// Public-ish entry point for hit-testing the focusable under a
+    /// cursor. Returns nil when the cursor is over inert space.
+    /// Used by the runtime's wheel-routing path so the event lands on
+    /// (or near) what the user is looking at, instead of a sibling tree
+    /// reachable through the root.
+    public func findFocusableUnderCursor(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
+        return findFocusableAt(x: x, y: y, in: root)
     }
 
     /// Find the deepest focusable node whose rect contains the point.

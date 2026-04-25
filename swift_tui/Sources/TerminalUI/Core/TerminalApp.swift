@@ -325,14 +325,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     case .moved, .drag:
                         focusEngine.updateMouseHover(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
                     case .scrollUp:
-                        // Route scroll to focused view as synthetic up arrow (3 lines)
+                        // Wheel-scroll routes to whatever is under the
+                        // cursor, NOT the keyboard-focused element. A user
+                        // hovering over a long preview while keyboard focus
+                        // is on the sidebar list expects the preview to
+                        // scroll. Falls back to keyboard-focus routing when
+                        // no focusable lives under the cursor (sparse pages).
+                        let event = KeyEvent(key: .up)
                         for _ in 0..<3 {
-                            _ = focusEngine.routeKeyEvent(KeyEvent(key: .up), root: graph.root)
+                            _ = routeWheelEvent(event, mouseEvent: mouseEvent)
                         }
                     case .scrollDown:
-                        // Route scroll to focused view as synthetic down arrow (3 lines)
+                        let event = KeyEvent(key: .down)
                         for _ in 0..<3 {
-                            _ = focusEngine.routeKeyEvent(KeyEvent(key: .down), root: graph.root)
+                            _ = routeWheelEvent(event, mouseEvent: mouseEvent)
                         }
                     default:
                         break
@@ -402,6 +408,27 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         for t in timerTasks { t.cancel() }
         resizeTask.cancel()
+    }
+
+    // MARK: - Mouse-driven Routing
+
+    /// Route a synthetic key event (typically scroll-as-arrow) to whatever
+    /// **focusable** view sits under the mouse cursor, NOT to the
+    /// keyboard-focused view. If no focusable lives under the cursor the
+    /// event is dropped — scrolling over inert space does not migrate to
+    /// the keyboard-focused element (which would surprise the user with
+    /// sidebar navigation while they're hovering a preview).
+    ///
+    /// We use `findFocusableAt` (not a generic deepest-rect walk) because
+    /// generic walks bubble up to the root layout, then `routeToSubtree`
+    /// descends into siblings — eventually firing the keyboard-focused
+    /// handler from a sibling tree, which is exactly the bug we're
+    /// fixing.
+    private func routeWheelEvent(_ event: KeyEvent, mouseEvent: MouseEvent) -> Bool {
+        guard let root = graph.root,
+              let target = focusEngine.findFocusableUnderCursor(x: mouseEvent.x, y: mouseEvent.y, root: root)
+        else { return false }
+        return focusEngine.routeKeyEvent(event, root: root, startingFrom: target.id)
     }
 
     // MARK: - Key Event Handling
