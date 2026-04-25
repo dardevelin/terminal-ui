@@ -42,11 +42,32 @@ public struct TextInputValidation: Sendable, Equatable {
 ///     v.contains("@") ? .ok : TextInputValidation(.error, "missing @")
 /// })
 /// ```
+/// Layout axis for `TextInput`. Mirrors SwiftUI's `Axis` shape on
+/// `TextField(_:axis:)` introduced in iOS 16 (WWDC22 *What's new in
+/// SwiftUI*: *"Text fields can be configured to expand vertically
+/// using the new axis parameter, growing their height to fit the
+/// text..."*).
+///
+/// `.horizontal` (default) keeps the legacy single-line behaviour
+/// — long content scrolls horizontally with the cursor pinned at
+/// the right edge.
+///
+/// `.vertical` lets the field grow vertically when the env-driven
+/// `LineBreakMode` is a wrap mode (`.byCharWrapping` /
+/// `.byWordWrapping`). Clip and truncation modes still produce a
+/// single-row layout regardless of axis — wrap behaviour and growth
+/// envelope are separate concerns.
+public enum TextInputAxis: Sendable, Equatable {
+    case horizontal
+    case vertical
+}
+
 public struct TextInput: TerminalView {
     public let prompt: String
     public let placeholder: String
     public let text: Binding<String>
     public let validate: ((String) -> TextInputValidation)?
+    public let axis: TextInputAxis
 
     /// HIG line-break behaviour for content that exceeds the field
     /// width. Default `.byClipping` matches HIG's prescription for
@@ -64,6 +85,24 @@ public struct TextInput: TerminalView {
         self.text = text
         self.placeholder = placeholder
         self.validate = validate
+        self.axis = .horizontal
+    }
+
+    /// Vertical-axis overload. When combined with a wrap-y
+    /// `lineBreakMode` the field grows to fit the wrapped content;
+    /// otherwise behaves like `.horizontal`.
+    public init(
+        _ prompt: String = "",
+        text: Binding<String>,
+        axis: TextInputAxis,
+        placeholder: String = "",
+        validate: ((String) -> TextInputValidation)? = nil
+    ) {
+        self.prompt = prompt
+        self.text = text
+        self.placeholder = placeholder
+        self.validate = validate
+        self.axis = axis
     }
 
     public var body: some TerminalView {
@@ -77,6 +116,7 @@ public struct TextInput: TerminalView {
         // be nil — projecting here mirrors the pattern documented in
         // `feedback_bindings_in_geometryreader.md`.
         let mode = lineBreakMode
+        let axis = self.axis
 
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
@@ -92,7 +132,8 @@ public struct TextInput: TerminalView {
                     value: value,
                     showPlaceholder: showPlaceholder,
                     maxValueWidth: available,
-                    mode: mode))
+                    mode: mode,
+                    axis: axis))
                     .focusable()
                     .onKeyPress { [text] event in
                         switch event.key {
@@ -120,12 +161,31 @@ public struct TextInput: TerminalView {
                         }
                     }
             }
-            .frame(height: 1)
+            // Single-row height for horizontal axis OR clip/truncation
+            // modes (which always render single-row regardless of
+            // axis). Vertical axis with wrap modes lets the GR's
+            // intrinsic height (driven by Text spans' newline count)
+            // grow naturally — no fixed-height frame.
+            .frame(height: Self.shouldUseFixedHeight(axis: axis, mode: mode) ? 1 : nil)
             .foreground(accent ?? .default)
 
             if let message = validation?.message {
                 Text(message).foreground(accent ?? .gray)
             }
+        }
+    }
+
+    /// Decide whether the input row should be height-clamped to 1.
+    /// Horizontal axis is always 1 row. Vertical axis is 1 row UNLESS
+    /// the line-break mode is a wrap mode (.byCharWrapping /
+    /// .byWordWrapping) — those allow the field to grow vertically.
+    private static func shouldUseFixedHeight(axis: TextInputAxis, mode: LineBreakMode) -> Bool {
+        if axis == .horizontal { return true }
+        switch mode {
+        case .byCharWrapping, .byWordWrapping:
+            return false
+        case .byClipping, .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
+            return true
         }
     }
 
@@ -141,18 +201,24 @@ public struct TextInput: TerminalView {
     }
 
     /// Compose the rendered spans, applying the env-driven
-    /// `LineBreakMode` to fit the value into `maxValueWidth`. Default
-    /// `.byClipping` keeps the legacy "virtual horizontal scroll"
-    /// behaviour (tail + cursor pinned right). Truncation modes
-    /// transform the value with an ellipsis at head / middle / tail
-    /// while leaving the cursor at the right edge of the visible
-    /// content. Wrap modes (`.byCharWrapping`, `.byWordWrapping`)
-    /// are accepted for symmetry but currently render as if
-    /// `.byClipping` — multi-row TextInput needs the SwiftUI-style
-    /// `axis: .vertical` shape, tracked separately.
+    /// `LineBreakMode` to fit the value into `maxValueWidth`. Behaviour:
+    ///
+    /// - `axis == .horizontal` (default): always single-row. Wrap
+    ///   modes degrade to clipping; truncation modes apply ellipsis;
+    ///   clipping shows the tail with cursor pinned right.
+    ///
+    /// - `axis == .vertical` with a wrap mode: emit multi-row spans
+    ///   (chunks separated by `\n`) via `LineBreakMode.wrap`. Cursor
+    ///   sits at the right edge of the LAST chunk. The body's frame
+    ///   leaves height unconstrained so the GR sees the full
+    ///   intrinsic chunk count.
+    ///
+    /// - `axis == .vertical` with clip/truncation modes: still
+    ///   single-row (clipping is inherently single-line).
     private func composeSpans(value: String, showPlaceholder: Bool,
                                maxValueWidth: Int,
-                               mode: LineBreakMode) -> [TextSpan] {
+                               mode: LineBreakMode,
+                               axis: TextInputAxis) -> [TextSpan] {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
             spans.append(TextSpan(prompt, foreground: .gray))
@@ -172,13 +238,35 @@ public struct TextInput: TerminalView {
         // fits in `valueRoom` cells.
         let valueRoom = max(1, maxValueWidth - 1)
 
+        // Vertical-axis wrap path: emit chunks separated by `\n` so
+        // the Text primitive renders one row per chunk. Cursor pins
+        // to the right edge of the final chunk.
+        if axis == .vertical {
+            switch mode {
+            case .byCharWrapping, .byWordWrapping:
+                let chunks = mode.wrap(value, width: valueRoom)
+                for (i, chunk) in chunks.enumerated() {
+                    if i > 0 { spans.append(TextSpan("\n")) }
+                    spans.append(TextSpan(chunk))
+                    if i == chunks.count - 1 {
+                        spans.append(TextSpan("│"))
+                    }
+                }
+                return spans
+            case .byClipping, .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
+                // Fall through to single-row path below — clipping
+                // and truncation are inherently single-line.
+                break
+            }
+        }
+
+        // Single-row path (horizontal axis or non-wrap modes).
         switch mode {
         case .byClipping, .byCharWrapping, .byWordWrapping:
             // Virtual horizontal scroll: cursor always pinned at the
             // right edge once the value exceeds available width. Left
-            // edge clips older chars. Wrap modes degrade to clipping
-            // on a single-line input (axis:.vertical work tracked
-            // separately).
+            // edge clips older chars. Wrap modes on horizontal axis
+            // degrade to clipping (vertical axis above handled them).
             let visible: String
             if value.count <= valueRoom {
                 visible = value
