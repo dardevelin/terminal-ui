@@ -178,7 +178,7 @@ public final class FocusEngine {
 
         // No axis match anywhere, OR axis was perpendicular at some level.
         // Fall back to Tab order only when the host app opted in; arrows
-        // inside a scope always no-op so they can't leak out (HYP-40).
+        // inside a scope always no-op so they can't leak out.
         if currentNode.scopeID != nil { return }
         guard crossStack else { return }
         switch direction {

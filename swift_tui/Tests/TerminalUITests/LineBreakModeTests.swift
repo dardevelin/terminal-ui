@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-121 — `LineBreakMode` modifier for TextInput.
+// `LineBreakMode` modifier for TextInput.
 //
 // HIG `apple-hig/components/text-fields.md` §"Adjust line breaks
 // according to field needs":
@@ -134,8 +134,8 @@ struct LineBreakModeEnvTests {
     func modifierSetsEnv() {
         // Probe view reads the env value during body. After ancestor
         // applies `.lineBreakMode(.byTruncatingTail)`, the probe must
-        // see that value (not the default). Same shape as the HYP-96
-        // env-ordering tests.
+        // see that value (not the default). Same shape as the
+        // environment read-before-apply ordering tests.
         resetGraphContext()
         GraphContext.currentEnvironment = EnvironmentValues()
 
@@ -169,7 +169,7 @@ struct LineBreakModeTextInputTests {
         // Long value, narrow rect — TextInput's existing "virtual
         // horizontal scroll" keeps the cursor at the right edge,
         // dropping the leading characters. This is the HIG default
-        // and Phase 1 preserves it byte-for-byte.
+        // and `.byClipping` preserves the legacy behaviour byte-for-byte.
         resetGraphContext()
         var value = "this is a very long input value"
         var validation: TextInputValidation? = nil

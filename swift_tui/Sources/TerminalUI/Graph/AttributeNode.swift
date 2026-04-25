@@ -32,7 +32,7 @@ public class AttributeNode {
     /// Whether this node can receive focus (set by .focusable() modifier).
     public var isFocusable: Bool = false
 
-    /// Identifier of the nearest enclosing focus scope (HYP-40), or nil if not in one.
+    /// Identifier of the nearest enclosing focus scope, or nil if not in one.
     /// Set during reconciliation by .focusScope(id) — the modifier propagates its id
     /// to every focusable descendant. FocusEngine uses it to clamp directional
     /// navigation: arrows stay within a scope, Tab still crosses scopes.
@@ -84,7 +84,7 @@ public class AttributeNode {
     /// with the node's actual rect size each frame. The closure rebuilds the
     /// `geom.content(size)` view value and *updates* the existing child
     /// subtree in place — preserving NodeIDs, `@TerminalState` storage,
-    /// focus registrations, and lifecycle bookkeeping (HYP-97). The
+    /// focus registrations, and lifecycle bookkeeping. The
     /// previous implementation replaced `node.children` wholesale on every
     /// render, which destroyed identity.
     ///
@@ -266,7 +266,7 @@ public enum ModifierEffect {
     case backgroundView  // child[0] = background content, child[1] = base (render bg first)
     case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
     case focusable   // marks the child as able to receive focus
-    case focusScope(String) // HYP-40: groups focusable descendants; arrows stay within
+    case focusScope(String) // groups focusable descendants; arrows stay within
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
     case onAppear    // fires action on first graph construction (tracked on node)
     case onChange    // fires action when bound value changes (last value stored on node)

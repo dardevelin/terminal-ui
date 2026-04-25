@@ -1,4 +1,4 @@
-/// Result of validating a `TextInput`'s current value (HYP-82 #3).
+/// Result of validating a `TextInput`'s current value.
 ///
 /// The severity drives the input's visual state — `.ok` renders with default
 /// chrome, `.warning` tints the border yellow, `.error` tints it red. The
@@ -23,9 +23,9 @@ public struct TextInputValidation: Sendable, Equatable {
 /// An editable single-line text field.
 /// Currently appends typed characters and removes from the tail on
 /// backspace / delete. A real cursor model (insertion index, left/right,
-/// home/end, delete-forward) is tracked under HYP-73; until then arrow
+/// home/end, delete-forward) is; until then arrow
 /// keys are routed to the parent and the visible cursor sits at the
-/// right edge of the value. HYP-103 corrected this doc to match.
+/// right edge of the value. corrected this doc to match.
 ///
 /// The first positional argument is a persistent **prompt/label** rendered
 /// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
@@ -126,7 +126,7 @@ public struct TextInput: TerminalView {
                 let showPlaceholder = value.isEmpty && !placeholder.isEmpty
                 // The whole post-prompt rect is available for value + cursor.
                 // `composeSpans` reserves its own cell for the cursor glyph;
-                // HYP-90 rect-clip keeps any residual writes inside the rect.
+                // rect-clip keeps any residual writes inside the rect.
                 let available = max(1, size.width - prompt.count)
                 return Text(spans: composeSpans(
                     value: value,

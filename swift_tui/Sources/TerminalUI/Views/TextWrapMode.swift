@@ -5,7 +5,7 @@
 /// counts wrapped rows so the parent layout reserves enough height.
 ///
 /// `.none` disables wrap entirely: logical lines render on a single row each
-/// and are clipped to the container width (via HYP-90 rect enforcement). The
+/// and are clipped to the container width (via rect enforcement). The
 /// measurement side reports only the newline-separated row count. Intended
 /// for structurally sized content — dot-matrix glyphs, Morse code, ASCII art,
 /// pre-formatted tables — where a measurer that inflates height from wrap

@@ -10,7 +10,7 @@ import Foundation
 
 // MARK: - Wire protocol (JSON lines)
 
-/// HYP-71 remote control protocol. A unix-domain socket accepts one JSON
+/// remote control protocol. A unix-domain socket accepts one JSON
 /// request per line and writes one JSON response per line back. The protocol
 /// is intentionally plain so smoke tests can be shell scripts and external
 /// MCP servers don't need a vendored Swift client.

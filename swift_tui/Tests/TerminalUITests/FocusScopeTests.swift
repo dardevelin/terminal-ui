@@ -10,7 +10,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-40: .focusScope(id) groups focusable descendants so arrow keys stay
+// .focusScope(id) groups focusable descendants so arrow keys stay
 // within the scope. Tab still crosses scopes (SwiftUI convention).
 
 @Suite("FocusScope — graph construction")
@@ -120,7 +120,7 @@ struct FocusScopeNavigationTests {
     func wrongAxisDoesNotLeakOutOfScope() {
         resetGraphContext()
         let (graph, engine, focusables) = makeScopedLayout()
-        // In HStack, 'down' is wrong axis. Pre-HYP-40 would focusNext → leak to C.
+        // In HStack, 'down' is wrong axis. Pre-would focusNext → leak to C.
         // With scopes, it should be a no-op.
         engine.focusInDirection(.down, root: graph.root)
         #expect(engine.keyboardFocusID == focusables[0].id)

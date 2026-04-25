@@ -11,7 +11,7 @@ private func resetGraphContext() {
 }
 
 // These tests pin FocusEngine's current (flat Tab-order, axis-aware arrows)
-// behavior before HYP-40 introduces focus scopes.
+// behavior before introduces focus scopes.
 //
 // FocusEngine reads `isFocusable` off AttributeNodes that already live in a
 // graph, so tests build a graph first, mark specific nodes focusable, then

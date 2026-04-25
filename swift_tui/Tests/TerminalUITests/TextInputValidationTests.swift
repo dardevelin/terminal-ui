@@ -10,7 +10,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-82 #3 — validating TextInput surfaces severity + message to the user.
+// validating TextInput surfaces severity + message to the user.
 // These tests cover the value-level contract: running `validate` against the
 // current text produces the expected outcome. Visual contract (error border
 // colour) is an integration concern verified in the live Storybook.

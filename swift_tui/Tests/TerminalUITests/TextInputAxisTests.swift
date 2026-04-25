@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-123 — TextInput axis: .vertical
+// TextInput axis: .vertical
 //
 // Mirrors SwiftUI's `TextField(_:axis:.vertical)` shape introduced in
 // iOS 16. WWDC22 verbatim:
@@ -29,7 +29,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-@Suite("HYP-123 — TextInput axis:.vertical")
+@Suite("TextInput axis:.vertical")
 @MainActor
 struct TextInputAxisTests {
 

@@ -1,25 +1,20 @@
-// Equatable fast-path for view comparison (HYP-99 Gate 2).
+// Equatable fast-path for view comparison.
 //
 // Mirrors SwiftUI's `EquatableView` / `View.equatable()`. Wraps a view
 // whose type is `Equatable` so the graph reconciler can short-circuit
 // `body` re-evaluation when the new value equals the cached one.
 //
-// Apple's WWDC21 guidance applies verbatim here: "SwiftUI will keep
-// around a copy of the value to perform a comparison and know if the
-// view has changed." The default reconciler always re-evaluates a
-// composite view's body when its parent re-runs; an `Equatable`
-// wrapper opts that subtree into value-equality short-circuiting.
+// Apple's WWDC21 guidance applies verbatim: "SwiftUI will keep around
+// a copy of the value to perform a comparison and know if the view
+// has changed." The default reconciler walks Mirror-based field
+// comparison; the `.equatable()` opt-in gives it a user-supplied `==`
+// instead — faster and exact.
 //
 // The wrapper itself stores the content and forwards `==` to it. The
 // reconciler detects the wrapper via `_EquatableTerminalView` (a
 // type-erased protocol that hides the generic content parameter) and
 // uses it to compare new vs cached input before deciding whether to
 // re-evaluate.
-//
-// CURRENT STATUS: scaffolding only — the protocol exists and the
-// modifier compiles. The reconciler short-circuit lands in a
-// follow-up commit that implements Gate 2 against the failing tests
-// in HYP-99 Group B.
 
 /// Type-erasure for the wrapper so the reconciler can detect it and
 /// invoke `compare(against:)` without naming the generic content type.
@@ -64,10 +59,11 @@ public struct EquatableTerminalView<Content: TerminalView & Equatable>: Terminal
 
 extension TerminalView where Self: Equatable {
     /// Opt this view's subtree into Equatable-based short-circuit
-    /// reconciliation (HYP-99 Gate 2). When a parent re-evaluates and
-    /// emits a new value of this view, the reconciler compares against
-    /// the cached value via `==`; equal → skip body re-evaluation,
-    /// unequal → fall through to normal reconciliation.
+    /// reconciliation. When a parent re-evaluates and emits a new
+    /// value of this view, the reconciler compares against the cached
+    /// value via `==`; equal → skip body re-evaluation, unequal →
+    /// fall through to normal reconciliation. Faster than the default
+    /// Mirror-based field walk and exact about which fields matter.
     ///
     /// Apply at points where view inputs are stable across many parent
     /// re-evaluations: list rows, deep nested cells, anything whose

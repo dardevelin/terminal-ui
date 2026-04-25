@@ -85,7 +85,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var size: TerminalSize
     private var previousBuffer: CellBuffer?
     /// Reused render target — one allocation at startup instead of one per
-    /// frame (HYP-104). Cleared at the top of each render pass and resized
+    /// frame. Cleared at the top of each render pass and resized
     /// when the terminal geometry changes.
     private var renderBuffer = CellBuffer(width: 0, height: 0)
     private var needsRender: Bool = true
@@ -101,7 +101,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     public let focusEngine = FocusEngine()
 
     #if DEBUG
-    /// Remote-control server (HYP-71). Nil unless `.terminalui/terminalui.toml`
+    /// Remote-control server. Nil unless `.terminalui/terminalui.toml`
     /// enables the `remote_control` feature — zero overhead otherwise. Pumped
     /// once per frame before event drain so injected keystrokes land in the
     /// same frame they arrive.
@@ -160,12 +160,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableMouseTracking()
 
         #if DEBUG
-        // Auto-attach the remote-control server (HYP-71). Every TerminalUI
+        // Auto-attach the remote-control server. Every TerminalUI
         // debug build becomes MCP-drivable without any per-app setup. Socket
         // path is PID-scoped so multiple apps running concurrently don't
         // collide. The server is non-blocking: no client = no overhead.
         //
-        // HYP-98: gated on `socket.enabled` in `.terminalui/terminalui.toml`.
+        // gated on `socket.enabled` in `.terminalui/terminalui.toml`.
         // Default is true (preserves prior behaviour); users who want to
         // suppress the socket — security review, noisy /tmp, locked-down
         // environments — set `enabled = false` under `[socket]`.
@@ -183,7 +183,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         #endif
 
-        // Self-pipe for shutdown signaling (HYP-41).
+        // Self-pipe for shutdown signaling.
         // A blocked read() on STDIN doesn't respect Task.cancel() on Linux;
         // we wake it by writing a byte to this pipe, which poll() sees.
         var shutdownPipeFDs: [Int32] = [-1, -1]
@@ -207,7 +207,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             if shutdownPipeFDs[1] >= 0 { close(shutdownPipeFDs[1]) }
 
             #if DEBUG
-            // HYP-71: drop the remote-control server explicitly so its
+            // drop the remote-control server explicitly so its
             // deinit unlinks the PID socket + latest.sock symlink. Without
             // this, killing the app left stale sockets that confused the
             // next debug run. Clearing the ref triggers deinit now rather
@@ -270,7 +270,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         while running {
             #if DEBUG
-            // HYP-71: pump the remote-control server before draining events
+            // pump the remote-control server before draining events
             // so anything the MCP client just injected (send_key, send_text)
             // lands in this frame's event batch rather than the next frame.
             remoteControl?.pump()
@@ -401,7 +401,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
 
         inputTask.cancel()
-        // Wake the input task out of any blocked read() — HYP-41.
+        // Wake the input task out of any blocked read() via the
+        // shutdown self-pipe so quit doesn't hang.
         if shutdownPipeFDs[1] >= 0 {
             var wake: UInt8 = 1
             _ = write(shutdownPipeFDs[1], &wake, 1)
@@ -537,7 +538,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         )
 
         // Render from graph — no Any, no as?, enum dispatch only.
-        // HYP-104: reuse the runtime's renderBuffer instead of a fresh
+        // reuse the runtime's renderBuffer instead of a fresh
         // alloc per call. Both renderFullFrame and renderDiffFrame share
         // the same buffer so consecutive transitions don't churn memory.
         renderBuffer.resize(width: size.cols, height: size.rows)
@@ -600,7 +601,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // Rebuild focus index after graph changes
             if let root = graph.root {
                 focusEngine.rebuildIndex(root: root)
-                // Auto-focus the first focusable on startup (HYP-82 #4). With
+                // Auto-focus the first focusable on startup. With
                 // arrows no longer moving focus by default, an app whose
                 // arrow handler lives on a `.focusable()` view would receive
                 // nothing until the user pressed Tab. Mirrors SwiftUI's
@@ -619,7 +620,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     viewportWidth: size.cols, viewportHeight: size.rows
                 )
 
-                // Reuse the render buffer across frames (HYP-104). Resize
+                // Reuse the render buffer across frames. Resize
                 // is a no-op when geometry is stable; clear sets every
                 // cell back to .empty so the renderer paints into a known
                 // baseline. The post-render diff still produces minimal
@@ -778,7 +779,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
     }
 
-    // MARK: - Remote control (HYP-71)
+    // MARK: - Remote control
 
     /// Attach a remote-control server to this runtime. Called by the runtime
     /// at startup in every debug build (zero opt-in) — the server is

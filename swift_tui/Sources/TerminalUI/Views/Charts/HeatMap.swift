@@ -44,7 +44,7 @@ public struct HeatMap: TerminalView {
     }
 
     public var body: some TerminalView {
-        // Colored by default (HYP-88 I24) — build per-cell TextSpans so each
+        // Colored by default (I24) — build per-cell TextSpans so each
         // cell gets its palette-mapped foreground. Previous default went
         // through the grayscale `renderPlain()` path which threw away color
         // even though `colorForValue` was already available.

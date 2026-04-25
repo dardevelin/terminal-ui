@@ -82,7 +82,8 @@ public enum DiagPaths {
 
     /// Directory holding per-app remote-control sockets. Each running debug
     /// build creates `<pid>.sock` here and maintains a `latest.sock` symlink
-    /// pointing to the newest one. Default resolver used by HYP-71.
+    /// pointing to the newest one. Default resolver used by the
+    /// remote-control server.
     public static func socketDir(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("remote")
     }

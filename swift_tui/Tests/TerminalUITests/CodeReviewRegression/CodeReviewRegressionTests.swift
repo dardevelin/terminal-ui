@@ -2,11 +2,11 @@ import Testing
 @testable import TerminalUI
 @testable import TerminalUIConfig
 
-// Regression suite for the 2026-04-25 external code review (HYP-93 epic).
-// These tests assert the *correct* behaviour. They fail on `main` because
-// the bugs documented in HYP-94..HYP-101 are still present. Each test
-// turns green once its matching fix lands. The progress of this suite
-// from red → green is the sprint progress bar.
+// Regression suite born out of the 2026-04-25 external code review.
+// Each section pins a single correctness invariant the framework
+// promises but had been silently violating before the review pass.
+// The suite stays green as a guard against re-introducing any of
+// these bugs.
 
 @MainActor
 private func resetGraphContext() {
@@ -17,7 +17,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// MARK: - HYP-94: onChange / onDisappear unmapped
+// MARK: - onChange / onDisappear lifecycle modifiers must dispatch
 
 // Tracker class so closures can mutate from inside view bodies. A reference
 // type avoids capture-list copies that would otherwise hide invocations.
@@ -27,7 +27,7 @@ private final class Counter {
     func tick() { value += 1 }
 }
 
-@Suite("HYP-94 — onChange & onDisappear lifecycle modifiers")
+@Suite("onChange & onDisappear lifecycle modifiers")
 @MainActor
 struct OnChangeOnDisappearTests {
 
@@ -63,9 +63,9 @@ struct OnChangeOnDisappearTests {
     }
 }
 
-// MARK: - HYP-95: onAppear on first render + first input not lost
+// MARK: - onAppear on first render + focus ready before first input
 
-@Suite("HYP-95 — onAppear on first frame & focus ready before first input")
+@Suite("onAppear on first frame & focus ready before first input")
 @MainActor
 struct FirstFrameTests {
 
@@ -115,7 +115,7 @@ struct FirstFrameTests {
     }
 }
 
-// MARK: - HYP-96: @TerminalEnvironment read-before-apply
+// MARK: - @TerminalEnvironment must see ancestor .environment values
 
 // Recorded is `Sendable` so it can be captured into a non-isolated `body`
 // closure under strict concurrency. The mutation runs only on @MainActor in
@@ -134,7 +134,7 @@ private struct EnvProbe: TerminalView {
     }
 }
 
-@Suite("HYP-96 — @TerminalEnvironment must see ancestor .environment values during body")
+@Suite("@TerminalEnvironment must see ancestor .environment values during body")
 @MainActor
 struct EnvironmentOrderingTests {
 
@@ -156,7 +156,7 @@ struct EnvironmentOrderingTests {
     }
 }
 
-// MARK: - HYP-97: GeometryReader destroys identity each render
+// MARK: - GeometryReader must preserve subtree identity across renders
 
 private final class GRRecorded: @unchecked Sendable {
     var appearCount: Int = 0
@@ -169,7 +169,7 @@ private struct GRChild: TerminalView {
     }
 }
 
-@Suite("HYP-97 — GeometryReader must preserve subtree identity across renders")
+@Suite("GeometryReader must preserve subtree identity across renders")
 @MainActor
 struct GeometryReaderIdentityTests {
 
@@ -200,12 +200,12 @@ struct GeometryReaderIdentityTests {
     }
 }
 
-// MARK: - HYP-98: socket auto-attach ignores config flag
+// MARK: - Debug socket gating reads DiagConfig.socketEnabled
 // Spawning the runtime requires PTY harness — defer to integration test.
 // Asserted at the API surface for now: DiagConfig has the flag and it must
 // be consulted by the attach site.
 
-@Suite("HYP-98 — debug socket gating reads DiagConfig.socketEnabled")
+@Suite("debug socket gating reads DiagConfig.socketEnabled")
 @MainActor
 struct SocketGatingTests {
 
@@ -213,16 +213,16 @@ struct SocketGatingTests {
     func socketEnabledFlagExists() {
         // Sanity: the field exists. The actual behavioural test (no socket
         // file when disabled) lives in the PTY integration suite — see
-        // HYP-98 for tracking. This guards against accidental removal of
+        // for tracking. This guards against accidental removal of
         // the public flag while the runtime still ignores it.
         let cfg = DiagConfig.default
         #expect(cfg.socketEnabled == true, "default must be true to preserve current behaviour")
     }
 }
 
-// MARK: - HYP-100: Unicode width
+// MARK: - Unicode display width matches terminal cell count
 
-@Suite("HYP-100 — Unicode display width matches terminal cell count")
+@Suite("Unicode display width matches terminal cell count")
 @MainActor
 struct UnicodeWidthTests {
 
@@ -259,9 +259,9 @@ struct UnicodeWidthTests {
     }
 }
 
-// MARK: - HYP-101: Terminal robustness
+// MARK: - Terminal.size() falls back when ioctl reports 0×0 in release
 
-@Suite("HYP-101 — Terminal.size() falls back when ioctl reports 0×0 in release")
+@Suite("Terminal.size() falls back when ioctl reports 0×0 in release")
 @MainActor
 struct TerminalRobustnessTests {
 
@@ -269,7 +269,7 @@ struct TerminalRobustnessTests {
     func sizeReturnsNonZero() {
         // The test process runs under XCTest's PTY harness — ioctl normally
         // reports the inherited geometry. The release-path guard added in
-        // HYP-101 means even in the worst case (ioctl fails or reports
+        // means even in the worst case (ioctl fails or reports
         // 0×0) the framework returns 80×24 instead of 0×0, which the
         // compositor can't diff and which would crash the renderer's
         // divide/clip math.

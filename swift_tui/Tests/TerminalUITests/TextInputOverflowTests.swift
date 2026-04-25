@@ -10,11 +10,12 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-82 #2 — TextInput overflow must virtual-scroll so the tail + cursor
+// TextInput overflow must virtual-scroll so the tail + cursor
 // remain visible, regardless of how the containing layout sizes the rect.
 // These assertions cover the rect actually granted to the input, not what
 // GeometryReader reported, so they catch the prior `-3` breathing-room bug
-// that was subtracting cells the renderer was already giving back via HYP-90.
+// that was subtracting cells the renderer was already giving back via the
+// rect-clip enforcement in GraphRenderer.
 
 @Suite("TextInput — overflow scrolls tail into view")
 @MainActor

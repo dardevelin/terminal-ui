@@ -1,4 +1,4 @@
-/// Shared helpers for the drop-in component sprint (HYP-82).
+/// Shared helpers for the drop-in component sprint.
 ///
 /// Used by List, TreeView, Table, TextArea, PromptInput and other core views
 /// to share three cross-cutting concerns:
@@ -8,7 +8,7 @@
 ///    from the graph's proposed size (GeometryReader convention).
 /// 2. Row padding — space-fill a rendered row string to a target width so
 ///    shrunk content overwrites any stale cells left by the previous frame
-///    (Bucket B — see HYP-84).
+///    (the "shrunk-content bleed" failure mode).
 /// 3. Empty-state placeholder — one shared visual for `Component([]).body`
 ///    so every core collection-like view has the same fallback.
 

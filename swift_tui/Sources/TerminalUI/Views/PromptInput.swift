@@ -85,7 +85,7 @@ public struct PromptInput: TerminalView {
     public let prompt: String
     public let badge: String?
     /// Legacy cap kept for source compatibility. When non-nil, overrides
-    /// `heightPolicy` with `.fixed(n)` — matches the pre-HYP-84 constructor.
+    /// `heightPolicy` with `.fixed(n)` — matches the pre-constructor.
     public let maxVisibleLines: Int?
     public let heightPolicy: PromptHeightPolicy
     public let arrowMode: PromptArrowMode

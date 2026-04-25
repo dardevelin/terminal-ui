@@ -21,8 +21,8 @@ public struct EnvironmentValues: Sendable {
     public var colorSupport: ColorSupport = .trueColor
     public var isFocused: Bool = false
     public var focusedID: NodeID? = nil
-    /// Keyboard-focus indicator style (HYP-91). Default `.overlay` preserves
-    /// pre-HYP-91 visuals (cyan `▎` bar at `rect.x - 1`). Set via
+    /// Keyboard-focus indicator style. Default `.overlay` preserves
+    /// pre-visuals (cyan `▎` bar at `rect.x - 1`). Set via
     /// `.focusIndicator(_:)` on any view to override app-wide or per subtree.
     public var focusIndicatorStyle: FocusIndicatorStyle = .overlay
     /// Whether `ScrollView` paints its edge indicator glyphs (▲▼◀▶) when more

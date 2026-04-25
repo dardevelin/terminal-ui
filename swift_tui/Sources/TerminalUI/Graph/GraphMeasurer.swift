@@ -152,7 +152,7 @@ public enum GraphMeasurer {
                 // and other fixed-geometry views), count only newline-separated
                 // rows so measurement doesn't inflate when a logical row
                 // exceeds proposedWidth. Overflow is clipped at render time
-                // by HYP-90 rect enforcement. See `TextWrapMode`.
+                // by rect enforcement. See `TextWrapMode`.
                 let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
                 switch mode {
                 case .wrap: return countWrappedLines(text, width: proposedWidth)
@@ -230,7 +230,7 @@ public enum GraphMeasurer {
             // soft-wrap: on narrow previews the seed reports 1 row but the
             // live rebuild with the true width reports the wrapped count.
             //
-            // Post-HYP-97 the rebuilder updates the existing child node in
+            // Post-the rebuilder updates the existing child node in
             // place rather than returning a fresh standalone subtree, so we
             // measure `node.children.first` after the rebuild has run.
             if let rebuild = node.geometryRebuilder {
@@ -245,7 +245,7 @@ public enum GraphMeasurer {
     // MARK: - String Measurement Helpers
 
     /// Count max line width without allocating an intermediate array.
-    /// Uses display-width per grapheme (HYP-100), so a CJK ideograph
+    /// Uses display-width per grapheme, so a CJK ideograph
     /// contributes 2 columns and a combining mark contributes 0.
     static func maxLineWidth(_ s: String) -> Int {
         var maxW = 0
@@ -275,7 +275,7 @@ public enum GraphMeasurer {
     /// width. Each logical line (`\n`-separated) is wrapped by
     /// `TextLayout.wrapWords` and contributes that many rows. Uses
     /// display-width per grapheme so a 2-cell character is treated as
-    /// occupying 2 columns when deciding whether to wrap (HYP-100).
+    /// occupying 2 columns when deciding whether to wrap.
     ///
     /// Aligned with the renderer's word-aware soft-wrap path so the
     /// measurer's predicted row count matches what the renderer

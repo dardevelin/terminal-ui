@@ -15,7 +15,7 @@ public protocol ByteSource {
 /// Runtime source — reads one byte at a time from STDIN in raw mode.
 ///
 /// Normally relies on VTIME=1 (100ms poll) in raw mode for interruptibility.
-/// If `shutdownReadFD` is set (HYP-41), `poll()` watches both STDIN and the
+/// If `shutdownReadFD` is set, `poll()` watches both STDIN and the
 /// shutdown pipe; writing any byte to the pipe wakes a blocked readByte()
 /// and causes it to return nil, letting the caller check Task.isCancelled.
 ///

@@ -80,7 +80,7 @@ struct DirtyDrainTests {
         graph.update(from: DepthFiveContainer(model: model))
         graph.resetFrameStats()
 
-        model.x = 1  // Gate 1 — synchronous markDirty fires on the leaf
+        model.x = 1  // observation tracker fires synchronous markDirty on the leaf
 
         // The drain entry point handles the next frame in place.
         let drained = graph.drain()

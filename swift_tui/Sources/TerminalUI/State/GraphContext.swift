@@ -14,7 +14,7 @@
 /// Safety relies on a runtime invariant: body evaluation, focus registration,
 /// and rendering all run on @MainActor. The compiler cannot verify this.
 /// If any code path evaluates a view body off-MainActor, data races will
-/// occur silently. Consider @TaskLocal migration (HYP-8) for compiler
+/// occur silently. Consider @TaskLocal migration for compiler
 /// enforcement.
 ///
 /// ## Lifecycle

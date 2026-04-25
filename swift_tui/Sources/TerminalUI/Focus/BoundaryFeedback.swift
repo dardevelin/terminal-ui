@@ -1,6 +1,6 @@
 /// How a view should react when the user hits an input boundary — cursor at
 /// buffer start pressing left, at end pressing right, maxLength reached
-/// typing a char, read-only region, etc. (HYP-87 / HYP-81).
+/// typing a char, read-only region, etc..
 ///
 /// Input components (TextInput, TextArea, PromptInput) read this environment
 /// value and trigger the configured feedback on boundary-hit events. Default

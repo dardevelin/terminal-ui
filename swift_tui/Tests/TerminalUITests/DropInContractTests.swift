@@ -10,7 +10,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-85 / HYP-87 — drop-in contract: each core component must render with
+// / drop-in contract: each core component must render with
 // the minimal required init args (data binding only, no sizing or layout
 // config) and produce non-empty output into a reasonable buffer. Validates
 // that the SwiftUI-style default principle holds: Component(x) works.

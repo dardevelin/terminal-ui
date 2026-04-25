@@ -190,7 +190,7 @@ struct ReflectiveCompareTests {
         let model = CounterModel()
         graph.update(from: EquatableLeaf(model: model))
         graph.resetFrameStats()
-        model.x = 1  // Gate 1 — observed property mutated
+        model.x = 1  // observed property mutated → observation tracker fires
         graph.update(from: EquatableLeaf(model: model))
         #expect(graph.bodyEvaluationCount >= 1,
                 "observed-state change must re-eval body; got \(graph.bodyEvaluationCount)")

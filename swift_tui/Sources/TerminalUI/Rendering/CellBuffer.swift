@@ -55,7 +55,7 @@ public struct CellBuffer: Sendable {
     /// Optional clip rectangle — when set, writes to cells outside this rect are
     /// dropped silently. Renderer pushes the current component's assigned rect
     /// before descending and pops on return, giving framework-enforced rect
-    /// boundaries without asking every component to self-clip (HYP-90).
+    /// boundaries without asking every component to self-clip.
     ///
     /// The bounds check in the subscript setter AND in text-writing helpers
     /// (`write`, `writeSpans`) consults this rect intersected with the buffer
@@ -73,7 +73,7 @@ public struct CellBuffer: Sendable {
     /// Reset every cell to `.empty` and drop any clip. Cheaper than
     /// constructing a fresh `CellBuffer` per frame: the underlying
     /// storage capacity is preserved, so subsequent renders skip the
-    /// allocator entirely (HYP-104). Safe to call from any frame
+    /// allocator entirely. Safe to call from any frame
     /// boundary — callers that resize between frames should use
     /// `resize(width:height:)` instead.
     public mutating func clear() {

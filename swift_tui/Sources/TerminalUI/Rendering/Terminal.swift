@@ -79,7 +79,7 @@ public enum Terminal {
         let ioctlResult = ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
         var size = TerminalSize(cols: Int(windowSize.ws_col), rows: Int(windowSize.ws_row))
 
-        // HYP-101: in release builds, ioctl can fail (stdout piped, headless
+        // in release builds, ioctl can fail (stdout piped, headless
         // CI without a TTY) or report `0×0` (some shell harnesses, broken
         // terminal emulators). Falling back to the VT100 default keeps the
         // renderer from dividing by zero or producing a zero-cell buffer
@@ -115,7 +115,7 @@ public enum Terminal {
     /// Returns `true` on success, `false` if the underlying syscalls fail
     /// (e.g. stdin is not a TTY). On failure no termios state is captured,
     /// so `disableRawMode()` is a no-op — the caller is left in cooked mode.
-    /// HYP-101: previously this discarded both syscall returns silently,
+    /// previously this discarded both syscall returns silently,
     /// leaving callers unable to distinguish "raw mode active" from "no-op
     /// because stdin is a pipe."
     @discardableResult

@@ -11,7 +11,7 @@
 // 2. Mirror fallback — raw tuples from nested result builders.
 // 3. Single view — if neither, it's one child.
 //
-// This is the [Any] boxing hot path (HYP-5). Parameter packs will replace it.
+// This is the [Any] boxing hot path. Parameter packs will replace it.
 
 func extractChildren(from value: Any) -> [Any] {
     let mirror = Mirror(reflecting: value)
@@ -228,7 +228,7 @@ extension ConditionalView: _GraphConditional {
             // the harness exposed this as a missing "missing @" row.
             graph.changed = true
             // Fire onDisappear on the outgoing branch's subtree before
-            // dropping it (HYP-94). Without this, an .onDisappear inside
+            // dropping it. Without this, an .onDisappear inside
             // a conditional that flips wouldn't fire.
             for old in node.children {
                 graph.fireDisappear(on: old)

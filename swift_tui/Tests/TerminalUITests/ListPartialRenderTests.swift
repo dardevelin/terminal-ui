@@ -15,7 +15,7 @@ private struct Row: Identifiable {
     let label: String
 }
 
-// HYP-82 #5 reproduction — "list was showing partial elements instead of
+// #5 reproduction — "list was showing partial elements instead of
 // all until focused (render bug ?)". Render a small List into a buffer
 // WITHOUT focusing anything and assert every row's leading char made it
 // into the cells.

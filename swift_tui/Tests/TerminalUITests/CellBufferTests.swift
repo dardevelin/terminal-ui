@@ -122,7 +122,7 @@ struct CellBufferTests {
         #expect(buffer[1, 1].character == "d")
     }
 
-    // MARK: - Rect clip enforcement (HYP-90)
+    // MARK: - Rect clip enforcement
 
     @Test("withClip drops writes outside the clip rect")
     func withClipDropsOutside() {

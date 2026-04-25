@@ -2,18 +2,19 @@ import Testing
 import Observation
 @testable import TerminalUI
 
-// HYP-99 surgical invalidation — failing tests that pin the contract
-// before any code changes. Tests instrument AttributeGraph with
-// debug-only counters to prove that `body` re-evaluation is bounded
-// by what *actually* changed, not by the size of the tree.
+// Surgical invalidation — `body` re-evaluation is bounded by what
+// *actually* changed, not by the size of the tree. These tests
+// instrument AttributeGraph with debug-only counters and pin the
+// contract.
 //
 // Two-gate model (matches SwiftUI per WWDC21/23 + SE-0395):
-//   Gate 1: a composite view's body re-runs when an @Observable property
-//           it accessed during its last body evaluation is mutated.
-//   Gate 2: when a parent's body re-runs and emits a new child view
-//           value, the child's body re-runs only when the new value
-//           differs from the cached one (Equatable opt-in, fall-through
-//           to "always re-evaluate" otherwise).
+//   Per-node observation gate — a composite view's body re-runs when
+//     an @Observable property it accessed during its last body
+//     evaluation is mutated.
+//   Value-equality gate — when a parent's body re-runs and emits a
+//     new child view value, the child's body re-runs only when the
+//     new value differs from the cached one (Equatable opt-in, with
+//     a Mirror-based fallback for non-Equatable views).
 
 @MainActor
 private func resetGraphContext() {
@@ -29,9 +30,10 @@ private func resetGraphContext() {
 // Tests need to know how many times each composite view's body ran.
 // We expose `bodyEvaluationCount` on `AttributeGraph` (DEBUG-only,
 // bumped inside `evaluateBody`). Asserting on that counter is the
-// whole point of HYP-99 — we want surgical, not blanket, evaluation.
+// whole point of these tests — we want surgical, not blanket,
+// evaluation.
 
-// MARK: - HYP-99 Group A: per-node Observation tracking (Gate 1)
+// MARK: - Per-node observation tracking (the automatic gate)
 
 @Observable
 private final class CounterModel {
@@ -48,7 +50,7 @@ private final class EvalRecorder: @unchecked Sendable {
     var leafBCount: Int = 0
 }
 
-// Equatable conformance opts these leaves into HYP-99 Gate 2 short-
+// Equatable conformance opts these leaves into the value-equality short-
 // circuiting via `.equatable()`. Two leaves built with the same
 // (model, recorder) pair compare equal — so when a parent's body
 // re-runs and the leaf's inputs haven't changed, the leaf's body
@@ -89,7 +91,7 @@ private struct TwoLeafRoot: TerminalView {
     }
 }
 
-@Suite("HYP-99 — Group A: per-node Observation (Gate 1)")
+@Suite("Surgical invalidation — per-node observation tracking")
 @MainActor
 struct PerNodeObservationTests {
 
@@ -128,7 +130,8 @@ struct PerNodeObservationTests {
         #expect(recorder.leafACount == 1)
 
         // Touch y — leaf's onChange tracker is registered for `\.x`,
-        // not `\.y`, so it should not fire. With Gate 2 active, the
+        // not `\.y`, so it should not fire. With the value-equality
+        // short-circuit active, the
         // wrapper sees Equatable-equal inputs + clean subtree and
         // short-circuits.
         model.y = 99
@@ -155,7 +158,7 @@ struct PerNodeObservationTests {
     }
 }
 
-// MARK: - HYP-99 Group B: Equatable fast-path (Gate 2)
+// MARK: - Equatable fast-path (the value-equality gate)
 //
 // When a parent re-evaluates and emits a child view value that is
 // `Equatable` AND `==` the cached previous value, the child's body
@@ -186,7 +189,7 @@ private struct NonEquatableLeaf: TerminalView {
     }
 }
 
-@Suite("HYP-99 — Group B: Equatable fast-path (Gate 2)")
+@Suite("Surgical invalidation — Equatable fast-path")
 @MainActor
 struct EquatableFastPathTests {
 
@@ -219,15 +222,15 @@ struct EquatableFastPathTests {
         #expect(recorder.leafACount == 2, "lhs != rhs → child body must re-run")
     }
 
-    @Test("non-Equatable views with class-typed fields fall back to re-run (HYP-125 parity ceiling)")
+    @Test("non-Equatable views with class-typed fields fall back to re-run (parity ceiling)")
     func nonEquatableWithClassFieldAlwaysReevaluates() {
-        // Post-HYP-125: SwiftUI-parity reflective compare extends the
-        // skip-condition to non-Equatable views, BUT only for
-        // value-typed fields. Reference types without Equatable
-        // (the @Observable case is the headline) defeat the compare
-        // and fall through to evaluateBody — Gate 1 is the surgical
-        // path for those, not Gate 2. SwiftUI has the same parity
-        // ceiling.
+        // SwiftUI-parity reflective compare extends the skip-condition
+        // to non-Equatable views, BUT only for value-typed fields.
+        // Reference types without Equatable (the @Observable case is
+        // the headline) defeat the compare and fall through to
+        // evaluateBody — the per-node Observation tracker is the
+        // surgical path for those, not value-equality. SwiftUI has the
+        // same parity ceiling.
         //
         // `NonEquatableLeaf` here holds a class field (`recorder`),
         // so reflectiveEqual returns false → body re-runs every update.
@@ -243,7 +246,7 @@ struct EquatableFastPathTests {
     }
 }
 
-// MARK: - HYP-99 Group C: frame-stat assertions
+// MARK: - Frame-stat bounds (depth not size)
 //
 // One toggle in a deep subtree must NOT cause O(tree size)
 // re-evaluations. After the fix, only the path from the changed
@@ -271,7 +274,7 @@ private struct DeepRoot: TerminalView {
     }
 }
 
-@Suite("HYP-99 — Group C: frame-stat bound checks")
+@Suite("Surgical invalidation — body re-eval bounded by mutation depth")
 @MainActor
 struct FrameStatBoundsTests {
 

@@ -1,4 +1,4 @@
-// Line-break behaviour for text-input components (HYP-121).
+// Line-break behaviour for text-input components.
 //
 // Per Apple HIG `apple-hig/components/text-fields.md` §"Adjust line
 // breaks according to field needs":

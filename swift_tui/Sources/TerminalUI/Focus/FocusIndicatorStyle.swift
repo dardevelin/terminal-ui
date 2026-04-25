@@ -1,8 +1,8 @@
 /// How the keyboard-focus indicator is visually drawn for focusable views
-/// (HYP-91). The style is an environment value — set app-wide via
+///. The style is an environment value — set app-wide via
 /// `.focusIndicator(_:)` on the root view, override per subtree by applying
 /// the modifier closer to the leaf. Default is `.overlay` (preserves the
-/// pre-HYP-91 look: a cyan `▎` bar adjacent to the focused view).
+/// pre-look: a cyan `▎` bar adjacent to the focused view).
 ///
 /// ## Style semantics
 ///
@@ -14,7 +14,7 @@
 ///
 /// - `.bar` — `▎` drawn at `rect.x` (the first cell INSIDE the focused view).
 ///   Costs the focused view one column of content width but survives rect
-///   clipping (HYP-90). Best for constrained layouts.
+///   clipping. Best for constrained layouts.
 ///
 /// - `.prefix` — No bar is drawn. Views that implement their own prefix
 ///   affordance (e.g. `List` uses `▸ ` on the selected row) handle their own

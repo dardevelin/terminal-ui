@@ -1,22 +1,18 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-120 Phase 1 — TextArea soft-wrap rendering.
+// TextArea soft-wrap rendering.
 //
 // Per HIG `apple-hig/components/text-fields.md`: TextArea is the
 // "text view" for "larger amounts of text", and wrap-at-word is the
-// readable default. Today TextArea renders logical lines 1:1 to
-// display rows — long lines clip at the right edge.
+// readable default.
 //
-// Phase 1 (this commit): logical lines soft-wrap into ≤width chunks
-// at render time via `TextLayout.wrapWords`. Cursor stays
-// logical-row-indexed; arrow keys keep their current `.logical`
-// semantics (Down moves to the next logical line, even if the
-// current line wraps to multiple display rows).
-//
-// Phase 2 (deferred): `.display` arrow-mode that walks wrapped
-// chunks; scrollOffset re-keyed on display rows; selection drawing
-// that spans wrapped chunks correctly. Tracked under HYP-120.
+// Logical lines soft-wrap into ≤width chunks at render time via
+// `TextLayout.wrapWords`. Cursor stays logical-row-indexed; the
+// `.logical` arrow mode keeps Down on the next logical line (even
+// when the current line wraps to multiple display rows). The
+// `.display` arrow-mode that walks wrapped chunks lives in
+// `TextAreaDisplayRowNavigationTests`.
 
 @MainActor
 private func resetGraphContext() {
@@ -27,7 +23,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-@Suite("TextArea — soft-wrap (HYP-120 Phase 1)")
+@Suite("TextArea — soft-wrap")
 @MainActor
 struct TextAreaWrapTests {
 

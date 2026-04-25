@@ -30,7 +30,7 @@ public enum GraphRenderer {
         GraphContext.currentProposedSize = Size(width: context.rect.width, height: context.rect.height)
         defer { GraphContext.currentProposedSize = previousProposed }
 
-        // Rect-clip enforcement (HYP-90). Every node's writes are bounded to its
+        // Rect-clip enforcement. Every node's writes are bounded to its
         // assigned rect intersected with all ancestors' rects. Prevents a child
         // from punching through a parent's border/frame when it miscalculates
         // measurement or paints past its bounds. Opt out with `.overflowOK()`.
@@ -50,7 +50,7 @@ public enum GraphRenderer {
                 DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
                 #endif
                 // GeometryReader rebuild path: invoke the rebuilder with the
-                // actual allocated rect size. Post-HYP-97 the rebuilder
+                // actual allocated rect size. Post-the rebuilder
                 // *updates* the existing child subtree in place, preserving
                 // NodeIDs, @TerminalState storage, focus registrations, and
                 // lifecycle bookkeeping across frames. Previously this
@@ -100,7 +100,7 @@ public enum GraphRenderer {
                         guard y < context.rect.y + context.rect.height else { return }
                         // Pad to rect width with spaces so the trailing
                         // region is cleared when content shrank from a
-                        // longer previous frame (HYP-84 — "epsilone" →
+                        // longer previous frame ("epsilone" →
                         // "epsilon" stale-cell bug).
                         let padCount = max(0, maxWidth - chunk.count)
                         let padded = chunk + String(repeating: " ", count: padCount)
@@ -155,7 +155,7 @@ public enum GraphRenderer {
         let children = effectiveChildren(of: node)
         guard !children.isEmpty else { return }
 
-        // Clear-before-layout to prevent shrunk-content bleed (HYP-84).
+        // Clear-before-layout to prevent shrunk-content bleed.
         // A VStack whose rows can change length (e.g. List swapping "epsilone"
         // for "epsilon") must blank its rect before re-laying children so
         // the vacated trailing cells aren't left with stale glyphs. ZStack
@@ -341,7 +341,7 @@ public enum GraphRenderer {
     ///
     /// After blitting, a small edge-indicator glyph is painted in the last
     /// viewport cell of each direction that has scrollable content remaining
-    /// (HYP-83). Indicator visibility is controlled by the `scrollIndicators`
+    ///. Indicator visibility is controlled by the `scrollIndicators`
     /// environment value.
     static func renderScroll(_ node: AttributeNode, axis: ScrollAxis, children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
@@ -386,7 +386,7 @@ public enum GraphRenderer {
                 // Indicator glyphs use cyan+bold to match the focus-ring
                 // colour — dim grey was too subtle in live Storybook and
                 // users mistook clipped content for missing content
-                // (HYP-82 #8).
+                //.
                 let indicatorStyle = Style(foreground: .cyan, background: nil,
                                            bold: true, italic: false, underline: false)
                 if offset > 0 {
@@ -430,7 +430,7 @@ public enum GraphRenderer {
                 // Indicator glyphs use cyan+bold to match the focus-ring
                 // colour — dim grey was too subtle in live Storybook and
                 // users mistook clipped content for missing content
-                // (HYP-82 #8).
+                //.
                 let indicatorStyle = Style(foreground: .cyan, background: nil,
                                            bold: true, italic: false, underline: false)
                 if offset > 0 {
@@ -775,11 +775,11 @@ public enum GraphRenderer {
 
     /// Draw focus indicators after the main render pass.
     ///
-    /// Style is read from the environment (HYP-91). Each of the four styles
+    /// Style is read from the environment. Each of the four styles
     /// has different semantics:
     ///
     /// - `.overlay` — bar at `rect.x - 1` outside the focused view's rect.
-    ///   Matches pre-HYP-91 behavior; top-level pass has no clip so the cell
+    ///   Matches pre-behavior; top-level pass has no clip so the cell
     ///   adjacent to the focused view is overwritten (often a parent's
     ///   border/padding). Best visual for forms.
     /// - `.bar` — bar at `rect.x` INSIDE the focused view's first column.

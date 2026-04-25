@@ -1,4 +1,4 @@
-// Unicode display-width helpers (HYP-100).
+// Unicode display-width helpers.
 //
 // A terminal's screen is a grid of fixed-width cells. A grapheme cluster
 // (Swift `Character`) can occupy 0, 1, or 2 cells depending on its

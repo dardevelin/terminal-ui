@@ -1,21 +1,18 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-122 — TextArea Phase 2: display-row arrow mode + scroll + cross-wrap selection.
+// TextArea display-row navigation — when arrowMode is `.display`,
+// Up/Down step through wrapped chunks of the current logical line
+// before crossing to the next logical line. The companion
+// `TextAreaArrowMode.logical` (the simpler model where Down jumps to
+// the next LOGICAL line, skipping wrapped chunks) is covered in
+// `TextAreaWrapTests`.
 //
-// Phase 1 (HYP-120) shipped soft-wrap rendering with cursor staying
-// logical-row-indexed. Arrow keys jumped to the next LOGICAL line
-// even when the current line wrapped to multiple display rows.
-//
-// Phase 2 (this ticket):
-//   - `TextAreaArrowMode` enum (`.logical` default, `.display` opt-in)
-//   - `.display` mode: Down advances to next chunk of same logical
-//     line before crossing logical-line boundary
-//   - selection drawing across wrap boundaries highlights both chunks
-//
-// Cursor (logical row, col) ↔ (display row, col within chunk)
-// projection is the heart of the change. Mirrors PromptInput's
-// `projectCursor` shape.
+// Cursor projection (logical row, col) ↔ (display row, col within
+// chunk) is the heart of the navigation logic — same shape as
+// PromptInput's `projectCursor`. Selection drawing across wrap
+// boundaries reuses the same projection so highlights span chunks
+// correctly.
 
 @MainActor
 private func resetGraphContext() {
@@ -26,9 +23,9 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-@Suite("HYP-122 — TextArea Phase 2 arrow modes + selection")
+@Suite("TextArea — display-row arrow mode + scroll + selection across wraps")
 @MainActor
-struct TextAreaPhase2Tests {
+struct TextAreaDisplayRowNavigationTests {
 
     // MARK: - Cursor projection (logical → display)
 

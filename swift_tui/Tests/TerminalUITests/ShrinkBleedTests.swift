@@ -10,7 +10,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-84 — reproduces the user's screenshot bug where a List row shrinking
+// reproduces the user's screenshot bug where a List row shrinking
 // from "epsilone" to "epsilon" left a stale 'e' in the trailing cell.
 //
 // Strategy: render a Text at width W, update it to shorter content, render

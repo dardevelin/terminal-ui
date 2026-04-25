@@ -258,7 +258,7 @@ public final class AttributeGraph {
                     stampScopeID(scopeID, on: node.children)
                 }
 
-                // HYP-96: same env-apply window as constructModifier so
+                // same env-apply window as constructModifier so
                 // descendant body re-evaluations during update see the
                 // ancestor's environment value, not the default.
                 withEnvironmentApplied(effect: newEffect) {
@@ -326,7 +326,7 @@ public final class AttributeGraph {
 
         // GeometryReader — refresh the closure so captures (like an updated
         // `text` binding) stay in sync. The renderer invokes the rebuilder
-        // each frame; post-HYP-97 it updates the existing child in place
+        // each frame; post-it updates the existing child in place
         // rather than replacing it, so identity survives across renders.
         if let geom = view as? any _GraphGeometryReader {
             nonisolated(unsafe) weak let weakSelf = self
@@ -407,7 +407,7 @@ public final class AttributeGraph {
                     // wrapping, and parent stack heights depend on children.
                     // Without the walk, an enclosing VStack/HStack keeps its
                     // pre-change height cached. Surfaced as a PromptInput
-                    // soft-wrap regression once HYP-97 made the node persist
+                    // soft-wrap regression once made the node persist
                     // instead of being rebuilt each frame. We invalidate
                     // cache fields only — not `isDirty` — to avoid
                     // ricocheting back into reconciliation paths that read
@@ -579,13 +579,14 @@ public final class AttributeGraph {
         // Reference type WITHOUT Equatable conformance — e.g. an
         // `@Observable` model class held by the view. We cannot prove
         // value equality without comparing every observed property,
-        // and observed-state mutation goes through Gate 1 (per-node
-        // onChange) NOT through this compare. To stay correct, return
-        // false so the body re-runs and `withObservationTracking`
-        // re-arms its tracker on the fresh property reads. This is
-        // conservative but matches SwiftUI's behaviour: reference
-        // semantics defeat the value-diff path; mitigation is
-        // `.equatable()` with a user-supplied `==`. (Parity ceiling.)
+        // and observed-state mutation already routes through the
+        // per-node `onChange` tracker, not through this compare. To
+        // stay correct, return false so the body re-runs and
+        // `withObservationTracking` re-arms its tracker on the fresh
+        // property reads. This is conservative but matches SwiftUI's
+        // behaviour: reference semantics defeat the value-diff path;
+        // mitigation is `.equatable()` with a user-supplied `==`
+        // (the documented parity ceiling).
         if type(of: a) is AnyClass {
             return false
         }
@@ -740,7 +741,7 @@ public final class AttributeGraph {
         node.geometryRebuilder = { size, parent in
             let view = geom.rebuild(with: size)
             guard let graph = weakSelf else { return }
-            // HYP-97: update existing child in place. Identity (NodeID,
+            // update existing child in place. Identity (NodeID,
             // state slots, focus registrations, lifecycle bookkeeping)
             // survives across renders. Falls back to construction only
             // when the child is missing (defensive — the seed path
@@ -836,7 +837,7 @@ public final class AttributeGraph {
         let childNode = constructAnyView(scroll.graphChild(), id: childID)
         childNode.parent = node
         node.children.append(childNode)
-        // Implicit ScrollView focus from the first HYP-92 attempt was
+        // Implicit ScrollView focus from the first attempt was
         // reverted: the "focusable descendant?" check only looked at the
         // ScrollView's own subtree, so a sibling focusable (e.g. Storybook's
         // sidebar hint line BELOW the ScrollView) didn't prevent the
@@ -856,7 +857,7 @@ public final class AttributeGraph {
             node.isFocusable = true
         }
 
-        // HYP-96: environment modifier must apply BEFORE child construction
+        // environment modifier must apply BEFORE child construction
         // so descendants observe the new value when their bodies evaluate.
         // Previously this apply only ran at render time, by which point any
         // `@TerminalEnvironment(\.x)` reads in child bodies had already
@@ -878,7 +879,7 @@ public final class AttributeGraph {
         }
         _ = previousEnvironment
 
-        // HYP-40: stamp scope onto focusable descendants after children exist.
+        // stamp scope onto focusable descendants after children exist.
         if case .focusScope(let scopeID) = effect {
             stampScopeID(scopeID, on: node.children)
         }

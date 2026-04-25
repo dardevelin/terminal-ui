@@ -24,7 +24,7 @@ public enum Key: Equatable, Sendable {
 public enum KeyEventSource: Sendable, Equatable {
     /// The app's stdin reader parsed this from the terminal. Default.
     case stdin
-    /// HYP-71 remote control socket injected this event.
+    /// remote control socket injected this event.
     case remote
 }
 

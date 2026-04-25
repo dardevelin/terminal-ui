@@ -72,18 +72,19 @@ public struct TextAreaSelection: Equatable, Sendable {
 ///
 /// TextArea(text: $source, state: $editorState, lineNumbers: true)
 /// ```
-/// Arrow-key behaviour for TextArea (HYP-122 Phase 2).
+/// Arrow-key behaviour for TextArea.
 ///
 /// Mirrors `PromptArrowMode` and SwiftUI's TextEditor convention.
-/// Default `.logical` preserves the pre-Phase 2 behaviour: Up/Down
-/// move between LOGICAL lines, skipping wrapped chunks. `.display`
-/// walks through wrapped chunks of the current logical line before
-/// crossing to the next.
+/// `.logical` is the simpler model — Up/Down move between LOGICAL
+/// lines, skipping wrapped chunks. `.display` walks through wrapped
+/// chunks of the current logical line before crossing to the next
+/// (matches SwiftUI's TextEditor).
 public enum TextAreaArrowMode: Sendable, Equatable {
     /// Up/Down move between logical lines. Wrapped chunks of a long
     /// line are skipped over — pressing Down on a 3-chunk wrapped
-    /// line jumps to the NEXT logical line directly. Default —
-    /// preserves Phase 1 semantics for backward compatibility.
+    /// line jumps to the NEXT logical line directly. Default for
+    /// backward compatibility with the original logical-row cursor
+    /// model.
     case logical
     /// Up/Down walk display rows. Long wrapped lines step through
     /// each chunk before moving to the next logical line. Matches
@@ -99,7 +100,7 @@ public struct TextArea: TerminalView {
     /// Old int-default (10) preserved as the fallback when no container
     /// height is known.
     public let visibleHeight: Int?
-    /// HYP-122 Phase 2: arrow-key navigation mode. `.logical`
+    /// arrow-key navigation mode. `.logical`
     /// (default) preserves backward-compat; `.display` enables
     /// SwiftUI-style display-row navigation through wrapped chunks.
     public let arrowMode: TextAreaArrowMode
@@ -152,7 +153,7 @@ public struct TextArea: TerminalView {
 
     /// Compute the soft-wrap width for the body content: container
     /// width minus the rendered gutter prefix length (when line
-    /// numbers are on). HYP-120 Phase 1 — long logical lines wrap at
+    /// numbers are on). long logical lines wrap at
     /// this width via `TextLayout.wrapWords` so content stays inside
     /// the visible rect.
     ///
@@ -174,7 +175,7 @@ public struct TextArea: TerminalView {
         let lines = Self.splitLines(content)
         let cursor = Self.clampCursor(editorState.cursor, lines: lines)
         let wrapWidth = effectiveWrapWidth(containerWidth: containerWidth, totalLines: lines.count)
-        // HYP-122 Phase 2: when arrow mode is `.display`, scroll is
+        // when arrow mode is `.display`, scroll is
         // display-row-keyed so wrapped chunks of an earlier line
         // count toward the scroll position. `.logical` mode keeps the
         // legacy logical-row scroll for backward-compat.
@@ -248,7 +249,7 @@ public struct TextArea: TerminalView {
         return max(0, scroll)
     }
 
-    // MARK: - HYP-122 Phase 2: Cursor projection (logical → display)
+    // MARK: - Cursor projection (logical → display row)
 
     /// Project a logical column into (chunkIndex, columnInChunk) for
     /// the wrapped chunks of `logicalLine`. Used by `.display` arrow
@@ -440,7 +441,7 @@ public struct TextArea: TerminalView {
         let gutter = lineNumbers ? gutterWidth(for: totalLines) : 0
         let endRow = min(scrollOffset + visibleHeight, totalLines)
 
-        // HYP-120 Phase 1: soft-wrap each visible logical line via
+        // soft-wrap each visible logical line via
         // TextLayout. `wrapWidth == 0` keeps the legacy 1:1 logical→
         // display rendering — used by older test paths that don't
         // pass a width through.

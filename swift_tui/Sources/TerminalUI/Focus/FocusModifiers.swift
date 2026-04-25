@@ -4,7 +4,7 @@ public struct FocusableModifier: ViewModifier {
     public typealias ModifierType = Bool
 }
 
-/// Modifier that groups focusable descendants into a named scope (HYP-40).
+/// Modifier that groups focusable descendants into a named scope.
 ///
 /// Arrow keys navigate within the scope — they won't move focus out of it.
 /// Tab/Shift+Tab ignore scopes and traverse all focusables in document order,
@@ -50,7 +50,7 @@ extension TerminalView {
         ModifiedView(content: self, modifier: OnClickModifier(handler: handler))
     }
 
-    /// Group focusable descendants into a named scope (HYP-40). Arrow-key
+    /// Group focusable descendants into a named scope. Arrow-key
     /// navigation is clamped within the scope; Tab still crosses scopes.
     public func focusScope(_ id: String) -> ModifiedView<Self, FocusScopeModifier> {
         ModifiedView(content: self, modifier: FocusScopeModifier(id: id))

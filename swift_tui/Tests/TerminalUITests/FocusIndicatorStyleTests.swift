@@ -10,7 +10,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// HYP-91 — exercises each of the four FocusIndicatorStyle values by setting
+// exercises each of the four FocusIndicatorStyle values by setting
 // GraphContext.currentEnvironment, placing a known rect on a focused node, then
 // inspecting which cells the focus pass wrote.
 
