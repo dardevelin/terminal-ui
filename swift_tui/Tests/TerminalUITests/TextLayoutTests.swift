@@ -101,4 +101,21 @@ struct TextLayoutTests {
         let chunks = TextLayout.wrapWords("ab cd", width: 5)
         #expect(chunks == ["ab cd"])
     }
+
+    @Test("regression: width-31 wrap of long sentence does not split 'if'")
+    func width31DoesNotSplitIf() {
+        let s = "type a very long line and see if it will properly wrap and do the right thing and be nice"
+        let chunks = TextLayout.wrapWords(s, width: 31)
+        // The source contains "see if " — chunks must not split it.
+        for (i, chunk) in chunks.enumerated() where i > 0 {
+            let prev = chunks[i - 1]
+            if let last = prev.last, let first = chunk.first,
+               last.isLetter, first.isLetter
+            {
+                let pair = "\(last)\(first)"
+                #expect(!s.contains(pair),
+                        "split word at chunks[\(i-1)]='\(prev)' / chunks[\(i)]='\(chunk)' — pair '\(pair)' contiguous in source")
+            }
+        }
+    }
 }

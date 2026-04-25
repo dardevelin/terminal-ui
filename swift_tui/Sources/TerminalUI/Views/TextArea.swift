@@ -114,7 +114,7 @@ public struct TextArea: TerminalView {
 
     public var body: some TerminalView {
         GeometryReader { size in
-            self.renderEditor(containerHeight: size.height)
+            self.renderEditor(containerWidth: size.width, containerHeight: size.height)
         }
     }
 
@@ -125,7 +125,24 @@ public struct TextArea: TerminalView {
         return 10
     }
 
-    private func renderEditor(containerHeight: Int) -> some TerminalView {
+    /// Compute the soft-wrap width for the body content: container
+    /// width minus the rendered gutter prefix length (when line
+    /// numbers are on). HYP-120 Phase 1 — long logical lines wrap at
+    /// this width via `TextLayout.wrapWords` so content stays inside
+    /// the visible rect.
+    ///
+    /// Note: `gutterWidth(for:)` returns `digits + gutterPadding(=2)`,
+    /// but the actual rendered prefix is `pad + num + " │ "` whose
+    /// width is `gutterWidth + 1` (the separator-and-space costs 3
+    /// cells, not 2). Pre-existing inconsistency we work around here
+    /// by adding 1 — fixing `gutterPadding` would shift every
+    /// existing TextArea visual.
+    private func effectiveWrapWidth(containerWidth: Int, totalLines: Int) -> Int {
+        let gutter = lineNumbers ? (Self.gutterWidth(for: totalLines) + 1) : 0
+        return max(1, containerWidth - gutter)
+    }
+
+    private func renderEditor(containerWidth: Int, containerHeight: Int) -> some TerminalView {
         let visibleHeight = effectiveVisibleHeight(containerHeight: containerHeight)
         let content = text.get()
         let editorState = state.get()
@@ -136,13 +153,15 @@ public struct TextArea: TerminalView {
             currentScroll: editorState.scrollOffset,
             visibleHeight: visibleHeight
         )
+        let wrapWidth = effectiveWrapWidth(containerWidth: containerWidth, totalLines: lines.count)
         let displaySpans = Self.buildDisplaySpans(
             lines: lines,
             cursor: cursor,
             selection: editorState.selection,
             scrollOffset: scrollOffset,
             visibleHeight: visibleHeight,
-            lineNumbers: lineNumbers
+            lineNumbers: lineNumbers,
+            wrapWidth: wrapWidth
         )
         return Text(spans: displaySpans)
             .focusable()
@@ -188,82 +207,139 @@ public struct TextArea: TerminalView {
         selection: TextAreaSelection?,
         scrollOffset: Int,
         visibleHeight: Int,
-        lineNumbers: Bool
+        lineNumbers: Bool,
+        wrapWidth: Int = 0
     ) -> [TextSpan] {
         var spans: [TextSpan] = []
         let totalLines = lines.count
         let gutter = lineNumbers ? gutterWidth(for: totalLines) : 0
         let endRow = min(scrollOffset + visibleHeight, totalLines)
 
-        for row in scrollOffset..<endRow {
+        // HYP-120 Phase 1: soft-wrap each visible logical line via
+        // TextLayout. `wrapWidth == 0` keeps the legacy 1:1 logical→
+        // display rendering — used by older test paths that don't
+        // pass a width through.
+        let softWrap = wrapWidth > 0
+
+        // Display-row counter — increments per emitted display row,
+        // including wrapped chunks. We stop emitting content when we
+        // hit `visibleHeight` so a single very long logical line
+        // can't overflow the viewport.
+        var emittedRows = 0
+
+        outer: for row in scrollOffset..<endRow {
             let line = lines[row]
 
-            // Line number gutter
-            if lineNumbers {
-                let num = String(row + 1)
-                let pad = String(repeating: " ", count: max(0, gutter - gutterPadding - num.count))
-                spans.append(TextSpan(pad + num + " \u{2502} ", foreground: lineNumberFg))
-            }
-
-            // Render line content — batch consecutive characters with same style
-            if line.isEmpty {
-                if row == cursor.row {
-                    spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
-                }
+            // Compute wrapped chunks for this logical line. When
+            // soft-wrap is off we treat the line as a single chunk.
+            let chunks: [String]
+            if softWrap && line.count > wrapWidth && !line.isEmpty {
+                chunks = TextLayout.wrapWords(line, width: wrapWidth)
             } else {
-                enum CharStyle { case normal, cursor, selected }
-                var currentStyle: CharStyle = .normal
-                var runStart = 0
-
-                func flushRun(upTo end: Int) {
-                    guard end > runStart else { return }
-                    let text = String(line[line.index(line.startIndex, offsetBy: runStart)..<line.index(line.startIndex, offsetBy: end)])
-                    switch currentStyle {
-                    case .cursor:
-                        spans.append(TextSpan(text, foreground: cursorFg, background: cursorBg, bold: true))
-                    case .selected:
-                        spans.append(TextSpan(text, background: selectionBg))
-                    case .normal:
-                        spans.append(TextSpan(text))
-                    }
-                }
-
-                for col in 0..<line.count {
-                    let atCursor = row == cursor.row && col == cursor.col
-                    let selected = isPositionSelected(row: row, col: col, selection: selection)
-                    let style: CharStyle = atCursor ? .cursor : selected ? .selected : .normal
-
-                    if col == 0 {
-                        currentStyle = style
-                    } else if style != currentStyle {
-                        flushRun(upTo: col)
-                        currentStyle = style
-                        runStart = col
-                    }
-                }
-                flushRun(upTo: line.count)
-
-                // Cursor past last character (end of line position)
-                if row == cursor.row && cursor.col >= line.count {
-                    spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
-                }
+                chunks = [line]
             }
 
-            // Newline between visible rows
-            if row < endRow - 1 {
-                spans.append(TextSpan("\n"))
+            // For each wrapped chunk produce one display row. Track
+            // the column offset into the LOGICAL line so cursor /
+            // selection positions resolve correctly across chunks.
+            var chunkColStart = 0
+            for (chunkIdx, chunk) in chunks.enumerated() {
+                if emittedRows >= visibleHeight { break outer }
+
+                if emittedRows > 0 {
+                    spans.append(TextSpan("\n"))
+                }
+
+                // Line number gutter — only on the FIRST chunk of a
+                // logical line; continuation chunks indent in the
+                // gutter column with whitespace so the body aligns.
+                if lineNumbers {
+                    if chunkIdx == 0 {
+                        let num = String(row + 1)
+                        let pad = String(repeating: " ", count: max(0, gutter - gutterPadding - num.count))
+                        spans.append(TextSpan(pad + num + " \u{2502} ", foreground: lineNumberFg))
+                    } else {
+                        let pad = String(repeating: " ", count: max(0, gutter))
+                        spans.append(TextSpan(pad, foreground: lineNumberFg))
+                    }
+                }
+
+                let chunkColEnd = chunkColStart + chunk.count
+                // Empty chunk on an empty logical line
+                if chunk.isEmpty {
+                    if row == cursor.row && cursor.col >= chunkColStart && cursor.col <= chunkColEnd {
+                        spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
+                    }
+                } else {
+                    enum CharStyle { case normal, cursor, selected }
+                    var currentStyle: CharStyle = .normal
+                    var runStart = 0
+
+                    func flushRun(upTo end: Int) {
+                        guard end > runStart else { return }
+                        let text = String(chunk[chunk.index(chunk.startIndex, offsetBy: runStart)..<chunk.index(chunk.startIndex, offsetBy: end)])
+                        switch currentStyle {
+                        case .cursor:
+                            spans.append(TextSpan(text, foreground: cursorFg, background: cursorBg, bold: true))
+                        case .selected:
+                            spans.append(TextSpan(text, background: selectionBg))
+                        case .normal:
+                            spans.append(TextSpan(text))
+                        }
+                    }
+
+                    for col in 0..<chunk.count {
+                        let logicalCol = chunkColStart + col
+                        let atCursor = row == cursor.row && logicalCol == cursor.col
+                        let selected = isPositionSelected(row: row, col: logicalCol, selection: selection)
+                        let style: CharStyle = atCursor ? .cursor : selected ? .selected : .normal
+
+                        if col == 0 {
+                            currentStyle = style
+                        } else if style != currentStyle {
+                            flushRun(upTo: col)
+                            currentStyle = style
+                            runStart = col
+                        }
+                    }
+                    flushRun(upTo: chunk.count)
+
+                    // Cursor past last character of this chunk —
+                    // only when this is the LAST chunk of the
+                    // logical line (otherwise cursor lives on the
+                    // next chunk).
+                    if row == cursor.row && cursor.col >= chunkColEnd
+                        && chunkIdx == chunks.count - 1
+                    {
+                        spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
+                    }
+                }
+
+                chunkColStart = chunkColEnd
+                // Advance past the boundary space dropped by
+                // wrapWords when the chunk transition happened on a
+                // whitespace token. Reassembly contract: at most one
+                // space per wrap point may be dropped.
+                if chunkIdx < chunks.count - 1 {
+                    // Look ahead: if the next chunk in the source
+                    // line starts after a space, account for it.
+                    let nextStart = chunkColEnd
+                    if nextStart < line.count {
+                        let idx = line.index(line.startIndex, offsetBy: nextStart)
+                        if line[idx] == " " {
+                            chunkColStart += 1
+                        }
+                    }
+                }
+
+                emittedRows += 1
             }
         }
 
-        // Fill empty rows below content with tilde markers.
-        //
-        // Alignment contract: the ▏ gutter separator must land in the SAME
-        // column on every row. Real rows emit `<pad><num> │ ` where
-        // `pad.count = gutter - gutterPadding - num.count`. For an empty
-        // row the glyph is `~` (1 char) so pad must be `gutter - gutterPadding - 1`.
-        let renderedRows = endRow - scrollOffset
-        if renderedRows < visibleHeight {
-            for _ in 0..<(visibleHeight - renderedRows) {
+        // Fill remaining rows with tilde markers.
+        let remaining = visibleHeight - emittedRows
+        if remaining > 0 {
+            for _ in 0..<remaining {
                 spans.append(TextSpan("\n"))
                 if lineNumbers {
                     let pad = String(repeating: " ", count: max(0, gutter - gutterPadding - 1))
