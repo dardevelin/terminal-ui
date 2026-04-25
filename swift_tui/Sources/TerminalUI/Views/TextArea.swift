@@ -72,6 +72,25 @@ public struct TextAreaSelection: Equatable, Sendable {
 ///
 /// TextArea(text: $source, state: $editorState, lineNumbers: true)
 /// ```
+/// Arrow-key behaviour for TextArea (HYP-122 Phase 2).
+///
+/// Mirrors `PromptArrowMode` and SwiftUI's TextEditor convention.
+/// Default `.logical` preserves the pre-Phase 2 behaviour: Up/Down
+/// move between LOGICAL lines, skipping wrapped chunks. `.display`
+/// walks through wrapped chunks of the current logical line before
+/// crossing to the next.
+public enum TextAreaArrowMode: Sendable, Equatable {
+    /// Up/Down move between logical lines. Wrapped chunks of a long
+    /// line are skipped over — pressing Down on a 3-chunk wrapped
+    /// line jumps to the NEXT logical line directly. Default —
+    /// preserves Phase 1 semantics for backward compatibility.
+    case logical
+    /// Up/Down walk display rows. Long wrapped lines step through
+    /// each chunk before moving to the next logical line. Matches
+    /// SwiftUI's TextEditor behaviour.
+    case display
+}
+
 public struct TextArea: TerminalView {
     public let text: Binding<String>
     public let state: Binding<TextAreaState>
@@ -80,6 +99,10 @@ public struct TextArea: TerminalView {
     /// Old int-default (10) preserved as the fallback when no container
     /// height is known.
     public let visibleHeight: Int?
+    /// HYP-122 Phase 2: arrow-key navigation mode. `.logical`
+    /// (default) preserves backward-compat; `.display` enables
+    /// SwiftUI-style display-row navigation through wrapped chunks.
+    public let arrowMode: TextAreaArrowMode
 
     // -- Display constants --
 
@@ -102,12 +125,14 @@ public struct TextArea: TerminalView {
         text: Binding<String>,
         state: Binding<TextAreaState>,
         lineNumbers: Bool = false,
-        visibleHeight: Int? = nil
+        visibleHeight: Int? = nil,
+        arrowMode: TextAreaArrowMode = .logical
     ) {
         self.text = text
         self.state = state
         self.lineNumbers = lineNumbers
         self.visibleHeight = visibleHeight
+        self.arrowMode = arrowMode
     }
 
     // MARK: - Body
@@ -148,12 +173,29 @@ public struct TextArea: TerminalView {
         let editorState = state.get()
         let lines = Self.splitLines(content)
         let cursor = Self.clampCursor(editorState.cursor, lines: lines)
-        let scrollOffset = Self.clampScroll(
-            cursor: cursor,
-            currentScroll: editorState.scrollOffset,
-            visibleHeight: visibleHeight
-        )
         let wrapWidth = effectiveWrapWidth(containerWidth: containerWidth, totalLines: lines.count)
+        // HYP-122 Phase 2: when arrow mode is `.display`, scroll is
+        // display-row-keyed so wrapped chunks of an earlier line
+        // count toward the scroll position. `.logical` mode keeps the
+        // legacy logical-row scroll for backward-compat.
+        let scrollOffset: Int
+        switch arrowMode {
+        case .logical:
+            scrollOffset = Self.clampScroll(
+                cursor: cursor,
+                currentScroll: editorState.scrollOffset,
+                visibleHeight: visibleHeight
+            )
+        case .display:
+            scrollOffset = Self.clampScrollDisplayRows(
+                cursorLogicalRow: cursor.row,
+                cursorLogicalCol: cursor.col,
+                lines: lines,
+                currentScroll: editorState.scrollOffset,
+                visibleHeight: visibleHeight,
+                wrapWidth: wrapWidth
+            )
+        }
         let displaySpans = Self.buildDisplaySpans(
             lines: lines,
             cursor: cursor,
@@ -165,8 +207,15 @@ public struct TextArea: TerminalView {
         )
         return Text(spans: displaySpans)
             .focusable()
-            .onKeyPress { [text, state] event in
-                Self.handleKey(event, text: text, state: state, visibleHeight: visibleHeight)
+            .onKeyPress { [text, state, arrowMode] event in
+                Self.handleKey(
+                    event,
+                    text: text,
+                    state: state,
+                    visibleHeight: visibleHeight,
+                    arrowMode: arrowMode,
+                    wrapWidth: wrapWidth
+                )
             }
     }
 
@@ -195,6 +244,182 @@ public struct TextArea: TerminalView {
         }
         if cursor.row >= scroll + visibleHeight {
             scroll = cursor.row - visibleHeight + 1
+        }
+        return max(0, scroll)
+    }
+
+    // MARK: - HYP-122 Phase 2: Cursor projection (logical → display)
+
+    /// Project a logical column into (chunkIndex, columnInChunk) for
+    /// the wrapped chunks of `logicalLine`. Used by `.display` arrow
+    /// mode to walk wrapped chunks of a single logical line before
+    /// crossing logical-line boundaries.
+    ///
+    /// Mirrors `PromptInput.projectCursor` shape but operates on a
+    /// single logical line — the caller resolves logical row first
+    /// and passes just the line.
+    ///
+    /// Reassembly contract: `wrapWords` may drop a single space at a
+    /// wrap boundary; we account for that with `consumed` so the
+    /// projection lands at the right column.
+    static func projectCursor(logicalLine: String, logicalCol: Int, wrapWidth: Int)
+        -> (chunkIndex: Int, columnInChunk: Int)
+    {
+        guard wrapWidth > 0 else { return (0, logicalCol) }
+        let chunks = TextLayout.wrapWords(logicalLine, width: wrapWidth)
+        if chunks.isEmpty { return (0, 0) }
+
+        var consumed = 0  // logical chars accounted for so far
+        for (idx, chunk) in chunks.enumerated() {
+            let chunkLen = chunk.count
+            let chunkEnd = consumed + chunkLen
+            // Cursor is inside or at the end of this chunk?
+            if logicalCol <= chunkEnd {
+                return (idx, max(0, logicalCol - consumed))
+            }
+            // Past this chunk — advance, accounting for a possibly-
+            // dropped boundary space in the source line.
+            consumed = chunkEnd
+            if consumed < logicalLine.count {
+                let nextCharIdx = logicalLine.index(logicalLine.startIndex, offsetBy: consumed)
+                if logicalLine[nextCharIdx] == " " {
+                    consumed += 1
+                }
+            }
+        }
+        // Past every chunk — pin to the last chunk's end.
+        let last = chunks.count - 1
+        return (last, chunks[last].count)
+    }
+
+    /// Inverse of `projectCursor`: given `(chunkIndex, columnInChunk)`,
+    /// return the absolute logical column. Pre-computed `chunks` is
+    /// passed in so callers can reuse a single wrap call. The
+    /// `logicalLine` is used to detect dropped boundary spaces so the
+    /// reconstructed column lands on the correct source character.
+    static func unprojectCursor(
+        chunks: [String],
+        chunkIndex: Int,
+        columnInChunk: Int,
+        logicalLine: String
+    ) -> Int {
+        guard !chunks.isEmpty else { return 0 }
+        let safeIdx = max(0, min(chunkIndex, chunks.count - 1))
+        var consumed = 0
+        for i in 0..<safeIdx {
+            consumed += chunks[i].count
+            if consumed < logicalLine.count {
+                let nextCharIdx = logicalLine.index(logicalLine.startIndex, offsetBy: consumed)
+                if logicalLine[nextCharIdx] == " " {
+                    consumed += 1
+                }
+            }
+        }
+        let safeCol = max(0, min(columnInChunk, chunks[safeIdx].count))
+        return min(consumed + safeCol, logicalLine.count)
+    }
+
+    /// Resolve `.display` arrow Down. Returns the destination
+    /// (chunkIndex, columnInChunk) within the current OR next logical
+    /// line. A returned `chunkIndex == -1` is the sentinel meaning
+    /// "cross to next logical line; caller manages the row jump and
+    /// re-projects with `chunksOfNextLine`".
+    ///
+    /// `desiredCol` is the sticky column the cursor is trying to
+    /// preserve across vertical movement (SwiftUI `desiredCol`).
+    static func displayArrowDown(
+        currentChunk: Int,
+        currentCol: Int,
+        chunksOfCurrentLine: [String],
+        chunksOfNextLine: [String]?,
+        desiredCol: Int
+    ) -> (chunkIndex: Int, columnInChunk: Int) {
+        // Try advancing within the current logical line's chunks.
+        if currentChunk + 1 < chunksOfCurrentLine.count {
+            let nextChunk = chunksOfCurrentLine[currentChunk + 1]
+            let col = min(desiredCol, nextChunk.count)
+            return (currentChunk + 1, col)
+        }
+        // Last chunk → cross logical-line boundary. Sentinel.
+        if let nextChunks = chunksOfNextLine, !nextChunks.isEmpty {
+            let col = min(desiredCol, nextChunks[0].count)
+            return (-1, col)
+        }
+        // No next line — stay put.
+        return (currentChunk, currentCol)
+    }
+
+    /// Symmetric for arrow Up.
+    static func displayArrowUp(
+        currentChunk: Int,
+        currentCol: Int,
+        chunksOfCurrentLine: [String],
+        chunksOfPreviousLine: [String]?,
+        desiredCol: Int
+    ) -> (chunkIndex: Int, columnInChunk: Int) {
+        if currentChunk > 0 {
+            let prevChunk = chunksOfCurrentLine[currentChunk - 1]
+            let col = min(desiredCol, prevChunk.count)
+            return (currentChunk - 1, col)
+        }
+        if let prevChunks = chunksOfPreviousLine, !prevChunks.isEmpty {
+            let lastIdx = prevChunks.count - 1
+            let col = min(desiredCol, prevChunks[lastIdx].count)
+            return (-1, col)
+        }
+        return (currentChunk, currentCol)
+    }
+
+    /// Compute the absolute display row index for a logical (row, col)
+    /// position given the wrap width. Sums display rows above the
+    /// cursor's logical line, then adds the chunk index within that
+    /// line.
+    static func cursorDisplayRow(
+        cursorLogicalRow: Int,
+        cursorLogicalCol: Int,
+        lines: [String],
+        wrapWidth: Int
+    ) -> Int {
+        var displayRow = 0
+        for r in 0..<min(cursorLogicalRow, lines.count) {
+            let chunks = TextLayout.wrapWords(lines[r], width: wrapWidth)
+            displayRow += max(1, chunks.count)
+        }
+        if cursorLogicalRow < lines.count {
+            let (chunkIdx, _) = projectCursor(
+                logicalLine: lines[cursorLogicalRow],
+                logicalCol: cursorLogicalCol,
+                wrapWidth: wrapWidth
+            )
+            displayRow += chunkIdx
+        }
+        return displayRow
+    }
+
+    /// Display-row scroll clamp. Unlike `clampScroll` (logical-row),
+    /// this projects the cursor's logical position to its display row
+    /// then keeps THAT row in the viewport. Used when soft-wrap is
+    /// active so a wrapped earlier line's chunks count toward scroll.
+    static func clampScrollDisplayRows(
+        cursorLogicalRow: Int,
+        cursorLogicalCol: Int,
+        lines: [String],
+        currentScroll: Int,
+        visibleHeight: Int,
+        wrapWidth: Int
+    ) -> Int {
+        let cursorDisplay = cursorDisplayRow(
+            cursorLogicalRow: cursorLogicalRow,
+            cursorLogicalCol: cursorLogicalCol,
+            lines: lines,
+            wrapWidth: wrapWidth
+        )
+        var scroll = currentScroll
+        if cursorDisplay < scroll {
+            scroll = cursorDisplay
+        }
+        if cursorDisplay >= scroll + visibleHeight {
+            scroll = cursorDisplay - visibleHeight + 1
         }
         return max(0, scroll)
     }
@@ -376,7 +601,9 @@ public struct TextArea: TerminalView {
         _ event: KeyEvent,
         text: Binding<String>,
         state: Binding<TextAreaState>,
-        visibleHeight: Int
+        visibleHeight: Int,
+        arrowMode: TextAreaArrowMode = .logical,
+        wrapWidth: Int = 0
     ) -> KeyEventResult {
         var editorState = state.get()
         let content = text.get()
@@ -521,7 +748,49 @@ public struct TextArea: TerminalView {
         // MARK: Arrow Up
 
         case .up:
-            if cursor.row > 0 {
+            if arrowMode == .display && wrapWidth > 0 {
+                // Project current cursor to (chunk, col) within the
+                // current logical line, ask displayArrowUp for the
+                // destination, and translate back to (row, col).
+                let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
+                let (curChunk, _) = projectCursor(
+                    logicalLine: lines[cursor.row],
+                    logicalCol: cursor.col,
+                    wrapWidth: wrapWidth
+                )
+                let desired = editorState.desiredCol ?? cursor.col
+                let prevChunks: [String]? = cursor.row > 0
+                    ? TextLayout.wrapWords(lines[cursor.row - 1], width: wrapWidth)
+                    : nil
+                let (newChunk, newCol) = displayArrowUp(
+                    currentChunk: curChunk,
+                    currentCol: cursor.col,
+                    chunksOfCurrentLine: currentChunks,
+                    chunksOfPreviousLine: prevChunks,
+                    desiredCol: desired
+                )
+                if newChunk == -1 {
+                    // Cross to previous logical line, last chunk.
+                    cursor.row -= 1
+                    let prev = prevChunks ?? []
+                    cursor.col = unprojectCursor(
+                        chunks: prev,
+                        chunkIndex: prev.count - 1,
+                        columnInChunk: newCol,
+                        logicalLine: lines[cursor.row]
+                    )
+                } else if newChunk != curChunk {
+                    // Move within current logical line — translate
+                    // (chunk, col) back to logical col.
+                    cursor.col = unprojectCursor(
+                        chunks: currentChunks,
+                        chunkIndex: newChunk,
+                        columnInChunk: newCol,
+                        logicalLine: lines[cursor.row]
+                    )
+                }
+                editorState.desiredCol = desired
+            } else if cursor.row > 0 {
                 let desired = editorState.desiredCol ?? cursor.col
                 cursor.row -= 1
                 cursor.col = min(desired, lines[cursor.row].count)
@@ -533,7 +802,44 @@ public struct TextArea: TerminalView {
         // MARK: Arrow Down
 
         case .down:
-            if cursor.row < lines.count - 1 {
+            if arrowMode == .display && wrapWidth > 0 {
+                let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
+                let (curChunk, _) = projectCursor(
+                    logicalLine: lines[cursor.row],
+                    logicalCol: cursor.col,
+                    wrapWidth: wrapWidth
+                )
+                let desired = editorState.desiredCol ?? cursor.col
+                let nextChunks: [String]? = cursor.row + 1 < lines.count
+                    ? TextLayout.wrapWords(lines[cursor.row + 1], width: wrapWidth)
+                    : nil
+                let (newChunk, newCol) = displayArrowDown(
+                    currentChunk: curChunk,
+                    currentCol: cursor.col,
+                    chunksOfCurrentLine: currentChunks,
+                    chunksOfNextLine: nextChunks,
+                    desiredCol: desired
+                )
+                if newChunk == -1 {
+                    // Cross to next logical line, chunk 0.
+                    cursor.row += 1
+                    let next = nextChunks ?? []
+                    cursor.col = unprojectCursor(
+                        chunks: next,
+                        chunkIndex: 0,
+                        columnInChunk: newCol,
+                        logicalLine: lines[cursor.row]
+                    )
+                } else if newChunk != curChunk {
+                    cursor.col = unprojectCursor(
+                        chunks: currentChunks,
+                        chunkIndex: newChunk,
+                        columnInChunk: newCol,
+                        logicalLine: lines[cursor.row]
+                    )
+                }
+                editorState.desiredCol = desired
+            } else if cursor.row < lines.count - 1 {
                 let desired = editorState.desiredCol ?? cursor.col
                 cursor.row += 1
                 cursor.col = min(desired, lines[cursor.row].count)
