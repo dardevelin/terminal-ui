@@ -145,32 +145,37 @@ public final class AttributeGraph {
                     stampScopeID(scopeID, on: node.children)
                 }
 
-                // Update base child
-                if let child = node.children.first {
-                    modified.updateChild(child, graph: self)
-                }
+                // HYP-96: same env-apply window as constructModifier so
+                // descendant body re-evaluations during update see the
+                // ancestor's environment value, not the default.
+                withEnvironmentApplied(effect: newEffect) {
+                    // Update base child
+                    if let child = node.children.first {
+                        modified.updateChild(child, graph: self)
+                    }
 
-                // Handle extra child (overlay/background/modal)
-                let hadExtra = node.children.count > 1
-                let extraChild = modified.constructExtraChild(
-                    id: node.id.appending(.index(1)), graph: self
-                )
+                    // Handle extra child (overlay/background/modal)
+                    let hadExtra = node.children.count > 1
+                    let extraChild = modified.constructExtraChild(
+                        id: node.id.appending(.index(1)), graph: self
+                    )
 
-                if let extraChild {
-                    if hadExtra {
-                        // Update existing extra child
-                        modified.updateExtraChild(node.children[1], graph: self)
-                    } else {
-                        // Add new extra child (e.g., modal just became presented)
-                        extraChild.parent = node
-                        node.children.append(extraChild)
+                    if let extraChild {
+                        if hadExtra {
+                            // Update existing extra child
+                            modified.updateExtraChild(node.children[1], graph: self)
+                        } else {
+                            // Add new extra child (e.g., modal just became presented)
+                            extraChild.parent = node
+                            node.children.append(extraChild)
+                            changed = true
+                        }
+                    } else if hadExtra {
+                        // Remove extra child (e.g., modal dismissed)
+                        fireDisappear(on: node.children[1])
+                        node.children.removeLast()
                         changed = true
                     }
-                } else if hadExtra {
-                    // Remove extra child (e.g., modal dismissed)
-                    fireDisappear(on: node.children[1])
-                    node.children.removeLast()
-                    changed = true
                 }
 
                 // Lifecycle dispatch on every update — onChange compares
@@ -537,17 +542,27 @@ public final class AttributeGraph {
             node.isFocusable = true
         }
 
-        // Base view child (child[0])
-        let childID = id.appending(.index(0))
-        let childNode = modified.constructChildNode(id: childID, graph: self)
-        childNode.parent = node
-        node.children.append(childNode)
+        // HYP-96: environment modifier must apply BEFORE child construction
+        // so descendants observe the new value when their bodies evaluate.
+        // Previously this apply only ran at render time, by which point any
+        // `@TerminalEnvironment(\.x)` reads in child bodies had already
+        // resolved against the parent / default value (read-before-apply).
+        // Push the mutation, build, then restore — descendants of any
+        // sibling subtree are unaffected.
+        let previousEnvironment = withEnvironmentApplied(effect: effect) {
+            // Base view child (child[0])
+            let childID = id.appending(.index(0))
+            let childNode = modified.constructChildNode(id: childID, graph: self)
+            childNode.parent = node
+            node.children.append(childNode)
 
-        // Extra child for overlay/background/modal (child[1])
-        if let extraNode = modified.constructExtraChild(id: id.appending(.index(1)), graph: self) {
-            extraNode.parent = node
-            node.children.append(extraNode)
+            // Extra child for overlay/background/modal (child[1])
+            if let extraNode = modified.constructExtraChild(id: id.appending(.index(1)), graph: self) {
+                extraNode.parent = node
+                node.children.append(extraNode)
+            }
         }
+        _ = previousEnvironment
 
         // HYP-40: stamp scope onto focusable descendants after children exist.
         if case .focusScope(let scopeID) = effect {
@@ -562,6 +577,26 @@ public final class AttributeGraph {
         modified.fireLifecycle(on: node)
 
         return node
+    }
+
+    /// Run `body` with `GraphContext.currentEnvironment` mutated by `effect`
+    /// when `effect == .environment(apply)`. Restores the previous env on
+    /// return (regardless of throw). Other effects pass through unchanged.
+    /// Returns the prior env so callers can pair it with a manual restore
+    /// in non-scoped paths.
+    @discardableResult
+    func withEnvironmentApplied<T>(effect: ModifierEffect, _ body: () -> T) -> EnvironmentValues? {
+        guard case .environment(let apply) = effect else {
+            _ = body()
+            return nil
+        }
+        let previous = GraphContext.currentEnvironment ?? EnvironmentValues()
+        var mutated = previous
+        apply(&mutated)
+        GraphContext.currentEnvironment = mutated
+        defer { GraphContext.currentEnvironment = previous }
+        _ = body()
+        return previous
     }
 
     /// Walk the subtree and record scopeID on every focusable descendant.
