@@ -51,6 +51,7 @@ def _repo_root() -> Path:
 def spawn_and_connect(target: str,
                       build_dir: Optional[str] = None,
                       env: Optional[dict[str, str]] = None,
+                      cwd: Optional[str] = None,
                       cols: int = 140,
                       rows: int = 40,
                       connect_timeout: float = 3.0,
@@ -61,6 +62,12 @@ def spawn_and_connect(target: str,
     The terminal size is set via COLUMNS/LINES env vars so the app doesn't
     inherit the test runner's window geometry — repeatable snapshots matter
     more than matching the user's screen.
+
+    ``cwd`` controls where the spawned process runs. Defaults to the
+    repo root (matches harness expectations for resolving build paths).
+    Per-config integration tests pass a temp dir holding a custom
+    ``.terminalui/terminalui.toml`` so they exercise the production
+    config-loading path without touching the real project tree.
     """
     root = _repo_root()
     resolved_build_dir = Path(build_dir or DEFAULT_BUILD_DIR)
@@ -89,7 +96,7 @@ def spawn_and_connect(target: str,
     fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
     proc = subprocess.Popen(
         [str(exe)],
-        cwd=str(root),
+        cwd=str(cwd) if cwd is not None else str(root),
         env=env_full,
         stdin=slave,
         stdout=slave,
