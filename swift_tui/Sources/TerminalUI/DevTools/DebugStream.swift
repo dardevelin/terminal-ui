@@ -23,6 +23,40 @@ public enum DebugEvent: Sendable {
     case stateChange(StateDebugInfo)
     case resize(Int, Int)
     case graphSnapshot(GraphDebugSnapshot)
+    /// Framework-emitted warning about a knowable composition bug or
+    /// suspicious modifier pairing. SwiftUI's analog: runtime warnings
+    /// via `os_log`. See `FrameworkWarningCode` for stable identifiers
+    /// users can grep CI output for or suppress per-app.
+    case frameworkWarning(FrameworkWarningInfo)
+}
+
+/// Stable identifiers for framework warnings. Strings are the on-wire
+/// form (in JSON-lines logs and remote-control payloads) so adding
+/// cases is backward-compatible.
+public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
+    /// `.onHover` is registered on a node whose effective
+    /// `MouseFocusPolicy` is `.hoverFollows`. The framework will move
+    /// keyboard focus on hover AND fire the user callback. Almost
+    /// always means the user wanted `.disabled` for full SwiftUI-style
+    /// control. Suppress with
+    /// `DebugStream.shared.suppressWarning(.onHoverWithHoverFollows)`
+    /// if the duplication is intentional.
+    case onHoverWithHoverFollows
+}
+
+public struct FrameworkWarningInfo: Sendable, Codable {
+    public var code: FrameworkWarningCode
+    public var message: String
+    /// Path-formatted node ID (e.g. `"0.1.2"`) so users can grep for a
+    /// specific offending view. May be empty when the warning fires
+    /// outside graph construction.
+    public var nodeID: String
+
+    public init(code: FrameworkWarningCode, message: String, nodeID: String) {
+        self.code = code
+        self.message = message
+        self.nodeID = nodeID
+    }
 }
 
 public struct FrameDebugInfo: Codable, Sendable {
@@ -87,6 +121,7 @@ public final class DebugStream: @unchecked Sendable {
     private var sinks: [any DebugSink] = []
     private let lock = NSLock()
     private var enabled = false
+    private var suppressedWarnings: Set<FrameworkWarningCode> = []
 
     private init() {}
 
@@ -97,6 +132,47 @@ public final class DebugStream: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Detach every sink. Used by tests between cases so probe sinks
+    /// from one test don't leak into the next.
+    public func removeAllSinks() {
+        lock.lock()
+        sinks.removeAll(keepingCapacity: true)
+        // `enabled` stays true so framework warnings still fire to the
+        // stderr fallback when no sinks are attached. The fallback is
+        // what makes warnings reach developers who never wired up an
+        // inspector — same posture as SwiftUI's os_log reaching Console.
+        lock.unlock()
+    }
+
+    /// Suppress a framework warning by code. Subsequent emits with
+    /// that code are dropped before reaching any sink or stderr.
+    /// Mirrors SwiftUI's per-warning silencing pattern. Idempotent.
+    public func suppressWarning(_ code: FrameworkWarningCode) {
+        lock.lock()
+        suppressedWarnings.insert(code)
+        lock.unlock()
+    }
+
+    /// Re-enable a previously-suppressed warning code.
+    public func unsuppressWarning(_ code: FrameworkWarningCode) {
+        lock.lock()
+        suppressedWarnings.remove(code)
+        lock.unlock()
+    }
+
+    /// Clear all suppressions. Used by tests between cases.
+    public func unsuppressAllWarnings() {
+        lock.lock()
+        suppressedWarnings.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+
+    public func isWarningSuppressed(_ code: FrameworkWarningCode) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return suppressedWarnings.contains(code)
+    }
+
     public func emit(_ event: DebugEvent) {
         guard enabled else { return }
         lock.lock()
@@ -104,6 +180,37 @@ public final class DebugStream: @unchecked Sendable {
         lock.unlock()
         for sink in currentSinks {
             sink.receive(event)
+        }
+    }
+
+    /// Emit a framework warning. SwiftUI ships these for known-bad
+    /// modifier compositions (e.g. `.searchable` outside
+    /// `NavigationSplitView`); ours go through the same DebugStream
+    /// pipeline so the F2 panel, remote socket, and file logs all
+    /// surface them with stable codes. When no sinks are attached
+    /// AND the code isn't suppressed, the warning is also written to
+    /// stderr — that's the path that reaches developers who haven't
+    /// wired up an inspector, matching SwiftUI's os_log → Console.app.
+    public func emitWarning(_ code: FrameworkWarningCode, message: String, nodeID: String = "") {
+        lock.lock()
+        let suppressed = suppressedWarnings.contains(code)
+        let currentSinks = sinks
+        lock.unlock()
+        guard !suppressed else { return }
+        let info = FrameworkWarningInfo(code: code, message: message, nodeID: nodeID)
+        let event = DebugEvent.frameworkWarning(info)
+        for sink in currentSinks {
+            sink.receive(event)
+        }
+        if currentSinks.isEmpty {
+            // No inspector attached — fall back to stderr so the
+            // warning still reaches the developer. Format matches
+            // the "[TerminalUI warning] code: message" prefix users
+            // can grep for in CI logs.
+            let line = "[TerminalUI warning] \(code.rawValue): \(message)\n"
+            if let data = line.data(using: .utf8) {
+                FileHandle.standardError.write(data)
+            }
         }
     }
 
@@ -373,11 +480,20 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
 // Release stubs — everything compiles away
 
 public enum DebugEvent: Sendable {}
+public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
+    case onHoverWithHoverFollows
+}
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()
     @inline(__always) public func addSink(_ sink: Any) {}
+    @inline(__always) public func removeAllSinks() {}
     @inline(__always) public func emit(_ event: DebugEvent) {}
     @inline(__always) public func emitGraphSnapshot(from root: AttributeNode?, frameNumber: Int) {}
+    @inline(__always) public func emitWarning(_ code: FrameworkWarningCode, message: String, nodeID: String = "") {}
+    @inline(__always) public func suppressWarning(_ code: FrameworkWarningCode) {}
+    @inline(__always) public func unsuppressWarning(_ code: FrameworkWarningCode) {}
+    @inline(__always) public func unsuppressAllWarnings() {}
+    @inline(__always) public func isWarningSuppressed(_ code: FrameworkWarningCode) -> Bool { false }
 }
 public protocol DebugSink: AnyObject {}
 public final class MemoryDebugSink: @unchecked Sendable {

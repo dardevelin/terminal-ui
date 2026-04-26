@@ -36,6 +36,24 @@
 ///   does NOT auto-route. View-level callbacks (`.onHover`,
 ///   `.onClick`, key-press handlers) still fire so the app can wire
 ///   focus itself, SwiftUI-style. Use this when you want full control.
+///
+/// ## Composing with `.onHover`
+///
+/// `.onHover` callbacks fire under all four cases — they are the
+/// SwiftUI-style escape hatch the framework keeps honouring even when
+/// auto-routing is disabled. Suspicious pairings:
+///
+/// - `.disabled + .onHover`: the intended combination. No warning.
+/// - `.clickToLock + .onHover`: clean. Hover state and your callback
+///   coexist; no auto-focus motion.
+/// - `.clickOnly + .onHover`: clean. Same as `.clickToLock` for hover.
+/// - `.hoverFollows + .onHover`: framework already moves keyboard
+///   focus on hover AND your callback fires. Almost always means the
+///   user wanted `.disabled` for full control. The framework emits a
+///   `FrameworkWarningCode.onHoverWithHoverFollows` runtime warning
+///   in DEBUG builds — suppress with
+///   `DebugStream.shared.suppressWarning(.onHoverWithHoverFollows)`
+///   if the duplication is intentional.
 public enum MouseFocusPolicy: Sendable, Equatable {
     case clickToLock
     case hoverFollows

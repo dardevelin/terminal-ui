@@ -69,6 +69,14 @@ extension TerminalView {
     /// leaves. Only state transitions fire — moving the cursor within
     /// an already-hovered rect does not re-invoke the handler.
     /// SwiftUI parity: `.onHover { isHovering in … }`.
+    ///
+    /// Composes with all four `MouseFocusPolicy` cases. Pairing with
+    /// `.mouseFocusPolicy(.hoverFollows)` triggers a runtime warning
+    /// (`FrameworkWarningCode.onHoverWithHoverFollows`) in DEBUG —
+    /// the framework already moves keyboard focus on hover under that
+    /// policy, so duplicating it with a callback is usually a sign
+    /// the user wanted `.mouseFocusPolicy(.disabled)`. See
+    /// `MouseFocusPolicy` for the full composition matrix.
     public func onHover(_ handler: @escaping (_ isHovering: Bool) -> Void) -> ModifiedView<Self, OnHoverModifier> {
         ModifiedView(content: self, modifier: OnHoverModifier(handler: handler))
     }

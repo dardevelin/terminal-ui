@@ -19,6 +19,29 @@ extension OnClickModifier: _FocusGraphModifier {
 extension OnHoverModifier: _FocusGraphModifier {
     func registerWithFocusEngine(nodeID: NodeID) {
         GraphContext.currentFocusEngine?.registerHoverHandler(for: nodeID, handler: handler)
+        #if DEBUG
+        // Surface a stable-coded framework warning for the only
+        // suspicious policy + .onHover pairing. .clickToLock /
+        // .clickOnly compose orthogonally; .disabled IS the intended
+        // pairing. .hoverFollows duplicates the framework's built-in
+        // focus motion — almost always a sign the user wanted .disabled.
+        if let env = GraphContext.currentEnvironment,
+           env.mouseFocusPolicy == .hoverFollows
+        {
+            DebugStream.shared.emitWarning(
+                .onHoverWithHoverFollows,
+                message: """
+                .onHover registered under .mouseFocusPolicy(.hoverFollows). \
+                The framework will move keyboard focus on hover AND fire \
+                this callback. If you want full control, use \
+                .mouseFocusPolicy(.disabled). To intentionally keep both \
+                behaviours, suppress with \
+                DebugStream.shared.suppressWarning(.onHoverWithHoverFollows).
+                """,
+                nodeID: nodeID.path.map { "\($0)" }.joined(separator: ".")
+            )
+        }
+        #endif
     }
 }
 
