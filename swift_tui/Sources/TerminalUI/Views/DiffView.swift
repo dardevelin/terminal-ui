@@ -400,7 +400,11 @@ public struct DiffView: TerminalView {
         // Build paired lines: match removals with additions where possible
         let pairs = buildSideBySidePairs()
         var spans: [TextSpan] = []
-        let visible = pairs.dropFirst(scrollOffset)
+        // Cap iteration at `visibleHeight` so a 5,000-line diff in a
+        // 20-row viewport processes 20 pairs per render, not 5,000.
+        // The unified path already does this; the side-by-side path
+        // had silently fallen out of step.
+        let visible = pairs.dropFirst(scrollOffset).prefix(visibleHeight)
 
         for (index, pair) in visible.enumerated() {
             if index > 0 {
@@ -571,5 +575,15 @@ extension DiffView {
     /// Add a file path header above the diff.
     public func diffHeader(_ path: String) -> DiffView {
         DiffView(lines: self.lines, mode: self.mode, header: path, visibleHeight: self.visibleHeight)
+    }
+
+    /// Test-only window-size probe. Builds the side-by-side pair list
+    /// for `lines`, applies `scrollOffset` + `visibleHeight`, and
+    /// returns the number of pairs the renderer would actually iterate.
+    /// Pinning `<= visibleHeight` keeps the side-by-side path from
+    /// silently regressing the way it had before HYP-117.
+    func _sideBySideVisiblePairCountForTesting(scrollOffset: Int) -> Int {
+        let pairs = buildSideBySidePairs()
+        return pairs.dropFirst(scrollOffset).prefix(visibleHeight).count
     }
 }
