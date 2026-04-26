@@ -6,6 +6,13 @@ import Darwin
 
 import Foundation
 import TerminalUIConfig
+import TerminalLog
+
+// Module-level logger for framework warnings that fall through when no
+// inspector sink is attached. Routes via TerminalLog so capability
+// detection (NO_COLOR / piped) and SGR coloring come for free; warn
+// level routes to stderr so CI / oncall greps still see the message.
+private let log = Log("TerminalUI")
 
 // MARK: - Debug Protocol
 
@@ -212,14 +219,12 @@ public final class DebugStream: @unchecked Sendable {
             sink.receive(event)
         }
         if currentSinks.isEmpty {
-            // No inspector attached — fall back to stderr so the
-            // warning still reaches the developer. Format matches
-            // the "[TerminalUI warning] code: message" prefix users
-            // can grep for in CI logs.
-            let line = "[TerminalUI warning] \(code.rawValue): \(message)\n"
-            if let data = line.data(using: .utf8) {
-                FileHandle.standardError.write(data)
-            }
+            // No inspector attached — fall back to TerminalLog (warn
+            // level routes to stderr) so the warning still reaches
+            // the developer. Format is `[TerminalUI] WARN: code: msg`
+            // — same grep-friendliness as the prior raw stderr line,
+            // with capability-aware coloring for free.
+            log.warn("\(code.rawValue): \(message)")
         }
     }
 

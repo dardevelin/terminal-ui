@@ -6,6 +6,7 @@ import Darwin
 
 import Foundation
 import TerminalUIConfig
+import TerminalLog
 
 // MARK: - Events
 
@@ -1118,21 +1119,19 @@ extension TerminalAppProtocol {
             onEvent: { onEvent($0) },
             content: { content() }
         )
-        // Default @main shim: surface raw-mode failure to stderr and
-        // exit with status 1. App authors who want richer non-TTY
-        // handling can implement their own @main calling runtime.run()
-        // and catching TerminalRuntimeError directly.
+        // Default @main shim: surface raw-mode failure via TerminalLog
+        // (auto-routes to stderr for warn/error/critical) and exit
+        // with status 1. App authors who want richer non-TTY handling
+        // can implement their own @main calling runtime.run() and
+        // catching TerminalRuntimeError directly.
+        let log = Log("TerminalUI")
         do {
             try await runtime.run()
         } catch TerminalRuntimeError.rawModeUnavailable {
-            FileHandle.standardError.write(Data(
-                "TerminalUI: stdin is not a TTY; raw mode unavailable. Run from a terminal.\n".utf8
-            ))
+            log.error("stdin is not a TTY; raw mode unavailable. Run from a terminal.")
             exit(1)
         } catch {
-            FileHandle.standardError.write(Data(
-                "TerminalUI: runtime error: \(error)\n".utf8
-            ))
+            log.error("runtime error: \(error)")
             exit(1)
         }
     }
