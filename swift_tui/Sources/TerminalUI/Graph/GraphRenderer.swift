@@ -58,16 +58,27 @@ public enum GraphRenderer {
                 #if DEBUG
                 DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
                 #endif
-                // GeometryReader rebuild path: invoke the rebuilder with the
-                // actual allocated rect size. Post-the rebuilder
-                // *updates* the existing child subtree in place, preserving
-                // NodeIDs, @TerminalState storage, focus registrations, and
-                // lifecycle bookkeeping across frames. Previously this
-                // replaced `node.children` on every render, which fired
-                // onAppear repeatedly and reset state every frame.
+                // Phase separation: GeometryReader rebuilders run in
+                // the layout phase (`Layout.measureAndPlace`) before
+                // render reaches them. The runtime always calls
+                // measureAndPlace ahead of render so the GR's child
+                // subtree is already at the right size when render
+                // arrives — this branch is a pure draw on the
+                // production path.
+                //
+                // Defensive fallback for direct-render callers (unit
+                // tests that drive `GraphRenderer.render` without a
+                // prior `Layout.measureAndPlace`): if the GR's
+                // last-laid-out size doesn't match the current rect,
+                // fire the rebuilder once and stamp the size. This
+                // keeps existing test fixtures working while the
+                // runtime contract stays "render is pure."
                 if let rebuild = node.geometryRebuilder {
                     let size = Size(width: context.rect.width, height: context.rect.height)
-                    rebuild(size, node)
+                    if node._lastLaidOutSize != size {
+                        rebuild(size, node)
+                        node._lastLaidOutSize = size
+                    }
                 }
                 for child in node.children {
                     render(child, into: &buffer, context: context)

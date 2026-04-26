@@ -657,13 +657,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
             viewportWidth: size.cols, viewportHeight: size.rows
         )
 
-        // Render from graph — no Any, no as?, enum dispatch only.
-        // reuse the runtime's renderBuffer instead of a fresh
-        // alloc per call. Both renderFullFrame and renderDiffFrame share
-        // the same buffer so consecutive transitions don't churn memory.
+        // Phase separation: layout fires GR rebuilders + stamps rects
+        // ahead of render so the render walk is a pure draw.
+        // GraphRenderer.render no longer invokes geometryRebuilder.
         renderBuffer.resize(width: size.cols, height: size.rows)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
         if let root = graph.root {
+            Layout.measureAndPlace(graph: root, in: context.rect)
             GraphRenderer.render(root, into: &renderBuffer, context: context)
         }
 
@@ -748,6 +748,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 renderBuffer.resize(width: size.cols, height: size.rows)
                 let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
                 if let root = graph.root {
+                    // Phase separation: layout pass before render so
+                    // GR rebuilders + rect math run outside the render
+                    // walk. Render reads the resolved tree as a pure draw.
+                    Layout.measureAndPlace(graph: root, in: context.rect)
                     GraphRenderer.render(root, into: &renderBuffer, context: context)
                 }
 

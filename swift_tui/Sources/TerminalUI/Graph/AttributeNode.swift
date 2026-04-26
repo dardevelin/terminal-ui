@@ -108,6 +108,14 @@ public class AttributeNode {
     /// correct answer either way.
     public var _containsViewBody: Bool?
 
+    /// Last `Size` `geometryRebuilder` was invoked at by the layout
+    /// phase. Render reads this to confirm the GR's child subtree is
+    /// already laid out at the rect's size; if not (the rare case of
+    /// a renderer-only call path that bypassed `Layout.measureAndPlace`),
+    /// render falls back to firing the rebuilder defensively. The
+    /// runtime always calls Layout first so production render is pure.
+    public var _lastLaidOutSize: Size?
+
     /// GeometryReader rebuild hook. When non-nil the renderer invokes this
     /// with the node's actual rect size each frame. The closure rebuilds the
     /// `geom.content(size)` view value and *updates* the existing child

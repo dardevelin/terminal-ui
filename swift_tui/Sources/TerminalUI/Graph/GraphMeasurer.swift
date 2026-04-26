@@ -262,18 +262,15 @@ public enum GraphMeasurer {
             // so its measurement is only correct when the allocated rect
             // happens to match the seed. Rebuild with the current proposed
             // width (height is flexible from the parent's perspective, so
-            // pass it through as-is) before measuring. Fixes PromptInput
-            // soft-wrap: on narrow previews the seed reports 1 row but the
-            // live rebuild with the true width reports the wrapped count.
-            //
-            // Post-the rebuilder updates the existing child node in
-            // place rather than returning a fresh standalone subtree, so we
-            // measure `node.children.first` after the rebuild has run.
-            if let rebuild = node.geometryRebuilder {
-                let width = proposedWidth > 0 ? proposedWidth : (GraphContext.currentEnvironment?.terminalSize.cols ?? 80)
-                let height = GraphContext.currentProposedSize?.height ?? (GraphContext.currentEnvironment?.terminalSize.rows ?? 24)
-                rebuild(Size(width: width, height: height), node)
-            }
+            // Phase separation: GeometryReader rebuilders fire in
+            // Layout.measureAndPlace (HYP-203), not during measurement.
+            // Measurement reads the seed subtree constructed at build
+            // time. Once a frame's layout pass has run, subsequent
+            // measurement calls see the size-resolved children. This
+            // means `proposedWidth` may not match the GR's eventual
+            // allocated width; PromptInput-style soft-wrap that needs
+            // the true width relies on the layout pass running before
+            // measurement is consulted, which is the runtime path.
             return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
         }
     }
