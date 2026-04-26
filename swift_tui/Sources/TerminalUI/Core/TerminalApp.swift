@@ -115,37 +115,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var quitRequested: Bool = false
 
     /// Build the framework's default action scope for this runtime.
-    /// Quit actions write `quitRequested` so the event loop sees the
-    /// signal on its next iteration. Built fresh per dispatch so the
-    /// closures don't outlive the runtime instance.
+    /// Quit actions write `pendingQuitSignal` so the event loop sees
+    /// the signal on its next iteration. Built fresh per dispatch so
+    /// the closures don't outlive the runtime instance.
+    ///
+    /// Implementation detail: the scope construction lives in a free
+    /// helper (`makeFrameworkDefaultsScope`) rather than this generic
+    /// method so the @Sendable closure inside doesn't capture the
+    /// `RootView.Type` metatype from the runtime's generic context —
+    /// which would be a Swift 6 sendability violation under the
+    /// strict `TUI_WARNINGS_AS_ERRORS=1` gate.
     private func makeFrameworkDefaults() -> ActionScope {
-        // Capture `self` weakly through a runtime-side mutable flag so
-        // the @Sendable perform closure stays Sendable; setting an
-        // instance Bool from any thread is safe under the @MainActor
-        // contract that runs the dispatch.
         let signal = QuitSignal()
-        // The quit handler trampolines through the QuitSignal box
-        // and the runtime polls signal.fired in the event loop.
-        // Nesting this inside makeFrameworkDefaults() means the
-        // box is recreated per call — fine, only the most-recent
-        // dispatch can fire the signal anyway.
-        let handler: @Sendable () -> Void = { signal.fire() }
-        let scope = ActionScope.frameworkDefaults(
-            quit: handler,
-            dismissOrQuit: handler  // today: same as quit; modal logic later
-        )
         // Stash the signal on self so the event loop can poll it.
         // Overwrites the previous one; only the last-dispatched
         // signal matters because the loop polls every iteration.
         self.pendingQuitSignal = signal
-        return scope
-    }
-
-    private final class QuitSignal: @unchecked Sendable {
-        private let lock = NSLock()
-        private var _fired = false
-        func fire() { lock.lock(); _fired = true; lock.unlock() }
-        var fired: Bool { lock.lock(); defer { lock.unlock() }; return _fired }
+        return makeFrameworkDefaultsScope(signal: signal)
     }
 
     private var pendingQuitSignal: QuitSignal?
@@ -960,6 +946,37 @@ public final class TerminalRuntime<RootView: TerminalView> {
 #if DEBUG
 extension TerminalRuntime: RemoteControlRuntime {}
 #endif
+
+// MARK: - Quit signal + framework defaults helper
+//
+// Lifted out of `TerminalRuntime<RootView>` so the @Sendable closure
+// inside `makeFrameworkDefaultsScope` doesn't capture `RootView.Type`
+// from the runtime's generic context. Without this split,
+// TUI_WARNINGS_AS_ERRORS=1 fails with #SendableMetatypes on
+// "capture of non-Sendable type 'RootView.Type' in an isolated closure".
+
+/// Lock-protected one-shot quit flag. The framework default
+/// `Action.quit` perform closure fires this; the event loop polls
+/// `fired` once per iteration and tears down the runtime on `true`.
+final class QuitSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _fired = false
+    func fire() { lock.lock(); _fired = true; lock.unlock() }
+    var fired: Bool { lock.lock(); defer { lock.unlock() }; return _fired }
+}
+
+/// Build the framework's default ActionScope. Free helper, no
+/// generics. The @Sendable closure captures only `signal`, which is
+/// a concrete reference type — no metatype involvement, so the
+/// strict-sendability gate accepts this.
+@MainActor
+func makeFrameworkDefaultsScope(signal: QuitSignal) -> ActionScope {
+    let handler: @Sendable () -> Void = { signal.fire() }
+    return ActionScope.frameworkDefaults(
+        quit: handler,
+        dismissOrQuit: handler  // today: same as quit; modal logic later
+    )
+}
 
 // MARK: - @main entry point protocol
 
