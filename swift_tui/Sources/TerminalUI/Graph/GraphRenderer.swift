@@ -531,6 +531,30 @@ public enum GraphRenderer {
                 if contentWidth > offset + viewport.width {
                     buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▶", style: indicatorStyle)
                 }
+
+                // Horizontal thumb-track on the bottom row. ─ track
+                // across the full width, █ thumb at the proportional
+                // start. Skipped when content fits (scrollbarThumb
+                // returns nil). Painted last so it overlays the
+                // bottom row's content cells — acceptable since the
+                // content row needed to grow above to leave room for
+                // the scrollbar visual; the user trades one content
+                // row for the affordance.
+                if let thumb = scrollbarThumb(viewport: viewport.width,
+                                              content: contentWidth,
+                                              offset: offset) {
+                    let trackY = viewport.y + viewport.height - 1
+                    let trackStyle = Style(foreground: .gray, background: nil,
+                                           bold: false, italic: false, underline: false)
+                    let thumbStyle = Style(foreground: .cyan, background: nil,
+                                           bold: true, italic: false, underline: false)
+                    for x in 0..<viewport.width {
+                        buffer[viewport.x + x, trackY] = Cell(character: "─", style: trackStyle)
+                    }
+                    for i in 0..<thumb.length {
+                        buffer[viewport.x + thumb.start + i, trackY] = Cell(character: "█", style: thumbStyle)
+                    }
+                }
             }
 
         case .vertical:
@@ -574,6 +598,42 @@ public enum GraphRenderer {
                 }
                 if contentHeight > offset + viewport.height {
                     buffer[viewport.x + viewport.width - 1, viewport.y + viewport.height - 1] = Cell(character: "▼", style: indicatorStyle)
+                }
+
+                // Vertical thumb-track on the rightmost column. │ track
+                // top-to-bottom, █ thumb at the proportional start. Painted
+                // BEFORE the ▲/▼ edge glyphs above so those still win at
+                // the corners; thumb skips its track cells where the
+                // edge-glyph already sits. Skipped when content fits
+                // (scrollbarThumb returns nil).
+                if let thumb = scrollbarThumb(viewport: viewport.height,
+                                              content: contentHeight,
+                                              offset: offset) {
+                    let trackX = viewport.x + viewport.width - 1
+                    let trackStyle = Style(foreground: .gray, background: nil,
+                                           bold: false, italic: false, underline: false)
+                    let thumbStyle = Style(foreground: .cyan, background: nil,
+                                           bold: true, italic: false, underline: false)
+                    for y in 0..<viewport.height {
+                        // Don't paint over the ▲/▼ edge glyphs; they
+                        // sit at trackY = top/bottom of the column and
+                        // were already drawn by the block above.
+                        let trackY = viewport.y + y
+                        let isTopGlyph = y == 0 && offset > 0
+                        let isBottomGlyph = y == viewport.height - 1
+                            && contentHeight > offset + viewport.height
+                        if isTopGlyph || isBottomGlyph { continue }
+                        buffer[trackX, trackY] = Cell(character: "│", style: trackStyle)
+                    }
+                    for i in 0..<thumb.length {
+                        let y = thumb.start + i
+                        let trackY = viewport.y + y
+                        let isTopGlyph = y == 0 && offset > 0
+                        let isBottomGlyph = y == viewport.height - 1
+                            && contentHeight > offset + viewport.height
+                        if isTopGlyph || isBottomGlyph { continue }
+                        buffer[trackX, trackY] = Cell(character: "█", style: thumbStyle)
+                    }
                 }
             }
         }

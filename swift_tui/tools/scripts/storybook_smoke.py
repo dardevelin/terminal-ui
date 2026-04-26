@@ -563,6 +563,18 @@ def storybook_scrollview_initial_viewport(app: Client) -> None:
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
 
 
+def storybook_scrollview_shows_thumb_scrollbar(app: Client) -> None:
+    """ScrollView with overflowing content paints the new thumb-track
+    scrollbar — │ track on the right column with █ thumb segment."""
+    app.goto_storybook_page(5)
+    preview = app.preview_text()
+    # Track glyphs: at least one │ on the right edge (anywhere in
+    # preview is fine — the smoke harness already pins viewport to
+    # the preview pane). Thumb glyph: at least one █ visible.
+    assert_true("│" in preview, "ScrollView preview missing │ scrollbar track")
+    assert_true("█" in preview, "ScrollView preview missing █ scrollbar thumb")
+
+
 def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
     """ScrollView page has no focusable descendants — the ScrollView itself
     should accept Tab focus and respond to arrow/PageDown keys to scroll.
@@ -1079,6 +1091,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.zstack_overlays_label", "Storybook", storybook_zstack_overlays_label),
     SmokeCase("storybook.spacer_pushes_edges", "Storybook", storybook_spacer_pushes_edges),
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
+    SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
