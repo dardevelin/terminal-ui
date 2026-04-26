@@ -338,8 +338,44 @@ struct PreviewPane: TerminalView {
             Text("press Tab to focus me").focusable()
         case .frame:
             Text("x").frame(width: 10, height: 3).border()
+        case .onHover:
+            VStack {
+                Text("hover this row").foreground(.cyan)
+                    .onHover { [state] isHovering in
+                        state.hoverIndicator = isHovering ? "hovering" : "left"
+                    }
+                Text("hover indicator: \(state.hoverIndicator)").foreground(.gray)
+            }
+        case .mouseFocusPolicy:
+            VStack {
+                Text("Outer subtree — default .clickToLock").foreground(.green)
+                    .focusable()
+                VStack {
+                    Text("Inner subtree — .disabled").foreground(.yellow)
+                        .focusable()
+                }.mouseFocusPolicy(.disabled)
+                Text("(hover both — only the outer reports hover state)").foreground(.gray)
+            }
+        case .bufferView:
+            BufferView(buildBufferDemo())
+                .frame(width: 24, height: 4)
+                .border()
         }
     }
+}
+
+/// Build a 24x4 CellBuffer for the BufferView preview. Distinct cells
+/// at known positions so a smoke walkthrough can spot-check by reading
+/// the rendered preview pane back through the harness. Uses .plain
+/// style (Style's custom initializer is internal); a future Style
+/// public API ticket will let demos colour individual cells.
+func buildBufferDemo() -> CellBuffer {
+    var buffer = CellBuffer(width: 24, height: 4)
+    buffer.write("BufferView demo", x: 0, y: 0, style: .plain)
+    buffer.write("CellBuffer -> blit", x: 0, y: 1, style: .plain)
+    buffer.write("\u{2592}\u{2592}\u{2592}\u{2592}\u{2592}", x: 0, y: 2, style: .plain)
+    buffer.write("12345 67890", x: 0, y: 3, style: .plain)
+    return buffer
 }
 
 // MARK: - Demo data shared across pages

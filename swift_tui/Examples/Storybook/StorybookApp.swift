@@ -25,6 +25,8 @@ final class StorybookState {
     var promptSubmitted: String = "(nothing yet)"
     var treeSelection: Int? = 0
     var hunkFileName: String = "example.swift"
+    // Hover/policy demo state
+    var hoverIndicator: String = "(not hovering)"
 }
 
 nonisolated(unsafe) let state = StorybookState()

@@ -38,7 +38,9 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame
+    case foreground, bold, border, padding, focusable, frame, onHover, mouseFocusPolicy
+    // Display (additions)
+    case bufferView
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -348,6 +350,30 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .frame: return PageInfo(id: self, category: .modifiers, name: ".frame",
             summary: "Constrain size via width/height/min/max.",
             code: "Text(\"x\").frame(width: 10, height: 3).border()")
+        case .onHover: return PageInfo(id: self, category: .modifiers, name: ".onHover",
+            summary: "SwiftUI-style hover callback. Fires true on rect enter, false on leave; intra-rect movement does NOT re-fire.",
+            code: """
+                Text("hover me")
+                    .onHover { isHovering in
+                        state.hoverIndicator = isHovering ? "yes" : "no"
+                    }
+                """)
+        case .mouseFocusPolicy: return PageInfo(id: self, category: .modifiers, name: ".mouseFocusPolicy",
+            summary: "Pick how mouse events steer keyboard focus per subtree. Four cases: .clickToLock (default), .hoverFollows, .clickOnly, .disabled.",
+            code: """
+                VStack {
+                    Text("outer — default policy")
+                    Text("inner — disabled")
+                }
+                .mouseFocusPolicy(.disabled)
+                """)
+        case .bufferView: return PageInfo(id: self, category: .display, name: "BufferView",
+            summary: "Render a pre-populated CellBuffer into the view's rect. SwiftUI analog: Image(decorative:).",
+            code: """
+                var buffer = CellBuffer(width: 20, height: 4)
+                buffer.write("Hello, world!", x: 0, y: 0, style: ...)
+                BufferView(buffer)
+                """)
         }
     }
 }
