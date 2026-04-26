@@ -16,6 +16,18 @@
 // resolution picks the right one at every step of the chain.
 
 extension String {
+    /// Programmatic counterpart to the named chain helpers
+    /// (`.red`, `.bold`, etc.) — useful when the color/traits are
+    /// values rather than literals (e.g., picked from a level enum
+    /// or theme). Composes the same as the chain form:
+    ///
+    ///     "ERROR".styled(level.color, .bold)
+    public func styled(_ color: InkColor, _ traits: TextTraits = []) -> StyledString {
+        var s = StyledString(self).foreground(color)
+        if !traits.isEmpty { s = s.traits(traits) }
+        return s
+    }
+
     // Named colors — 16 ANSI slots.
     public var black:         StyledString { StyledString(self).foreground(.named(.black)) }
     public var red:           StyledString { StyledString(self).foreground(.named(.red)) }
@@ -60,4 +72,13 @@ extension StyledString {
     public var dim:           StyledString { traits(.dim) }
     public var strikethrough: StyledString { traits(.strikethrough) }
     public var inverse:       StyledString { traits(.inverse) }
+
+    // Mirror semantic-color shorthand so callers can apply theme
+    // colors to a pre-built StyledString without unwrapping to text.
+    public var primary:   StyledString { foreground(.primary) }
+    public var secondary: StyledString { foreground(.secondary) }
+    public var success:   StyledString { foreground(.success) }
+    public var warning:   StyledString { foreground(.warning) }
+    public var error:     StyledString { foreground(.error) }
+    public var muted:     StyledString { foreground(.muted) }
 }

@@ -23,7 +23,10 @@ public enum InkStream: Sendable {
     case stdout
     case stderr
 
-    var fileHandle: FileHandle {
+    /// Underlying FileHandle. Public so TerminalLog and other Ink
+    /// consumers can write directly to the same stream the `ink()`
+    /// helper uses, without re-deriving the mapping.
+    public var fileHandle: FileHandle {
         switch self {
         case .stdout: return .standardOutput
         case .stderr: return .standardError

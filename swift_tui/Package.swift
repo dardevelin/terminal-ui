@@ -34,6 +34,10 @@ let package = Package(
         // CLIs / non-render contexts. Standalone target so consumers
         // can use it without pulling the full TUI runtime.
         .library(name: "TerminalInk", targets: ["TerminalInk"]),
+        // TerminalLog: structured logging built on TerminalInk.
+        // Levels with colored prefixes, console + file sinks, ANSI
+        // auto-stripping for non-TTY targets.
+        .library(name: "TerminalLog", targets: ["TerminalLog"]),
     ],
     dependencies: [
         // DocC — documentation generator. Only used at `swift package generate-documentation` time.
@@ -52,6 +56,15 @@ let package = Package(
         .target(
             name: "TerminalInk",
             path: "Sources/TerminalInk",
+            swiftSettings: strictSettings
+        ),
+        // TerminalLog — structured logging built on TerminalInk.
+        // Log("scope").info/.warn/.error/etc. with colored levels,
+        // console + file sinks, env-var-driven min-level filtering.
+        .target(
+            name: "TerminalLog",
+            dependencies: ["TerminalInk"],
+            path: "Sources/TerminalLog",
             swiftSettings: strictSettings
         ),
         .target(
@@ -101,6 +114,12 @@ let package = Package(
             name: "TerminalInkTests",
             dependencies: ["TerminalInk"],
             path: "Tests/TerminalInkTests",
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalLogTests",
+            dependencies: ["TerminalLog", "TerminalInk"],
+            path: "Tests/TerminalLogTests",
             swiftSettings: strictSettings
         ),
     ]
