@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // TextInput overflow must virtual-scroll so the tail + cursor
 // remain visible, regardless of how the containing layout sizes the rect.
 // These assertions cover the rect actually granted to the input, not what
@@ -34,7 +25,6 @@ struct TextInputOverflowTests {
 
     @Test("long value ends with cursor at right-most content cell")
     func longValueShowsTailPlusCursor() {
-        resetGraphContext()
         // 40 chars into a 10-wide input. Tail should end with a cursor `│`,
         // preceded by the last typed chars.
         let value = String(repeating: "a", count: 20) + "tail"
@@ -49,7 +39,6 @@ struct TextInputOverflowTests {
 
     @Test("short value fits without clipping")
     func shortValueFits() {
-        resetGraphContext()
         let buffer = renderInput(value: "abc", width: 10)
         #expect(buffer[0, 0].character == "a")
         #expect(buffer[1, 0].character == "b")
@@ -60,7 +49,6 @@ struct TextInputOverflowTests {
 
     @Test("prompt reserves cells but still leaves room for value")
     func promptCoexistsWithValue() {
-        resetGraphContext()
         let buffer = renderInput(value: "hi", prompt: "> ", width: 10)
         #expect(buffer[0, 0].character == ">")
         #expect(buffer[1, 0].character == " ")

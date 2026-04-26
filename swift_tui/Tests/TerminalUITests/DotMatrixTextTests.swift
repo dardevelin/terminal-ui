@@ -1,22 +1,12 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("DotMatrixText — dot-matrix glyphs render across 7 rows")
 @MainActor
 struct DotMatrixTextTests {
 
     @Test("DotMatrixText(\"H\") renders ● shapes across rows 0..6")
     func dotMatrixHeight() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: DotMatrixText("H"))
         // Render into a buffer tall enough for all 7 dot rows.
@@ -40,7 +30,6 @@ struct DotMatrixTextTests {
 
     @Test("DotMatrixText measurement at narrow proposed width stays at 7 rows")
     func dotMatrixNarrowMeasure() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: DotMatrixText("HELLO"))
         // "HELLO" is 5 letters × 5 glyph cols + 4 letter-gaps = 29 chars wide.
@@ -54,7 +43,6 @@ struct DotMatrixTextTests {
 
     @Test("DotMatrixText inside a VStack preserves its 7-row height")
     func dotMatrixInVStack() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack {
             DotMatrixText("H")

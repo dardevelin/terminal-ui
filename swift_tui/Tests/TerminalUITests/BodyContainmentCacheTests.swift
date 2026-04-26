@@ -9,22 +9,12 @@ import Observation
 // every `AttributeGraph.update(from:)` so reads during the render
 // walk are O(1).
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("GraphMeasurer.containsViewBody — cache")
 @MainActor
 struct BodyContainmentCacheTests {
 
     @Test("post-update walk count is zero for repeated reads")
     func cachedReadsDoNotWalk() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b"); Text("c") })
         guard let root = graph.root else {
@@ -48,7 +38,6 @@ struct BodyContainmentCacheTests {
 
     @Test("answer matches uncached truth on a primitives-only tree")
     func primitivesOnlyTree() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         guard let root = graph.root else {
@@ -64,7 +53,6 @@ struct BodyContainmentCacheTests {
 
     @Test("drain() re-stamps after a body re-evaluation")
     func drainRefreshesCache() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let bindable = _ConditionalHarnessState()
         graph.update(from: _ConditionalHarness(state: bindable))
@@ -90,7 +78,6 @@ struct BodyContainmentCacheTests {
 
     @Test("structural change re-stamps on next update")
     func structuralChangeRefreshesCache() {
-        resetGraphContext()
         let graph = AttributeGraph()
         // First build: primitives only.
         graph.update(from: VStack { Text("a"); Text("b") })

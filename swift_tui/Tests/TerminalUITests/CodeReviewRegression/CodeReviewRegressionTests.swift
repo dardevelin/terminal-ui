@@ -8,15 +8,6 @@ import Testing
 // The suite stays green as a guard against re-introducing any of
 // these bugs.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // MARK: - onChange / onDisappear lifecycle modifiers must dispatch
 
 // Tracker class so closures can mutate from inside view bodies. A reference
@@ -33,7 +24,6 @@ struct OnChangeOnDisappearTests {
 
     @Test("onChange fires when bound value mutates between updates")
     func onChangeFiresOnValueChange() {
-        resetGraphContext()
         let counter = Counter()
         let graph = AttributeGraph()
 
@@ -48,7 +38,6 @@ struct OnChangeOnDisappearTests {
 
     @Test("onDisappear fires when its node is removed from the tree")
     func onDisappearFiresOnRemoval() {
-        resetGraphContext()
         let counter = Counter()
         let graph = AttributeGraph()
 
@@ -71,7 +60,6 @@ struct FirstFrameTests {
 
     @Test("onAppear fires on the very first graph update")
     func onAppearFiresOnFirstUpdate() {
-        resetGraphContext()
         let counter = Counter()
         let graph = AttributeGraph()
 
@@ -81,7 +69,6 @@ struct FirstFrameTests {
 
     @Test("onAppear fires exactly once across multiple updates")
     func onAppearFiresExactlyOnce() {
-        resetGraphContext()
         let counter = Counter()
         let graph = AttributeGraph()
 
@@ -93,12 +80,12 @@ struct FirstFrameTests {
 
     @Test("FocusEngine has an active focus after first construction of a focusable view")
     func focusReadyAfterFirstConstruction() {
-        resetGraphContext()
         let focusEngine = FocusEngine()
-        GraphContext.currentFocusEngine = focusEngine
 
         let graph = AttributeGraph()
-        graph.update(from: Text("button").focusable())
+        GraphContext.$currentFocusEngine.withValue(focusEngine) {
+            graph.update(from: Text("button").focusable())
+        }
 
         // The runtime auto-focuses the first focusable on startup. A test
         // simulating that contract: after rebuildIndex on a tree containing
@@ -140,15 +127,15 @@ struct EnvironmentOrderingTests {
 
     @Test("child's body observes the value set by its ancestor's .environment modifier")
     func childObservesAncestorEnvironment() {
-        resetGraphContext()
-        // Seed with the default so the bug is visible: if the modifier never
-        // applies at build time, the probe sees `default` instead of `custom`.
-        GraphContext.currentEnvironment = EnvironmentValues()
-
         let recorded = EnvRecorded()
         let custom = TerminalSize(cols: 999, rows: 42)
         let graph = AttributeGraph()
-        graph.update(from: EnvProbe(recorded: recorded).environment(\.terminalSize, custom))
+        // Seed with the default so the bug is visible: if the modifier
+        // never applies at build time, the probe sees `default` instead
+        // of `custom`. `@TaskLocal` requires writes go via `withValue`.
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            graph.update(from: EnvProbe(recorded: recorded).environment(\.terminalSize, custom))
+        }
 
         #expect(recorded.observed?.cols == 999,
                 "child body ran before .environment applied (read-before-apply); expected cols=999, got \(String(describing: recorded.observed?.cols))")
@@ -175,9 +162,6 @@ struct GeometryReaderIdentityTests {
 
     @Test("onAppear inside GeometryReader fires exactly once across multiple renders")
     func onAppearOnceInsideGR() {
-        resetGraphContext()
-        GraphContext.currentProposedSize = Size(width: 80, height: 24)
-
         let recorded = GRRecorded()
         let graph = AttributeGraph()
         let view = GeometryReader { _ in GRChild(recorded: recorded) }
@@ -186,12 +170,14 @@ struct GeometryReaderIdentityTests {
         // current code. We simulate that by triggering the rebuild path
         // multiple times: each render currently replaces node.children, so
         // every "render" reconstructs the subtree and fires onAppear again.
-        graph.update(from: view)
         var buffer = CellBuffer(width: 80, height: 24)
         let context = RenderContext(rect: Rect(x: 0, y: 0, width: 80, height: 24))
-        for _ in 0..<3 {
-            if let root = graph.root {
-                GraphRenderer.render(root, into: &buffer, context: context)
+        GraphContext.$currentProposedSize.withValue(Size(width: 80, height: 24)) {
+            graph.update(from: view)
+            for _ in 0..<3 {
+                if let root = graph.root {
+                    GraphRenderer.render(root, into: &buffer, context: context)
+                }
             }
         }
 

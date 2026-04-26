@@ -14,22 +14,12 @@ import Testing
 // `.display` arrow-mode that walks wrapped chunks lives in
 // `TextAreaDisplayRowNavigationTests`.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("TextArea — soft-wrap")
 @MainActor
 struct TextAreaWrapTests {
 
     @Test("a long single logical line renders to multiple display rows")
     func longLineWrapsToMultipleRows() {
-        resetGraphContext()
         let long = "type a very long line and see if it will properly wrap and do the right thing"
         var content = long
         var state = TextAreaState()
@@ -59,7 +49,6 @@ struct TextAreaWrapTests {
 
     @Test("wrapped TextArea breaks at word boundaries, not mid-word")
     func wrappedRowsRespectWordBoundaries() {
-        resetGraphContext()
         let sentence = "type a very long line and see if it will properly wrap and do the right thing"
         var content = sentence
         var state = TextAreaState()
@@ -96,7 +85,6 @@ struct TextAreaWrapTests {
 
     @Test("multi-line content with one long line preserves line count")
     func multiLineWithLongLine() {
-        resetGraphContext()
         // Two logical lines: one short, one that needs to wrap.
         let content = "short\nthis is a fairly long second line that should wrap to two rows"
         var contentVar = content
@@ -135,7 +123,6 @@ struct TextAreaWrapTests {
 
     @Test("short content fits on one row unchanged")
     func shortContentFitsOnOneRow() {
-        resetGraphContext()
         let short = "hello world"
         var content = short
         var state = TextAreaState()

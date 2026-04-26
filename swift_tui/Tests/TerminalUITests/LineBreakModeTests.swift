@@ -19,15 +19,6 @@ import Testing
 //   - `.lineBreakMode(_:)` modifier
 //   - TextInput consults the env when composing spans
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("LineBreakMode — enum + truncation helper")
 @MainActor
 struct LineBreakModeUnitTests {
@@ -136,8 +127,6 @@ struct LineBreakModeEnvTests {
         // applies `.lineBreakMode(.byTruncatingTail)`, the probe must
         // see that value (not the default). Same shape as the
         // environment read-before-apply ordering tests.
-        resetGraphContext()
-        GraphContext.currentEnvironment = EnvironmentValues()
 
         final class Recorded: @unchecked Sendable {
             var observed: LineBreakMode?
@@ -152,7 +141,11 @@ struct LineBreakModeEnvTests {
         }
         let r = Recorded()
         let graph = AttributeGraph()
-        graph.update(from: Probe(recorded: r).lineBreakMode(.byTruncatingTail))
+        // Bind a fresh default environment for the body-eval scope so
+        // the modifier walk has a concrete baseline to mutate.
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            graph.update(from: Probe(recorded: r).lineBreakMode(.byTruncatingTail))
+        }
         #expect(r.observed == .byTruncatingTail,
                 "child read \(String(describing: r.observed)); expected .byTruncatingTail")
     }
@@ -170,7 +163,6 @@ struct LineBreakModeTextInputTests {
         // horizontal scroll" keeps the cursor at the right edge,
         // dropping the leading characters. This is the HIG default
         // and `.byClipping` preserves the legacy behaviour byte-for-byte.
-        resetGraphContext()
         var value = "this is a very long input value"
         var validation: TextInputValidation? = nil
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -189,7 +181,6 @@ struct LineBreakModeTextInputTests {
 
     @Test("byTruncatingTail shows leading chars + ellipsis")
     func truncatingTail() {
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding)
@@ -209,7 +200,6 @@ struct LineBreakModeTextInputTests {
 
     @Test("byTruncatingHead shows ellipsis + trailing chars")
     func truncatingHead() {
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding)
@@ -229,7 +219,6 @@ struct LineBreakModeTextInputTests {
 
     @Test("byTruncatingMiddle shows head + ellipsis + tail")
     func truncatingMiddle() {
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding)

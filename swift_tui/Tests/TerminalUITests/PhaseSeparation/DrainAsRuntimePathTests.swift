@@ -16,15 +16,6 @@ import Testing
 // than re-walking from root. `rootWalkCount` stays put for
 // state-only changes; `dirtyDrainCount` increments.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Observable
 private final class DrainProbeModel: @unchecked Sendable {
     var counter: Int = 0
@@ -46,7 +37,6 @@ struct DrainAsRuntimePathTests {
 
     @Test("state mutation followed by frame reconciliation drains, doesn't root-walk")
     func stateMutationPrefersDrain() {
-        resetGraphContext()
         let model = DrainProbeModel()
         let graph = AttributeGraph()
         graph.update(from: DrainProbeView(model: model))
@@ -74,7 +64,6 @@ struct DrainAsRuntimePathTests {
 
     @Test("after drain, graph is clean — no second drain needed")
     func drainClearsDirty() {
-        resetGraphContext()
         let model = DrainProbeModel()
         let graph = AttributeGraph()
         graph.update(from: DrainProbeView(model: model))
@@ -87,7 +76,6 @@ struct DrainAsRuntimePathTests {
 
     @Test("frame-style sequence: drain replaces update(from:) when only state changed")
     func frameSequencePrefersDrain() {
-        resetGraphContext()
         let model = DrainProbeModel()
         let graph = AttributeGraph()
         // Frame 1 — first build. Both rootWalkCount and bodyEvaluationCount tick.

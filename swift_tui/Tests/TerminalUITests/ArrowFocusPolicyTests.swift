@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // User direction 2026-04-18:
 //   "arrow down on an element that has the focus shouldn't move focus out of
 //    it, tab is the focus changer, unless marked as allow"
@@ -34,7 +25,6 @@ struct ArrowFocusPolicyTests {
         // before — the policy gate lives at the event-loop level, not in
         // the engine. Apps that want to arrow-navigate inside a custom
         // input handler can still invoke it explicitly.
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let root = graph.root!

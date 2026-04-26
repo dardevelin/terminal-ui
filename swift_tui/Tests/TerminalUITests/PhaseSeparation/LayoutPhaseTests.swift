@@ -19,15 +19,6 @@ import Testing
 // `Layout.measureAndPlace` call invokes the rebuilder once, with the
 // allocated rect's size. Render then sees the resolved tree.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("Layout phase — measureAndPlace fires GR rebuilders, render then draws")
 @MainActor
 struct LayoutPhaseTests {
@@ -50,7 +41,6 @@ struct LayoutPhaseTests {
 
     @Test("measureAndPlace fires GR rebuilder with the allocated rect's size")
     func rebuilderFiresInLayoutPhase() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             Text("\(size.width)x\(size.height)")
@@ -76,7 +66,6 @@ struct LayoutPhaseTests {
 
     @Test("measureAndPlace fires once per GR per call (idempotent)")
     func rebuilderFiresOncePerLayoutPass() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             Text("\(size.width)")
@@ -102,7 +91,6 @@ struct LayoutPhaseTests {
 
     @Test("after measureAndPlace, render does NOT need to invoke the rebuilder")
     func renderAfterLayoutDoesNotRebuild() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             Text("\(size.width)")

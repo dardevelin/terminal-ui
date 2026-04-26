@@ -6,7 +6,7 @@ import Synchronization
 /// First frame: builds the full tree from the view hierarchy.
 /// Subsequent frames: reconciles in place — reuses existing nodes,
 /// updates values, rebuilds only when structure changes.
-public final class AttributeGraph {
+public final class AttributeGraph: @unchecked Sendable {
     public var root: AttributeNode?
 
     /// Set during update() — tracks whether any primitive values actually changed.
@@ -208,38 +208,42 @@ public final class AttributeGraph {
     ///   to @MainActor via Task.
     /// - `weak` captures prevent retain cycles when nodes are removed
     ///   from the graph between frames.
-    /// - `nonisolated(unsafe)` on the weak lets is required because the
-    ///   closure crosses isolation boundaries (captured on MainActor,
-    ///   called on mutation thread).
+    /// - `AttributeNode` and `AttributeGraph` are `@unchecked Sendable`
+    ///   so the weak captures travel through the closure freely. The
+    ///   safety guarantee comes from runtime discipline — the closure
+    ///   touches the captured nodes only via `markDirty` / `enqueueDirty`,
+    ///   both of which only mutate atomic flags + cache fields.
     func evaluateBody<V: TerminalView>(node: AttributeNode, view: V) {
-        let prevNode = GraphContext.currentNode
-        let prevGraph = GraphContext.currentGraph
-        GraphContext.currentNode = node
-        GraphContext.currentGraph = self
-
-        nonisolated(unsafe) weak let weakNode = node
-        nonisolated(unsafe) weak let weakGraph = self
+        weak let weakNode: AttributeNode? = node
+        weak let weakGraph: AttributeGraph? = self
         #if DEBUG
         bodyEvaluationCount += 1
         #endif
-        let body: V.Body = withObservationTracking {
-            view.body
-        } onChange: {
-            weakGraph?.hasDirtyNodes = true
-            // Per-node dirty flag for the in-place drain path. Set
-            // synchronously so a subsequent `graph.update(from:)` on
-            // the same actor sees the dirtiness. Observation's
-            // onChange fires on the mutating thread; in a TUI app
-            // that's @MainActor for any state-driven update. The
-            // `nonisolated(unsafe)` weak capture disables isolation
-            // checking for the rare cross-actor caller — `markDirty`
-            // itself only mutates a Bool + nil-able cache fields,
-            // safe under runtime discipline.
-            weakNode?.markDirty()
-            // Enqueue for in-place drain so the next frame doesn't
-            // have to walk from the root.
-            if let n = weakNode {
-                weakGraph?.enqueueDirty(n)
+
+        // Bind currentNode + currentGraph for the body-evaluation scope
+        // via @TaskLocal. `withValue` restores the prior binding on
+        // exit (regardless of throw) and isolates the binding to this
+        // task — `Task.detached` callers cannot observe these values.
+        let body: V.Body = GraphContext.$currentNode.withValue(node) {
+            GraphContext.$currentGraph.withValue(self) {
+                withObservationTracking {
+                    view.body
+                } onChange: {
+                    weakGraph?.hasDirtyNodes = true
+                    // Per-node dirty flag for the in-place drain path. Set
+                    // synchronously so a subsequent `graph.update(from:)` on
+                    // the same actor sees the dirtiness. Observation's
+                    // onChange fires on the mutating thread; in a TUI app
+                    // that's @MainActor for any state-driven update.
+                    // `markDirty` itself only mutates a Bool + nil-able
+                    // cache fields, safe under runtime discipline.
+                    weakNode?.markDirty()
+                    // Enqueue for in-place drain so the next frame doesn't
+                    // have to walk from the root.
+                    if let n = weakNode {
+                        weakGraph?.enqueueDirty(n)
+                    }
+                }
             }
         }
         // Capture a replay closure so `drain()` can re-run the body
@@ -249,10 +253,6 @@ public final class AttributeGraph {
             guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
             graph.evaluateBody(node: target, view: stored)
         }
-
-        // Restore context
-        GraphContext.currentNode = prevNode
-        GraphContext.currentGraph = prevGraph
 
         // Update or create child from body result
         if let child = node.children.first {
@@ -387,7 +387,7 @@ public final class AttributeGraph {
         // each frame; post-it updates the existing child in place
         // rather than replacing it, so identity survives across renders.
         if let geom = view as? any _GraphGeometryReader {
-            nonisolated(unsafe) weak let weakSelf = self
+            weak let weakSelf: AttributeGraph? = self
             let childID = node.id.appending(.index(0))
             node.geometryRebuilder = { size, parent in
                 let view = geom.rebuild(with: size)
@@ -805,7 +805,7 @@ public final class AttributeGraph {
         // Capture graph + id so the renderer can rebuild without going
         // through `GraphContext.currentGraph` (which is only scoped during
         // `graph.update`, not during render).
-        nonisolated(unsafe) weak let weakSelf = self
+        weak let weakSelf: AttributeGraph? = self
         let childID = id.appending(.index(0))
         node.geometryRebuilder = { size, parent in
             let view = geom.rebuild(with: size)
@@ -980,9 +980,9 @@ public final class AttributeGraph {
         let previous = GraphContext.currentEnvironment ?? EnvironmentValues()
         var mutated = previous
         apply(&mutated)
-        GraphContext.currentEnvironment = mutated
-        defer { GraphContext.currentEnvironment = previous }
-        _ = body()
+        GraphContext.$currentEnvironment.withValue(mutated) {
+            _ = body()
+        }
         return previous
     }
 
@@ -1004,28 +1004,28 @@ public final class AttributeGraph {
         let info = ViewBodyInfo(viewTypeName: String(describing: V.self))
         let node = AttributeNode(id: id, kind: .viewBody(info))
 
-        // Set context and evaluate with observation
-        let prevNode = GraphContext.currentNode
-        let prevGraph = GraphContext.currentGraph
-        GraphContext.currentNode = node
-        GraphContext.currentGraph = self
-
-        nonisolated(unsafe) weak let weakNode2 = node
-        nonisolated(unsafe) weak let weakGraph2 = self
+        weak let weakNode2: AttributeNode? = node
+        weak let weakGraph2: AttributeGraph? = self
         #if DEBUG
         bodyEvaluationCount += 1
         #endif
-        let body: V.Body = withObservationTracking {
-            view.body
-        } onChange: {
-            weakGraph2?.hasDirtyNodes = true
-            // Per-node dirty flag — synchronous so the next
-            // graph.update sees it. See `evaluateBody` for the
-            // longer note on isolation.
-            weakNode2?.markDirty()
-            // Same enqueue dance as evaluateBody.
-            if let n = weakNode2 {
-                weakGraph2?.enqueueDirty(n)
+        // Bind currentNode + currentGraph for the body-evaluation scope
+        // via @TaskLocal. See `evaluateBody` for the contract.
+        let body: V.Body = GraphContext.$currentNode.withValue(node) {
+            GraphContext.$currentGraph.withValue(self) {
+                withObservationTracking {
+                    view.body
+                } onChange: {
+                    weakGraph2?.hasDirtyNodes = true
+                    // Per-node dirty flag — synchronous so the next
+                    // graph.update sees it. See `evaluateBody` for the
+                    // longer note on isolation.
+                    weakNode2?.markDirty()
+                    // Same enqueue dance as evaluateBody.
+                    if let n = weakNode2 {
+                        weakGraph2?.enqueueDirty(n)
+                    }
+                }
             }
         }
         // Replay closure for drain(); see evaluateBody site.
@@ -1033,9 +1033,6 @@ public final class AttributeGraph {
             guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
             graph.evaluateBody(node: target, view: stored)
         }
-
-        GraphContext.currentNode = prevNode
-        GraphContext.currentGraph = prevGraph
 
         let childID = id.appending(.index(0))
         let childNode = constructNode(for: body, id: childID)

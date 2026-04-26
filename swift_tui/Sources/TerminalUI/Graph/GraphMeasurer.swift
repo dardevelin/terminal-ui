@@ -154,13 +154,11 @@ public enum GraphMeasurer {
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
             if case .environment(let apply) = effect {
-                let previous = GraphContext.currentEnvironment
-                var nextEnv = previous ?? EnvironmentValues()
+                var nextEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
                 apply(&nextEnv)
-                GraphContext.currentEnvironment = nextEnv
-                let result = measureWidth(child)
-                GraphContext.currentEnvironment = previous
-                return result
+                return GraphContext.$currentEnvironment.withValue(nextEnv) {
+                    measureWidth(child)
+                }
             }
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
@@ -237,13 +235,11 @@ public enum GraphMeasurer {
             // from inflating height at narrow widths). Push the modifier's
             // env over the current one, measure, then restore.
             if case .environment(let apply) = effect {
-                let previous = GraphContext.currentEnvironment
-                var nextEnv = previous ?? EnvironmentValues()
+                var nextEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
                 apply(&nextEnv)
-                GraphContext.currentEnvironment = nextEnv
-                let result = measureHeight(child, proposedWidth: proposedWidth)
-                GraphContext.currentEnvironment = previous
-                return result
+                return GraphContext.$currentEnvironment.withValue(nextEnv) {
+                    measureHeight(child, proposedWidth: proposedWidth)
+                }
             }
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }

@@ -17,22 +17,12 @@ import Testing
 // The fix lives in HYP-203 phase separation: GR's rebuild moves to
 // the layout phase, render becomes pure.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("Render phase purity — render must not mutate the view tree")
 @MainActor
 struct RenderPhasePurityTests {
 
     @Test("render does not change node.children identities")
     func renderPreservesChildrenArrays() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack {
             Text("alpha")
@@ -52,7 +42,6 @@ struct RenderPhasePurityTests {
 
     @Test("render does not mutate node.kind values")
     func renderPreservesKinds() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack {
             Text("a"); Text("b"); Text("c")
@@ -71,7 +60,6 @@ struct RenderPhasePurityTests {
 
     @Test("GeometryReader render does not rewrite node.children")
     func geometryReaderRenderIsPure() {
-        resetGraphContext()
         let graph = AttributeGraph()
         // GR's child closure depends on size. Today GraphRenderer.render
         // calls the rebuilder, which writes back into node.children.
@@ -93,7 +81,6 @@ struct RenderPhasePurityTests {
 
     @Test("render does not trigger body re-evaluation (composite GR child)")
     func renderDoesNotReEvaluateBodies() {
-        resetGraphContext()
         let graph = AttributeGraph()
         // The GR's child is a composite (HeadlessRow) so re-evaluating
         // its body is observable via bodyEvaluationCount.
@@ -116,7 +103,6 @@ struct RenderPhasePurityTests {
 
     @Test("render does not trigger graph reconciliation (existing child updated through update path)")
     func renderDoesNotReconcile() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             Text("\(size.width)")
@@ -139,7 +125,6 @@ struct RenderPhasePurityTests {
 
     @Test("render does not invoke rebuilder when layout has already placed the GR")
     func renderDoesNotInvokeRebuilderAfterLayout() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             Text("\(size.width)")
@@ -166,7 +151,6 @@ struct RenderPhasePurityTests {
 
     @Test("repeated render calls produce identical output (no first-call-mutates-second)")
     func repeatedRenderIsIdempotent() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: GeometryReader { size in
             VStack {

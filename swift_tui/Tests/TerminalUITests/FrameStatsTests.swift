@@ -18,15 +18,6 @@ import Testing
 // counters' own invariants so a regression there is caught before
 // the dependent suites get blamed.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 private struct LeafComposite: TerminalView {
     let label: String
     var body: some TerminalView { Text(label) }
@@ -50,7 +41,6 @@ struct FrameStatsTests {
 
     @Test("bodyEvaluationCount increments when a composite body runs")
     func bodyEvaluationCount_incrementsOnComposite() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: LeafComposite(label: "a"))
@@ -60,7 +50,6 @@ struct FrameStatsTests {
 
     @Test("bodyEvaluationCount counts each composite body in a depth-3 tree")
     func bodyEvaluationCount_incrementsPerLeafBody() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: DepthThreeRoot())
@@ -71,7 +60,6 @@ struct FrameStatsTests {
 
     @Test("bodyEvaluationCount stays zero rendering only a primitive")
     func bodyEvaluationCount_doesNotIncrementOnPrimitive() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: Text("a"))
@@ -81,7 +69,6 @@ struct FrameStatsTests {
 
     @Test("rootWalkCount increments on first update")
     func rootWalkCount_incrementsOnFirstUpdate() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: LeafComposite(label: "a"))
@@ -91,7 +78,6 @@ struct FrameStatsTests {
 
     @Test("rootWalkCount increments on every update(from:) call")
     func rootWalkCount_incrementsPerUpdate() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: LeafComposite(label: "a"))
@@ -103,7 +89,6 @@ struct FrameStatsTests {
 
     @Test("dirtyDrainCount stays zero when nothing is dirty")
     func dirtyDrainCount_isZeroWithoutMutation() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         graph.update(from: LeafComposite(label: "a"))
@@ -114,7 +99,6 @@ struct FrameStatsTests {
 
     @Test("resetFrameStats zeros all three counters")
     func resetFrameStats_zeroesAllCounters() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: DepthThreeRoot())
         #expect(graph.bodyEvaluationCount > 0)

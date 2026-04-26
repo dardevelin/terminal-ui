@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // validating TextInput surfaces severity + message to the user.
 // These tests cover the value-level contract: running `validate` against the
 // current text produces the expected outcome. Visual contract (error border
@@ -41,7 +32,6 @@ struct TextInputValidationTests {
 
     @Test("TextInput with validator renders without crashing")
     func renderWithValidator() {
-        resetGraphContext()
         var text = "bad"
         let binding = Binding(get: { text }, set: { text = $0 })
         let graph = AttributeGraph()

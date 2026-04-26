@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // .focusScope(id) groups focusable descendants so arrow keys stay
 // within the scope. Tab still crosses scopes (SwiftUI convention).
 
@@ -19,7 +10,6 @@ struct FocusScopeConstructionTests {
 
     @Test("focusScope stamps scopeID on focusable descendants")
     func stampsScopeID() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack {
             Text("a").focusable()
@@ -33,7 +23,6 @@ struct FocusScopeConstructionTests {
 
     @Test("no scope → nil scopeID on focusables")
     func noScope() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack {
             Text("a").focusable()
@@ -45,7 +34,6 @@ struct FocusScopeConstructionTests {
 
     @Test("different scopes produce different scopeIDs")
     func distinctScopes() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack {
             HStack {
@@ -91,7 +79,6 @@ struct FocusScopeNavigationTests {
 
     @Test("right arrow moves within scope")
     func rightWithinScope() {
-        resetGraphContext()
         let (graph, engine, focusables) = makeScopedLayout()
         engine.focusInDirection(.right, root: graph.root)
         #expect(engine.keyboardFocusID == focusables[1].id)
@@ -99,7 +86,6 @@ struct FocusScopeNavigationTests {
 
     @Test("right arrow at end of scope does NOT cross into next scope")
     func rightStopsAtScopeEdge() {
-        resetGraphContext()
         let (graph, engine, focusables) = makeScopedLayout()
         engine.keyboardFocusID = focusables[1].id  // B, last in "top"
         engine.focusInDirection(.right, root: graph.root)
@@ -109,7 +95,6 @@ struct FocusScopeNavigationTests {
 
     @Test("left arrow at scope start stays put")
     func leftStopsAtScopeStart() {
-        resetGraphContext()
         let (graph, engine, focusables) = makeScopedLayout()
         // Already on A (first in "top")
         engine.focusInDirection(.left, root: graph.root)
@@ -118,7 +103,6 @@ struct FocusScopeNavigationTests {
 
     @Test("wrong-axis arrow in a scope does NOT fall back to Tab order")
     func wrongAxisDoesNotLeakOutOfScope() {
-        resetGraphContext()
         let (graph, engine, focusables) = makeScopedLayout()
         // In HStack, 'down' is wrong axis. Pre-would focusNext → leak to C.
         // With scopes, it should be a no-op.
@@ -128,7 +112,6 @@ struct FocusScopeNavigationTests {
 
     @Test("Tab still crosses scopes")
     func tabCrossesScopes() {
-        resetGraphContext()
         let (_, engine, focusables) = makeScopedLayout()
         engine.keyboardFocusID = focusables[1].id  // B, end of top scope
         engine.focusNext()

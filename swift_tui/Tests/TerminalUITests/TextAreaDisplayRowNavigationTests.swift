@@ -14,15 +14,6 @@ import Testing
 // boundaries reuses the same projection so highlights span chunks
 // correctly.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("TextArea — display-row arrow mode + scroll + selection across wraps")
 @MainActor
 struct TextAreaDisplayRowNavigationTests {
@@ -199,7 +190,6 @@ struct TextAreaDisplayRowNavigationTests {
 
     @Test("selection range that crosses chunk boundary highlights both chunks")
     func selectionCrossesChunkBoundary() {
-        resetGraphContext()
         // Single logical line wrapping to 2+ chunks. Selection spans
         // a region that straddles a chunk boundary. Render and read
         // back cells; check both chunks have selection highlight on

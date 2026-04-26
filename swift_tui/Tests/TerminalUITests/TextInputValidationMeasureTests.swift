@@ -1,22 +1,12 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("TextInput validation — measurement must include the message row")
 @MainActor
 struct TextInputValidationMeasureTests {
 
     @Test("validator error produces measured height of 2")
     func errorHeightIsTwo() {
-        resetGraphContext()
         var value = "hello"
         let binding = Binding(get: { value }, set: { value = $0 })
         let graph = AttributeGraph()
@@ -31,7 +21,6 @@ struct TextInputValidationMeasureTests {
 
     @Test("validator ok produces measured height of 1")
     func okHeightIsOne() {
-        resetGraphContext()
         var value = "hi@example.com"
         let binding = Binding(get: { value }, set: { value = $0 })
         let graph = AttributeGraph()

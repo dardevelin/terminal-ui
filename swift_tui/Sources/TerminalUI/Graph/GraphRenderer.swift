@@ -35,53 +35,58 @@ public enum GraphRenderer {
         // layout would still think it had the whole screen to work with —
         // the bug that left `TextInput` over-budgeting its horizontal
         // scroll window in the Storybook preview pane.
-        let previousProposed = GraphContext.currentProposedSize
-        GraphContext.currentProposedSize = Size(width: context.rect.width, height: context.rect.height)
-        defer { GraphContext.currentProposedSize = previousProposed }
+        let proposed = Size(width: context.rect.width, height: context.rect.height)
+        // The `withUnsafeMutablePointer` dance lets the `inout buffer`
+        // parameter cross the @TaskLocal closure boundary — Swift
+        // closures can't capture `inout` directly, but a pointer-by-
+        // value closure can dereference back into the original storage.
+        withUnsafeMutablePointer(to: &buffer) { bufPtr in
+            GraphContext.$currentProposedSize.withValue(proposed) {
+                // Rect-clip enforcement. Every node's writes are bounded to its
+                // assigned rect intersected with all ancestors' rects. Prevents a child
+                // from punching through a parent's border/frame when it miscalculates
+                // measurement or paints past its bounds. Opt out with `.overflowOK()`.
+                bufPtr.pointee.withClip(context.rect) { buffer in
+                    switch node.kind {
+                    case .primitive(let content):
+                        renderPrimitive(content, into: &buffer, context: context)
 
-        // Rect-clip enforcement. Every node's writes are bounded to its
-        // assigned rect intersected with all ancestors' rects. Prevents a child
-        // from punching through a parent's border/frame when it miscalculates
-        // measurement or paints past its bounds. Opt out with `.overflowOK()`.
-        buffer.withClip(context.rect) { buffer in
-            switch node.kind {
-            case .primitive(let content):
-                renderPrimitive(content, into: &buffer, context: context)
+                    case .layout(let info):
+                        renderLayout(node, info: info, into: &buffer, context: context)
 
-            case .layout(let info):
-                renderLayout(node, info: info, into: &buffer, context: context)
+                    case .modifier(let effect):
+                        renderModifier(node, effect: effect, into: &buffer, context: context)
 
-            case .modifier(let effect):
-                renderModifier(node, effect: effect, into: &buffer, context: context)
-
-            case .viewBody(let info):
-                #if DEBUG
-                DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
-                #endif
-                // Phase separation: GeometryReader rebuilders run in
-                // the layout phase (`Layout.measureAndPlace`) before
-                // render reaches them. The runtime always calls
-                // measureAndPlace ahead of render so the GR's child
-                // subtree is already at the right size when render
-                // arrives — this branch is a pure draw on the
-                // production path.
-                //
-                // Defensive fallback for direct-render callers (unit
-                // tests that drive `GraphRenderer.render` without a
-                // prior `Layout.measureAndPlace`): if the GR's
-                // last-laid-out size doesn't match the current rect,
-                // fire the rebuilder once and stamp the size. This
-                // keeps existing test fixtures working while the
-                // runtime contract stays "render is pure."
-                if let rebuild = node.geometryRebuilder {
-                    let size = Size(width: context.rect.width, height: context.rect.height)
-                    if node._lastLaidOutSize != size {
-                        rebuild(size, node)
-                        node._lastLaidOutSize = size
+                    case .viewBody(let info):
+                        #if DEBUG
+                        DevTracer.shared.traceBodyEvaluated(info.viewTypeName)
+                        #endif
+                        // Phase separation: GeometryReader rebuilders run in
+                        // the layout phase (`Layout.measureAndPlace`) before
+                        // render reaches them. The runtime always calls
+                        // measureAndPlace ahead of render so the GR's child
+                        // subtree is already at the right size when render
+                        // arrives — this branch is a pure draw on the
+                        // production path.
+                        //
+                        // Defensive fallback for direct-render callers (unit
+                        // tests that drive `GraphRenderer.render` without a
+                        // prior `Layout.measureAndPlace`): if the GR's
+                        // last-laid-out size doesn't match the current rect,
+                        // fire the rebuilder once and stamp the size. This
+                        // keeps existing test fixtures working while the
+                        // runtime contract stays "render is pure."
+                        if let rebuild = node.geometryRebuilder {
+                            let size = Size(width: context.rect.width, height: context.rect.height)
+                            if node._lastLaidOutSize != size {
+                                rebuild(size, node)
+                                node._lastLaidOutSize = size
+                            }
+                        }
+                        for child in node.children {
+                            render(child, into: &buffer, context: context)
+                        }
                     }
-                }
-                for child in node.children {
-                    render(child, into: &buffer, context: context)
                 }
             }
         }
@@ -730,14 +735,18 @@ public enum GraphRenderer {
             // Push a modified EnvironmentValues for the duration of this
             // subtree. Descendants read via `GraphContext.currentEnvironment`
             // (e.g. `GraphMeasurer.computeHeight` consulting `textWrap`).
-            // Restore the prior environment on return so sibling subtrees
-            // observe their own settings rather than inheriting from us.
-            let previousEnv = GraphContext.currentEnvironment
-            var newEnv = previousEnv ?? EnvironmentValues()
+            // `withValue` automatically restores the prior binding on
+            // closure exit so sibling subtrees observe their own
+            // settings. The `withUnsafeMutablePointer` dance lets the
+            // recursive `render` keep its `inout buffer` parameter
+            // across the @TaskLocal closure boundary.
+            var newEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
             apply(&newEnv)
-            GraphContext.currentEnvironment = newEnv
-            render(child, into: &buffer, context: ctx)
-            GraphContext.currentEnvironment = previousEnv
+            withUnsafeMutablePointer(to: &buffer) { bufPtr in
+                GraphContext.$currentEnvironment.withValue(newEnv) {
+                    render(child, into: &bufPtr.pointee, context: ctx)
+                }
+            }
 
         case .modal(let isPresented):
             // Always render base app

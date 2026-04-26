@@ -14,22 +14,12 @@ import Testing
 // renderer + measurer to consult `TextLayout.wrapWords` to make them
 // pass.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("Text primitive — word-aware wrap")
 @MainActor
 struct TextPrimitiveWrapTests {
 
     @Test("rendering a long sentence in a narrow rect breaks on word boundaries")
     func longSentenceWrapsAtWordBoundaries() {
-        resetGraphContext()
         let sentence = "type a very long line and see if it will properly wrap and do the right thing"
         let view = Text(sentence)
         let graph = AttributeGraph()

@@ -22,15 +22,6 @@ import Observation
 // the user opt-in via `.equatable()` is the escape hatch. SwiftUI
 // has the same limitation.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // MARK: - Reflective-compare fixtures
 
 private struct PlainLabel: TerminalView {
@@ -91,7 +82,6 @@ struct ReflectiveCompareTests {
 
     @Test("non-Equatable view with unchanged fields skips body re-eval")
     func nonEquatable_unchangedFields_skipsBody() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: PlainLabel(title: "hello", count: 1))
         graph.resetFrameStats()
@@ -103,7 +93,6 @@ struct ReflectiveCompareTests {
 
     @Test("non-Equatable view with changed field re-evaluates body")
     func nonEquatable_changedField_reevaluates() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: PlainLabel(title: "hello", count: 1))
         graph.resetFrameStats()
@@ -114,7 +103,6 @@ struct ReflectiveCompareTests {
 
     @Test("non-Equatable view with closure field always re-evaluates (parity ceiling)")
     func nonEquatable_closureField_alwaysReevaluates() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: ClosureView(label: "go", action: {}))
         graph.resetFrameStats()
@@ -128,7 +116,6 @@ struct ReflectiveCompareTests {
 
     @Test("different view type at same position rebuilds subtree")
     func differentViewType_atSamePosition_rebuildsSubtree() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Switcher(useIf: true))
         let firstChildID = graph.root?.children.first?.children.first?.id
@@ -148,7 +135,6 @@ struct ReflectiveCompareTests {
 
     @Test("same non-Equatable view type at different positions keeps independent state")
     func sameViewType_atDifferentPosition_keepsIndependentState() {
-        resetGraphContext()
         let graph = AttributeGraph()
         // Two PlainLabel siblings differ only in title — reflective
         // compare must not collapse them into the same node identity.
@@ -173,7 +159,6 @@ struct ReflectiveCompareTests {
 
     @Test("Equatable view still skips body when inputs compare equal")
     func equatableView_stillSkipsBodyOnEqualInputs() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: EquatableLeaf(model: model))
@@ -185,7 +170,6 @@ struct ReflectiveCompareTests {
 
     @Test("Equatable view re-evaluates when observed state changes")
     func equatableView_reevaluatesOnObservedStateChange() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: EquatableLeaf(model: model))

@@ -16,15 +16,6 @@ import Observation
 //     new value differs from the cached one (Equatable opt-in, with
 //     a Mirror-based fallback for non-Equatable views).
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // MARK: - Counter helper
 //
 // Tests need to know how many times each composite view's body ran.
@@ -97,7 +88,6 @@ struct PerNodeObservationTests {
 
     @Test("toggling x re-evaluates only the leaf that read x; sibling untouched")
     func mutateXDoesNotReevaluateY() {
-        resetGraphContext()
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
@@ -118,7 +108,6 @@ struct PerNodeObservationTests {
 
     @Test("mutating an unaccessed property re-evaluates nothing (with .equatable())")
     func mutateUnaccessedPropertyEvaluatesNothing() {
-        resetGraphContext()
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
@@ -142,7 +131,6 @@ struct PerNodeObservationTests {
 
     @Test("mutating an accessed property re-evaluates exactly once per update")
     func mutateAccessedPropertyEvaluatesOnce() {
-        resetGraphContext()
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
@@ -195,7 +183,6 @@ struct EquatableFastPathTests {
 
     @Test("equal Equatable inputs across updates do not re-run body")
     func equalEquatableInputsSkipReevaluation() {
-        resetGraphContext()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
         // Note: `.equatable()` is the API the user-facing modifier
@@ -212,7 +199,6 @@ struct EquatableFastPathTests {
 
     @Test("unequal Equatable inputs re-run body")
     func unequalEquatableInputsReevaluate() {
-        resetGraphContext()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
         graph.update(from: EquatableLeaf(label: "a", recorder: recorder).equatable())
@@ -234,7 +220,6 @@ struct EquatableFastPathTests {
         //
         // `NonEquatableLeaf` here holds a class field (`recorder`),
         // so reflectiveEqual returns false → body re-runs every update.
-        resetGraphContext()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()
         graph.update(from: NonEquatableLeaf(label: "a", recorder: recorder))
@@ -280,7 +265,6 @@ struct FrameStatBoundsTests {
 
     @Test("single x-mutation re-runs only the x reader, not the 8 y-readers")
     func singleMutationDoesNotEvaluateSiblings() {
-        resetGraphContext()
         let model = CounterModel()
         let recorder = EvalRecorder()
         let graph = AttributeGraph()

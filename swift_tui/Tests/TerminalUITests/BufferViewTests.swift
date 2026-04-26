@@ -11,15 +11,6 @@ import Testing
 // content truncates to the rect; the view does not scroll itself
 // (compose with ScrollView for that).
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 /// Build a 3x2 source buffer with distinct characters at every cell so
 /// the assertion can pin position-by-position.
 @MainActor
@@ -37,7 +28,6 @@ private func makeProbeBuffer(width: Int = 3, height: Int = 2) -> CellBuffer {
 
 @MainActor
 private func renderBufferView(_ view: BufferView, into rect: Rect, canvasWidth: Int = 10, canvasHeight: Int = 10) -> CellBuffer {
-    resetGraphContext()
     let graph = AttributeGraph()
     graph.update(from: view)
     let root = graph.root!
@@ -123,7 +113,6 @@ struct BufferViewTests {
         // Render directly — bypass renderBufferView so we keep the
         // pre-painted canvas intact (renderBufferView allocates a
         // fresh canvas inside).
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: BufferView(src))
         let root = graph.root!
@@ -166,7 +155,6 @@ struct BufferViewTests {
     @Test("BufferView's natural size is the source buffer's dimensions")
     func measuredAtBufferDimensions() {
         let src = makeProbeBuffer(width: 7, height: 3)
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: BufferView(src))
         let root = graph.root!

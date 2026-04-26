@@ -9,15 +9,6 @@ import Testing
 // can override the default by binding the same chord to a custom
 // action.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("Default actions — framework-supplied baseline")
 @MainActor
 struct DefaultActionsTests {
@@ -75,7 +66,6 @@ struct DefaultActionsTests {
 
     @Test("ActionDispatch combines framework defaults with focus-chain scopes")
     func dispatchHonorsDefaultsAcrossFocusChain() {
-        resetGraphContext()
         let defaultQuit = TestCounter()
         let userQuit = TestCounter()
         let graph = AttributeGraph()

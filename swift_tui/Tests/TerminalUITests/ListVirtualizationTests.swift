@@ -11,15 +11,6 @@ import Testing
 // SwiftUI parity (LazyVStack/LazyVGrid promise): only the visible
 // items are materialized. Same promise here.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 private final class AccessCounter: @unchecked Sendable {
     var subscriptCount = 0
     var iteratorAdvanceCount = 0
@@ -56,7 +47,6 @@ struct ListVirtualizationTests {
 
     @Test("rendering a 10-row viewport over 10,000 items must NOT touch all items")
     func listOnlyMaterializesVisibleWindow() {
-        resetGraphContext()
         let counter = AccessCounter()
         let data = CountingCollection(total: 10_000, counter: counter)
         let graph = AttributeGraph()

@@ -20,15 +20,6 @@ import Testing
 // suppress with `DebugStream.shared.suppressWarning(...)` if a
 // false-positive case ever shows up.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 private final class GuardProbe: DebugSink, @unchecked Sendable {
     private let lock = NSLock()
     private var _counts: [FrameworkWarningCode: Int] = [:]
@@ -65,7 +56,6 @@ struct BindingProjectionGuardTests {
 
     @Test("projecting $state with no current node emits the warning")
     func emitsWhenCurrentNodeIsNil() {
-        resetGraphContext()
         withProbe { probe in
             // Simulate the bug: a `@TerminalState` whose projectedValue
             // is read while `GraphContext.currentNode` is nil. The
@@ -82,17 +72,16 @@ struct BindingProjectionGuardTests {
 
     @Test("projecting $state with a current node emits no warning")
     func noWarningWhenCurrentNodeSet() {
-        resetGraphContext()
         let node = AttributeNode(id: .root, kind: .layout(LayoutInfo(kind: .vstack)))
-        GraphContext.currentNode = node
-        defer { GraphContext.currentNode = nil }
-        withProbe { probe in
-            let state = _GuardrailHarness()
-            _ = state.$value
-            #expect(
-                probe.count(of: .bindingProjectedWithoutNode) == 0,
-                "expected no warning when GraphContext.currentNode is set during projection"
-            )
+        GraphContext.$currentNode.withValue(node) {
+            withProbe { probe in
+                let state = _GuardrailHarness()
+                _ = state.$value
+                #expect(
+                    probe.count(of: .bindingProjectedWithoutNode) == 0,
+                    "expected no warning when GraphContext.currentNode is set during projection"
+                )
+            }
         }
     }
 }

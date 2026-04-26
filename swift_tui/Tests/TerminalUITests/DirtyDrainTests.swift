@@ -19,15 +19,6 @@ import Observation
 // (`graph.update(from:)`) is reserved for first frame and structural
 // rebuilds.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Observable
 private final class CounterModel {
     var x: Int = 0
@@ -63,7 +54,6 @@ struct DirtyDrainTests {
 
     @Test("first frame walks from root")
     func firstFrame_doesRootWalk() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.resetFrameStats()
         let model = CounterModel()
@@ -74,7 +64,6 @@ struct DirtyDrainTests {
 
     @Test("mutating leaf observable populates dirty queue, drain re-evaluates leaf only")
     func mutateLeafState_dirtyQueueDrainsLeafOnly() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: DepthFiveContainer(model: model))
@@ -95,7 +84,6 @@ struct DirtyDrainTests {
 
     @Test("sustained leaf mutations produce N drain frames, zero root walks")
     func mutateLeafState_otherFramesNoWalk() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: DepthFiveContainer(model: model))
@@ -112,7 +100,6 @@ struct DirtyDrainTests {
 
     @Test("drain returns false and bumps no counter when queue is empty")
     func emptyQueue_drainNoOps() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: LeafReadingX(model: model))
@@ -128,7 +115,6 @@ struct DirtyDrainTests {
 
     @Test("single leaf mutation in deep tree re-evaluates exactly one body")
     func bodyEval_singleLeafMutation_isOne() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: DepthFiveContainer(model: model))
@@ -143,7 +129,6 @@ struct DirtyDrainTests {
 
     @Test("two mutations on same leaf within one frame dedupe to a single body run")
     func bodyEval_multipleLeafMutations_dedupesPerFrame() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: LeafReadingX(model: model))
@@ -165,7 +150,6 @@ struct DirtyDrainTests {
 
     @Test("graph remains layout-queryable after drain")
     func graphRemainsLayoutQueryableAfterDrain() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = CounterModel()
         graph.update(from: LeafReadingX(model: model))

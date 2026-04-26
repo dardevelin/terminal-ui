@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // These tests pin FocusEngine's current (flat Tab-order, axis-aware arrows)
 // behavior before introduces focus scopes.
 //
@@ -23,7 +14,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("empty focusable list — focusNext does nothing")
     func focusNextNoFocusables() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("x"))
         let engine = FocusEngine()
@@ -34,7 +24,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusNext moves to first focusable when none focused")
     func focusNextFromNil() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let root = graph.root!
@@ -48,7 +37,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusNext cycles in order")
     func focusNextCycles() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b"); Text("c") })
         let root = graph.root!
@@ -65,7 +53,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusNext wraps around at end")
     func focusNextWraps() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let root = graph.root!
@@ -80,7 +67,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusPrevious reverses order")
     func focusPreviousReverses() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b"); Text("c") })
         let root = graph.root!
@@ -96,7 +82,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusPrevious wraps at beginning")
     func focusPreviousWraps() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let root = graph.root!
@@ -111,7 +96,6 @@ struct FocusEngineTabOrderTests {
 
     @Test("focusPrevious from nil goes to last")
     func focusPreviousFromNil() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let root = graph.root!
@@ -130,7 +114,6 @@ struct FocusEngineRoutingTests {
 
     @Test("routeKeyEvent with no focus returns false")
     func routeWithNoFocus() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("x"))
         let engine = FocusEngine()
@@ -140,7 +123,6 @@ struct FocusEngineRoutingTests {
 
     @Test("registered handler on focused node is invoked")
     func handlerInvoked() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a") })
         let root = graph.root!
@@ -163,7 +145,6 @@ struct FocusEngineRoutingTests {
 
     @Test("handler returning .ignored bubbles to ancestor")
     func handlerBubbles() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a") })
         let root = graph.root!
@@ -192,7 +173,6 @@ struct FocusEngineRoutingTests {
 
     @Test("clearHandlers removes all registrations")
     func clearHandlers() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a") })
         let root = graph.root!

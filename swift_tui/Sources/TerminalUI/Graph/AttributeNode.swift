@@ -1,6 +1,13 @@
 /// Base class for all nodes in the attribute graph.
 /// Persistent across frames — created once, updated in place.
-public class AttributeNode {
+///
+/// Marked `@unchecked Sendable` so it can be carried by `@TaskLocal`
+/// `GraphContext.currentNode`. The runtime invariant is that all node
+/// access happens on the MainActor body-eval/render call stack; the
+/// `@TaskLocal` binding only crosses tasks when the runtime spawns a
+/// structured child task on the same actor. The mutable state is not
+/// safe to touch from arbitrary threads — see `GraphContext.swift`.
+public class AttributeNode: @unchecked Sendable {
     public let id: NodeID
     public var kind: NodeKind
     public weak var parent: AttributeNode?

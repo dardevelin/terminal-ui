@@ -17,22 +17,12 @@ import Testing
 // pointing the focus engine; this is the unit-level seam — real
 // runtime integration ships in layer 6.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("ActionDispatch — focus-chain walker matches bindings")
 @MainActor
 struct ActionDispatchTests {
 
     @Test("leaf-attached action fires on chord match")
     func leafActionFires() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {
@@ -53,7 +43,6 @@ struct ActionDispatchTests {
 
     @Test("non-matching chord returns false — caller falls through")
     func nonMatchingChordFallsThrough() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {
@@ -74,7 +63,6 @@ struct ActionDispatchTests {
 
     @Test("ancestor scope reachable from focused leaf")
     func ancestorScopeReached() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         // Outer scope on a VStack; inner Text is the focused leaf.
@@ -98,7 +86,6 @@ struct ActionDispatchTests {
 
     @Test("innermost scope wins on conflicting bindings")
     func innermostWins() {
-        resetGraphContext()
         let outerCounter = TestCounter()
         let innerCounter = TestCounter()
         let graph = AttributeGraph()
@@ -128,7 +115,6 @@ struct ActionDispatchTests {
 
     @Test("disabled action does not dispatch")
     func disabledActionSkipped() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {
@@ -154,7 +140,6 @@ struct ActionDispatchTests {
 
     @Test("invoke(_:from:) fires by ID — for MCP / scripting / debugger")
     func invokeByID() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {
@@ -172,7 +157,6 @@ struct ActionDispatchTests {
 
     @Test("invoke skips disabled actions")
     func invokeRespectsDisabled() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {

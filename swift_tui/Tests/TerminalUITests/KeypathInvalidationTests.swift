@@ -33,15 +33,6 @@ import Observation
 //      the test is RED until we surface `ObservationTracking.changed`
 //      from the `@_spi(SwiftUI)` Observation overload.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Observable
 @MainActor
 private final class SharedModel {
@@ -96,7 +87,6 @@ struct KeypathInvalidationTests {
 
     @Test("two views over the same model — mutation re-runs only the property's reader")
     func mutationRoutesOnlyToReadingView() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = SharedModel()
         let counter = EvalCount()
@@ -116,7 +106,6 @@ struct KeypathInvalidationTests {
 
     @Test("mutating the other property re-runs only its reader")
     func mutationRoutesOnlyToReadingView_otherDirection() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = SharedModel()
         let counter = EvalCount()
@@ -141,7 +130,6 @@ struct KeypathInvalidationTests {
 
     @Test("dirtyQueue scoped to the reading view's node, not its ancestors or siblings")
     func dirtyQueueIsScopedToReadingNodeOnly() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = SharedModel()
         let counter = EvalCount()
@@ -164,7 +152,6 @@ struct KeypathInvalidationTests {
 
     @Test("dirtyQueue routes alternately as different keypaths fire")
     func dirtyQueueAlternatesAcrossKeypaths() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = SharedModel()
         let counter = EvalCount()
@@ -202,7 +189,6 @@ struct KeypathInvalidationTests {
         .disabled("Blocked by SDK distribution — Apple ships Observation as a precompiled .swiftinterface without @_spi(SwiftUI) symbols, so `withObservationTracking(_:willSet:)` and `ObservationTracking.changed` are unreachable. Re-enable when Apple promotes _AccessList / .changed to public, when we vendor the Observation runtime, or when we wrap ObservationRegistrar.access via a macro.")
     )
     func keypathAttributionExposed() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let model = SharedModel()
         let counter = EvalCount()

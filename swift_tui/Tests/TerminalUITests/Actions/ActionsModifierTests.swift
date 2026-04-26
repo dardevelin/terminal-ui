@@ -8,15 +8,6 @@ import Testing
 // scope ends up on the node, and the scope round-trips through
 // reconciliation.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite(".actions { ... } modifier — graph integration")
 @MainActor
 struct ActionsModifierTests {
@@ -34,7 +25,6 @@ struct ActionsModifierTests {
 
     @Test("scope is attached to the modifier node after graph build")
     func scopeAttachedToNode() {
-        resetGraphContext()
         let counter = TestCounter()
         let graph = AttributeGraph()
         graph.update(from: Text("hello").actions {
@@ -58,7 +48,6 @@ struct ActionsModifierTests {
 
     @Test("scope round-trips through reconciliation update")
     func scopeRoundTripsAcrossUpdates() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let action = Action(id: "demo.toggle", title: .literal("Toggle"), perform: {})
 

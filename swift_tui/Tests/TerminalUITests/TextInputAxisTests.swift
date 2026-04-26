@@ -20,15 +20,6 @@ import Testing
 //
 // Cursor stays pinned at the right edge of the LAST visible chunk.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("TextInput axis:.vertical")
 @MainActor
 struct TextInputAxisTests {
@@ -38,7 +29,6 @@ struct TextInputAxisTests {
         // Long value, narrow rect — without axis param, the legacy
         // tail-clip behaviour must fire (cursor pinned right). This
         // is the no-regression contract for every existing call site.
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding)
@@ -59,7 +49,6 @@ struct TextInputAxisTests {
 
     @Test("vertical axis + byCharWrapping grows to multiple rows with hard breaks")
     func verticalCharWrapMultiRow() {
-        resetGraphContext()
         var value = "abcdefghijklmnopqrstuvwxyz"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding, axis: .vertical)
@@ -81,7 +70,6 @@ struct TextInputAxisTests {
 
     @Test("vertical axis + byWordWrapping breaks on spaces, not mid-word")
     func verticalWordWrapNoMidWordBreaks() {
-        resetGraphContext()
         let sentence = "type a very long line and see if it will properly wrap"
         var value = sentence
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -117,7 +105,6 @@ struct TextInputAxisTests {
 
     @Test("vertical axis + byClipping stays single row (clipping wins regardless of axis)")
     func verticalClippingStillSingleRow() {
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding, axis: .vertical)
@@ -136,7 +123,6 @@ struct TextInputAxisTests {
 
     @Test("vertical axis + byTruncatingTail stays single row with ellipsis")
     func verticalTruncatingTailSingleRow() {
-        resetGraphContext()
         var value = "this is a very long input value"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding, axis: .vertical)
@@ -158,7 +144,6 @@ struct TextInputAxisTests {
 
     @Test("short value fits on one row in either axis")
     func shortValueFitsOneRow() {
-        resetGraphContext()
         var value = "hello"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let view = TextInput(text: textBinding, axis: .vertical)

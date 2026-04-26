@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // exercises each of the four FocusIndicatorStyle values by setting
 // GraphContext.currentEnvironment, placing a known rect on a focused node, then
 // inspecting which cells the focus pass wrote.
@@ -19,7 +10,6 @@ private func resetGraphContext() {
 struct FocusIndicatorStyleTests {
 
     private func makeFocusedNode(rect: Rect) -> (AttributeNode, FocusEngine) {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("x") })
         let root = graph.root!
@@ -36,9 +26,10 @@ struct FocusIndicatorStyleTests {
         let (root, engine) = makeFocusedNode(rect: Rect(x: 3, y: 1, width: 5, height: 1))
         var env = EnvironmentValues()
         env.focusIndicatorStyle = .overlay
-        GraphContext.currentEnvironment = env
         var buffer = CellBuffer(width: 20, height: 5)
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        }
         #expect(buffer[2, 1].character == "▎")
         // First cell of focused rect is untouched
         #expect(buffer[3, 1] == Cell.empty)
@@ -49,9 +40,10 @@ struct FocusIndicatorStyleTests {
         let (root, engine) = makeFocusedNode(rect: Rect(x: 3, y: 1, width: 5, height: 1))
         var env = EnvironmentValues()
         env.focusIndicatorStyle = .bar
-        GraphContext.currentEnvironment = env
         var buffer = CellBuffer(width: 20, height: 5)
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        }
         #expect(buffer[3, 1].character == "▎")
         // Cell outside left edge is untouched
         #expect(buffer[2, 1] == Cell.empty)
@@ -62,9 +54,10 @@ struct FocusIndicatorStyleTests {
         let (root, engine) = makeFocusedNode(rect: Rect(x: 3, y: 1, width: 5, height: 1))
         var env = EnvironmentValues()
         env.focusIndicatorStyle = .prefix
-        GraphContext.currentEnvironment = env
         var buffer = CellBuffer(width: 20, height: 5)
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        }
         #expect(buffer[2, 1] == Cell.empty)
         #expect(buffer[3, 1] == Cell.empty)
     }
@@ -74,9 +67,10 @@ struct FocusIndicatorStyleTests {
         let (root, engine) = makeFocusedNode(rect: Rect(x: 3, y: 1, width: 5, height: 1))
         var env = EnvironmentValues()
         env.focusIndicatorStyle = .none
-        GraphContext.currentEnvironment = env
         var buffer = CellBuffer(width: 20, height: 5)
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        }
         #expect(buffer[2, 1] == Cell.empty)
         #expect(buffer[3, 1] == Cell.empty)
     }
@@ -91,9 +85,10 @@ struct FocusIndicatorStyleTests {
         let (root, engine) = makeFocusedNode(rect: Rect(x: 2, y: 1, width: 4, height: 3))
         var env = EnvironmentValues()
         env.focusIndicatorStyle = .bar
-        GraphContext.currentEnvironment = env
         var buffer = CellBuffer(width: 10, height: 5)
-        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: root)
+        }
         #expect(buffer[2, 1].character == "▎")
         #expect(buffer[2, 2].character == "▎")
         #expect(buffer[2, 3].character == "▎")

@@ -12,20 +12,10 @@ import Testing
 // runtime delegates into. Keeps the assertions hermetic — no full
 // TerminalApp required.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 /// Build a graph with two focusables side-by-side so a single x/y can
 /// pick exactly one. Returns (engine, graph, leftID, rightID).
 @MainActor
 private func makeTwoFocusableHarness() -> (FocusEngine, AttributeGraph, NodeID, NodeID) {
-    resetGraphContext()
     let graph = AttributeGraph()
     graph.update(from: VStack { Text("left"); Text("right") })
     let root = graph.root!

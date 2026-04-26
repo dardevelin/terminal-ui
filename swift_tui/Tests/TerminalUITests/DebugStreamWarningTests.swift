@@ -19,15 +19,6 @@ import Testing
 // — framework already moves keyboard focus on hover, so a duplicate
 // .onHover almost always means the user wants .disabled instead.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 /// Counts FrameworkWarning events received, indexed by code. Stand-in
 /// for a test inspection sink — receives nothing else. Lock matches
 /// MemoryDebugSink's pattern: sinks aren't @MainActor since DebugStream
@@ -68,54 +59,54 @@ struct DebugStreamWarningTests {
 
     @Test(".onHover alone (no policy modifier) emits no warning")
     func noWarningForBareOnHover() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x").onHover { _ in })
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x").onHover { _ in })
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 0)
         }
     }
 
     @Test(".onHover under .clickToLock (default) emits no warning")
     func noWarningUnderClickToLock() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x")
-                .onHover { _ in }
-                .mouseFocusPolicy(.clickToLock))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x")
+                    .onHover { _ in }
+                    .mouseFocusPolicy(.clickToLock))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 0)
         }
     }
 
     @Test(".onHover under .clickOnly emits no warning")
     func noWarningUnderClickOnly() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x")
-                .onHover { _ in }
-                .mouseFocusPolicy(.clickOnly))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x")
+                    .onHover { _ in }
+                    .mouseFocusPolicy(.clickOnly))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 0)
         }
     }
 
     @Test(".onHover under .disabled (the legitimate combo) emits no warning")
     func noWarningUnderDisabled() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x")
-                .onHover { _ in }
-                .mouseFocusPolicy(.disabled))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x")
+                    .onHover { _ in }
+                    .mouseFocusPolicy(.disabled))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 0,
                     ".disabled + .onHover is the SwiftUI escape hatch — must NEVER warn")
         }
@@ -123,44 +114,44 @@ struct DebugStreamWarningTests {
 
     @Test(".onHover under .hoverFollows emits exactly one warning")
     func oneWarningUnderHoverFollows() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x")
-                .onHover { _ in }
-                .mouseFocusPolicy(.hoverFollows))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x")
+                    .onHover { _ in }
+                    .mouseFocusPolicy(.hoverFollows))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 1)
         }
     }
 
     @Test("two .onHover-under-.hoverFollows nodes warn per node")
     func warnsPerNode() {
-        resetGraphContext()
         withProbe { probe in
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: VStack {
-                Text("a").onHover { _ in }
-                Text("b").onHover { _ in }
-            }.mouseFocusPolicy(.hoverFollows))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: VStack {
+                    Text("a").onHover { _ in }
+                    Text("b").onHover { _ in }
+                }.mouseFocusPolicy(.hoverFollows))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 2)
         }
     }
 
     @Test("suppressed warning code emits nothing")
     func suppressionSilencesWarning() {
-        resetGraphContext()
         withProbe { probe in
             DebugStream.shared.suppressWarning(.onHoverWithHoverFollows)
             let engine = FocusEngine()
-            GraphContext.currentFocusEngine = engine
             let graph = AttributeGraph()
-            graph.update(from: Text("x")
-                .onHover { _ in }
-                .mouseFocusPolicy(.hoverFollows))
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                graph.update(from: Text("x")
+                    .onHover { _ in }
+                    .mouseFocusPolicy(.hoverFollows))
+            }
             #expect(probe.count(of: .onHoverWithHoverFollows) == 0)
         }
     }

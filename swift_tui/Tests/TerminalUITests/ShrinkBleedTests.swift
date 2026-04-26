@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // reproduces the user's screenshot bug where a List row shrinking
 // from "epsilone" to "epsilon" left a stale 'e' in the trailing cell.
 //
@@ -23,7 +14,6 @@ struct ShrinkBleedTests {
 
     @Test("Text shrink — trailing cells clear within the rect")
     func textShrinkClearsTail() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let rect = Rect(x: 0, y: 0, width: 10, height: 1)
         let ctx = RenderContext(rect: rect)
@@ -47,7 +37,6 @@ struct ShrinkBleedTests {
 
     @Test("VStack row shrink — no stale cells across rows")
     func vstackRowShrinkClears() {
-        resetGraphContext()
         let graph = AttributeGraph()
         let rect = Rect(x: 0, y: 0, width: 12, height: 3)
         let ctx = RenderContext(rect: rect)

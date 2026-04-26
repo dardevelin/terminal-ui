@@ -263,9 +263,21 @@ public final class TerminalRuntime<RootView: TerminalView> {
             #endif
         }
 
-        // Make focus engine accessible during graph construction
-        GraphContext.currentFocusEngine = focusEngine
+        // Make focus engine accessible during graph construction.
+        // The binding spans the entire run loop so handlers fired
+        // between frames (focus navigation, mouse routing) still see
+        // the engine. `@TaskLocal` requires writes to go through
+        // `withValue`; the run-loop body runs inside this closure and
+        // the binding restores on exit — no manual teardown needed.
+        try await GraphContext.$currentFocusEngine.withValue(focusEngine) {
+            try await runFrameLoop(shutdownPipeFDs: shutdownPipeFDs)
+        }
+    }
 
+    /// Body of `run()` after raw-mode setup and the focus-engine
+    /// binding. Extracted so `run()` can wrap it in
+    /// `GraphContext.$currentFocusEngine.withValue`.
+    private func runFrameLoop(shutdownPipeFDs: [Int32]) async throws {
         renderFullFrame()
 
         let queue = self.eventQueue
@@ -634,12 +646,21 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let buildStart = monotonicNanoseconds()
 
-        // Set environment for body evaluation
+        // Set environment for body evaluation. `terminalSize` flows in
+        // from the runtime; modifiers can layer additional values on
+        // top during graph descent. Wrap the entire frame in nested
+        // `withValue` so reads from any callee — body evaluation,
+        // measurement, layout, render — observe the same bindings.
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
-        GraphContext.currentEnvironment = env
-        GraphContext.currentProposedSize = Size(width: size.cols, height: size.rows)
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
+                renderFullFrameBody(buildStart: buildStart)
+            }
+        }
+    }
 
+    private func renderFullFrameBody(buildStart: UInt64) {
         // Build/update the attribute graph from the view tree
         let view = buildView()
         graph.update(from: view)
@@ -713,16 +734,31 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let structuralRebuild = firstFrame || needsRender
         let stateOnlyDirty = graph.hasDirtyNodes && !structuralRebuild
         let needsWork = structuralRebuild || stateOnlyDirty
+
+        // Bind environment + proposed size for the entire frame. The
+        // bindings are observed by body evaluation, measurement,
+        // layout, and render — all called from inside this closure.
+        // Use the current binding (if any) as the base so settings
+        // bound at run-loop scope (e.g., a future global env override)
+        // still propagate.
+        var env = GraphContext.currentEnvironment ?? EnvironmentValues()
+        env.terminalSize = size
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
+                renderDiffFrameBody(
+                    buildStart: buildStart,
+                    structuralRebuild: structuralRebuild,
+                    needsWork: needsWork
+                )
+            }
+        }
+    }
+
+    private func renderDiffFrameBody(buildStart: UInt64, structuralRebuild: Bool, needsWork: Bool) {
         var graphChanged = false
 
         if needsWork {
             focusEngine.clearHandlers()
-
-            // Set environment for body evaluation
-            var env = GraphContext.currentEnvironment ?? EnvironmentValues()
-            env.terminalSize = size
-            GraphContext.currentEnvironment = env
-            GraphContext.currentProposedSize = Size(width: size.cols, height: size.rows)
 
             if structuralRebuild {
                 let view = buildView()

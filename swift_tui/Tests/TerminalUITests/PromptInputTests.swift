@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 // Harness reported a `Range requires lowerBound <= upperBound` crash when the
 // Storybook walk landed on the PromptInput page with default state. These
 // tests try to reproduce it in isolation so we can fix without the
@@ -21,7 +12,6 @@ struct PromptInputTests {
 
     @Test("default state + empty text renders into a standard preview rect")
     func defaultRenderDoesNotCrash() {
-        resetGraphContext()
         var value = ""
         var state = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -44,7 +34,6 @@ struct PromptInputTests {
 
     @Test("default state inside a narrow rect with visibleLines > 1")
     func narrowRectDoesNotCrash() {
-        resetGraphContext()
         var value = ""
         var state = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -61,7 +50,6 @@ struct PromptInputTests {
 
     @Test("default state with explicit maxVisibleLines=3")
     func explicitMaxLines() {
-        resetGraphContext()
         var value = ""
         var state = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -79,7 +67,6 @@ struct PromptInputTests {
         // Matches Storybook's `PreviewPane ... .padding().border()` envelope.
         // Reproduces the nested GeometryReader + border-shrunk rect that
         // was hitting the Range crash on first render.
-        resetGraphContext()
         var value = ""
         var state = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -100,7 +87,6 @@ struct PromptInputTests {
 
     @Test("soft-wraps a long logical line into multiple display rows")
     func softWrapsLongLine() {
-        resetGraphContext()
         // 80 chars at wrap width ~18 = 5 display rows.
         var value = String(repeating: "a", count: 80)
         var state = PromptInputState()
@@ -137,7 +123,6 @@ struct PromptInputTests {
 
     @Test(".unbounded grows to full content even past the 8-row default")
     func unboundedGrowth() {
-        resetGraphContext()
         // 12 logical lines, each short enough to not wrap.
         var value = (0..<12).map { "line\($0)" }.joined(separator: "\n")
         var state = PromptInputState()
@@ -198,7 +183,6 @@ struct PromptInputTests {
 
     @Test("PromptArrowMode.display steps through wrapped rows before crossing logical lines")
     func arrowDisplayMode() {
-        resetGraphContext()
         var value = String(repeating: "a", count: 20)
         var state = PromptInputState()
         state.cursorCol = 0
@@ -224,7 +208,6 @@ struct PromptInputTests {
         // PromptInput page triggers graph reconciliation where the old
         // subtree is replaced by PromptInput. Reproduce that here by
         // building a ConditionalView and flipping the branch.
-        resetGraphContext()
         var value = ""
         var state = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })

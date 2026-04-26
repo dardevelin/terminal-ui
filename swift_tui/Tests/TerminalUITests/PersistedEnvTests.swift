@@ -13,20 +13,10 @@ import Testing
 // not yet committed public API — the eventual preview surface will
 // design its own public inspection layer.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 /// Render the graph once at a known canvas size so resolvedEnv is
 /// populated everywhere. Returns root.
 @MainActor
 private func buildAndRender<V: TerminalView>(_ view: V, width: Int = 20, height: Int = 10) -> AttributeNode {
-    resetGraphContext()
     let graph = AttributeGraph()
     graph.update(from: view)
     let root = graph.root!
@@ -113,7 +103,6 @@ struct PersistedResolvedEnvTests {
         // Two focusables side-by-side; one has .disabled override.
         // The runtime's policy lookup must use whichever rect contains
         // the cursor, not the app-level env.
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack {
             Text("left").focusable()

@@ -6,7 +6,12 @@
 ///
 /// Owned by the TerminalRuntime. One per app instance.
 /// Always accessed from @MainActor (TerminalRuntime).
-public final class FocusEngine {
+///
+/// Marked `@unchecked Sendable` because `GraphContext.currentFocusEngine`
+/// is `@TaskLocal`, which requires its bound type be `Sendable`. The
+/// runtime invariant — only the MainActor touches the engine — is the
+/// same one that justifies the unchecked marker.
+public final class FocusEngine: @unchecked Sendable {
 
     /// Keyboard focus — the node that receives key events.
     /// Moved by Tab/Shift+Tab, arrow keys, or clicking a focusable node.

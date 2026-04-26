@@ -1,15 +1,6 @@
 import Testing
 @testable import TerminalUI
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 private struct Row: Identifiable {
     let id: Int
     let label: String
@@ -26,7 +17,6 @@ struct ListPartialRenderTests {
 
     @Test("5-element List at matching height renders all rows unfocused")
     func listRendersAllRows() {
-        resetGraphContext()
         let rows = [
             Row(id: 1, label: "alpha"),
             Row(id: 2, label: "beta"),
@@ -54,7 +44,6 @@ struct ListPartialRenderTests {
 
     @Test("List without explicit visibleCount fits to container height")
     func listFitsContainer() {
-        resetGraphContext()
         let rows = [
             Row(id: 1, label: "one"),
             Row(id: 2, label: "two"),

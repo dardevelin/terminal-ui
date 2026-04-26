@@ -6,15 +6,6 @@ import Testing
 // false on leave). Movement within an already-hovered rect must not
 // re-fire the callback.
 
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite(".onHover modifier — enter/leave callbacks")
 @MainActor
 struct OnHoverModifierTests {
@@ -72,14 +63,14 @@ private final class HoverProbe {
 /// "leave" coordinates outside the rect.
 @MainActor
 private func makeHoverHarness(width: Int) -> (FocusEngine, AttributeNode, HoverProbe) {
-    resetGraphContext()
     let engine = FocusEngine()
     let probe = HoverProbe()
-    GraphContext.currentFocusEngine = engine
     let graph = AttributeGraph()
-    graph.update(from: Text("target").onHover { isHovering in
-        probe.record(isHovering)
-    })
+    GraphContext.$currentFocusEngine.withValue(engine) {
+        graph.update(from: Text("target").onHover { isHovering in
+            probe.record(isHovering)
+        })
+    }
     let root = graph.root!
     // The `.onHover` modifier wraps Text, but the registered handler
     // sits on the modifier's child node. Find that node and stamp a

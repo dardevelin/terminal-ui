@@ -1,25 +1,12 @@
 import Testing
 @testable import TerminalUI
 
-// GraphContext has five nonisolated(unsafe) statics. Tests are @MainActor
-// and clear them between cases to avoid cross-test leakage. This is the
-// same contract the runtime relies on (MainActor-only body evaluation).
-@MainActor
-private func resetGraphContext() {
-    GraphContext.currentNode = nil
-    GraphContext.currentGraph = nil
-    GraphContext.currentEnvironment = nil
-    GraphContext.currentFocusEngine = nil
-    GraphContext.currentProposedSize = nil
-}
-
 @Suite("AttributeGraph — reconciliation & identity")
 @MainActor
 struct AttributeGraphTests {
 
     @Test("first update builds a root")
     func firstUpdateBuildsRoot() {
-        resetGraphContext()
         let graph = AttributeGraph()
         #expect(graph.root == nil)
         graph.update(from: Text("hi"))
@@ -28,7 +15,6 @@ struct AttributeGraphTests {
 
     @Test("Text builds a primitive text node")
     func textPrimitive() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("hello"))
         guard let root = graph.root else {
@@ -44,7 +30,6 @@ struct AttributeGraphTests {
 
     @Test("VStack builds a layout node with children")
     func vstackLayoutNode() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         guard let root = graph.root else {
@@ -57,7 +42,6 @@ struct AttributeGraphTests {
 
     @Test("HStack builds a layout node with children")
     func hstackLayoutNode() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack { Text("x"); Text("y"); Text("z") })
         guard let root = graph.root else {
@@ -70,7 +54,6 @@ struct AttributeGraphTests {
 
     @Test("second update with identical view preserves node identity")
     func identityPreservedOnReconcile() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b") })
         let firstRoot = graph.root
@@ -82,7 +65,6 @@ struct AttributeGraphTests {
 
     @Test("second update with identical view reports no change")
     func reconcileReportsNoChange() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("hello"))
         let changed = graph.update(from: Text("hello"))
@@ -91,7 +73,6 @@ struct AttributeGraphTests {
 
     @Test("second update with different text reports change")
     func reconcileDetectsTextChange() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("hello"))
         let changed = graph.update(from: Text("world"))
@@ -105,7 +86,6 @@ struct GraphRendererTests {
 
     @Test("Text renders characters into buffer")
     func textRenders() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("hi"))
         guard let root = graph.root else {
@@ -121,7 +101,6 @@ struct GraphRendererTests {
 
     @Test("VStack stacks children vertically")
     func vstackStacksVertically() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("ab"); Text("cd") })
         guard let root = graph.root else {
@@ -139,7 +118,6 @@ struct GraphRendererTests {
 
     @Test("HStack lays children out horizontally")
     func hstackHorizontal() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack { Text("ab"); Text("cd") })
         guard let root = graph.root else {
@@ -157,7 +135,6 @@ struct GraphRendererTests {
 
     @Test("render records rect on root node")
     func renderRecordsRect() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("x"))
         guard let root = graph.root else {
@@ -178,7 +155,6 @@ struct GraphMeasurerTests {
 
     @Test("Text width is its character count")
     func textWidth() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("hello"))
         guard let root = graph.root else {
@@ -190,7 +166,6 @@ struct GraphMeasurerTests {
 
     @Test("HStack width is sum of child widths")
     func hstackWidth() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: HStack { Text("ab"); Text("cde") })
         guard let root = graph.root else {
@@ -202,7 +177,6 @@ struct GraphMeasurerTests {
 
     @Test("VStack width is max of child widths")
     func vstackWidth() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("wider") })
         guard let root = graph.root else {
@@ -214,7 +188,6 @@ struct GraphMeasurerTests {
 
     @Test("measureWidth caches result")
     func measureCaches() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("x"))
         guard let root = graph.root else {
@@ -227,7 +200,6 @@ struct GraphMeasurerTests {
 
     @Test("markDirty invalidates cached measurements")
     func markDirtyInvalidates() {
-        resetGraphContext()
         let graph = AttributeGraph()
         graph.update(from: Text("x"))
         guard let root = graph.root else {
