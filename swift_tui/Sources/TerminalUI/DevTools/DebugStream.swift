@@ -259,6 +259,9 @@ public final class DebugStream: @unchecked Sendable {
             case .empty:
                 kind = "empty"
                 value = ""
+            case .cellBuffer(let buf):
+                kind = "bufferView"
+                value = "\(buf.width)x\(buf.height)"
             }
         case .layout(let info):
             switch info.kind {

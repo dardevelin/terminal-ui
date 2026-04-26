@@ -344,6 +344,9 @@ public final class DebugPanel {
             case .empty:
                 kind = "emp"
                 detail = ""
+            case .cellBuffer(let buf):
+                kind = "buf"
+                detail = "\(buf.width)x\(buf.height)"
             }
             style = node.isDirty ? dirtyStyle : bgStyle
 

@@ -92,6 +92,9 @@ public struct HitResult {
                 values.append(("frame", "\(f)"))
             case .empty:
                 values.append(("type", "Empty"))
+            case .cellBuffer(let buf):
+                values.append(("type", "BufferView"))
+                values.append(("size", "\(buf.width)x\(buf.height)"))
             }
 
         case .layout(let info):

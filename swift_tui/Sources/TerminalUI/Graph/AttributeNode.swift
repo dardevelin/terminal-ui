@@ -161,6 +161,7 @@ extension NodeKind {
             case .progressBar: "ProgressBar"
             case .spinner: "Spinner"
             case .empty: "Empty"
+            case .cellBuffer: "BufferView"
             }
         case .layout(let info):
             switch info.kind {
@@ -210,6 +211,12 @@ public enum PrimitiveContent {
     case progressBar(value: Double, label: String?, filled: Character, empty: Character)
     case spinner(frame: Int, style: SpinnerStyle)
     case empty
+    /// Pre-rasterized cell content. The renderer blits `source[x, y]`
+    /// to `buffer[rect.x + x, rect.y + y]` for the intersection of
+    /// the source's dimensions and the rect — including `.empty`
+    /// source cells, which is the deliberate divergence from the
+    /// ScrollView local-buffer pattern.
+    case cellBuffer(CellBuffer)
 }
 
 // MARK: - Layout

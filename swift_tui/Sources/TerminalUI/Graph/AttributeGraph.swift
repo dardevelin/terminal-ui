@@ -807,6 +807,9 @@ public final class AttributeGraph {
         if view is EmptyView {
             return AttributeNode(id: id, kind: .primitive(.empty))
         }
+        if let bufferView = view as? BufferView {
+            return AttributeNode(id: id, kind: .primitive(.cellBuffer(bufferView.buffer)))
+        }
         return nil
     }
 

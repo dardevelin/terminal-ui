@@ -767,6 +767,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             case .progressBar(let v, _, _, _): kind = "ProgressBar(\(Int(v*100))%)"
             case .spinner(let f, _): kind = "Spinner(f:\(f))"
             case .empty: kind = "Empty"
+            case .cellBuffer(let buf): kind = "BufferView(\(buf.width)x\(buf.height))"
             }
         case .layout(let info):
             switch info.kind {

@@ -143,6 +143,21 @@ public enum GraphRenderer {
 
         case .empty:
             break
+
+        case .cellBuffer(let source):
+            // Blit source[x, y] → buffer[rect.x + x, rect.y + y] for
+            // the intersection of source dimensions and rect.
+            // Source .empty cells DO write through — the user's
+            // buffer is authoritative content; blanks are real.
+            // (ScrollView's local-buffer blit skips .empty for a
+            // different reason — it's masking out unpainted regions.)
+            let cols = min(source.width, context.rect.width)
+            let rows = min(source.height, context.rect.height)
+            for y in 0..<rows {
+                for x in 0..<cols {
+                    buffer[context.rect.x + x, context.rect.y + y] = source[x, y]
+                }
+            }
         }
     }
 

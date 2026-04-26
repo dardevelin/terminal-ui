@@ -159,26 +159,20 @@ struct MouseFocusPolicyTests {
 
 // MARK: - CellBuffer blit primitive (HYP-66)
 //
-// No way to render an externally-populated `CellBuffer` into a view's
-// allocated rect. Needed for: PTY preview pane, terminal emulator
-// views, external content rendering. Today no such surface exists.
-//
-// To enable: uncomment when the API lands.
+// Compile-probe pin for the public API surface. Behavioural tests
+// (rect blit, clipping, paint-empty-cells, measurement) live in
+// BufferViewTests.swift.
 
-/*
 @Suite("CellBuffer blit primitive — render external buffer into view rect")
 @MainActor
 struct CellBufferBlitTests {
-    @Test("CellBufferView accepts an external buffer and renders it into its rect")
+    @Test("BufferView accepts an external buffer at its public init")
     func cellBufferBlitExists() {
         let source = CellBuffer(width: 5, height: 3)
-        let view = CellBufferView(buffer: source)
-        // Just instantiates today as a compile-check. Real test would
-        // render and inspect the destination buffer.
+        let view = BufferView(source)
         _ = view
     }
 }
-*/
 
 // MARK: - Global shortcuts API (HYP-80)
 //

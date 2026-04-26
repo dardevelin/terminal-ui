@@ -85,6 +85,7 @@ public enum GraphMeasurer {
             case .progressBar: return 20
             case .spinner(let frame, let style):
                 return style.frames[frame % style.frames.count].count
+            case .cellBuffer(let source): return source.width
             }
 
         case .layout(let info):
@@ -163,6 +164,7 @@ public enum GraphMeasurer {
             case .empty: return 0
             case .progressBar: return 1
             case .spinner: return 1
+            case .cellBuffer(let source): return source.height
             }
 
         case .layout(let info):
