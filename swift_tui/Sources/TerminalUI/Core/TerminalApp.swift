@@ -319,7 +319,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         }
                     }
                     #endif
-                    let policy = GraphContext.currentEnvironment?.mouseFocusPolicy ?? .clickToLock
+                    // Resolve the policy from the deepest node under the
+                    // cursor, not from the app-level GraphContext (which
+                    // is nil between renders). Lets a sub-view override
+                    // the policy while the surrounding shell keeps the
+                    // default — matches SwiftUI's per-subtree env model.
+                    let policy: MouseFocusPolicy = {
+                        guard let root = graph.root else { return .clickToLock }
+                        return focusEngine.resolveEnv(x: mouseEvent.x, y: mouseEvent.y, root: root).mouseFocusPolicy
+                    }()
                     switch mouseEvent.kind {
                     case .press(.left):
                         if policy == .disabled {

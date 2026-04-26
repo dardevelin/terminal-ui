@@ -16,6 +16,15 @@ public enum GraphRenderer {
         // Record resolved rect on every node — used for hit testing
         node.rect = context.rect
 
+        // Snapshot the in-flight environment onto the node so handlers
+        // and tooling can read per-subtree resolved env between events
+        // without replaying the render walk. SwiftUI's @Environment
+        // reads target the same kind of cache. The snapshot is captured
+        // BEFORE descending into children — the parent env is what this
+        // node sees, descendants update their own slot when the
+        // .environment modifier path mutates the in-flight context.
+        node._resolvedEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
+
         #if DEBUG
         DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
         #endif

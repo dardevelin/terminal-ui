@@ -527,6 +527,42 @@ public final class FocusEngine {
         return findFocusableAt(x: x, y: y, in: root)
     }
 
+    /// Resolve EnvironmentValues at a cursor coordinate by walking the
+    /// tree to the deepest node whose rect contains (x, y) and reading
+    /// the snapshot the renderer captured there. Falls back to the
+    /// root's snapshot, then to defaults — so events arriving over
+    /// inert space still get a sensible env (matches SwiftUI's
+    /// "root env applies until overridden" model).
+    ///
+    /// Used by the runtime to pick `mouseFocusPolicy` per subtree:
+    /// Storybook's preview pane can carry `.disabled` while the
+    /// surrounding shell stays on `.clickToLock`.
+    public func resolveEnv(x: Int, y: Int, root: AttributeNode) -> EnvironmentValues {
+        if let deepest = findDeepestRectContaining(x: x, y: y, in: root),
+           let env = deepest._resolvedEnv
+        {
+            return env
+        }
+        return root._resolvedEnv ?? EnvironmentValues()
+    }
+
+    /// Walk the tree depth-first looking for the deepest node whose
+    /// rect contains the point. Unlike `findFocusableAt`, this does
+    /// NOT require `isFocusable`; it just wants a rect — the env is
+    /// readable from any node, focusable or not.
+    private func findDeepestRectContaining(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
+        let r = node.rect
+        let containsHere = x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+        // Children walked deepest-first so a leaf's rect wins over an
+        // ancestor's larger rect.
+        for child in node.children.reversed() {
+            if let hit = findDeepestRectContaining(x: x, y: y, in: child) {
+                return hit
+            }
+        }
+        return containsHere ? node : nil
+    }
+
     /// Find the deepest focusable node whose rect contains the point.
     func findFocusableAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
         for child in node.children.reversed() {

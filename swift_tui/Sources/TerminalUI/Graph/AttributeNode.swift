@@ -76,6 +76,18 @@ public class AttributeNode {
     /// without reflecting over `V`. Nil for non-composite nodes.
     public var bodyReplay: ((AttributeGraph, AttributeNode) -> Void)?
 
+    /// EnvironmentValues snapshot captured during the render walk. The
+    /// renderer writes the in-flight `GraphContext.currentEnvironment`
+    /// here at every node it visits, so handlers and tooling can read
+    /// per-subtree resolved env between events without a replay walk.
+    /// SwiftUI's `@Environment` reads target the same kind of cache;
+    /// matching the shape unlocks future preview tooling that asks
+    /// "what does this node see?" without re-running the world.
+    /// Underscored: framework-internal access pending a deliberate
+    /// public preview API. Cleared on `markDirty` so a stale env
+    /// value cannot survive an env-modifier change.
+    public var _resolvedEnv: EnvironmentValues?
+
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
@@ -105,6 +117,7 @@ public class AttributeNode {
         cachedWidth = nil
         cachedHeight = nil
         cachedHeightWidth = nil
+        _resolvedEnv = nil
         parent?.markLayoutDirty()
     }
 
