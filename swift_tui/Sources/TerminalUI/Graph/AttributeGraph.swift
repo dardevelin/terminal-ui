@@ -84,6 +84,13 @@ public final class AttributeGraph {
             node.bodyReplay?(self, node)
         }
 
+        // Re-stamp `_containsViewBody` — drained composites may have
+        // grown or shrunk `.viewBody` descendants while their bodies
+        // re-evaluated. Same rationale as `update(from:)`.
+        if let r = root {
+            _ = stampContainsViewBody(r)
+        }
+
         hasDirtyNodes = !dirtyQueue.isEmpty
         return true
     }
@@ -139,18 +146,51 @@ public final class AttributeGraph {
         #if DEBUG
         rootWalkCount += 1
         #endif
+        let result: Bool
         if let existing = root {
             changed = false
             updateNode(existing, from: view)
             // Clear dirty AFTER update — Observation may set it again
             // for the next state change during re-evaluation
             hasDirtyNodes = false
-            return changed
+            result = changed
         } else {
             root = constructNode(for: view, id: .root)
             hasDirtyNodes = false
-            return true
+            result = true
         }
+        // Stamp `_containsViewBody` bottom-up so `GraphMeasurer.containsViewBody`
+        // is O(1) on the measurement hot path. Reconciliation may have added
+        // or removed `.viewBody` descendants — the structure is now settled
+        // for the upcoming render walk, so this is the right moment to refresh.
+        if let r = root {
+            _ = stampContainsViewBody(r)
+        }
+        return result
+    }
+
+    /// Recompute and store `_containsViewBody` for `node` and every
+    /// descendant. Bottom-up so a parent's value reflects freshly
+    /// computed children. Called once per `update(from:)` after
+    /// reconciliation completes; cheap because every descendant write
+    /// is `Bool? = ...`. Returns the value stamped on `node` for the
+    /// caller's convenience.
+    @discardableResult
+    private func stampContainsViewBody(_ node: AttributeNode) -> Bool {
+        var result: Bool
+        if case .viewBody = node.kind {
+            result = true
+        } else {
+            result = false
+        }
+        for child in node.children {
+            if stampContainsViewBody(child) {
+                result = true
+                // Don't break — every descendant still needs stamping.
+            }
+        }
+        node._containsViewBody = result
+        return result
     }
 
     // MARK: - Body Evaluation with Observation

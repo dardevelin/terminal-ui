@@ -57,17 +57,51 @@ public enum GraphMeasurer {
         return result
     }
 
-    /// True if `node` or any descendant has `.viewBody` kind. Cached on
-    /// the node so we only walk once per node lifetime — the structure
-    /// can't change without `markDirty` clearing the cache, so this
-    /// stays correct across reconciliation.
-    private static func containsViewBody(_ node: AttributeNode) -> Bool {
-        if case .viewBody = node.kind { return true }
-        for child in node.children {
-            if containsViewBody(child) { return true }
+    /// True if `node` or any descendant has `.viewBody` kind. Cached
+    /// on the node — `AttributeGraph.update(from:)` stamps every node
+    /// bottom-up after reconciliation, so the answer is O(1) on the
+    /// measurement hot path. Falls back to a lazy descendant walk that
+    /// fills the cache when the stamp hasn't run yet (e.g. a node
+    /// queried mid-build).
+    static func containsViewBody(_ node: AttributeNode) -> Bool {
+        if let cached = node._containsViewBody {
+            return cached
         }
-        return false
+        #if DEBUG
+        containsViewBodyWalkCount += 1
+        #endif
+        let result: Bool
+        if case .viewBody = node.kind {
+            result = true
+        } else {
+            var found = false
+            for child in node.children {
+                if containsViewBody(child) {
+                    found = true
+                    break
+                }
+            }
+            result = found
+        }
+        node._containsViewBody = result
+        return result
     }
+
+    #if DEBUG
+    /// Counts every descendant walk performed by `containsViewBody`.
+    /// Tests reset to zero, exercise the measurement path, and assert
+    /// the counter stays at zero — proof the bottom-up stamp filled
+    /// the cache and reads short-circuit. MainActor-only by inheritance
+    /// from the test harness; release builds elide the field entirely.
+    nonisolated(unsafe) static var containsViewBodyWalkCount: Int = 0
+
+    /// Test-only entry point so suites can probe the cache without
+    /// going through the full `measureHeight` measurement pipeline.
+    /// Underscored to telegraph it is not a public API.
+    static func _containsViewBodyForTesting(_ node: AttributeNode) -> Bool {
+        containsViewBody(node)
+    }
+    #endif
 
     // MARK: - Computation (no allocation hot paths)
 

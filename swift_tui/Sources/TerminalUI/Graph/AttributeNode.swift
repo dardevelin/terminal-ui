@@ -92,6 +92,14 @@ public class AttributeNode {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// Memoised: true iff this node OR any descendant has `.viewBody`
+    /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`
+    /// so `GraphMeasurer.containsViewBody` is O(1) on the measurement
+    /// hot path. Nil before the first stamp; the helper falls back to
+    /// a lazy descendant walk that fills the cache and returns the
+    /// correct answer either way.
+    public var _containsViewBody: Bool?
+
     /// GeometryReader rebuild hook. When non-nil the renderer invokes this
     /// with the node's actual rect size each frame. The closure rebuilds the
     /// `geom.content(size)` view value and *updates* the existing child
