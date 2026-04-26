@@ -1,4 +1,6 @@
 import TerminalUIConfig
+import TerminalInk
+import TerminalLog
 import Foundation
 #if canImport(Glibc)
 import Glibc
@@ -7,6 +9,25 @@ import Darwin
 #endif
 
 // MARK: - swtui: developer CLI for managing .terminalui/ config
+//
+// Output style guide (HYP-59 migration to TerminalInk + TerminalLog):
+//
+//   - Errors: `Log("swtui").error(...)` — auto-routes to stderr with
+//     red ERROR tag.
+//   - Success messages: `ink(text, .success)` — green.
+//   - Section headers ([trace], [capture], etc.): `ink(text, .primary, .bold)`.
+//   - Key/value status lines: built with StyledString chain so keys
+//     are dim, values colored by type (booleans green/red, paths
+//     dim, custom bindings yellow per ticket spec).
+//   - Help/usage blocks + machine-readable ctl output (PID lists,
+//     JSON responses) stay as plain `print(...)` — terminal-style
+//     decoration would impede `grep` / pipes.
+//
+// Capability detection happens automatically per-call inside `ink()`
+// and the Log sinks. `NO_COLOR=1` and `swtui status | grep` both
+// strip ANSI cleanly.
+
+private let log = Log("swtui")
 
 let args = Array(CommandLine.arguments.dropFirst())
 
@@ -37,7 +58,7 @@ case "ctl":
 case "help", "--help", "-h":
     printUsage()
 default:
-    printError("Unknown command: \(verb)")
+    log.error("Unknown command: \(verb)")
     printUsage()
     exit(1)
 }
@@ -50,13 +71,13 @@ func initCommand() {
     let configFile = DiagPaths.configFile
 
     if fm.fileExists(atPath: configFile) {
-        print("Config already exists at \(configFile)")
+        ink("Config already exists at " + configFile.muted)
         return
     }
 
     DiagPaths.saveConfig(.default)
-    print("Created \(configDir)/")
-    print("  terminalui.toml (default config)")
+    ink("Created \(configDir)/", .success)
+    ink("  terminalui.toml ".muted + "(default config)")
 }
 
 func statusCommand() {
@@ -64,88 +85,105 @@ func statusCommand() {
     let configFile = DiagPaths.configFile
     let fm = FileManager.default
 
-    print("TerminalUI Diagnostics")
-    print("======================")
-    print()
+    ink("TerminalUI Diagnostics", .primary, .bold)
+    ink("======================".muted)
+    ink("")
 
     if fm.fileExists(atPath: configFile) {
-        print("config:  \(configFile)")
+        ink("config:  ".muted + configFile)
     } else {
-        print("config:  (none — using defaults, run 'swtui init' to create)")
+        ink("config:  ".muted + "(none — using defaults, run 'swtui init' to create)".warning)
     }
 
     let dataRoot = DiagPaths.dataDir(useTmp: config.useTmp)
     if fm.fileExists(atPath: dataRoot) {
-        print("data:    \(dataRoot)")
+        ink("data:    ".muted + dataRoot)
     } else {
-        print("data:    \(dataRoot) (not yet created)")
+        ink("data:    ".muted + dataRoot + " " + "(not yet created)".muted)
     }
 
-    print()
-    print("[trace]")
-    print("  enabled      = \(config.traceEnabled)")
-    print("  screenshots  = \(config.captureScreenshots)")
-    print("  events       = \(config.captureEvents)")
+    ink("")
+    ink("[trace]", .primary, .bold)
+    statusRow("enabled",      bool: config.traceEnabled)
+    statusRow("screenshots",  bool: config.captureScreenshots)
+    statusRow("events",       bool: config.captureEvents)
     if let limit = config.frameLimit {
-        print("  frame_limit  = \(limit)")
+        statusRow("frame_limit", value: "\(limit)", color: .named(.cyan))
     } else {
-        print("  frame_limit  = (unlimited)")
+        statusRow("frame_limit", value: "(unlimited)", color: .muted)
     }
 
-    print()
-    print("[capture]")
-    print("  enabled      = \(config.captureEnabled)")
+    ink("")
+    ink("[capture]", .primary, .bold)
+    statusRow("enabled", bool: config.captureEnabled)
 
-    print()
-    print("[output]")
-    print("  use_tmp      = \(config.useTmp)")
+    ink("")
+    ink("[output]", .primary, .bold)
+    statusRow("use_tmp", bool: config.useTmp)
 
-    print()
-    print("[socket]")
-    print("  enabled      = \(config.socketEnabled)")
+    ink("")
+    ink("[socket]", .primary, .bold)
+    statusRow("enabled", bool: config.socketEnabled)
 
-    print()
-    print("[keybindings]")
+    ink("")
+    ink("[keybindings]", .primary, .bold)
     for action in DiagConfig.keybindingActions {
         if let key = config.keybindings[action] {
             let isDefault = DiagConfig.defaultKeybindings[action] == key
-            print("  \(action) = \(key)\(isDefault ? "" : " (custom)")")
+            // Custom bindings get yellow (ticket spec); defaults stay
+            // muted so the eye lands on the customizations.
+            let valueStyle: InkColor = isDefault ? .secondary : .warning
+            var line = "  " + action.muted + " = " + key.styled(valueStyle)
+            if !isDefault { line = line + " " + "(custom)".warning }
+            ink(line)
         } else {
-            print("  \(action) = (unbound)")
+            ink("  " + action.muted + " = " + "(unbound)".muted)
         }
     }
 
     // Probe for running app via socket
     let sockPath = DiagPaths.socketPath(useTmp: config.useTmp)
     if fm.fileExists(atPath: sockPath) {
-        print()
-        print("socket:  \(sockPath) (exists — app may be running)")
+        ink("")
+        ink("socket:  ".muted + sockPath + " " + "(exists — app may be running)".success)
     }
+}
+
+/// Render a `key = value` row with consistent indent + dim key + typed
+/// value color. Kept as a helper so the per-section calls stay terse.
+private func statusRow(_ key: String, bool: Bool) {
+    let value: StyledString = bool ? "true".success : "false".muted
+    ink("  " + key.muted + " = " + value)
+}
+
+private func statusRow(_ key: String, value: String, color: InkColor) {
+    ink("  " + key.muted + " = " + value.styled(color))
 }
 
 func toggleCommand(args: [String], enable: Bool) {
     guard let feature = args.first else {
-        printError("Usage: swtui \(enable ? "enable" : "disable") <feature>")
-        print("Features: \(DiagConfig.featureNames.joined(separator: ", "))")
+        log.error("Usage: swtui \(enable ? "enable" : "disable") <feature>")
+        ink("Features: " + DiagConfig.featureNames.joined(separator: ", ").muted)
         exit(1)
     }
 
     guard let (section, key) = DiagConfig.featureKey(for: feature) else {
-        printError("Unknown feature: \(feature)")
-        print("Features: \(DiagConfig.featureNames.joined(separator: ", "))")
+        log.error("Unknown feature: \(feature)")
+        ink("Features: " + DiagConfig.featureNames.joined(separator: ", ").muted)
         exit(1)
     }
 
     DiagPaths.updateConfigValue(section: section, key: key, value: String(enable))
-    print("\(feature) \(enable ? "enabled" : "disabled")")
+    let verb = enable ? "enabled" : "disabled"
+    ink(feature + " " + verb.success)
 }
 
 func setCommand(args: [String]) {
     guard args.count >= 2 else {
-        printError("Usage: swtui set <key> <value>")
-        print("Examples:")
-        print("  swtui set frame_limit 50")
-        print("  swtui set frame_limit 0    (removes limit)")
+        log.error("Usage: swtui set <key> <value>")
+        ink("Examples:".muted)
+        ink("  swtui set frame_limit 50".muted)
+        ink("  swtui set frame_limit 0    (removes limit)".muted)
         exit(1)
     }
 
@@ -165,11 +203,11 @@ func setCommand(args: [String]) {
             var config = DiagPaths.loadConfig()
             config.frameLimit = nil
             DiagPaths.saveConfig(config)
-            print("frame_limit removed (unlimited)")
+            ink("frame_limit removed (unlimited)", .success)
             return
         }
         DiagPaths.updateConfigValue(section: section, key: tomlKey, value: value)
-        print("\(key) = \(value)")
+        ink(key.muted + " = " + value.styled(.named(.cyan)))
     } else {
         // Try section.key format: "trace.frame_limit"
         let parts = key.split(separator: ".", maxSplits: 1)
@@ -179,11 +217,11 @@ func setCommand(args: [String]) {
                 key: String(parts[1]),
                 value: value
             )
-            print("[\(parts[0])] \(parts[1]) = \(value)")
+            ink("[\(parts[0])] ".primary + String(parts[1]).muted + " = " + value.styled(.named(.cyan)))
         } else {
-            printError("Unknown key: \(key)")
-            print("Known keys: frame_limit, use_tmp")
-            print("Or use section.key format: trace.enabled, socket.enabled, etc.")
+            log.error("Unknown key: \(key)")
+            ink("Known keys: " + "frame_limit, use_tmp".muted)
+            ink("Or use section.key format: " + "trace.enabled, socket.enabled, etc.".muted)
             exit(1)
         }
     }
@@ -191,18 +229,18 @@ func setCommand(args: [String]) {
 
 func bindCommand(args: [String]) {
     guard args.count >= 2 else {
-        printError("Usage: swtui bind <action> <key>")
-        print()
-        print("Actions:")
+        log.error("Usage: swtui bind <action> <key>")
+        ink("")
+        ink("Actions:", .primary, .bold)
         for action in DiagConfig.keybindingActions {
             if let key = DiagConfig.defaultKeybindings[action] {
-                print("  \(action)  (default: \(key))")
+                ink("  " + action + "  " + "(default: \(key))".muted)
             } else {
-                print("  \(action)  (unbound)")
+                ink("  " + action + "  " + "(unbound)".muted)
             }
         }
-        print()
-        print("Key format: F1, ctrl+d, alt+F2, ctrl+shift+x, etc.")
+        ink("")
+        ink("Key format: " + "F1, ctrl+d, alt+F2, ctrl+shift+x, etc.".muted)
         exit(1)
     }
 
@@ -210,62 +248,70 @@ func bindCommand(args: [String]) {
     let keyString = args.dropFirst().joined(separator: " ")
 
     guard DiagConfig.keybindingActions.contains(action) else {
-        printError("Unknown action: \(action)")
-        print("Actions: \(DiagConfig.keybindingActions.joined(separator: ", "))")
+        log.error("Unknown action: \(action)")
+        ink("Actions: " + DiagConfig.keybindingActions.joined(separator: ", ").muted)
         exit(1)
     }
 
     guard KeyCombo.parse(keyString) != nil else {
-        printError("Invalid key: \(keyString)")
-        print("Examples: F1, ctrl+d, alt+F2, ctrl+shift+x")
+        log.error("Invalid key: \(keyString)")
+        ink("Examples: " + "F1, ctrl+d, alt+F2, ctrl+shift+x".muted)
         exit(1)
     }
 
     DiagPaths.updateConfigValue(section: "keybindings", key: action, value: keyString)
-    print("\(action) = \(keyString)")
+    ink(action.muted + " = " + keyString.warning)
 }
 
 func configCommand() {
     let configFile = DiagPaths.configFile
 
     if let contents = try? String(contentsOfFile: configFile, encoding: .utf8) {
+        // Raw config dump — leave plain so `swtui config | tee out.toml`
+        // and `diff <(swtui config) terminalui.toml` work without
+        // ANSI noise. Capability stripping in `ink()` would also
+        // handle this for piped output, but keeping the raw print
+        // makes the intent explicit.
         print(contents, terminator: "")
     } else {
-        // Show defaults
+        ink("# (no config file — showing defaults)".muted)
         let toml = TOMLParser.write(DiagConfig.default.toSections())
-        print("# (no config file — showing defaults)")
         print(toml, terminator: "")
     }
 }
 
 func cleanCommand() {
     DiagPaths.clean()
-    print("Cleaned diagnostic output for \(FileManager.default.currentDirectoryPath)")
+    let path = FileManager.default.currentDirectoryPath
+    ink("Cleaned diagnostic output for ".success + path.muted)
 }
 
 // MARK: - Output helpers
 
 func printUsage() {
-    print("""
-    swtui — TerminalUI diagnostic manager
-
-    Usage:
-      swtui init                  Create .terminalui/ with default config
-      swtui status                Show current config and app status
-      swtui enable <feature>      Enable a feature (trace, capture, screenshots, events, socket)
-      swtui disable <feature>     Disable a feature
-      swtui set <key> <value>     Set a config value (frame_limit, use_tmp, or section.key)
-      swtui bind <action> <key>   Remap a debug keybinding (e.g. swtui bind toggle_inspector F5)
-      swtui config                Print current config file
-      swtui clean                 Remove all diagnostic output
-      swtui ctl <cmd> [...]       Drive a running debug build (see `swtui ctl`)
-      swtui help                  Show this help
-    """)
-}
-
-func printError(_ message: String) {
-    let stderr = FileHandle.standardError
-    stderr.write(Data("error: \(message)\n".utf8))
+    // Multi-line usage block — keep mostly plain so the eye scans by
+    // structure, but tint command names (the lookup target) cyan.
+    ink("swtui ".primary.bold + "— TerminalUI diagnostic manager".muted)
+    ink("")
+    ink("Usage:", .primary, .bold)
+    let rows: [(String, String)] = [
+        ("init",                 "Create .terminalui/ with default config"),
+        ("status",               "Show current config and app status"),
+        ("enable <feature>",     "Enable a feature (trace, capture, screenshots, events, socket)"),
+        ("disable <feature>",    "Disable a feature"),
+        ("set <key> <value>",    "Set a config value (frame_limit, use_tmp, or section.key)"),
+        ("bind <action> <key>",  "Remap a debug keybinding (e.g. swtui bind toggle_inspector F5)"),
+        ("config",               "Print current config file"),
+        ("clean",                "Remove all diagnostic output"),
+        ("ctl <cmd> [...]",      "Drive a running debug build (see `swtui ctl`)"),
+        ("help",                 "Show this help"),
+    ]
+    for (cmd, desc) in rows {
+        // Pad cmd to 22 chars so descriptions align — same shape as
+        // `man` two-column help.
+        let cmdCell = cmd.padding(toLength: 22, withPad: " ", startingAt: 0)
+        ink("  " + cmdCell.styled(.named(.cyan)) + desc.muted)
+    }
 }
 
 // MARK: - ctl (remote control socket client)
@@ -315,14 +361,14 @@ func ctlCommand(args: [String]) {
         payload = ["id": 1, "cmd": "ping"]
     case "send-key", "key":
         guard let key = positional.first else {
-            printError("send-key <name> [mod ...]")
+            log.error("send-key <name> [mod ...]")
             exit(1)
         }
         let mods = Array(positional.dropFirst())
         payload = ["id": 1, "cmd": "send_key", "key": key, "modifiers": mods]
     case "send-text", "text":
         guard !positional.isEmpty else {
-            printError("send-text <text>")
+            log.error("send-text <text>")
             exit(1)
         }
         payload = ["id": 1, "cmd": "send_text", "text": positional.joined(separator: " ")]
@@ -346,7 +392,7 @@ func ctlCommand(args: [String]) {
         // swtui ctl probe <x> <y>
         guard positional.count == 2,
               let x = Int(positional[0]), let y = Int(positional[1]) else {
-            printError("probe <x> <y>")
+            log.error("probe <x> <y>")
             exit(1)
         }
         payload = ["id": 1, "cmd": "inspector_probe", "x": x, "y": y]
@@ -356,7 +402,7 @@ func ctlCommand(args: [String]) {
     case "inspector-move":
         guard positional.count == 2,
               let x = Int(positional[0]), let y = Int(positional[1]) else {
-            printError("inspector-move <x> <y>")
+            log.error("inspector-move <x> <y>")
             exit(1)
         }
         payload = ["id": 1, "cmd": "inspector_move", "x": x, "y": y]
@@ -367,7 +413,7 @@ func ctlCommand(args: [String]) {
         guard positional.count == 4,
               let x = Int(positional[0]), let y = Int(positional[1]),
               let w = Int(positional[2]), let h = Int(positional[3]) else {
-            printError("inspect-range <x> <y> <w> <h>")
+            log.error("inspect-range <x> <y> <w> <h>")
             exit(1)
         }
         payload = ["id": 1, "cmd": "inspect_range", "rect": [x, y, w, h]]
@@ -406,23 +452,25 @@ func ctlCommand(args: [String]) {
         ctlKill(socketDir: socketDir, positional: positional, defaultPath: socketPath)
         return
     default:
-        printError("unknown ctl subcommand: \(subcommand)")
+        log.error("unknown ctl subcommand: \(subcommand)")
         printCtlUsage()
         exit(1)
     }
 
+    // Response is JSON — leave plain so consumers can `jq` it without
+    // stripping ANSI first.
     let response = ctlSend(socketPath: socketPath, payload: payload)
     print(response)
 }
 
 private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
     guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-        printError("failed to encode payload")
+        log.error("failed to encode payload")
         exit(1)
     }
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else {
-        printError("socket() failed")
+        log.error("socket() failed")
         exit(1)
     }
     defer { close(fd) }
@@ -439,7 +487,7 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
         }
     }
     guard connectResult == 0 else {
-        printError("connect to \(socketPath) failed — is a debug app running?")
+        log.error("connect to \(socketPath) failed — is a debug app running?")
         exit(1)
     }
     // Write payload + newline
@@ -473,6 +521,7 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
 private func ctlList(socketDir: String) {
     let fm = FileManager.default
     guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else {
+        // Machine-readable line — leave plain.
         print("(no sockets — socket dir missing)")
         return
     }
@@ -488,6 +537,8 @@ private func ctlList(socketDir: String) {
             _ = unlink(path)
             continue
         }
+        // Machine-readable list — keep plain so `swtui ctl list | awk`
+        // works without stripping ANSI.
         print("pid=\(pid) status=alive socket=\(path)")
         found += 1
     }
@@ -562,29 +613,39 @@ private func ctlKill(socketDir: String, positional: [String], defaultPath: Strin
 }
 
 private func printCtlUsage() {
-    print("""
-    swtui ctl — drive a running debug build via its remote-control socket.
-
-    Subcommands:
-      ping                         liveness check
-      send-key <name> [mods...]    inject a key event (arrows, enter, tab, a-z, f1-f12)
-      send-text "..."              inject a sequence of characters
-      focus                        report the currently-focused node
-      cells [x y w h]              dump the rendered cell region (default: full frame)
-      tree                         structured graph dump (AttributeGraph snapshot)
-      probe <x> <y>                inspect the node at a given cell
-      inspect                      inspect the cell currently under the inspector cursor
-      inspector-move <x> <y>       move the inspector crosshair
-      inspector-toggle             toggle the inspector overlay
-      frame                        current frame number
-      screenshot                   ask the runtime to capture the next frame to disk
-      quit                         ask the app to exit cleanly (Ctrl+C via socket)
-      list                         list all running debug apps (pid, status, socket)
-      kill [pid|all]               send quit to one pid (or all); cleans up stale sockets
-
-    Flags:
-      --pid <N>        target a specific app by PID (default: latest.sock)
-      --socket <path>  use an explicit socket path
-      --dir <path>     override the socket directory
-    """)
+    ink("swtui ctl ".primary.bold + "— drive a running debug build via its remote-control socket.".muted)
+    ink("")
+    ink("Subcommands:", .primary, .bold)
+    let subs: [(String, String)] = [
+        ("ping",                       "liveness check"),
+        ("send-key <name> [mods...]",  "inject a key event (arrows, enter, tab, a-z, f1-f12)"),
+        ("send-text \"...\"",          "inject a sequence of characters"),
+        ("focus",                      "report the currently-focused node"),
+        ("cells [x y w h]",            "dump the rendered cell region (default: full frame)"),
+        ("tree",                       "structured graph dump (AttributeGraph snapshot)"),
+        ("probe <x> <y>",              "inspect the node at a given cell"),
+        ("inspect",                    "inspect the cell currently under the inspector cursor"),
+        ("inspector-move <x> <y>",     "move the inspector crosshair"),
+        ("inspector-toggle",           "toggle the inspector overlay"),
+        ("frame",                      "current frame number"),
+        ("screenshot",                 "ask the runtime to capture the next frame to disk"),
+        ("quit",                       "ask the app to exit cleanly (Ctrl+C via socket)"),
+        ("list",                       "list all running debug apps (pid, status, socket)"),
+        ("kill [pid|all]",             "send quit to one pid (or all); cleans up stale sockets"),
+    ]
+    for (cmd, desc) in subs {
+        let cell = cmd.padding(toLength: 30, withPad: " ", startingAt: 0)
+        ink("  " + cell.styled(.named(.cyan)) + desc.muted)
+    }
+    ink("")
+    ink("Flags:", .primary, .bold)
+    let flags: [(String, String)] = [
+        ("--pid <N>",        "target a specific app by PID (default: latest.sock)"),
+        ("--socket <path>",  "use an explicit socket path"),
+        ("--dir <path>",     "override the socket directory"),
+    ]
+    for (flag, desc) in flags {
+        let cell = flag.padding(toLength: 18, withPad: " ", startingAt: 0)
+        ink("  " + cell.styled(.named(.yellow)) + desc.muted)
+    }
 }

@@ -76,7 +76,7 @@ let package = Package(
         // Developer CLI tool for managing .terminalui/ config
         .executableTarget(
             name: "swtui",
-            dependencies: ["TerminalUIConfig"],
+            dependencies: ["TerminalUIConfig", "TerminalInk", "TerminalLog"],
             path: "Sources/swtui",
             swiftSettings: strictSettings
         ),
