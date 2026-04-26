@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, onHover, mouseFocusPolicy
+    case foreground, bold, border, padding, focusable, frame, onHover, mouseFocusPolicy, actions
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -371,6 +371,17 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 var buffer = CellBuffer(width: 20, height: 4)
                 buffer.write("Hello, world!", x: 0, y: 0, style: ...)
                 BufferView(buffer)
+                """)
+        case .actions: return PageInfo(id: self, category: .modifiers, name: ".actions",
+            summary: "Attach an action graph to a view. Bindings dispatch from any input device; bare actions reach by ID via MCP / scripting / debugger.",
+            code: """
+                Text("press Ctrl+P to fire")
+                    .actions {
+                        Action(id: "demo.fire", title: .literal("Fire")) {
+                            state.actionFired += 1
+                        }
+                        .bound(to: .keyboard(.character("p"), [.ctrl]))
+                    }
                 """)
         }
     }

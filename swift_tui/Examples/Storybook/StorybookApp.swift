@@ -27,6 +27,8 @@ final class StorybookState {
     var hunkFileName: String = "example.swift"
     // Hover/policy demo state
     var hoverIndicator: String = "(not hovering)"
+    // Action graph demo state
+    var actionFired: Int = 0
 }
 
 nonisolated(unsafe) let state = StorybookState()

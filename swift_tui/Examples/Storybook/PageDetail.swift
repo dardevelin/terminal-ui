@@ -360,7 +360,34 @@ struct PreviewPane: TerminalView {
             BufferView(buildBufferDemo())
                 .frame(width: 24, height: 4)
                 .border()
+        case .actions:
+            VStack {
+                Text("Tab here, then press Ctrl+P to fire the action").foreground(.cyan)
+                Text("counter: \(state.actionFired)").foreground(.gray)
+            }
+            .focusable()
+            .actions {
+                Action(
+                    id: "storybook.demo.fire",
+                    title: .literal("Fire Demo Action"),
+                    perform: { fireStorybookAction() }
+                )
+                .bound(to: .keyboard(.character("p"), [.ctrl]))
+            }
         }
+    }
+}
+
+/// Trampoline so the @Sendable action closure can mutate the
+/// nonisolated(unsafe) global StorybookState without capturing the
+/// non-Sendable instance directly. ActionDispatch fires under
+/// @MainActor (the runtime contract), so direct mutation is safe;
+/// the @Sendable label is a Swift-6 constraint on the closure type
+/// rather than a real concurrency concern at the call site.
+@Sendable
+private func fireStorybookAction() {
+    MainActor.assumeIsolated {
+        state.actionFired += 1
     }
 }
 

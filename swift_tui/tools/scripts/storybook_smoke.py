@@ -966,6 +966,34 @@ def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
     )
 
 
+def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
+    """`.actions` page (Modifiers group, last index 37): a focusable
+    VStack carries an action bound to Ctrl+P. Tab into the preview,
+    fire Ctrl+P, observe the counter increment from 0. Exercises the
+    full action graph dispatch path: focus walker → ActionScope lookup
+    → bound action perform closure → state mutation → re-render."""
+    app.goto_storybook_page(37)
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Initial counter shows 0 in the page (search full text — preview
+    # pane on this page is small enough that preview_text() crops it).
+    initial = app.text()
+    assert_true("counter: 0" in initial,
+                f"actions page should start with 'counter: 0'; full text first 400: {initial[:400]}")
+    # Fire the bound chord via the framework dispatch.
+    app.send_key("p", "ctrl")
+    app.wait_for_frame(1, timeout=0.5)
+    import time
+    # Action mutates state via Task { @MainActor }, gives one frame to settle.
+    time.sleep(0.3)
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.text()
+    assert_true(
+        any(f"counter: {n}" in after for n in range(1, 10)),
+        f"actions counter should be >0 after Ctrl+P; first 400: {after[:400]}"
+    )
+
+
 def demo_app_renders(app: Client) -> None:
     """Plain Demo smoke — renders its title bar and TabView strip
     without crashing. Looks for the "TerminalUI" banner (row 2-3) and
@@ -1035,6 +1063,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.mouse_click_on_sidebar_navigates", "Storybook", storybook_mouse_click_on_sidebar_navigates),
     SmokeCase("storybook.mouse_wheel_routes_to_hover_target", "Storybook", storybook_mouse_wheel_routes_to_hover_target),
     SmokeCase("storybook.mouse_click_locks_until_next_click", "Storybook", storybook_mouse_click_locks_until_next_click),
+    SmokeCase("storybook.actions_modifier_fires_via_chord", "Storybook", storybook_actions_modifier_fires_via_chord),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]
 
