@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-203 phase separation: GeometryReader's child closure depends on
+// Phase separation: GeometryReader's child closure depends on
 // the parent-supplied size. Today that closure runs from inside
 // `GraphRenderer.render`. Phase-separation contract:
 //

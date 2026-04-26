@@ -42,11 +42,15 @@ public enum GraphRenderer {
         // value closure can dereference back into the original storage.
         withUnsafeMutablePointer(to: &buffer) { bufPtr in
             GraphContext.$currentProposedSize.withValue(proposed) {
-                // Rect-clip enforcement. Every node's writes are bounded to its
-                // assigned rect intersected with all ancestors' rects. Prevents a child
-                // from punching through a parent's border/frame when it miscalculates
-                // measurement or paints past its bounds. Opt out with `.overflowOK()`.
-                bufPtr.pointee.withClip(context.rect) { buffer in
+                // Rect-clip enforcement + overflow detection. Every node's
+                // writes are bounded to its assigned rect intersected with
+                // all ancestors' rects, so a misbehaving child can't punch
+                // through a parent's border/frame. `withClipMeasured` also
+                // returns the count of writes the clip dropped — when
+                // non-zero AND the subtree hasn't opted into `.overflowOK()`,
+                // emit a `componentOverflow` framework warning so the
+                // layout bug is loud instead of silent.
+                let droppedCells = bufPtr.pointee.withClipMeasured(context.rect) { buffer in
                     switch node.kind {
                     case .primitive(let content):
                         renderPrimitive(content, into: &buffer, context: context)
@@ -88,6 +92,17 @@ public enum GraphRenderer {
                         }
                     }
                 }
+                #if DEBUG
+                if droppedCells > 0 {
+                    let envAllows = (node._resolvedEnv ?? GraphContext.currentEnvironment ?? EnvironmentValues()).overflowAllowed
+                    if !envAllows {
+                        DebugStream.shared.emitWarning(
+                            .componentOverflow,
+                            message: "node \(node.kind.debugName) wrote \(droppedCells) cell(s) outside its assigned rect (\(context.rect.width)×\(context.rect.height) at (\(context.rect.x), \(context.rect.y))). Layout bug? Suppress with `.overflowOK()` if intentional."
+                        )
+                    }
+                }
+                #endif
             }
         }
     }

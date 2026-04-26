@@ -63,6 +63,21 @@ public struct CellBuffer: Sendable {
     /// buffer but are otherwise unrestricted.
     public var clipRect: Rect?
 
+    /// Total cell writes the active `clipRect` has rejected since
+    /// the last `clear()`. The renderer compares the delta across
+    /// each child's `withClipMeasured` scope to detect which
+    /// component overflowed its assigned rect and emit a one-shot
+    /// `componentOverflow` framework warning per offending node per
+    /// frame. Cleared with the rest of the buffer.
+    ///
+    /// Note: writes that fall outside the buffer dimensions (e.g.,
+    /// negative coordinates from a layout bug) DO NOT count as
+    /// "overflow" — those are tracked via the always-on bounds check
+    /// in the subscript setter, which returns before the clip check.
+    /// Only writes inside the buffer but outside the clip increment
+    /// this counter.
+    public var clipRejectedWrites: Int = 0
+
     public init(width: Int, height: Int) {
         self.width = width
         self.height = height
@@ -85,6 +100,7 @@ public struct CellBuffer: Sendable {
             }
         }
         clipRect = nil
+        clipRejectedWrites = 0
     }
 
     /// Resize in place. Reallocates only if the new dimensions differ from
@@ -100,6 +116,7 @@ public struct CellBuffer: Sendable {
         self.height = height
         self.cells = Array(repeating: .empty, count: width * height)
         self.clipRect = nil
+        self.clipRejectedWrites = 0
     }
 
     public subscript(x: Int, y: Int) -> Cell {
@@ -111,7 +128,15 @@ public struct CellBuffer: Sendable {
             guard x >= 0, x < width, y >= 0, y < height else { return }
             if let clip = clipRect {
                 guard x >= clip.x, x < clip.x + clip.width,
-                      y >= clip.y, y < clip.y + clip.height else { return }
+                      y >= clip.y, y < clip.y + clip.height else {
+                    // Record the rejection so the renderer can
+                    // attribute overflow to the offending child via
+                    // `withClipMeasured`'s delta. Cheaper than tracking
+                    // per-cell positions; the renderer only needs a
+                    // count to decide "did this child overflow at all."
+                    clipRejectedWrites += 1
+                    return
+                }
             }
             cells[y * width + x] = newValue
         }
@@ -127,6 +152,23 @@ public struct CellBuffer: Sendable {
         clipRect = prev.map { $0.intersected(with: rect) } ?? rect
         defer { clipRect = prev }
         return try body(&self)
+    }
+
+    /// `withClip` variant that returns the count of writes rejected
+    /// by the clip during `body`'s execution. The renderer uses this
+    /// delta to attribute overflow to the specific child node and
+    /// emit a one-shot framework warning per offending node per
+    /// frame. Body's return value is ignored — only the rejection
+    /// delta surfaces. Use the regular `withClip` when you don't
+    /// need the count (cheaper: no snapshot/diff).
+    @inlinable
+    public mutating func withClipMeasured<R>(_ rect: Rect, _ body: (inout CellBuffer) throws -> R) rethrows -> Int {
+        let prev = clipRect
+        let baseline = clipRejectedWrites
+        clipRect = prev.map { $0.intersected(with: rect) } ?? rect
+        defer { clipRect = prev }
+        _ = try body(&self)
+        return clipRejectedWrites - baseline
     }
 
     public mutating func write(_ text: String, x: Int, y: Int, style: Style) {

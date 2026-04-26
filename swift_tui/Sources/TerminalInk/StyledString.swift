@@ -1,4 +1,4 @@
-// HYP-57 — composable styled text. Like NSAttributedString but for
+// composable styled text. Like NSAttributedString but for
 // terminal output: a sequence of styled runs that render to ECMA-48
 // SGR sequences, with capability-aware downgrade and stripping.
 //
@@ -108,7 +108,7 @@ public struct StyledString: Sendable, Equatable {
     // MARK: - Render
 
     /// Emit the final terminal-bound string. `capability` controls
-    /// downgrade and ANSI stripping per HYP-56:
+    /// downgrade and ANSI stripping per the color-tier downgrade contract:
     ///
     ///   - `.none` strips all SGR (NO_COLOR / piped output)
     ///   - `.basic16` collapses every color to a named slot

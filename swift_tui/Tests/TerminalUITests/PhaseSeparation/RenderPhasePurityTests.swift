@@ -14,7 +14,7 @@ import Testing
 //
 // Today this fails for any tree containing a `GeometryReader`: the
 // rebuilder closure runs during render and rewrites `node.children`.
-// The fix lives in HYP-203 phase separation: GR's rebuild moves to
+// The fix lives in the layout-phase separation work: GR's rebuild moves to
 // the layout phase, render becomes pure.
 
 @Suite("Render phase purity — render must not mutate the view tree")

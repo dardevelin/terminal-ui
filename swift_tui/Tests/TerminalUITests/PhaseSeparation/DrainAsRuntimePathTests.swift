@@ -3,7 +3,7 @@ import Observation
 import Testing
 @testable import TerminalUI
 
-// HYP-201 / R2 — make `drain()` the runtime path for observed state
+// Make `drain()` the runtime path for observed state
 // changes instead of root rebuild via `update(from:)`.
 //
 // Reviewer (2026-04-26): "the runtime still does not use the

@@ -1,4 +1,4 @@
-// HYP-56 — SGR escape sequence generation.
+// SGR escape sequence generation.
 //
 // Per ECMA-48 §8.3.117 (SGR — Select Graphic Rendition):
 //

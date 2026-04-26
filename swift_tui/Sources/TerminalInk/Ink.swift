@@ -1,6 +1,6 @@
 import Foundation
 
-// HYP-57 — top-level styled print replacement.
+// top-level styled print replacement.
 //
 //   ink("Build failed", .red, .bold)                  // stdout
 //   ink("Warning: \(msg)", .yellow, to: .stderr)      // stderr

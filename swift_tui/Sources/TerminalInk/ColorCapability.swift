@@ -5,7 +5,7 @@ import Glibc
 #endif
 import Foundation
 
-// HYP-56 / HYP-13 — terminal color-tier detection and downgrade.
+// terminal color-tier detection and downgrade.
 //
 // Detection precedence (highest wins):
 //

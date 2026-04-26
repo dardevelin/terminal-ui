@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-78 — Flexible / responsive sizing.
+// Flexible / responsive sizing.
 //
 // Today: `.frame(width: 20, height: 5)` is the only fixed-size knob;
 // `.frame(minWidth:maxWidth:)` exists but doesn't fill. Spacer fills

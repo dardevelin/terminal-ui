@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-198 / R7: Terminal.enableRawMode() returns false on syscall
+// Terminal.enableRawMode() returns false on syscall
 // failure but the runtime ignored the result, proceeding into
 // alternate-screen + event loop with input semantics already invalid.
 //

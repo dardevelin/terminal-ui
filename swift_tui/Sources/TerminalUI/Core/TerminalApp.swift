@@ -736,9 +736,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         //     subtrees re-evaluate.
         //  3. Nothing dirty → no graph work this frame.
         //
-        // Reviewer (HYP-201) flagged that the runtime always took
+        // External review flagged that the runtime always took
         // path (1). The drain path was tested at the graph level
-        // (HYP-126) but unreached on the production frame.
+        // (verified at the graph level) but unreached on the production frame.
         let firstFrame = previousBuffer == nil
         let structuralRebuild = firstFrame || needsRender
         let stateOnlyDirty = graph.hasDirtyNodes && !structuralRebuild

@@ -1,6 +1,6 @@
 import TerminalInk
 
-// HYP-61 — `Color` is now a thin SGR-emitting facade over
+// `Color` is now a thin SGR-emitting facade over
 // `TerminalInk.InkColor`. The public case shape stays
 // source-compatible (every existing `Color.red`, `.brightRed`,
 // `.ansi256(...)`, `.rgb(...)` call still compiles); the SGR

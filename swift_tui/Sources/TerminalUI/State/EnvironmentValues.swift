@@ -58,6 +58,14 @@ public struct EnvironmentValues: Sendable {
     /// See `MouseFocusPolicy`.
     public var mouseFocusPolicy: MouseFocusPolicy = .clickToLock
 
+    /// Whether the framework SHOULD allow this subtree to write cells
+    /// outside its assigned rect without emitting a `componentOverflow`
+    /// framework warning. Default `false` — overflow warns. Subtrees
+    /// where escape is intentional (shadows, popovers, edge-to-edge
+    /// banners) opt in via `.overflowOK()`. Reads inherit through the
+    /// env chain so a parent's opt-in covers its descendants.
+    public var overflowAllowed: Bool = false
+
     public init() {}
 }
 

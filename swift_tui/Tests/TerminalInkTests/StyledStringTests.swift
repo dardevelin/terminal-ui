@@ -1,10 +1,10 @@
 import Testing
 @testable import TerminalInk
 
-// HYP-57 — StyledString builder, ink() print API, and the
+// StyledString builder, ink() print API, and the
 // chain-style String extensions.
 //
-// These tests pin the contract from HYP-57's spec:
+// These tests pin the contract:
 //
 //   "Error".styled(.red, .bold) + ": " + "file not found".styled(.dim)
 //   ink("Build failed", .red, .bold)
@@ -17,7 +17,7 @@ import Testing
 @Suite("TextTraits — option set covering SGR boolean attributes")
 struct TextTraitsTests {
 
-    @Test("six traits per HYP-57 spec: bold, italic, underline, dim, strikethrough, inverse")
+    @Test("six traits per spec: bold, italic, underline, dim, strikethrough, inverse")
     func sixTraits() {
         // Each trait must be a distinct option-set member so callers
         // can compose with `[.bold, .underline]`.
@@ -129,7 +129,7 @@ struct StyledStringRenderTests {
     func rgbDowngrades() {
         let s = StyledString("x").foreground(.rgb(255, 0, 0))
         let out = s.render(capability: .ansi256)
-        // RGB→256 routes pure red to slot 196 per HYP-56 mapping.
+        // RGB→256 routes pure red to slot 196 per the cube-mapping convention.
         #expect(out.contains("\u{1B}[38;5;196m"),
                 "RGB(255,0,0) must downgrade to ansi256 196 under .ansi256 cap; got \(out.debugDescription)")
     }
@@ -175,7 +175,7 @@ struct StringChainTests {
     @Test("Semantic shorthand on String — .error / .success / etc.")
     func semantic() {
         // These should map to the same InkColor.error / .success
-        // values exposed in HYP-56.
+        // values exposed by the color model.
         let e = "boom".error
         #expect(e.runs[0].foreground == InkColor.error)
         let ok = "ok".success

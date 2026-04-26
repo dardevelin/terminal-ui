@@ -1,7 +1,7 @@
 import Foundation
 import TerminalInk
 
-// HYP-58 — structured logger.
+// structured logger.
 //
 //   let log = Log("swtui")
 //   log.info("Config loaded from \(path)")        // → stdout, [swtui] INFO: ... (green)

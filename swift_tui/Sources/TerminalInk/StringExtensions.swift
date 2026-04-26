@@ -1,4 +1,4 @@
-// HYP-57 — chain-style ergonomic API on `String`.
+// chain-style ergonomic API on `String`.
 //
 //   "error".red.bold       // StyledString
 //   "ok".success
@@ -46,7 +46,7 @@ extension String {
     public var brightCyan:    StyledString { StyledString(self).foreground(.named(.brightCyan)) }
     public var brightWhite:   StyledString { StyledString(self).foreground(.named(.brightWhite)) }
 
-    // Semantic shorthand — themable layer (HYP-56).
+    // Semantic shorthand — themable layer.
     public var primary:   StyledString { StyledString(self).foreground(.primary) }
     public var secondary: StyledString { StyledString(self).foreground(.secondary) }
     public var success:   StyledString { StyledString(self).foreground(.success) }

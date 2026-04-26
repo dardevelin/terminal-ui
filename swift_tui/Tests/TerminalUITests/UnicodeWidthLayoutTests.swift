@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-200 / R6: TextLayout and LineBreakMode used `String.count`
+// TextLayout and LineBreakMode used `String.count`
 // (grapheme count), but CellBuffer.write uses `displayWidth` (cell
 // count). CJK + emoji content wraps and truncates at the wrong
 // column because Character.count != cell width.

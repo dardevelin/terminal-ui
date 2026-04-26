@@ -1,7 +1,7 @@
 import Foundation
 import TerminalInk
 
-// HYP-58 — sinks for log output.
+// sinks for log output.
 //
 // `LogEntry` is the structured record passed to every sink: scope,
 // level, message, plus a `rendered(capability:)` helper that emits

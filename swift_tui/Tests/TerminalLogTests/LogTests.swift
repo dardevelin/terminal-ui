@@ -3,7 +3,7 @@ import Foundation
 @testable import TerminalLog
 @testable import TerminalInk
 
-// HYP-58 — TerminalLog. Structured logging that piggybacks on
+// TerminalLog. Structured logging that piggybacks on
 // TerminalInk for styled output. Six levels (trace/debug/info/warn/
 // error/critical), per-scope logger, env-var-driven min-level
 // filter, console + file sinks, automatic ANSI stripping for
@@ -80,7 +80,7 @@ struct LogEmissionTests {
         let log = Log(scope: "swtui", sinks: [sink], minLevel: .trace)
         log.warn("config not found")
         let rendered = sink.entries[0].rendered(capability: .none)
-        // Format contract per HYP-58 body: `[scope] LEVEL: message`.
+        // Format contract per spec: `[scope] LEVEL: message`.
         // Strip-ANSI form (capability=.none) is the canonical assertable
         // shape — no SGR overhead.
         #expect(rendered.contains("[swtui]"),

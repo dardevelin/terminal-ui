@@ -1,8 +1,8 @@
 import TerminalInk
 
-// HYP-58 — log level enum + per-level color/stream mapping.
+// log level enum + per-level color/stream mapping.
 //
-// Six levels from the HYP-58 spec, ordered noisy-to-fatal so
+// Six levels, ordered noisy-to-fatal so
 // `LogLevel.warn < .error` resolves correctly for min-level filters.
 // Each level carries:
 //

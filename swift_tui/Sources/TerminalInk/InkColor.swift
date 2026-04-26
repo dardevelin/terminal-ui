@@ -1,4 +1,4 @@
-// HYP-56 — TerminalInk color model.
+// TerminalInk color model.
 //
 // Three-tier color model mirroring SwiftUI's `Color` and chalk/rich
 // conventions:

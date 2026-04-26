@@ -262,7 +262,7 @@ public enum GraphMeasurer {
             // happens to match the seed. Rebuild with the current proposed
             // width (height is flexible from the parent's perspective, so
             // Phase separation: GeometryReader rebuilders fire in
-            // Layout.measureAndPlace (HYP-203), not during measurement.
+            // Layout.measureAndPlace, not during measurement.
             // Measurement reads the seed subtree constructed at build
             // time. Once a frame's layout pass has run, subsequent
             // measurement calls see the size-resolved children. This

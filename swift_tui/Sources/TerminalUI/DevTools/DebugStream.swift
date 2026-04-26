@@ -58,6 +58,12 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// canary case was TreeView before its body bindings were lifted
     /// out of its `GeometryReader` closure.
     case bindingProjectedWithoutNode
+    /// A child node tried to write cells outside its assigned rect.
+    /// The framework silently dropped them (clip enforcement) but
+    /// dropping cells in production is almost always a layout bug.
+    /// Suppress per-subtree with `.overflowOK()` when the escape is
+    /// intentional (shadows, popovers, edge-to-edge banners).
+    case componentOverflow
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {

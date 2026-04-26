@@ -10,7 +10,7 @@ import Darwin
 
 // MARK: - swtui: developer CLI for managing .terminalui/ config
 //
-// Output style guide (HYP-59 migration to TerminalInk + TerminalLog):
+// Output style guide (TerminalInk + TerminalLog migration):
 //
 //   - Errors: `Log("swtui").error(...)` — auto-routes to stderr with
 //     red ERROR tag.

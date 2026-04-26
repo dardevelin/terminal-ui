@@ -821,7 +821,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         return RemoteResponse(id: request.id, ok: true)
     }
 
-    // MARK: Action graph (HYP-199 / R5)
+    // MARK: Action graph (remote control + scope dispatch)
 
     /// Enumerate the action graph reachable from the focused node.
     /// Includes framework defaults so LLM clients see Ctrl+C → app.quit

@@ -1,4 +1,4 @@
-// HYP-78 — Flexible / responsive sizing.
+// Flexible / responsive sizing.
 //
 // Apps need a way for components to claim "all available space" along
 // one or both axes — like CSS flexbox grow, SwiftUI's
