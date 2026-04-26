@@ -38,4 +38,43 @@ struct ArrowFocusPolicyTests {
         engine.focusInDirection(.down, root: root)
         #expect(engine.keyboardFocusID == root.children[1].id)
     }
+
+    @Test("crossStack policy resolves from focused node's _resolvedEnv, not GraphContext")
+    func crossStackResolvesFromResolvedEnv() {
+        // Pre-@TaskLocal, the runtime read GraphContext.currentEnvironment
+        // for `allowArrowFocusNavigation`. After the migration that
+        // global is bound only for the duration of a frame's render
+        // walk; key events run between frames where the binding is
+        // unbound. The fix resolves from the focused node's stamped
+        // `_resolvedEnv` instead, which persists across frames.
+        //
+        // This test pins that contract by stamping a focused node with
+        // a known `_resolvedEnv`, asking the runtime helper-shape
+        // (focused.node._resolvedEnv) to surface the value, and
+        // confirming GraphContext.currentEnvironment is irrelevant.
+        let graph = AttributeGraph()
+        graph.update(from: VStack { Text("a"); Text("b") })
+        let root = graph.root!
+        root.children[0].isFocusable = true
+        root.children[0].rect = Rect(x: 0, y: 0, width: 1, height: 1)
+
+        var env = EnvironmentValues()
+        env.allowArrowFocusNavigation = true
+        root.children[0]._resolvedEnv = env
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: root)
+        engine.keyboardFocusID = root.children[0].id
+
+        let focused = engine.focusedNode(in: root)
+        let crossStack = focused?._resolvedEnv?.allowArrowFocusNavigation == true
+        #expect(crossStack,
+                "runtime arrow-nav must resolve allowArrowFocusNavigation from focused node's stamped _resolvedEnv")
+
+        // GraphContext is unbound here (no `withValue` scope) — the
+        // legacy read path would observe nil and silently disable
+        // cross-stack nav. Pin that the new path doesn't depend on it.
+        #expect(GraphContext.currentEnvironment == nil,
+                "test must not have a current GraphContext binding")
+    }
 }

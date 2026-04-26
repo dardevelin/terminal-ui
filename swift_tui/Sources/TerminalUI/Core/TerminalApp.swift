@@ -612,7 +612,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             } else if keyEvent.key == .tab {
                 focusEngine.focusNext()
             } else {
-                let crossStack = GraphContext.currentEnvironment?.allowArrowFocusNavigation == true
+                // Resolve `allowArrowFocusNavigation` from the focused
+                // node's stamped `_resolvedEnv`, NOT from a global
+                // `GraphContext.currentEnvironment`. The TaskLocal
+                // binding is bound only for the duration of a frame's
+                // render walk; key events run between frames where it
+                // would read nil. `_resolvedEnv` is stamped during
+                // every render (see `GraphRenderer.render`) and persists.
+                let focused = focusEngine.focusedNode(in: graph.root)
+                let crossStack = focused?._resolvedEnv?.allowArrowFocusNavigation == true
                 if keyEvent.key == .up {
                     focusEngine.focusInDirection(.up, root: graph.root, crossStack: crossStack)
                 } else if keyEvent.key == .down {
