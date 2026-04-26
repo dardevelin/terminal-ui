@@ -66,6 +66,13 @@ public struct EnvironmentValues: Sendable {
     /// env chain so a parent's opt-in covers its descendants.
     public var overflowAllowed: Bool = false
 
+    /// Callback registered via `.onBoundaryHit { reason in ... }`.
+    /// Invoked by `BoundaryFeedbackEmitter` when the active
+    /// `boundaryFeedback` mode is `.modal` and an input component
+    /// hits a wall. Nil = no callback registered (modal mode is
+    /// silent in that case, same as `.none`).
+    public var onBoundaryHit: BoundaryHitCallback? = nil
+
     public init() {}
 }
 
