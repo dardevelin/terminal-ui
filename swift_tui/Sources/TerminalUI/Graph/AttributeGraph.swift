@@ -731,8 +731,19 @@ public final class AttributeGraph {
         if view is any _GraphConditional { return node.kind.isViewBody } // conditionals are viewBody("Conditional") nodes
         if view is any _GraphForEach { return node.kind.isLayout(.vstack) } // ForEach builds as vstack
         if view is any _TupleViewProtocol { return node.kind.isLayout(.vstack) } // TupleView builds as vstack
-        // Composite views — check viewBody
-        if !(V.Body.self == Never.self) { return node.kind.isViewBody }
+        // Composite views — must match BOTH viewBody kind AND the
+        // exact composite type. Without the type check, swapping one
+        // composite for another (e.g. TabView's `_TabContentRelay`
+        // changing tab) reuses the previous composite's child subtree
+        // because both are "viewBody" — leaving stale rows from the
+        // outgoing tab in the incoming tab's render.
+        if !(V.Body.self == Never.self) {
+            guard node.kind.isViewBody else { return false }
+            // First-time construction (no cached input) — types match
+            // by definition because the node was just built.
+            guard let cached = node.lastInputView else { return true }
+            return type(of: cached) == V.self
+        }
         return true // default: allow update
     }
 
