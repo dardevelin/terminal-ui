@@ -69,7 +69,7 @@ let package = Package(
         ),
         .target(
             name: "TerminalUI",
-            dependencies: ["TerminalUIConfig", "TerminalLog"],
+            dependencies: ["TerminalUIConfig", "TerminalInk", "TerminalLog"],
             path: "Sources/TerminalUI",
             swiftSettings: strictSettings
         ),

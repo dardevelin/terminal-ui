@@ -1,3 +1,20 @@
+import TerminalInk
+
+// HYP-61 — `Color` is now a thin SGR-emitting facade over
+// `TerminalInk.InkColor`. The public case shape stays
+// source-compatible (every existing `Color.red`, `.brightRed`,
+// `.ansi256(...)`, `.rgb(...)` call still compiles); the SGR
+// generation routes through `ANSICode.foreground / .background` so
+// the codes match the rest of the framework byte-for-byte.
+//
+// `.dimmed(fallback:)` stays here — it's a TUI-specific concern
+// (focus dimming, theme tinting) that has no place in the standalone
+// `TerminalInk` library. It still operates entirely on the local
+// `Color` cases without round-tripping through `InkColor`.
+//
+// `.gray` is the one TerminalUI-specific name; it maps to
+// `NamedColor.brightBlack` (the xterm convention "gray = SGR 90").
+
 public enum Color: Sendable {
     case `default`
     case black
@@ -19,33 +36,52 @@ public enum Color: Sendable {
     case ansi256(UInt8)
     case rgb(UInt8, UInt8, UInt8)
 
-    var foregroundCode: String {
+    /// Lower this `Color` to the equivalent `InkColor` for SGR
+    /// generation. Pure mapping — no behavioural shift, just an
+    /// adapter to the shared ECMA-48 builder in `TerminalInk`.
+    var asInkColor: InkColor {
         switch self {
-        case .default: "\u{1B}[39m"
-        case .black: "\u{1B}[30m"
-        case .red: "\u{1B}[31m"
-        case .green: "\u{1B}[32m"
-        case .yellow: "\u{1B}[33m"
-        case .blue: "\u{1B}[34m"
-        case .magenta: "\u{1B}[35m"
-        case .cyan: "\u{1B}[36m"
-        case .white: "\u{1B}[37m"
-        case .gray: "\u{1B}[90m"
-        case .brightRed: "\u{1B}[91m"
-        case .brightGreen: "\u{1B}[92m"
-        case .brightYellow: "\u{1B}[93m"
-        case .brightBlue: "\u{1B}[94m"
-        case .brightMagenta: "\u{1B}[95m"
-        case .brightCyan: "\u{1B}[96m"
-        case .brightWhite: "\u{1B}[97m"
-        case .ansi256(let n): "\u{1B}[38;5;\(n)m"
-        case .rgb(let r, let g, let b): "\u{1B}[38;2;\(r);\(g);\(b)m"
+        case .default: return .default
+        case .black:         return .named(.black)
+        case .red:           return .named(.red)
+        case .green:         return .named(.green)
+        case .yellow:        return .named(.yellow)
+        case .blue:          return .named(.blue)
+        case .magenta:       return .named(.magenta)
+        case .cyan:          return .named(.cyan)
+        case .white:         return .named(.white)
+        // TerminalUI's `.gray` is xterm's "bright black" (SGR 90) —
+        // the TerminalInk name comes from ECMA-48's terminology
+        // ("brightBlack"), but the rendered color is identical.
+        case .gray:          return .named(.brightBlack)
+        case .brightRed:     return .named(.brightRed)
+        case .brightGreen:   return .named(.brightGreen)
+        case .brightYellow:  return .named(.brightYellow)
+        case .brightBlue:    return .named(.brightBlue)
+        case .brightMagenta: return .named(.brightMagenta)
+        case .brightCyan:    return .named(.brightCyan)
+        case .brightWhite:   return .named(.brightWhite)
+        case .ansi256(let n): return .ansi256(n)
+        case .rgb(let r, let g, let b): return .rgb(r, g, b)
         }
     }
+
+    /// SGR foreground sequence. Routed through
+    /// `TerminalInk.ANSICode.foreground` so the byte output matches
+    /// the rest of the framework's styled-output stack (swtui, Log,
+    /// `ink()`).
+    var foregroundCode: String { ANSICode.foreground(asInkColor) }
+
+    /// SGR background sequence — counterpart to `foregroundCode`.
+    var backgroundCode: String { ANSICode.background(asInkColor) }
 
     /// Return a dimmed version of this color — shifts bright variants to their
     /// dark counterparts, reduces RGB intensity by ~50%, and falls back to
     /// the provided tint for colors that can't be dimmed meaningfully.
+    ///
+    /// TerminalUI-specific (focus / theme dimming). Stays on `Color`
+    /// rather than moving to `InkColor` because dimming is a UI
+    /// concern, not a primitive color-model concern.
     func dimmed(fallback: Color) -> Color {
         switch self {
         // Bright → dark counterpart
@@ -89,30 +125,6 @@ public enum Color: Sendable {
                 return .ansi256(UInt8(16 + dr * 36 + dg * 6 + db))
             }
             return fallback
-        }
-    }
-
-    var backgroundCode: String {
-        switch self {
-        case .default: "\u{1B}[49m"
-        case .black: "\u{1B}[40m"
-        case .red: "\u{1B}[41m"
-        case .green: "\u{1B}[42m"
-        case .yellow: "\u{1B}[43m"
-        case .blue: "\u{1B}[44m"
-        case .magenta: "\u{1B}[45m"
-        case .cyan: "\u{1B}[46m"
-        case .white: "\u{1B}[47m"
-        case .gray: "\u{1B}[100m"
-        case .brightRed: "\u{1B}[101m"
-        case .brightGreen: "\u{1B}[102m"
-        case .brightYellow: "\u{1B}[103m"
-        case .brightBlue: "\u{1B}[104m"
-        case .brightMagenta: "\u{1B}[105m"
-        case .brightCyan: "\u{1B}[106m"
-        case .brightWhite: "\u{1B}[107m"
-        case .ansi256(let n): "\u{1B}[48;5;\(n)m"
-        case .rgb(let r, let g, let b): "\u{1B}[48;2;\(r);\(g);\(b)m"
         }
     }
 }
