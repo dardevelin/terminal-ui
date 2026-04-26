@@ -65,10 +65,109 @@ public struct TerminalSize: Sendable {
     public static let `default` = TerminalSize(cols: vt100DefaultCols, rows: vt100DefaultRows)
 }
 
+// MARK: - POSIX Syscall Injection
+//
+// `Terminal` calls `tcgetattr`, `tcsetattr`, and `ioctl(TIOCGWINSZ)`
+// directly. Failure paths (non-TTY stdin, headless CI, ioctl returning
+// 0×0) couldn't be exercised under the real test runner because the
+// runner happens to be a TTY. This protocol lets tests inject a
+// `FailingPosixSyscalls` mock and pin the failure-mode contract at
+// the unit boundary. Production code uses `RealPosixSyscalls` which
+// delegates straight through to libc with no overhead.
+
+public protocol PosixSyscalls: Sendable {
+    func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32
+    func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32
+    func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32
+}
+
+public struct RealPosixSyscalls: PosixSyscalls {
+    public init() {}
+
+    public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
+        #if canImport(Darwin)
+        return Darwin.tcgetattr(fd, termiosOut)
+        #elseif canImport(Glibc)
+        return Glibc.tcgetattr(fd, termiosOut)
+        #endif
+    }
+
+    public func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32 {
+        #if canImport(Darwin)
+        return Darwin.tcsetattr(fd, optAct, termiosIn)
+        #elseif canImport(Glibc)
+        return Glibc.tcsetattr(fd, optAct, termiosIn)
+        #endif
+    }
+
+    public func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32 {
+        #if canImport(Darwin)
+        return Darwin.ioctl(fd, request, winsizeOut)
+        #elseif canImport(Glibc)
+        return Glibc.ioctl(fd, request, winsizeOut)
+        #endif
+    }
+}
+
+#if DEBUG
+/// Test-only failing implementation. Records call counts, returns -1
+/// on any flagged syscall, and can simulate the ioctl 0×0 fallback.
+public final class FailingPosixSyscalls: PosixSyscalls, @unchecked Sendable {
+    public var tcgetattrShouldFail: Bool = false
+    public var tcsetattrShouldFail: Bool = false
+    public var ioctlShouldFail: Bool = false
+    public var ioctlReturnsZeroSize: Bool = false
+
+    public var tcgetattrCallCount: Int = 0
+    public var tcsetattrCallCount: Int = 0
+    public var ioctlCallCount: Int = 0
+
+    public init() {}
+
+    public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
+        tcgetattrCallCount += 1
+        if tcgetattrShouldFail { return -1 }
+        // Zero out so the real flag-clearing logic in enableRawMode
+        // operates on a deterministic input rather than uninitialized
+        // memory.
+        termiosOut.pointee = termios()
+        return 0
+    }
+
+    public func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32 {
+        tcsetattrCallCount += 1
+        if tcsetattrShouldFail { return -1 }
+        return 0
+    }
+
+    public func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32 {
+        ioctlCallCount += 1
+        if ioctlShouldFail { return -1 }
+        if ioctlReturnsZeroSize {
+            winsizeOut.pointee = winsize()
+            return 0
+        }
+        // Default success path returns a non-zero size so the caller
+        // gets a usable answer if a test forgets to flag a failure mode.
+        var ws = winsize()
+        ws.ws_col = 80
+        ws.ws_row = 24
+        winsizeOut.pointee = ws
+        return 0
+    }
+}
+#endif
+
 // MARK: - Terminal Control
 
 public enum Terminal {
     nonisolated(unsafe) private static var originalTermios: termios?
+
+    /// POSIX syscall implementation used by `enableRawMode`, `disableRawMode`,
+    /// and `size`. Production builds default to `RealPosixSyscalls`; tests
+    /// swap in a `FailingPosixSyscalls` to drive failure modes that the
+    /// real test runner can't reach (because the runner is a TTY).
+    nonisolated(unsafe) public static var posix: any PosixSyscalls = RealPosixSyscalls()
 
     #if DEBUG
     nonisolated(unsafe) public static var debugMinSize: TerminalSize? = .default
@@ -76,7 +175,7 @@ public enum Terminal {
 
     public static func size() -> TerminalSize {
         var windowSize = winsize()
-        let ioctlResult = ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
+        let ioctlResult = posix.ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
         var size = TerminalSize(cols: Int(windowSize.ws_col), rows: Int(windowSize.ws_row))
 
         // in release builds, ioctl can fail (stdout piped, headless
@@ -121,7 +220,7 @@ public enum Terminal {
     @discardableResult
     public static func enableRawMode() -> Bool {
         var raw = termios()
-        if tcgetattr(STDIN_FILENO, &raw) != 0 {
+        if posix.tcgetattr(STDIN_FILENO, &raw) != 0 {
             return false
         }
         originalTermios = raw
@@ -132,7 +231,7 @@ public enum Terminal {
         // This is a POSIX ABI assumption shared by Darwin and Glibc.
         raw.c_cc.0 = 0
         raw.c_cc.1 = 1
-        if tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0 {
+        if posix.tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) != 0 {
             // Restore captured termios so the caller can still call
             // disableRawMode() defensively, even though we never made it
             // into raw mode.
@@ -143,7 +242,7 @@ public enum Terminal {
 
     public static func disableRawMode() {
         if var original = originalTermios {
-            tcsetattr(STDIN_FILENO, TCSAFLUSH, &original)
+            _ = posix.tcsetattr(STDIN_FILENO, TCSAFLUSH, &original)
         }
     }
 
