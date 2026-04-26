@@ -16,6 +16,12 @@ extension OnClickModifier: _FocusGraphModifier {
     }
 }
 
+extension OnHoverModifier: _FocusGraphModifier {
+    func registerWithFocusEngine(nodeID: NodeID) {
+        GraphContext.currentFocusEngine?.registerHoverHandler(for: nodeID, handler: handler)
+    }
+}
+
 /// Protocol for modifiers that fire lifecycle events at appearance/update.
 /// Called from `fireLifecycleIfNeeded` on every construct + update pass —
 /// the modifier itself decides whether the event should fire (e.g. once-only

@@ -121,27 +121,41 @@ struct ListVirtualizationTests {
 // To enable: uncomment and run; the @Suite will fail-to-compile on
 // the missing type, which IS the red phase.
 
-/*
 @Suite("Mouse focus policy is configurable")
 @MainActor
 struct MouseFocusPolicyTests {
-    @Test("MouseFocusPolicy enum is public and ships three cases")
+    @Test("MouseFocusPolicy enum is public and ships four cases")
     func mouseFocusPolicyEnumExists() {
-        // RED until the enum is added. Should support:
-        //   .clickToLock — mouse-move ignored, click promotes (today's hardcoded behaviour)
-        //   .hoverFollows — mouse-move drives keyboard focus
-        //   .clickOnly — wheel does not auto-route to hover target
+        // The enum models four observable behaviours; the runtime
+        // branches on these in handleMouseEvent.
+        //   .clickToLock  — default. Hover does not move keyboard focus;
+        //                   click promotes to keyboard focus; wheel
+        //                   routes to hover-target focusable.
+        //   .hoverFollows — hover ALSO sets keyboard focus.
+        //   .clickOnly    — wheel routes to keyboard focus, not hover.
+        //   .disabled     — framework gets out of the way: hover state
+        //                   is not tracked, click does not auto-focus,
+        //                   wheel does not auto-route. View callbacks
+        //                   (.onHover / .onClick) still fire.
         let _: MouseFocusPolicy = .clickToLock
         let _: MouseFocusPolicy = .hoverFollows
         let _: MouseFocusPolicy = .clickOnly
+        let _: MouseFocusPolicy = .disabled
     }
 
-    @Test(".mouseFocusPolicy(_:) modifier propagates via env")
+    @Test(".mouseFocusPolicy(_:) modifier compiles on any TerminalView")
     func mouseFocusPolicyModifierExists() {
         let _ = Text("probe").mouseFocusPolicy(.hoverFollows)
+        let _ = Text("probe").mouseFocusPolicy(.disabled)
+    }
+
+    @Test(".onHover(_:) modifier compiles with SwiftUI-style closure")
+    func onHoverModifierExists() {
+        // SwiftUI's signature: { isHovering in … }. Callback is fired
+        // on hover state transitions only (true on enter, false on leave).
+        let _ = Text("probe").onHover { _ in }
     }
 }
-*/
 
 // MARK: - CellBuffer blit primitive (HYP-66)
 //

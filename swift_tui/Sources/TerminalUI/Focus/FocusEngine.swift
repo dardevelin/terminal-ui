@@ -25,6 +25,17 @@ public final class FocusEngine {
     /// Registered click handlers — keyed by NodeID.
     var clickHandlers: [NodeID: (_ relativeX: Int, _ relativeY: Int) -> Void] = [:]
 
+    /// Registered hover handlers — keyed by NodeID. Fired on hover
+    /// state transitions only (cursor enters or leaves the rect).
+    var hoverHandlers: [NodeID: (_ isHovering: Bool) -> Void] = [:]
+
+    /// IDs whose hover handler currently believes the cursor is INSIDE
+    /// their rect. Updated by `applyMouseMove` so transition events
+    /// (true on enter, false on leave) fire exactly once. Survives
+    /// across frames: only mutated when the hover state for a given
+    /// node actually changes.
+    private var hoveredHandlerIDs: Set<NodeID> = []
+
     // MARK: - Cached Indices (rebuilt when graph changes)
 
     /// O(1) node lookup by ID — replaces recursive tree walk.
@@ -199,6 +210,116 @@ public final class FocusEngine {
         mouseHoverID = findFocusableAt(x: x, y: y, in: root)?.id
     }
 
+    /// Policy-aware mouse-move entry point. Replaces direct calls to
+    /// `updateMouseHover` from the runtime so the four `MouseFocusPolicy`
+    /// cases route through one place.
+    ///
+    /// Behaviour matrix:
+    ///
+    /// | Policy          | mouseHoverID  | keyboardFocusID         | .onHover fires |
+    /// |-----------------|---------------|-------------------------|----------------|
+    /// | .clickToLock    | hover-target  | unchanged               | yes            |
+    /// | .hoverFollows   | hover-target  | hover-target focusable  | yes            |
+    /// | .clickOnly      | hover-target  | unchanged               | yes            |
+    /// | .disabled       | nil           | unchanged               | yes            |
+    ///
+    /// `.onHover` callbacks fire under all policies — they're the
+    /// SwiftUI-style escape hatch the framework promises to keep
+    /// honouring even when auto-routing is disabled.
+    public func applyMouseMove(x: Int, y: Int, root: AttributeNode?, policy: MouseFocusPolicy) {
+        mousePosition = (x, y)
+        // Always notify .onHover transitions — this is what the
+        // .disabled escape hatch ultimately relies on.
+        fireHoverTransitions(x: x, y: y, root: root)
+
+        guard let root else {
+            mouseHoverID = nil
+            return
+        }
+
+        switch policy {
+        case .disabled:
+            mouseHoverID = nil
+        case .clickToLock, .clickOnly:
+            mouseHoverID = findFocusableAt(x: x, y: y, in: root)?.id
+        case .hoverFollows:
+            let hover = findFocusableAt(x: x, y: y, in: root)?.id
+            mouseHoverID = hover
+            if let hover {
+                keyboardFocusID = hover
+            }
+        }
+    }
+
+    /// Resolve the node that should receive a wheel event under the
+    /// active policy. Returns `nil` when the policy elects to drop the
+    /// event so the runtime can short-circuit routing.
+    ///
+    /// - `.clickToLock` / `.hoverFollows`: route to the focusable
+    ///   under the cursor. Falls back to keyboardFocusID when the
+    ///   cursor is over inert space.
+    /// - `.clickOnly`: route to keyboardFocusID. Wheel is part of the
+    ///   active document, not the cursor.
+    /// - `.disabled`: no auto-route. Returns nil; runtime drops.
+    public func wheelTargetID(x: Int, y: Int, root: AttributeNode?, policy: MouseFocusPolicy) -> NodeID? {
+        switch policy {
+        case .disabled:
+            return nil
+        case .clickOnly:
+            return keyboardFocusID
+        case .clickToLock, .hoverFollows:
+            guard let root else { return keyboardFocusID }
+            if let hit = findFocusableAt(x: x, y: y, in: root) {
+                return hit.id
+            }
+            return keyboardFocusID
+        }
+    }
+
+    /// Fire `.onHover` transitions for every registered hover handler
+    /// whose inside-rect state changed since the last move. Inside
+    /// rects without registered handlers are ignored — the framework
+    /// hover-target tracking is a separate concern (mouseHoverID).
+    private func fireHoverTransitions(x: Int, y: Int, root: AttributeNode?) {
+        guard let root else {
+            // Cursor left the view tree — leave-fire all currently
+            // hovered handlers and clear the bookkeeping set.
+            for id in hoveredHandlerIDs {
+                hoverHandlers[id]?(false)
+            }
+            hoveredHandlerIDs.removeAll(keepingCapacity: true)
+            return
+        }
+        var nowHovered: Set<NodeID> = []
+        collectHoveredHandlers(x: x, y: y, in: root, into: &nowHovered)
+
+        // Fire enter callbacks for newly entered rects.
+        for id in nowHovered.subtracting(hoveredHandlerIDs) {
+            hoverHandlers[id]?(true)
+        }
+        // Fire leave callbacks for rects we just exited.
+        for id in hoveredHandlerIDs.subtracting(nowHovered) {
+            hoverHandlers[id]?(false)
+        }
+        hoveredHandlerIDs = nowHovered
+    }
+
+    /// Walk the tree collecting IDs of nodes that have a registered
+    /// hover handler AND whose rect contains (x, y). Order does not
+    /// matter — the result is consumed as a Set.
+    private func collectHoveredHandlers(x: Int, y: Int, in node: AttributeNode, into result: inout Set<NodeID>) {
+        let r = node.rect
+        if hoverHandlers[node.id] != nil,
+           x >= r.x, x < r.x + r.width,
+           y >= r.y, y < r.y + r.height
+        {
+            result.insert(node.id)
+        }
+        for child in node.children {
+            collectHoveredHandlers(x: x, y: y, in: child, into: &result)
+        }
+    }
+
     /// Handle mouse click — transfer keyboard focus and invoke click handler.
     ///
     /// Two-phase lookup:
@@ -233,6 +354,19 @@ public final class FocusEngine {
         // No focusable under the cursor — try a click handler on any
         // node containing the click point. Walks deepest-first so a
         // row's onClick wins over its parent VStack's.
+        if let (target, handler) = findClickableAt(x: x, y: y, in: root) {
+            let relX = x - target.rect.x
+            let relY = y - target.rect.y
+            handler(relX, relY)
+        }
+    }
+
+    /// Click path under `MouseFocusPolicy.disabled`. Fires the
+    /// deepest registered `.onClick` handler under the cursor (if
+    /// any) WITHOUT promoting any node to keyboard focus and without
+    /// synthesising an Enter on focusables. The escape hatch's whole
+    /// point: framework auto-routing is off, callbacks still run.
+    public func fireClickHandlerOnly(x: Int, y: Int, root: AttributeNode) {
         if let (target, handler) = findClickableAt(x: x, y: y, in: root) {
             let relX = x - target.rect.x
             let relY = y - target.rect.y
@@ -331,10 +465,28 @@ public final class FocusEngine {
         clickHandlers[nodeID] = handler
     }
 
+    /// Register a hover handler for a node. Called during graph
+    /// construction by the `.onHover` modifier. The handler fires on
+    /// state transitions only (see `applyMouseMove`).
+    public func registerHoverHandler(for nodeID: NodeID, handler: @escaping (_ isHovering: Bool) -> Void) {
+        hoverHandlers[nodeID] = handler
+    }
+
+    /// True when the given node has a registered hover handler. Used
+    /// by harness code that needs to locate the hover-target node by
+    /// walking the tree.
+    public func hasHoverHandler(for nodeID: NodeID) -> Bool {
+        hoverHandlers[nodeID] != nil
+    }
+
     /// Clear all handlers — called at start of each frame before graph update.
     public func clearHandlers() {
         keyHandlers.removeAll(keepingCapacity: true)
         clickHandlers.removeAll(keepingCapacity: true)
+        hoverHandlers.removeAll(keepingCapacity: true)
+        // hoveredHandlerIDs is intentionally NOT cleared — it tracks
+        // cursor-inside state across frames so a node that survives
+        // the rebuild keeps its hover transition bookkeeping.
     }
 
     // MARK: - Queries

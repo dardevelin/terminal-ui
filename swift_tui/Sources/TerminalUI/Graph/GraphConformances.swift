@@ -114,6 +114,7 @@ extension ModifiedView: _GraphModified {
         case is any _OnChangeModifierProtocol: .onChange
         case is OnDisappearModifier: .onDisappear
         case is OnClickModifier: .onClick
+        case is OnHoverModifier: .onHover
         case let env as any _AnyEnvironmentModifier: .environment(env.apply(to:))
         default:
             #if DEBUG

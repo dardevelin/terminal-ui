@@ -191,6 +191,7 @@ extension NodeKind {
             case .onChange: "onChange"
             case .onDisappear: "onDisappear"
             case .onClick: "onClick"
+            case .onHover: "onHover"
             case .environment: "environment"
             }
         case .viewBody(let info):
@@ -272,6 +273,7 @@ public enum ModifierEffect {
     case onChange    // fires action when bound value changes (last value stored on node)
     case onDisappear // fires action when node is removed from the tree
     case onClick     // attaches click handler (handler stored on FocusEngine)
+    case onHover     // attaches hover handler (handler stored on FocusEngine)
     /// Environment-value setter. The closure applies the modifier's keyPath
     /// and value to a mutable `EnvironmentValues` during render so descendants
     /// observe the new value via `GraphContext.currentEnvironment`. Boxing as

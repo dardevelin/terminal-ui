@@ -379,6 +379,7 @@ public final class DebugPanel {
             case .onChange: kind = "chg"; detail = ""
             case .onDisappear: kind = "dis"; detail = ""
             case .onClick: kind = "clk"; detail = ""
+            case .onHover: kind = "hov"; detail = ""
             case .environment: kind = "env"; detail = ""
             }
             style = node.isDirty ? dirtyStyle : dimStyle

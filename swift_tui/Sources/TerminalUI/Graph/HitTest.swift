@@ -125,6 +125,7 @@ public struct HitResult {
             case .onChange: values.append(("modifier", "onChange"))
             case .onDisappear: values.append(("modifier", "onDisappear"))
             case .onClick: values.append(("modifier", "onClick"))
+            case .onHover: values.append(("modifier", "onHover"))
             case .environment: values.append(("modifier", "environment"))
             }
 
@@ -164,6 +165,7 @@ public struct HitResult {
                 case .onChange: return "onChange"
                 case .onDisappear: return "onDisappear"
                 case .onClick: return "onClick"
+                case .onHover: return "onHover"
                 case .environment: return "environment"
                 }
             }

@@ -319,26 +319,33 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         }
                     }
                     #endif
+                    let policy = GraphContext.currentEnvironment?.mouseFocusPolicy ?? .clickToLock
                     switch mouseEvent.kind {
                     case .press(.left):
-                        focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                        if policy == .disabled {
+                            // .disabled: no auto-focus promotion. Fire any
+                            // .onClick handler under the cursor, then stop.
+                            if let root = graph.root {
+                                focusEngine.fireClickHandlerOnly(x: mouseEvent.x, y: mouseEvent.y, root: root)
+                            }
+                        } else {
+                            focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                        }
                     case .moved, .drag:
-                        focusEngine.updateMouseHover(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                        focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: graph.root, policy: policy)
                     case .scrollUp:
-                        // Wheel-scroll routes to whatever is under the
-                        // cursor, NOT the keyboard-focused element. A user
-                        // hovering over a long preview while keyboard focus
-                        // is on the sidebar list expects the preview to
-                        // scroll. Falls back to keyboard-focus routing when
-                        // no focusable lives under the cursor (sparse pages).
+                        // Policy decides where the wheel lands:
+                        // .clickToLock / .hoverFollows  → focusable under cursor
+                        // .clickOnly                    → keyboard-focused view
+                        // .disabled                     → drop the event
                         let event = KeyEvent(key: .up)
                         for _ in 0..<3 {
-                            _ = routeWheelEvent(event, mouseEvent: mouseEvent)
+                            _ = routeWheelEvent(event, mouseEvent: mouseEvent, policy: policy)
                         }
                     case .scrollDown:
                         let event = KeyEvent(key: .down)
                         for _ in 0..<3 {
-                            _ = routeWheelEvent(event, mouseEvent: mouseEvent)
+                            _ = routeWheelEvent(event, mouseEvent: mouseEvent, policy: policy)
                         }
                     default:
                         break
@@ -425,11 +432,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// descends into siblings — eventually firing the keyboard-focused
     /// handler from a sibling tree, which is exactly the bug we're
     /// fixing.
-    private func routeWheelEvent(_ event: KeyEvent, mouseEvent: MouseEvent) -> Bool {
-        guard let root = graph.root,
-              let target = focusEngine.findFocusableUnderCursor(x: mouseEvent.x, y: mouseEvent.y, root: root)
-        else { return false }
-        return focusEngine.routeKeyEvent(event, root: root, startingFrom: target.id)
+    private func routeWheelEvent(_ event: KeyEvent, mouseEvent: MouseEvent, policy: MouseFocusPolicy) -> Bool {
+        guard let root = graph.root else { return false }
+        guard let targetID = focusEngine.wheelTargetID(x: mouseEvent.x, y: mouseEvent.y, root: root, policy: policy) else {
+            return false
+        }
+        return focusEngine.routeKeyEvent(event, root: root, startingFrom: targetID)
     }
 
     // MARK: - Key Event Handling

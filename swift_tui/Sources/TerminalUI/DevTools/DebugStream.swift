@@ -182,6 +182,7 @@ public final class DebugStream: @unchecked Sendable {
             case .onChange: kind = "onChange"; value = ""
             case .onDisappear: kind = "onDisappear"; value = ""
             case .onClick: kind = "onClick"; value = ""
+            case .onHover: kind = "onHover"; value = ""
             case .environment: kind = "environment"; value = ""
             }
         case .viewBody(let info):

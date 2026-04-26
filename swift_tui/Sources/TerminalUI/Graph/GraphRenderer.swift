@@ -681,6 +681,9 @@ public enum GraphRenderer {
         case .onClick:
             render(child, into: &buffer, context: ctx)
 
+        case .onHover:
+            render(child, into: &buffer, context: ctx)
+
         case .environment(let apply):
             // Push a modified EnvironmentValues for the duration of this
             // subtree. Descendants read via `GraphContext.currentEnvironment`
