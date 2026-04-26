@@ -73,4 +73,23 @@ public enum ANSICode {
             return "\(csi)48;2;\(r);\(g);\(b)m"
         }
     }
+
+    /// Build the SGR sequence enabling all `traits` set in the
+    /// option set. Caller pairs with `reset` (or another sequence
+    /// that resets) once the styled span ends. ECMA-48 SGR codes:
+    /// 1=bold, 2=dim, 3=italic, 4=underline, 7=inverse, 9=strikethrough.
+    public static func traits(_ traits: TextTraits) -> String {
+        guard !traits.isEmpty else { return "" }
+        var codes: [Int] = []
+        if traits.contains(.bold)          { codes.append(1) }
+        if traits.contains(.dim)           { codes.append(2) }
+        if traits.contains(.italic)        { codes.append(3) }
+        if traits.contains(.underline)     { codes.append(4) }
+        if traits.contains(.inverse)       { codes.append(7) }
+        if traits.contains(.strikethrough) { codes.append(9) }
+        // Single CSI-prefixed sequence with semicolon-joined params is
+        // the most compact form ECMA-48 allows; saves bytes over the
+        // wire for runs with multiple traits.
+        return "\(csi)\(codes.map(String.init).joined(separator: ";"))m"
+    }
 }
