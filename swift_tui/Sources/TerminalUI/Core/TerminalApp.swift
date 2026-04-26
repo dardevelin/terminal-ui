@@ -697,7 +697,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let buildStart = monotonicNanoseconds()
 
-        let needsWork = graph.hasDirtyNodes || previousBuffer == nil || needsRender
+        // Three-way fork:
+        //  1. First frame OR external structural signal (`needsRender`,
+        //     resize) → root rebuild via `update(from:)`.
+        //  2. Pure state mutation (Observation onChange fired,
+        //     dirtyQueue non-empty) → in-place drain. Skips
+        //     `buildView()` + reconciliation walk; only the affected
+        //     subtrees re-evaluate.
+        //  3. Nothing dirty → no graph work this frame.
+        //
+        // Reviewer (HYP-201) flagged that the runtime always took
+        // path (1). The drain path was tested at the graph level
+        // (HYP-126) but unreached on the production frame.
+        let firstFrame = previousBuffer == nil
+        let structuralRebuild = firstFrame || needsRender
+        let stateOnlyDirty = graph.hasDirtyNodes && !structuralRebuild
+        let needsWork = structuralRebuild || stateOnlyDirty
+        var graphChanged = false
 
         if needsWork {
             focusEngine.clearHandlers()
@@ -708,8 +724,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             GraphContext.currentEnvironment = env
             GraphContext.currentProposedSize = Size(width: size.cols, height: size.rows)
 
-            let view = buildView()
-            let graphChanged = graph.update(from: view)
+            if structuralRebuild {
+                let view = buildView()
+                graphChanged = graph.update(from: view)
+            } else {
+                // Pure state mutation — drain in place. Returns true
+                // when at least one node re-evaluated, which means
+                // the visible output may have changed.
+                graphChanged = graph.drain()
+            }
 
             // Rebuild focus index after graph changes
             if let root = graph.root {
