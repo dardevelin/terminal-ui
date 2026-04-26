@@ -213,79 +213,24 @@ final class AppState {
 
 nonisolated(unsafe) let state = AppState()
 
-// MARK: - Reusable Tab Item
-
-struct TabItem: TerminalView {
-    let label: String
-    let isSelected: Bool
-    let index: Int
-    let tabCount: Int
-    let onSelectTab: (Int) -> Void
-
-    var body: some TerminalView {
-        Text(isSelected ? "▸ \(label)" : "  \(label)")
-            .foreground(isSelected ? .white : .gray)
-            .focusable()
-            .onKeyPress { event in
-                switch event.key {
-                case .enter, .character(" "):
-                    onSelectTab(index)
-                    return .handled
-                case .right:
-                    if index + 1 < tabCount { onSelectTab(index + 1) }
-                    return .handled
-                case .left:
-                    if index > 0 { onSelectTab(index - 1) }
-                    return .handled
-                default:
-                    return .ignored
-                }
-            }
-    }
-}
-
 // MARK: - Title Bar
+//
+// Banner row only — the tab strip itself lives inside `TabView` so
+// keyboard nav (arrows + digits inside the bar; Tab to cross into
+// content) follows the framework primitive instead of a hand-rolled
+// 12-focusable-siblings strip.
 
 struct TitleBar: TerminalView {
-    let selectedTab: Int
-    let tabNames: [String]
-    let onSelectTab: (Int) -> Void
-
     var body: some TerminalView {
         HStack {
             Text("TerminalUI")
                 .foreground(.cyan)
                 .bold()
-            Text(" │ ")
-                .foreground(.gray)
-            ScrollView(.horizontal) {
-                HStack {
-                    ForEach(Array(tabNames.enumerated().map {
-                        TabEntry(index: $0.offset, name: $0.element)
-                    })) { entry in
-                        TabItem(
-                            label: entry.name,
-                            isSelected: selectedTab == entry.index,
-                            index: entry.index,
-                            tabCount: tabNames.count,
-                            onSelectTab: onSelectTab
-                        )
-                        Text(" ")
-                    }
-                }
-            }
-            Text(" │ ")
-                .foreground(.gray)
+            Spacer()
             Text("v0.6")
                 .foreground(.gray)
         }
     }
-}
-
-struct TabEntry: Identifiable {
-    let index: Int
-    let name: String
-    var id: Int { index }
 }
 
 // MARK: - Tab 1: Build Pipeline
@@ -837,31 +782,8 @@ struct ScopedRow: TerminalView {
     }
 }
 
-// MARK: - Active Tab Router
-// Renders the selected tab without using if/else chains or switch in a result builder.
-// Deep ConditionalView nesting causes index-out-of-range during graph reconciliation.
-
-struct ActiveTab: TerminalView {
-    let index: Int
-    let state: AppState
-
-    var body: some TerminalView {
-        // Each case is a full VStack — the graph sees a single composite child
-        // that changes type when tabs switch, triggering a clean rebuild.
-        if index == 0 { BuildTab(state: state) }
-        else if index == 1 { LogsTab(logs: state.logs) }
-        else if index == 2 { ControlsTab(state: state) }
-        else if index == 3 { ChartsTab(state: state) }
-        else if index == 4 { HeatmapTab(state: state) }
-        else if index == 5 { ProcessListTab(state: state) }
-        else if index == 6 { TableTab(state: state) }
-        else if index == 7 { DiffTab() }
-        else if index == 8 { HunkDiffTab() }
-        else if index == 9 { TreeTab() }
-        else if index == 10 { TextAreaTab(state: state) }
-        else { FocusScopesTab() }
-    }
-}
+// (Demo's tab content lives inside `App.body` directly via the
+// framework's TabView builder — no router shim needed.)
 
 // MARK: - Help Overlay
 
@@ -914,25 +836,46 @@ struct StatusLine: TerminalView {
 struct App: TerminalView {
     let state: AppState
 
-    static let tabNames = [
-        "Build", "Logs", "Controls", "Charts", "Heatmap",
-        "Processes", "Table", "Diff", "HunkDiff", "Tree", "Editor", "Scopes",
-    ]
+    static let tabCount = 12
+
+    /// Bridge AppState's `@Observable selectedTab` to a `Binding<Int>` —
+    /// `TabView(selection:)` writes through this. Construct anew each
+    /// body call; closures capture `state` by reference.
+    private var selection: Binding<Int> {
+        Binding(
+            get: { state.selectedTab },
+            set: { state.selectedTab = $0 }
+        )
+    }
 
     var body: some TerminalView {
         VStack {
-            TitleBar(
-                selectedTab: state.selectedTab,
-                tabNames: Self.tabNames,
-                onSelectTab: { state.selectedTab = $0 }
-            )
+            TitleBar()
             Divider()
 
-            ActiveTab(index: state.selectedTab, state: state)
+            // The framework's TabView places one focusable on the tab
+            // bar (arrows + digits cycle inside) and then yields focus
+            // to its content via Tab/Shift+Tab. The 12-focusable strip
+            // and the hand-rolled active-tab router are gone — fewer
+            // moving parts, correct keyboard nav by default.
+            TabView(selection: selection) {
+                Tab("Build")     { BuildTab(state: state) }
+                Tab("Logs")      { LogsTab(logs: state.logs) }
+                Tab("Controls")  { ControlsTab(state: state) }
+                Tab("Charts")    { ChartsTab(state: state) }
+                Tab("Heatmap")   { HeatmapTab(state: state) }
+                Tab("Processes") { ProcessListTab(state: state) }
+                Tab("Table")     { TableTab(state: state) }
+                Tab("Diff")      { DiffTab() }
+                Tab("HunkDiff")  { HunkDiffTab() }
+                Tab("Tree")      { TreeTab() }
+                Tab("Editor")    { TextAreaTab(state: state) }
+                Tab("Scopes")    { FocusScopesTab() }
+            }
 
             Spacer()
             Divider()
-            StatusLine(elapsed: state.elapsed, tab: state.selectedTab, tabCount: Self.tabNames.count)
+            StatusLine(elapsed: state.elapsed, tab: state.selectedTab, tabCount: Self.tabCount)
         }
         .padding(1)
         .border(.rounded)
@@ -968,7 +911,7 @@ struct App: TerminalView {
             case .character("-"): state.selectedTab = 10
             case .character("="): state.selectedTab = 11
             case .character("["): state.selectedTab = max(0, state.selectedTab - 1)
-            case .character("]"): state.selectedTab = min(App.tabNames.count - 1, state.selectedTab + 1)
+            case .character("]"): state.selectedTab = min(App.tabCount - 1, state.selectedTab + 1)
             case .character("?"), .character("h"):
                 state.showHelp.toggle()
             default: break

@@ -778,11 +778,11 @@ def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
 
 
 def storybook_bufferview_blits_demo_cells(app: Client) -> None:
-    """`BufferView` page (36): a 24x4 demo CellBuffer is built in code and
-    blitted into the view's rect. Smoke proof that all four rows of the
-    source buffer appear verbatim in the rendered preview — the basic
-    BufferView contract."""
-    app.goto_storybook_page(37)
+    """`BufferView` page (Display group, index 22): a 24x4 demo CellBuffer
+    is built in code and blitted into the view's rect. Smoke proof that
+    all four rows of the source buffer appear verbatim in the rendered
+    preview — the basic BufferView contract."""
+    app.goto_storybook_page(22)
     preview = app.preview_text()
     for needle in ("BufferView demo", "CellBuffer -> blit", "12345 67890"):
         assert_true(needle in preview,
@@ -967,12 +967,14 @@ def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
 
 
 def demo_app_renders(app: Client) -> None:
-    """Plain Demo smoke — renders its title bar and tab row without
-    crashing. Looks for the app's "TerminalUI" title and one of the tab
-    labels to catch both a blank screen AND a broken header row."""
-    snap = app.cells(rect=[0, 0, 80, 4])
-    assert_contains(snap, "TerminalUI", context="Demo title cell")
-    assert_contains(snap, "Build", context="Demo Build tab label")
+    """Plain Demo smoke — renders its title bar and TabView strip
+    without crashing. Looks for the "TerminalUI" banner (row 2-3) and
+    one of the tab labels (row 4) to catch both a blank screen AND a
+    broken tab strip."""
+    snap_title = app.cells(rect=[0, 0, 80, 4])
+    assert_contains(snap_title, "TerminalUI", context="Demo title cell")
+    snap_tabs = app.cells(rect=[0, 4, 80, 1])
+    assert_contains(snap_tabs, "Build", context="Demo Build tab label")
 
 
 # ---------------------------------------------------------------------------
