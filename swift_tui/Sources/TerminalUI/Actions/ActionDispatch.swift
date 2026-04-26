@@ -1,0 +1,81 @@
+/// Dispatches input bindings into action invocations by walking the
+/// node up to root, collecting every `_actionScope` it finds, and
+/// matching the binding against the aggregate.
+///
+/// Innermost-first traversal: the leaf's scope is consulted before its
+/// ancestors. A focused editor can shadow the app's Ctrl+C without
+/// editing the app's scope. Disabled actions do not match (they still
+/// surface in readout consumers — help, menu — but firing is gated on
+/// `Action.isEnabled`).
+///
+/// The dispatcher is a static utility — no per-app state. The runtime
+/// supplies the focused node; tests supply any node. Same code path.
+@MainActor
+public enum ActionDispatch {
+
+    /// Walk node→root collecting scopes, look up `binding`, fire the
+    /// bound action's `perform` closure if found and enabled. Returns
+    /// `true` when the binding fired so the runtime knows to short-
+    /// circuit default routing.
+    @discardableResult
+    public static func dispatch(
+        binding: InputBinding,
+        from node: AttributeNode
+    ) -> Bool {
+        for scope in scopeChain(from: node) {
+            if let bound = scope.boundAction(for: binding) {
+                bound.action.perform()
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Fire an action by its ID — bypasses any input device. Used by
+    /// MCP, the debugger, scripting, and the test harness to invoke
+    /// actions without simulating a chord.
+    @discardableResult
+    public static func invoke(
+        id: ActionID,
+        from node: AttributeNode
+    ) -> Bool {
+        for scope in scopeChain(from: node) {
+            if let action = scope.action(by: id), action.isEnabled {
+                action.perform()
+                return true
+            }
+        }
+        return false
+    }
+
+    /// All actions reachable from `node` walking up to root. Order:
+    /// innermost-first. Readout consumers (HelpOverlay,
+    /// CommandPalette, MenuBar, AccessibilityRotor) call this to
+    /// render their listings.
+    public static func reachableActions(from node: AttributeNode) -> [Action] {
+        var seen: Set<ActionID> = []
+        var result: [Action] = []
+        for scope in scopeChain(from: node) {
+            for action in scope.allActions where seen.insert(action.id).inserted {
+                result.append(action)
+            }
+        }
+        return result
+    }
+
+    // MARK: - Internals
+
+    /// Walk `node` up to root yielding each `_actionScope` we find,
+    /// innermost first. Nodes without an attached scope are skipped.
+    private static func scopeChain(from node: AttributeNode) -> [ActionScope] {
+        var scopes: [ActionScope] = []
+        var current: AttributeNode? = node
+        while let n = current {
+            if let scope = n._actionScope {
+                scopes.append(scope)
+            }
+            current = n.parent
+        }
+        return scopes
+    }
+}
