@@ -30,6 +30,10 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "TerminalUI", targets: ["TerminalUI"]),
+        // TerminalInk: zero-dep styled-output library for tooling /
+        // CLIs / non-render contexts. Standalone target so consumers
+        // can use it without pulling the full TUI runtime.
+        .library(name: "TerminalInk", targets: ["TerminalInk"]),
     ],
     dependencies: [
         // DocC — documentation generator. Only used at `swift package generate-documentation` time.
@@ -40,6 +44,14 @@ let package = Package(
         .target(
             name: "TerminalUIConfig",
             path: "Sources/TerminalUIConfig",
+            swiftSettings: strictSettings
+        ),
+        // TerminalInk — styled output library (color model, capability
+        // detection, ANSI SGR codes). Zero deps. Used by tooling that
+        // needs styled stdout/stderr without a full render runtime.
+        .target(
+            name: "TerminalInk",
+            path: "Sources/TerminalInk",
             swiftSettings: strictSettings
         ),
         .target(
@@ -83,6 +95,12 @@ let package = Package(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],
             path: "Tests/TerminalUITests",
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalInkTests",
+            dependencies: ["TerminalInk"],
+            path: "Tests/TerminalInkTests",
             swiftSettings: strictSettings
         ),
     ]
