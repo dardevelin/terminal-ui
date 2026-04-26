@@ -307,21 +307,29 @@ enum TreeViewHelpers {
         childrenKeyPath: KeyPath<Data.Element, Data?>,
         expandedIDs: Set<AnyHashableID>
     ) -> [FlatRow<Data.Element>] where Data.Element: Identifiable, Data.Element.ID: Sendable {
+        // Walk the source RandomAccessCollection in-place. RAC gives
+        // O(1) .count and O(1) integer-offset indexing, so we never
+        // need to materialize an Array just to enumerate it. The win
+        // matters when callers pass lazy RACs that compute elements
+        // on subscript — the old `Array(data)` evaluated every one.
         var result: [FlatRow<Data.Element>] = []
-        let items = Array(data)
-
-        for (i, item) in items.enumerated() {
-            let isLast = (i == items.count - 1)
+        let total = data.count
+        let lastIndex = total - 1
+        var offset = 0
+        var idx = data.startIndex
+        while offset < total {
             flattenNode(
-                item,
+                data[idx],
                 depth: 0,
-                isLast: isLast,
+                isLast: offset == lastIndex,
                 ancestorHasNext: [],
                 parentID: nil,
                 childrenKeyPath: childrenKeyPath,
                 expandedIDs: expandedIDs,
                 into: &result
             )
+            offset += 1
+            idx = data.index(after: idx)
         }
         return result
     }
@@ -346,29 +354,34 @@ enum TreeViewHelpers {
             flatIndex: flatIndex
         ))
 
-        // Lazy: only evaluate children of expanded nodes
+        // Short-circuit: collapsed branches contribute no rows and we
+        // don't recurse into them.
         let itemID = AnyHashableID(item.id)
         guard expandedIDs.contains(itemID) else { return }
         guard let children = item[keyPath: childrenKeyPath] else { return }
-        let childArray = Array(children)
-        guard !childArray.isEmpty else { return }
+        let childCount = children.count
+        guard childCount > 0 else { return }
 
         // Build ancestorHasNext for children: current level contributes !isLast
         var childAncestorHasNext = ancestorHasNext
         childAncestorHasNext.append(!isLast)
 
-        for (i, child) in childArray.enumerated() {
-            let childIsLast = (i == childArray.count - 1)
+        let lastChildIndex = childCount - 1
+        var childOffset = 0
+        var childIdx = children.startIndex
+        while childOffset < childCount {
             flattenNode(
-                child,
+                children[childIdx],
                 depth: depth + 1,
-                isLast: childIsLast,
+                isLast: childOffset == lastChildIndex,
                 ancestorHasNext: childAncestorHasNext,
                 parentID: itemID,
                 childrenKeyPath: childrenKeyPath,
                 expandedIDs: expandedIDs,
                 into: &result
             )
+            childOffset += 1
+            childIdx = children.index(after: childIdx)
         }
     }
 
