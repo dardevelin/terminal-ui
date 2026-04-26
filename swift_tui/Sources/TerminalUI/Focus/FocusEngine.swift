@@ -585,6 +585,18 @@ public final class FocusEngine {
         return findNodeRecursive(id: id, in: root)
     }
 
+    /// The currently keyboard-focused node, or `nil` if no focusable
+    /// is selected (e.g. the app has no focusables yet, or focus was
+    /// just reset). Falls back to the root when a focused-id is set
+    /// but the node has been detached — the caller can still walk to
+    /// root from the root itself, so action dispatch finds outer
+    /// scopes even with stale focus state.
+    public func focusedNode(in root: AttributeNode?) -> AttributeNode? {
+        guard let root else { return nil }
+        guard let id = keyboardFocusID else { return root }
+        return findNode(id: id, in: root) ?? root
+    }
+
     private func findNodeRecursive(id: NodeID, in node: AttributeNode) -> AttributeNode? {
         if node.id == id { return node }
         for child in node.children {

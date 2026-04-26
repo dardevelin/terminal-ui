@@ -106,6 +106,50 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let keyBindings = KeyBindings()
     public let focusEngine = FocusEngine()
 
+    /// Set to `true` by the framework's default `app.quit` action when
+    /// it fires. The event loop polls this each iteration and exits
+    /// the runtime cleanly. Surfaces as an instance var rather than a
+    /// closure capture so action handlers (which are `@Sendable`) can
+    /// signal without holding a reference to the loop's local `running`
+    /// flag.
+    private var quitRequested: Bool = false
+
+    /// Build the framework's default action scope for this runtime.
+    /// Quit actions write `quitRequested` so the event loop sees the
+    /// signal on its next iteration. Built fresh per dispatch so the
+    /// closures don't outlive the runtime instance.
+    private func makeFrameworkDefaults() -> ActionScope {
+        // Capture `self` weakly through a runtime-side mutable flag so
+        // the @Sendable perform closure stays Sendable; setting an
+        // instance Bool from any thread is safe under the @MainActor
+        // contract that runs the dispatch.
+        let signal = QuitSignal()
+        // The quit handler trampolines through the QuitSignal box
+        // and the runtime polls signal.fired in the event loop.
+        // Nesting this inside makeFrameworkDefaults() means the
+        // box is recreated per call — fine, only the most-recent
+        // dispatch can fire the signal anyway.
+        let handler: @Sendable () -> Void = { signal.fire() }
+        let scope = ActionScope.frameworkDefaults(
+            quit: handler,
+            dismissOrQuit: handler  // today: same as quit; modal logic later
+        )
+        // Stash the signal on self so the event loop can poll it.
+        // Overwrites the previous one; only the last-dispatched
+        // signal matters because the loop polls every iteration.
+        self.pendingQuitSignal = signal
+        return scope
+    }
+
+    private final class QuitSignal: @unchecked Sendable {
+        private let lock = NSLock()
+        private var _fired = false
+        func fire() { lock.lock(); _fired = true; lock.unlock() }
+        var fired: Bool { lock.lock(); defer { lock.unlock() }; return _fired }
+    }
+
+    private var pendingQuitSignal: QuitSignal?
+
     #if DEBUG
     /// Remote-control server. Nil unless `.terminalui/terminalui.toml`
     /// enables the `remote_control` feature — zero overhead otherwise. Pumped
@@ -285,17 +329,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
             #endif
             let events = eventQueue.drain()
             for event in events {
-                // Universal Ctrl+C — equivalent to the SIGINT we disabled via
-                // `ISIG` in raw mode. Users expect Ctrl+C to kill any TUI;
-                // apps can still intercept it before this check by returning
-                // true from onEvent for `.character("c")` with `.ctrl` — but
-                // the default has to be "it quits".
-                if case .key(let k) = event,
-                   k.key == .character("c"),
-                   k.modifiers.contains(.ctrl) {
-                    running = false
-                    break
-                }
+                // Universal Ctrl+C is now an action graph default —
+                // `Action.quit` bound to `.keyboard(.character("c"), [.ctrl])`
+                // in `ActionScope.frameworkDefaults`. The runtime polls
+                // `pendingQuitSignal` after each event to see if the
+                // action fired during dispatch and tears down cleanly.
                 let shouldContinue = onEvent(event)
 
                 switch event {
@@ -303,6 +341,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     tracer.traceInput(keyEvent)
                     handleKeyEvent(keyEvent)
                     needsRender = true
+                    // Poll the framework-default quit signal — if the
+                    // dispatch fired Action.quit (or Action.dismissOrQuit
+                    // when no modal is up) we exit cleanly here.
+                    if pendingQuitSignal?.fired == true {
+                        running = false
+                        break
+                    }
 
                 case .mouse(let mouseEvent):
                     #if DEBUG
@@ -527,6 +572,25 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // If the handler consumes it (e.g., List handles arrow keys), stop.
         // Only if unhandled do we use arrow keys for focus navigation.
         let handledByView = focusEngine.routeKeyEvent(keyEvent, root: graph.root)
+
+        // SECOND: action graph dispatch. Walks the focus chain from the
+        // focused node up to the root, accumulating ActionScopes from
+        // every `.actions { ... }` modifier; framework defaults
+        // (Ctrl+C → quit, Esc → dismissOrQuit) sit outermost so user
+        // scopes shadow them via the standard innermost-wins rule.
+        // Mouse/gesture/voice/accessibility dispatch will route through
+        // the same path with different InputBinding cases.
+        if !handledByView,
+           let focused = focusEngine.focusedNode(in: graph.root) {
+            let binding: InputBinding = .keyboard(keyEvent.key, keyEvent.modifiers)
+            let defaults = makeFrameworkDefaults()
+            let firedAction = ActionDispatch.dispatch(
+                binding: binding,
+                from: focused,
+                frameworkDefaults: defaults
+            )
+            if firedAction { return }
+        }
 
         if !handledByView {
             // Focus navigation — Tab/Shift+Tab always navigate.

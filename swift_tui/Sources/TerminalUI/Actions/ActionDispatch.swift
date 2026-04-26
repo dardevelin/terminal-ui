@@ -17,12 +17,18 @@ public enum ActionDispatch {
     /// bound action's `perform` closure if found and enabled. Returns
     /// `true` when the binding fired so the runtime knows to short-
     /// circuit default routing.
+    ///
+    /// `frameworkDefaults` is appended at the end of the chain (outermost)
+    /// so user-supplied bindings shadow framework defaults via the
+    /// standard innermost-wins rule. Pass `nil` for tests / scopes
+    /// where defaults aren't relevant.
     @discardableResult
     public static func dispatch(
         binding: InputBinding,
-        from node: AttributeNode
+        from node: AttributeNode,
+        frameworkDefaults: ActionScope? = nil
     ) -> Bool {
-        for scope in scopeChain(from: node) {
+        for scope in scopeChain(from: node, frameworkDefaults: frameworkDefaults) {
             if let bound = scope.boundAction(for: binding) {
                 bound.action.perform()
                 return true
@@ -37,9 +43,10 @@ public enum ActionDispatch {
     @discardableResult
     public static func invoke(
         id: ActionID,
-        from node: AttributeNode
+        from node: AttributeNode,
+        frameworkDefaults: ActionScope? = nil
     ) -> Bool {
-        for scope in scopeChain(from: node) {
+        for scope in scopeChain(from: node, frameworkDefaults: frameworkDefaults) {
             if let action = scope.action(by: id), action.isEnabled {
                 action.perform()
                 return true
@@ -52,10 +59,13 @@ public enum ActionDispatch {
     /// innermost-first. Readout consumers (HelpOverlay,
     /// CommandPalette, MenuBar, AccessibilityRotor) call this to
     /// render their listings.
-    public static func reachableActions(from node: AttributeNode) -> [Action] {
+    public static func reachableActions(
+        from node: AttributeNode,
+        frameworkDefaults: ActionScope? = nil
+    ) -> [Action] {
         var seen: Set<ActionID> = []
         var result: [Action] = []
-        for scope in scopeChain(from: node) {
+        for scope in scopeChain(from: node, frameworkDefaults: frameworkDefaults) {
             for action in scope.allActions where seen.insert(action.id).inserted {
                 result.append(action)
             }
@@ -67,7 +77,12 @@ public enum ActionDispatch {
 
     /// Walk `node` up to root yielding each `_actionScope` we find,
     /// innermost first. Nodes without an attached scope are skipped.
-    private static func scopeChain(from node: AttributeNode) -> [ActionScope] {
+    /// `frameworkDefaults`, if provided, is appended at the end so it
+    /// behaves as the outermost scope — user bindings shadow defaults.
+    private static func scopeChain(
+        from node: AttributeNode,
+        frameworkDefaults: ActionScope?
+    ) -> [ActionScope] {
         var scopes: [ActionScope] = []
         var current: AttributeNode? = node
         while let n = current {
@@ -75,6 +90,9 @@ public enum ActionDispatch {
                 scopes.append(scope)
             }
             current = n.parent
+        }
+        if let defaults = frameworkDefaults {
+            scopes.append(defaults)
         }
         return scopes
     }
