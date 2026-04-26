@@ -1,4 +1,4 @@
-public enum Key: Equatable, Sendable {
+public enum Key: Hashable, Sendable {
     case character(Character)
     case enter
     case tab
@@ -40,7 +40,7 @@ public struct KeyEvent: Sendable {
     }
 }
 
-public struct KeyModifiers: OptionSet, Sendable {
+public struct KeyModifiers: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
