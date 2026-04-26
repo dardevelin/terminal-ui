@@ -171,6 +171,13 @@ class Client:
         self._rx_buffer = b""
         self._connect_timeout = connect_timeout
         self._read_timeout = read_timeout
+        # Optional master-PTY file descriptor for raw-byte injection. Set
+        # by the runner after spawn so `paste()` can write
+        # bracketed-paste sequences directly to the spawned app's stdin
+        # — the JSON-RPC `send_text` path can't synthesise the
+        # ESC[200~/ESC[201~ wrappers because they're a TTY-level protocol,
+        # not an InputParser-level one.
+        self._master_fd: Optional[int] = None
 
     # -- connection --
 
@@ -257,6 +264,32 @@ class Client:
         """Inject each character as a key event. Newline becomes ``enter``,
         tab becomes ``tab``."""
         self._call("send_text", text=text)
+
+    def attach_pty(self, master_fd: int) -> None:
+        """Wire the spawned app's master-PTY file descriptor so ``paste()``
+        can write bracketed-paste sequences directly into the app's stdin.
+        The runner calls this after spawn; tests invoking ``Client``
+        without the runner (rare) can pass their own FD."""
+        self._master_fd = master_fd
+
+    def paste(self, text: str) -> None:
+        """Simulate a bracketed-paste at the OS level by writing
+        ``ESC[200~<text>ESC[201~`` to the master PTY. The framework's
+        InputParser recognises the markers and delivers a single
+        ``KeyEvent.paste(text)`` to the focused view.
+
+        Use this anywhere a real OS paste would happen: testing
+        PromptInputDraft's collapse logic, asserting the framework's
+        bracketed-paste guard rejects malformed sequences, etc.
+        Single-character "send_text" can't reproduce paste semantics
+        because each character arrives as a typed event, not a paste
+        burst — bracketed paste is what disambiguates the two.
+        """
+        if self._master_fd is None:
+            raise RemoteError("paste() requires attach_pty(master_fd) — runner hooks this up automatically")
+        # ESC[200~ start, ESC[201~ end. Bytes go straight to stdin.
+        payload = f"\x1b[200~{text}\x1b[201~".encode("utf-8")
+        os.write(self._master_fd, payload)
 
     def mouse_move(self, x: int, y: int, *modifiers: str) -> None:
         """Inject a mouse-move event at (x, y). 0-indexed cell coordinates.

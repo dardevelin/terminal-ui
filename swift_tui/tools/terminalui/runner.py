@@ -121,6 +121,9 @@ def spawn_and_connect(target: str,
 
     try:
         client = _wait_for_client(proc.pid, timeout=connect_timeout)
+        # Hand the master FD to the client so `paste()` can write
+        # bracketed-paste sequences straight into the app's stdin.
+        client.attach_pty(master)
         yield proc, client
     finally:
         try:
