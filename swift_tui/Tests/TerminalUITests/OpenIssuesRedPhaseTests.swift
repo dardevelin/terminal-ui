@@ -67,10 +67,7 @@ private struct CountingCollection: RandomAccessCollection {
 @MainActor
 struct ListVirtualizationTests {
 
-    @Test(
-        "rendering a 10-row viewport over 10,000 items must NOT touch all items",
-        .disabled("RED — pinning HYP-115 List virtualization gap. Today List.renderList calls Array(data) at List.swift:51, materializing the entire sequence. Re-enable in the green phase that adds a virtualizing materialize helper.")
-    )
+    @Test("rendering a 10-row viewport over 10,000 items must NOT touch all items")
     func listShouldNotMaterializeWholeSequence() {
         resetGraphContext()
         let counter = AccessCounter()

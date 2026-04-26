@@ -48,10 +48,22 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     }
 
     private func renderList(visibleCount: Int) -> some TerminalView {
-        let elements = Array(data)
-        let total = elements.count
+        // Materialize ONLY the visible window. `data` is a
+        // RandomAccessCollection, so .count and integer-offset indexing
+        // are O(1); we never need to walk every element. The selected-
+        // index lookup uses firstIndex(where:) on the lazy view, which
+        // short-circuits on first match.
+        let total = data.count
         let selectedID = selection?.get()
-        let selectedIndex = selectedID.flatMap { id in elements.firstIndex(where: { $0.id == id }) } ?? 0
+        let selectedIndex: Int = {
+            guard let id = selectedID else { return 0 }
+            // Walk from start; stops at first match. Bounded by total
+            // only when the selected element is at the end.
+            for (i, element) in data.enumerated() where element.id == id {
+                return i
+            }
+            return 0
+        }()
 
         // Get stored scroll offset or compute from scratch
         var scrollOffset = scroll?.get() ?? 0
@@ -69,7 +81,15 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         let indicatorLines = (hasUpIndicator ? 1 : 0) + (hasDownIndicator ? 1 : 0)
         let itemLines = max(1, visibleCount - indicatorLines)
 
-        let slice = elements.dropFirst(scrollOffset).prefix(itemLines)
+        // Materialize only the visible window. RandomAccessCollection's
+        // O(1) integer-offset index makes this constant-time per item;
+        // the loop walks only `windowSize` elements regardless of total.
+        let windowSize = min(itemLines, max(0, total - scrollOffset))
+        let visibleItems: [(Int, Data.Element)] = (0..<windowSize).map { offset in
+            let absoluteIndex = scrollOffset + offset
+            let idx = data.index(data.startIndex, offsetBy: absoluteIndex)
+            return (absoluteIndex, data[idx])
+        }
 
         return VStack {
             if hasUpIndicator {
@@ -77,13 +97,13 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                     .foreground(.gray)
             }
 
-            ForEach(Array(slice.enumerated().map { (offset, element) in
+            ForEach(visibleItems.map { (absoluteIndex, element) in
                 ListItem(
-                    index: scrollOffset + offset,
+                    index: absoluteIndex,
                     element: element,
                     isSelected: element.id == selectedID
                 )
-            })) { item in
+            }) { item in
                 HStack {
                     Text(item.isSelected ? "▸ " : "  ")
                         .foreground(item.isSelected ? .cyan : .gray)
@@ -101,53 +121,64 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         .focusable()
         .onClick { [selection] _, relY in
             guard let sel = selection else { return }
-            let elements = Array(data)
-            let total = elements.count
+            let total = data.count
             guard total > 0 else { return }
             let hasUpInd = (scroll?.get() ?? 0) > 0
             let rowOffset = hasUpInd ? relY - 1 : relY
             let itemIndex = (scroll?.get() ?? 0) + rowOffset
             if itemIndex >= 0 && itemIndex < total {
-                sel.set(elements[itemIndex].id)
+                let idx = data.index(data.startIndex, offsetBy: itemIndex)
+                sel.set(data[idx].id)
             }
         }
         .onKeyPress { [selection, visibleCount] event in
             guard let sel = selection else { return .ignored }
-            let elements = Array(data)
-            let total = elements.count
+            let total = data.count
             guard total > 0 else { return .ignored }
 
-            let currentIdx = sel.get().flatMap { id in
-                elements.firstIndex(where: { $0.id == id })
-            } ?? 0
+            // firstIndex(where:) walks until match — short-circuits on
+            // first hit; bounded by total only when the selection is
+            // at the end. No full materialization.
+            let currentIdx: Int = {
+                guard let id = sel.get() else { return 0 }
+                for (i, element) in data.enumerated() where element.id == id {
+                    return i
+                }
+                return 0
+            }()
+
+            // Helper: O(1) element access at a given absolute index.
+            func element(at absoluteIndex: Int) -> Data.Element {
+                data[data.index(data.startIndex, offsetBy: absoluteIndex)]
+            }
 
             switch event.key {
             case .up:
                 let newIdx = max(0, currentIdx - 1)
-                sel.set(elements[newIdx].id)
+                sel.set(element(at: newIdx).id)
                 return .handled
 
             case .down:
                 let newIdx = min(total - 1, currentIdx + 1)
-                sel.set(elements[newIdx].id)
+                sel.set(element(at: newIdx).id)
                 return .handled
 
             case .pageUp:
                 let newIdx = max(0, currentIdx - visibleCount)
-                sel.set(elements[newIdx].id)
+                sel.set(element(at: newIdx).id)
                 return .handled
 
             case .pageDown:
                 let newIdx = min(total - 1, currentIdx + visibleCount)
-                sel.set(elements[newIdx].id)
+                sel.set(element(at: newIdx).id)
                 return .handled
 
             case .home:
-                sel.set(elements.first?.id)
+                sel.set(data.first?.id)
                 return .handled
 
             case .end:
-                sel.set(elements.last?.id)
+                sel.set(data.last?.id)
                 return .handled
 
             default:
