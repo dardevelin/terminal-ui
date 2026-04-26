@@ -189,9 +189,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #endif
     }
 
-    public func run() async {
+    public func run() async throws {
         Terminal.installResizeHandler()
-        Terminal.enableRawMode()
+        // Raw-mode setup can fail when stdin isn't a TTY (CI, headless,
+        // shell pipe). Propagate as a typed error so callers — and the
+        // default @main shim — can decide whether to abort or fall back.
+        // Aborting before alternate-screen entry keeps the terminal
+        // state pristine for the failure message.
+        guard Terminal.enableRawMode() else {
+            throw TerminalRuntimeError.rawModeUnavailable
+        }
         Terminal.enterAlternateScreen()
         Terminal.enableMouseTracking()
         Terminal.enableBracketedPaste()
@@ -947,6 +954,21 @@ public final class TerminalRuntime<RootView: TerminalView> {
 extension TerminalRuntime: RemoteControlRuntime {}
 #endif
 
+// MARK: - Runtime errors
+
+/// Thrown by `TerminalRuntime.run()` when the framework can't bring
+/// the terminal up cleanly. App templates that always run on a TTY
+/// can let it propagate to `@main`; apps that handle non-TTY
+/// environments (CI, headless tests, pipe stdin) catch it and fall
+/// back to a non-interactive mode.
+public enum TerminalRuntimeError: Error, Equatable {
+    /// `Terminal.enableRawMode()` returned false — `tcgetattr` or
+    /// `tcsetattr` failed (typically because stdin isn't a TTY).
+    /// Without raw mode the input parser can't deliver per-keystroke
+    /// events; running the loop anyway would silently break input.
+    case rawModeUnavailable
+}
+
 // MARK: - Quit signal + framework defaults helper
 //
 // Lifted out of `TerminalRuntime<RootView>` so the @Sendable closure
@@ -1017,7 +1039,23 @@ extension TerminalAppProtocol {
             onEvent: { onEvent($0) },
             content: { content() }
         )
-        await runtime.run()
+        // Default @main shim: surface raw-mode failure to stderr and
+        // exit with status 1. App authors who want richer non-TTY
+        // handling can implement their own @main calling runtime.run()
+        // and catching TerminalRuntimeError directly.
+        do {
+            try await runtime.run()
+        } catch TerminalRuntimeError.rawModeUnavailable {
+            FileHandle.standardError.write(Data(
+                "TerminalUI: stdin is not a TTY; raw mode unavailable. Run from a terminal.\n".utf8
+            ))
+            exit(1)
+        } catch {
+            FileHandle.standardError.write(Data(
+                "TerminalUI: runtime error: \(error)\n".utf8
+            ))
+            exit(1)
+        }
     }
 }
 
