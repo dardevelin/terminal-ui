@@ -86,6 +86,10 @@ final class AppState {
     var editorText: String = "// Welcome to TerminalUI\n// Try editing this text!\n\nfunc hello() {\n    print(\"Hello, world!\")\n}\n"
     var editorState: TextAreaState = TextAreaState()
 
+    // TreeView selection — Binding wired in TreeTab so the selection
+    // cursor visibly tracks the focused row.
+    var treeSelection: String? = nil
+
     // Interactive controls state
     var searchText: String = ""
     var projectName: String = "swift_tui"
@@ -701,6 +705,8 @@ struct FileItem: Identifiable {
 }
 
 struct TreeTab: TerminalView {
+    let state: AppState
+
     var body: some TerminalView {
         VStack {
             Text("Tree View — File Browser")
@@ -708,7 +714,15 @@ struct TreeTab: TerminalView {
             Text("  ↑↓/mouse: navigate  →/Enter: expand  ←: collapse  Ctrl+G: inspector")
                 .foreground(.gray)
             Divider()
-            TreeView(FileItem.sampleTree, children: \.children, visibleCount: 20) { item in
+            TreeView(
+                FileItem.sampleTree,
+                children: \.children,
+                selection: Binding(
+                    get: { state.treeSelection },
+                    set: { state.treeSelection = $0 }
+                ),
+                visibleCount: 20
+            ) { item in
                 Text(item.name)
                     .foreground(item.children != nil ? .cyan : .default)
             }
@@ -868,7 +882,7 @@ struct App: TerminalView {
                 Tab("Table")     { TableTab(state: state) }
                 Tab("Diff")      { DiffTab() }
                 Tab("HunkDiff")  { HunkDiffTab() }
-                Tab("Tree")      { TreeTab() }
+                Tab("Tree")      { TreeTab(state: state) }
                 Tab("Editor")    { TextAreaTab(state: state) }
                 Tab("Scopes")    { FocusScopesTab() }
             }
