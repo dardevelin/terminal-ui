@@ -92,6 +92,14 @@ public class AttributeNode {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// `ActionScope` attached to this node by the `.actions { ... }`
+    /// modifier. The runtime's input dispatcher walks the focus chain
+    /// to root collecting scopes and matches input bindings against
+    /// the aggregate. Nil for nodes with no `.actions` modifier.
+    /// Cleared and re-stamped during the modifier's lifecycle hook so
+    /// reconciliation refreshes the bindings cleanly.
+    public var _actionScope: ActionScope?
+
     /// Memoised: true iff this node OR any descendant has `.viewBody`
     /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`
     /// so `GraphMeasurer.containsViewBody` is O(1) on the measurement
@@ -215,6 +223,7 @@ extension NodeKind {
             case .onClick: "onClick"
             case .onHover: "onHover"
             case .environment: "environment"
+            case .actions: "actions"
             }
         case .viewBody(let info):
             info.viewTypeName
@@ -302,6 +311,13 @@ public enum ModifierEffect {
     case onDisappear // fires action when node is removed from the tree
     case onClick     // attaches click handler (handler stored on FocusEngine)
     case onHover     // attaches hover handler (handler stored on FocusEngine)
+    /// `.actions { ... }` attaches an `ActionScope` to the modifier
+    /// node. The runtime's input dispatcher walks the focus chain to
+    /// root collecting these scopes and matches input bindings against
+    /// the aggregate. Scope is stored on the node's `_actionScope`
+    /// field so the walker reads it without re-deriving from the
+    /// modifier value.
+    case actions(ActionScope)
     /// Environment-value setter. The closure applies the modifier's keyPath
     /// and value to a mutable `EnvironmentValues` during render so descendants
     /// observe the new value via `GraphContext.currentEnvironment`. Boxing as

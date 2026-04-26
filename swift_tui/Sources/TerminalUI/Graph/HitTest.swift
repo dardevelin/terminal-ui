@@ -130,6 +130,7 @@ public struct HitResult {
             case .onClick: values.append(("modifier", "onClick"))
             case .onHover: values.append(("modifier", "onHover"))
             case .environment: values.append(("modifier", "environment"))
+            case .actions(let scope): values.append(("modifier", "actions(bound:\(scope.boundActions.count))"))
             }
 
         case .viewBody(let info):
@@ -170,6 +171,7 @@ public struct HitResult {
                 case .onClick: return "onClick"
                 case .onHover: return "onHover"
                 case .environment: return "environment"
+                case .actions(let scope): return "actions(\(scope.boundActions.count))"
                 }
             }
             return nil

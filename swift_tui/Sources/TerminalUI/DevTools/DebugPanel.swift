@@ -384,6 +384,7 @@ public final class DebugPanel {
             case .onClick: kind = "clk"; detail = ""
             case .onHover: kind = "hov"; detail = ""
             case .environment: kind = "env"; detail = ""
+            case .actions(let scope): kind = "act"; detail = "(\(scope.boundActions.count))"
             }
             style = node.isDirty ? dirtyStyle : dimStyle
 
