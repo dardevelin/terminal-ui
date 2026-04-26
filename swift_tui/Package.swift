@@ -5,7 +5,7 @@ import Foundation
 
 // MARK: - Strict compiler settings (Swift 6+)
 
-// HYP-102: -warnings-as-errors used to live in `strictSettings` via
+// `-warnings-as-errors` used to live in `strictSettings` via
 // `.unsafeFlags`. That propagates the policy to downstream consumers'
 // builds and is forbidden for libraries on the Swift Package Index.
 // Now opt-in via the `TUI_WARNINGS_AS_ERRORS` env var so this repo's

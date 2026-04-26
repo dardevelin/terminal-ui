@@ -87,10 +87,10 @@ def assert_true(condition: bool, message: str) -> None:
 
 def storybook_arrow_navigation(app: Client) -> None:
     """Sidebar hint-line should receive arrow presses and advance
-    selectedIndex even after boot — caught HYP-92 regression where bare
+    selectedIndex even after boot — caught a regression where bare
     ScrollView claimed initial focus and ate the arrows."""
     # Walk 3 pages; each press should update the preview title. If the
-    # sidebar were swallowing arrows (HYP-92 bug), the preview would stay
+    # sidebar were swallowing arrows, the preview would stay
     # on "VStack" forever.
     expected_after_n_presses = {
         1: "HStack",
@@ -136,8 +136,8 @@ def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
     (in-stack sibling nav), and Up arrow must move back. Regression test
-    for HYP-82 #4's unintended consequence where arrows on Button were
-    completely dead because cross-stack gating swallowed them too."""
+    for the cross-stack gating bug where arrows on Button were completely
+    dead because the gate swallowed in-stack arrows too."""
     # Button is the tenth page in declaration order (index 9).
     for _ in range(9):
         app.send_key("down")
@@ -164,8 +164,8 @@ def storybook_button_arrows_traverse_siblings(app: Client) -> None:
 
 def storybook_walks_past_promptinput(app: Client) -> None:
     """Navigate through page 13 (PromptInput) without the runtime crashing.
-    HYP-82 bug — Range requires lowerBound <= upperBound fires when
-    PreviewPane first renders PromptInput with default state."""
+    Regression: Range requires lowerBound <= upperBound used to fire when
+    PreviewPane first rendered PromptInput with default state."""
     for _ in range(14):  # 0 → 13 inclusive
         app.send_key("down")
         time.sleep(0.05)
@@ -241,7 +241,7 @@ def storybook_toggle_alternates_state(app: Client) -> None:
 def storybook_textinput_validation_colors(app: Client) -> None:
     """TextInput with `validate:` surfaces a red border + 'missing @' row
     when the value fails. Typing '@' moves it to OK and the error row
-    disappears. Regression coverage for the validation API (HYP-82 #3).
+    disappears. Regression coverage for the validation API.
 
     Scoped to the Preview pane via ``preview_text()`` because the Code
     pane shows the validator source containing the literal "missing @"
@@ -268,7 +268,7 @@ def storybook_textinput_validation_colors(app: Client) -> None:
 def storybook_promptinput_long_input_soft_wraps(app: Client) -> None:
     """Typing past the container width must soft-wrap downward — Claude
     Code / Codex style. Supersedes the 2026-04-18 horizontal-scroll test
-    after the HYP-84 soft-wrap rewrite: the long input produces at least
+    after the soft-wrap rewrite: the long input produces at least
     two visible content rows in the preview (the Storybook preview pane
     is too short to fit all four wrapped rows, so the exact tail may be
     scrolled out; wrapping is the invariant we actually care about)."""
@@ -476,7 +476,7 @@ def storybook_table_renders_header_and_rows(app: Client) -> None:
 
 def storybook_diffview_marks_changes(app: Client) -> None:
     """DiffView preview shows hello + swift world, with diff markers on
-    the changed line. Regression net for HYP-37-class stale-cell bugs."""
+    the changed line. Regression net for stale-cell bugs in scrolling diffs."""
     app.goto_storybook_page(18)
     preview = app.preview_text()
     assert_true("hello" in preview, "DiffView context 'hello' missing")
@@ -591,7 +591,7 @@ def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
 
 def storybook_geometryreader_reports_size(app: Client) -> None:
     """GeometryReader renders 'proposed: WxH' with the current rect size
-    — confirms the lazy rebuild (HYP-82) ships the real allocated rect,
+    — confirms the lazy rebuild ships the real allocated rect,
     not the terminal default 80×24 stale value."""
     app.goto_storybook_page(6)
     preview = app.preview_text()
@@ -1099,7 +1099,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.mousefocuspolicy_renders_subtrees", "Storybook", storybook_mousefocuspolicy_renders_subtrees),
     SmokeCase("storybook.bufferview_blits_demo_cells", "Storybook", storybook_bufferview_blits_demo_cells),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
-    # HYP-93 follow-on: mouse + layout-stability regressions reported 2026-04-25
+    # Mouse + layout-stability regressions reported 2026-04-25
     SmokeCase("storybook.layout_stable_under_mouse_hover", "Storybook", storybook_layout_stable_under_mouse_hover),
     SmokeCase("storybook.layout_stable_under_arrow_repeat", "Storybook", storybook_layout_stable_under_arrow_repeat),
     SmokeCase("storybook.treeview_click_expand", "Storybook", storybook_treeview_click_expand),
