@@ -168,7 +168,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                     .foreground(.gray)
             }
         }
-        .frame(minHeight: visibleCount)
+        .frame(minHeight: FrameDimension(visibleCount))
         .focusable()
         .onClick { [selection, expandedBinding, selectedIdxBinding, scrollBinding] _, relY in
             let expanded = expandedBinding.get()

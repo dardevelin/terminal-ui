@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, onHover, mouseFocusPolicy, actions
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -348,6 +348,15 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .frame: return PageInfo(id: self, category: .modifiers, name: ".frame",
             summary: "Constrain size via width/height/min/max.",
             code: "Text(\"x\").frame(width: 10, height: 3).border()")
+        case .flexible: return PageInfo(id: self, category: .modifiers, name: ".flexible",
+            summary: "Opt into flex distribution along an axis. .flexible(.horizontal) inside HStack splits remainder by grow weight (default 1). .frame(maxWidth: .infinity) is the SwiftUI alias.",
+            code: """
+                HStack {
+                    Text("fixed").border()
+                    Text("flex 1").flexible(.horizontal).border()
+                    Text("flex 2").flexible(grow: 2).border()
+                }
+                """)
         case .onHover: return PageInfo(id: self, category: .modifiers, name: ".onHover",
             summary: "SwiftUI-style hover callback. Fires true on rect enter, false on leave; intra-rect movement does NOT re-fire.",
             code: """

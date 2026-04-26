@@ -267,10 +267,53 @@ public enum GraphRenderer {
         return base + extra
     }
 
+    /// Distribute `available` cells across flex children proportional
+    /// to their `grow` weights, mirroring CSS flexbox `flex-grow`.
+    /// Returns the per-child cell count in input order. The leftover
+    /// remainder (`available % totalWeight`) is dealt out one cell at
+    /// a time to the children with the highest fractional share so
+    /// the total still sums to `available`.
+    ///
+    /// Equal-weight inputs collapse to the same equal-split that
+    /// `spacerDistribution` produced, so spacers and scroll views
+    /// route through this function unchanged.
+    private static func weightedDistribution(weights: [Int], available: Int) -> [Int] {
+        guard !weights.isEmpty, available > 0 else {
+            return Array(repeating: 0, count: weights.count)
+        }
+        let totalWeight = weights.reduce(0, +)
+        guard totalWeight > 0 else {
+            return Array(repeating: 0, count: weights.count)
+        }
+        // Integer floor allocation per child.
+        var sizes = weights.map { ($0 * available) / totalWeight }
+        var leftover = available - sizes.reduce(0, +)
+        // Hand out leftover cells to children with the largest
+        // fractional shortfall — compute shortfall = (weight*available)
+        // % totalWeight; the higher this is, the closer the child was
+        // to rounding up. Largest shortfall first keeps distribution
+        // stable and weight-proportional.
+        let shortfalls: [(idx: Int, short: Int)] = weights.enumerated().map { (idx, w) in
+            (idx, (w * available) % totalWeight)
+        }
+        let order = shortfalls.sorted { $0.short > $1.short }.map { $0.idx }
+        var orderIdx = 0
+        while leftover > 0 {
+            sizes[order[orderIdx % order.count]] += 1
+            leftover -= 1
+            orderIdx += 1
+        }
+        return sizes
+    }
+
     static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        var flexCount = 0
-        for child in children {
-            if isVFlexChild(child) { flexCount += 1 }
+        var flexIndices: [Int] = []
+        var flexWeights: [Int] = []
+        for (i, child) in children.enumerated() {
+            if isVFlexChild(child) {
+                flexIndices.append(i)
+                flexWeights.append(vFlexGrow(child))
+            }
         }
 
         var childHeights: [Int] = []
@@ -286,12 +329,16 @@ public enum GraphRenderer {
         }
 
         let remaining = max(0, context.rect.height - totalContentHeight)
-        var (flexBase, flexRemainder) = spacerDistribution(spacerCount: flexCount, available: remaining)
+        let perFlex = weightedDistribution(weights: flexWeights, available: remaining)
+        var flexHeightByIndex: [Int: Int] = [:]
+        for (slot, idx) in flexIndices.enumerated() {
+            flexHeightByIndex[idx] = perFlex[slot]
+        }
 
         var y = context.rect.y
         for (i, child) in children.enumerated() {
             if isVFlexChild(child) {
-                let flexHeight = consumeSpacer(base: flexBase, remainder: &flexRemainder)
+                let flexHeight = flexHeightByIndex[i] ?? 0
                 if case .primitive(.spacer) = child.kind {
                     y += flexHeight
                 } else {
@@ -309,18 +356,35 @@ public enum GraphRenderer {
         }
     }
 
-    /// Vertical flex: spacers and vertical scroll views consume remaining height.
+    /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
+    /// and `.frame(maxHeight: .infinity)` all consume remaining height.
     private static func isVFlexChild(_ node: AttributeNode) -> Bool {
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
+        if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
+        if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
         return false
     }
 
+    /// Grow weight for a vertical flex child. Spacers, scroll views,
+    /// and `.frame(maxHeight: .infinity)` all weight at 1; only
+    /// `.flexible(grow:)` exposes a non-default weight.
+    private static func vFlexGrow(_ node: AttributeNode) -> Int {
+        if case .modifier(.flexible(_, let grow)) = node.kind { return grow }
+        return 1
+    }
+
     static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        // Count flex children: spacers and horizontal scroll views both consume remaining space
-        var flexCount = 0
-        for child in children {
-            if isFlexChild(child) { flexCount += 1 }
+        // Identify flex children + their grow weights. Spacers, scroll
+        // views, `.flexible(.horizontal)`, and `.frame(maxWidth: .infinity)`
+        // all qualify; only `.flexible(grow:)` carries a non-default weight.
+        var flexIndices: [Int] = []
+        var flexWeights: [Int] = []
+        for (i, child) in children.enumerated() {
+            if isFlexChild(child) {
+                flexIndices.append(i)
+                flexWeights.append(flexGrow(child))
+            }
         }
 
         var childWidths: [Int] = []
@@ -336,15 +400,21 @@ public enum GraphRenderer {
         }
 
         let remaining = max(0, context.rect.width - totalContentWidth)
-        var (flexBase, flexRemainder) = spacerDistribution(spacerCount: flexCount, available: remaining)
+        let perFlex = weightedDistribution(weights: flexWeights, available: remaining)
+        // Map flex slot index → allocated width.
+        var flexWidthByIndex: [Int: Int] = [:]
+        for (slot, idx) in flexIndices.enumerated() {
+            flexWidthByIndex[idx] = perFlex[slot]
+        }
 
         let maxX = context.rect.x + context.rect.width
         var x = context.rect.x
         for (i, child) in children.enumerated() {
             if x >= maxX { break }
             if isFlexChild(child) {
-                let flexWidth = consumeSpacer(base: flexBase, remainder: &flexRemainder)
-                // Spacers just consume space; scroll views render into the flex allocation
+                let flexWidth = flexWidthByIndex[i] ?? 0
+                // Spacers just consume space; scroll views and other
+                // flex-marked children render into the allocated rect.
                 if case .primitive(.spacer) = child.kind {
                     x += flexWidth
                 } else {
@@ -364,11 +434,22 @@ public enum GraphRenderer {
     }
 
     /// A child is "flex" if it should consume remaining space in a stack layout.
-    /// Spacers and scroll views (in the matching axis) are flex children.
+    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`, and
+    /// `.frame(maxWidth: .infinity)` all qualify in HStacks.
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
+        if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }
+        if case .modifier(.frame(_, _, _, let maxW, _, _)) = node.kind, maxW == .infinity { return true }
         return false
+    }
+
+    /// Grow weight for a horizontal flex child. Spacers, scroll views,
+    /// and `.frame(maxWidth: .infinity)` all weight at 1; only
+    /// `.flexible(grow:)` exposes a non-default weight.
+    private static func flexGrow(_ node: AttributeNode) -> Int {
+        if case .modifier(.flexible(_, let grow)) = node.kind { return grow }
+        return 1
     }
 
     // MARK: - Scroll
@@ -664,11 +745,22 @@ public enum GraphRenderer {
 
         case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight):
             if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
-            if let maxW = maxWidth { ctx.rect.width = min(maxW, ctx.rect.width) }
-            if let minW = minWidth { ctx.rect.width = max(minW, ctx.rect.width) }
+            // .infinity skips the min() clamp — the rect already
+            // carries the proposed width from the parent stack's flex
+            // distribution. Only finite caps narrow the rect further.
+            if let maxW = maxWidth?.fixedValue { ctx.rect.width = min(maxW, ctx.rect.width) }
+            if let minW = minWidth?.fixedValue { ctx.rect.width = max(minW, ctx.rect.width) }
             if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
-            if let maxH = maxHeight { ctx.rect.height = min(maxH, ctx.rect.height) }
-            if let minH = minHeight { ctx.rect.height = max(minH, ctx.rect.height) }
+            if let maxH = maxHeight?.fixedValue { ctx.rect.height = min(maxH, ctx.rect.height) }
+            if let minH = minHeight?.fixedValue { ctx.rect.height = max(minH, ctx.rect.height) }
+            render(child, into: &buffer, context: ctx)
+
+        case .flexible:
+            // The flex modifier itself doesn't transform the rect —
+            // the parent stack's flex distribution already allocated
+            // the right rect when it saw `.flexible(matchingAxis)` in
+            // `isFlexChild` / `isVFlexChild`. Just render the wrapped
+            // child into the rect we were given.
             render(child, into: &buffer, context: ctx)
 
         case .explicitID:

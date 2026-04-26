@@ -710,6 +710,19 @@ def storybook_frame_sizes_bordered_box(app: Client) -> None:
     assert_true(any(ch in preview for ch in "╭╮╰╯"), ".frame preview missing border corners")
 
 
+def storybook_flexible_distributes_remainder(app: Client) -> None:
+    """`.flexible` page (35): renders the four canonical shapes (HStack
+    fixed+flex+weighted, sidebar+content). Smoke pins the rendering
+    contract: both demos visible, key labels present, no crash. The
+    weighted-distribution math is unit-tested in FlexibleSizingTests."""
+    app.goto_storybook_page(35)
+    preview = app.preview_text()
+    assert_true("fixed" in preview, ".flexible preview missing 'fixed' label")
+    assert_true("flex 1" in preview, ".flexible preview missing 'flex 1' label")
+    assert_true("flex 2" in preview, ".flexible preview missing 'flex 2' label")
+    assert_true("sidebar" in preview, ".flexible preview missing sidebar example")
+
+
 def storybook_focusable_joins_tab_order(app: Client) -> None:
     """`.focusable` modifier page has exactly one focusable Text. Tab into
     it — focus should land on it, not bounce back to the sidebar."""
@@ -730,7 +743,7 @@ def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
     → 'left'. The page lays out the row + indicator inside a bordered
     Preview pane; we move the cursor far inside the preview to ensure
     we're hovering the row and not the indicator below it."""
-    app.goto_storybook_page(35)
+    app.goto_storybook_page(36)
     initial = app.preview_text()
     assert_true("hover this row" in initial, ".onHover preview missing target row")
     # Find the row's location in the rendered preview to pick a cursor
@@ -769,7 +782,7 @@ def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     (default policy) + inner (subtree override to .disabled). Smoke proof
     that the page renders + the per-subtree env modifier doesn't crash
     the runtime. Behavioural assertions live in unit tests."""
-    app.goto_storybook_page(36)
+    app.goto_storybook_page(37)
     preview = app.preview_text()
     assert_true("default .clickToLock" in preview,
                 ".mouseFocusPolicy preview missing outer subtree label")
@@ -997,12 +1010,12 @@ def storybook_invoke_action_quits_app(app: Client) -> None:
 
 
 def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
-    """`.actions` page (Modifiers group, last index 37): a focusable
+    """`.actions` page (Modifiers group, last index 38): a focusable
     VStack carries an action bound to Ctrl+P. Tab into the preview,
     fire Ctrl+P, observe the counter increment from 0. Exercises the
     full action graph dispatch path: focus walker → ActionScope lookup
     → bound action perform closure → state mutation → re-render."""
-    app.goto_storybook_page(37)
+    app.goto_storybook_page(38)
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Initial counter shows 0 in the page (search full text — preview
@@ -1080,6 +1093,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.border_wraps_text", "Storybook", storybook_border_wraps_text),
     SmokeCase("storybook.padding_wraps_text", "Storybook", storybook_padding_wraps_text),
     SmokeCase("storybook.frame_sizes_bordered_box", "Storybook", storybook_frame_sizes_bordered_box),
+    SmokeCase("storybook.flexible_distributes_remainder", "Storybook", storybook_flexible_distributes_remainder),
     SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
     SmokeCase("storybook.onhover_callback_fires_on_enter_leave", "Storybook", storybook_onhover_callback_fires_on_enter_leave),
     SmokeCase("storybook.mousefocuspolicy_renders_subtrees", "Storybook", storybook_mousefocuspolicy_renders_subtrees),

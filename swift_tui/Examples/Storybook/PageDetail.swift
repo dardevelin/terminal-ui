@@ -338,6 +338,22 @@ struct PreviewPane: TerminalView {
             Text("press Tab to focus me").focusable()
         case .frame:
             Text("x").frame(width: 10, height: 3).border()
+        case .flexible:
+            VStack {
+                Text("HStack: fixed | flex 1 | flex 2").foreground(.cyan)
+                HStack {
+                    Text("fixed").border()
+                    Text("flex 1").flexible(.horizontal).border()
+                    Text("flex 2").flexible(grow: 2).border()
+                }
+                Text("Sidebar (28) + content fills remainder").foreground(.cyan)
+                HStack {
+                    Text("sidebar").frame(width: 14).border()
+                    Text("content fills remainder")
+                        .frame(maxWidth: .infinity)
+                        .border()
+                }
+            }
         case .onHover:
             VStack {
                 Text("hover this row").foreground(.cyan)

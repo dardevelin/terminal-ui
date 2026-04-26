@@ -165,8 +165,11 @@ public enum GraphMeasurer {
             if case .border = effect { base += 2 }
             if case .frame(let w, _, let minW, let maxW, _, _) = effect {
                 if let w { return w }
-                if let maxW { base = min(base, maxW) }
-                if let minW { base = max(base, minW) }
+                // .infinity contributes nothing to intrinsic measurement —
+                // the renderer expands the rect during stack flex
+                // distribution, not during measurement.
+                if let maxW = maxW?.fixedValue { base = min(base, maxW) }
+                if let minW = minW?.fixedValue { base = max(base, minW) }
             }
             return base
 
@@ -246,8 +249,8 @@ public enum GraphMeasurer {
             if case .border = effect { base += 2 }
             if case .frame(_, let h, _, _, let minH, let maxH) = effect {
                 if let h { return h }
-                if let maxH { base = min(base, maxH) }
-                if let minH { base = max(base, minH) }
+                if let maxH = maxH?.fixedValue { base = min(base, maxH) }
+                if let minH = minH?.fixedValue { base = max(base, minH) }
             }
             return base
 

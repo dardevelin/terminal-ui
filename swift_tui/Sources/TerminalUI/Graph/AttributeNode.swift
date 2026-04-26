@@ -225,6 +225,7 @@ extension NodeKind {
             case .padding: "padding"
             case .border: "border"
             case .frame: "frame"
+            case .flexible: "flexible"
             case .explicitID: "id"
             case .overlay: "overlay"
             case .backgroundView: "bgView"
@@ -313,7 +314,13 @@ public enum ModifierEffect {
     case underline
     case padding(Int)
     case border(BorderStyle)
-    case frame(width: Int?, height: Int?, minWidth: Int?, maxWidth: Int?, minHeight: Int?, maxHeight: Int?)
+    case frame(width: Int?, height: Int?, minWidth: FrameDimension?, maxWidth: FrameDimension?, minHeight: FrameDimension?, maxHeight: FrameDimension?)
+    /// `.flexible(_:grow:)` — opt-in flex distribution along `axes`.
+    /// Inside a stack on the matching axis, the renderer treats this
+    /// child like a `Spacer` for distribution purposes but renders the
+    /// wrapped content into the allocated rect. `grow` weights the
+    /// share when multiple flex siblings compete for the remainder.
+    case flexible(axes: FrameAxes, grow: Int)
     case explicitID(AnyHashable)
     case overlay     // child[0] = base, child[1] = overlay content
     case backgroundView  // child[0] = background content, child[1] = base (render bg first)

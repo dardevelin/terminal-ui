@@ -50,14 +50,22 @@ public struct BorderModifier: ViewModifier {
 }
 
 // Frame
+//
+// `width` / `height` stay as `Int?` since SwiftUI doesn't accept
+// `.infinity` in those slots either ("fixed size or no constraint").
+// `minWidth` / `maxWidth` / `minHeight` / `maxHeight` are
+// `FrameDimension?` so callers can write `.frame(maxWidth: .infinity)`
+// to opt into flex distribution along that axis. `FrameDimension`'s
+// `ExpressibleByIntegerLiteral` conformance keeps existing
+// `.frame(maxWidth: 40)` call sites working unchanged.
 public struct FrameModifier: ViewModifier {
     public typealias ModifierType = (Int?, Int?)
     public let width: Int?
     public let height: Int?
-    public var minWidth: Int?
-    public var maxWidth: Int?
-    public var minHeight: Int?
-    public var maxHeight: Int?
+    public var minWidth: FrameDimension?
+    public var maxWidth: FrameDimension?
+    public var minHeight: FrameDimension?
+    public var maxHeight: FrameDimension?
 }
 
 // Explicit identity
@@ -100,7 +108,7 @@ extension TerminalView {
         ModifiedView(content: self, modifier: FrameModifier(width: width, height: height))
     }
 
-    public func frame(minWidth: Int? = nil, maxWidth: Int? = nil, minHeight: Int? = nil, maxHeight: Int? = nil) -> ModifiedView<Self, FrameModifier> {
+    public func frame(minWidth: FrameDimension? = nil, maxWidth: FrameDimension? = nil, minHeight: FrameDimension? = nil, maxHeight: FrameDimension? = nil) -> ModifiedView<Self, FrameModifier> {
         ModifiedView(content: self, modifier: FrameModifier(
             width: nil, height: nil,
             minWidth: minWidth, maxWidth: maxWidth,

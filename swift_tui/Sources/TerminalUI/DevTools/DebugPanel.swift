@@ -371,6 +371,10 @@ public final class DebugPanel {
             case .padding(let n): kind = "pad"; detail = "\(n)"
             case .border(_): kind = "bdr"; detail = ""
             case .frame(let w, let h, _, _, _, _): kind = "frm"; detail = "\(w ?? 0)x\(h ?? 0)"
+            case .flexible(let axes, let grow):
+                kind = "flex"
+                let axisLabel = axes == .all ? "↔↕" : (axes.contains(.horizontal) ? "↔" : "↕")
+                detail = grow == 1 ? axisLabel : "\(axisLabel) ×\(grow)"
             case .explicitID(_): kind = "id"; detail = ""
             case .overlay: kind = "ovl"; detail = ""
             case .backgroundView: kind = "bg"; detail = ""
