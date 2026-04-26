@@ -581,7 +581,9 @@ extension DiffView {
     /// for `lines`, applies `scrollOffset` + `visibleHeight`, and
     /// returns the number of pairs the renderer would actually iterate.
     /// Pinning `<= visibleHeight` keeps the side-by-side path from
-    /// silently regressing the way it had before HYP-117.
+    /// silently dropping its viewport cap the way it had before — the
+    /// unified path always honored the cap, the side-by-side path
+    /// missed it for a while.
     func _sideBySideVisiblePairCountForTesting(scrollOffset: Int) -> Int {
         let pairs = buildSideBySidePairs()
         return pairs.dropFirst(scrollOffset).prefix(visibleHeight).count

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stop-hook verification runner (HYP-71).
+"""Stop-hook verification runner.
 
 Replaces the old bash verify.sh with a Python driver so we exercise the
 same bridge our smoke tests use. Steps:
@@ -49,8 +49,8 @@ def dirty_relevant_sources() -> bool:
 
 
 def kill_strays() -> None:
-    """Ask every running debug app to exit cleanly via the HYP-71 socket,
-    then clean up the socket directory. Uses `swtui ctl kill` so the
+    """Ask every running debug app to exit cleanly via the remote-control
+    socket, then clean up the socket directory. Uses `swtui ctl kill` so the
     teardown happens through the same channel the tests themselves use —
     no more pkill hunts for binaries behaving incorrectly."""
     swtui = REPO_ROOT / ".build" / "debug" / "swtui"

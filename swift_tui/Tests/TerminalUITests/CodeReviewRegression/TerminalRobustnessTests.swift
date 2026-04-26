@@ -6,12 +6,12 @@ import Darwin
 import Glibc
 #endif
 
-// HYP-113 — Syscall-injection layer for Terminal tests.
+// Syscall-injection layer for Terminal tests.
 //
 // Terminal.enableRawMode and Terminal.size talk to libc directly via
 // `tcgetattr`, `tcsetattr`, and `ioctl`. The hardened return-value
-// handling shipped in HYP-101 (commit 2069949) but had no unit
-// coverage — the failure paths can't be hit under the real test
+// handling (raw-mode + 0×0 release fallback, commit 2069949) had no
+// unit coverage — the failure paths can't be hit under the real test
 // runner because the runner happens to be a TTY. This suite injects a
 // failing PosixSyscalls implementation and pins the failure-mode
 // contracts at the unit boundary.

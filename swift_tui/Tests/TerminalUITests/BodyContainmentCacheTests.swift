@@ -2,12 +2,12 @@ import Testing
 import Observation
 @testable import TerminalUI
 
-// HYP-112 — `GraphMeasurer.containsViewBody(_:)` was a recursive
-// descendant walk on every measurement call. For deep trees that is a
-// real cost on the measurement hot path. The fix caches the result on
-// AttributeNode and stamps it bottom-up at the end of every
-// `AttributeGraph.update(from:)` so reads during the render walk are
-// O(1).
+// `GraphMeasurer.containsViewBody(_:)` used to be a recursive
+// descendant walk on every measurement call. For deep trees that
+// was a real cost on the measurement hot path. The fix caches the
+// result on AttributeNode and stamps it bottom-up at the end of
+// every `AttributeGraph.update(from:)` so reads during the render
+// walk are O(1).
 
 @MainActor
 private func resetGraphContext() {

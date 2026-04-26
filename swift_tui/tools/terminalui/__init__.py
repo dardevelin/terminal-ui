@@ -1,4 +1,4 @@
-"""Python client for the TerminalUI remote-control socket (HYP-71).
+"""Python client for the TerminalUI remote-control socket.
 
 Every TerminalUI debug build exposes a Unix-domain socket at
 ``.terminalui/data/remote/<pid>.sock`` (plus a ``latest.sock`` symlink

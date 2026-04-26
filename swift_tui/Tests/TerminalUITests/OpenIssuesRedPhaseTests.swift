@@ -5,11 +5,11 @@ import Testing
 // current codebase. Each test should fail or fail-to-compile until
 // its issue is addressed; passing means the work is done.
 //
-// Tests are organised by ticket-area (List/TreeView virtualization,
+// Tests are organised by feature-area (List/TreeView virtualization,
 // MouseFocusPolicy, CellBuffer blit, GlobalShortcuts, responsive
-// sizing, scrollbar thumb-track). HYP-111 (GR-bindings sweep) and
-// HYP-5 ([Any] boxing) need deeper test design — they're handled
-// later in their own focused passes.
+// sizing, scrollbar thumb-track). The bindings-in-GR-closure sweep
+// and the `[Any]` boxing rewrite need deeper test design — they're
+// handled later in their own focused passes.
 
 @MainActor
 private func resetGraphContext() {
@@ -20,7 +20,7 @@ private func resetGraphContext() {
     GraphContext.currentProposedSize = nil
 }
 
-// MARK: - List virtualization probe (HYP-115 territory)
+// MARK: - List virtualization probe
 //
 // `List.renderList` calls `Array(data)` to materialize the entire
 // input sequence regardless of how many rows are actually visible.
@@ -88,7 +88,7 @@ struct ListVirtualizationTests {
     }
 }
 
-// MARK: - TreeView virtualization probe (HYP-116)
+// MARK: - TreeView virtualization probe
 //
 // Same anti-pattern at `TreeView.swift:311` — `Array(data)` flattens
 // the source roots regardless of how many branches are actually
@@ -107,9 +107,9 @@ struct ListVirtualizationTests {
 // returns only the visible window, both List and TreeView tests
 // can probe it directly.
 
-// MARK: - MouseFocusPolicy enum (HYP-110)
+// MARK: - MouseFocusPolicy enum
 //
-// Hard-coded `.clickToLock` semantics from the HYP-107 fix: mouse-move
+// Hard-coded `.clickToLock` semantics from the wheel-routing fix: mouse-move
 // never moves keyboard focus, click promotes to keyboard focus, wheel
 // routes to hover-target focusable. User direction (verbatim 2026-04-25):
 // "the risk is after hover i might want to move the mouse" — implying
@@ -157,7 +157,7 @@ struct MouseFocusPolicyTests {
     }
 }
 
-// MARK: - CellBuffer blit primitive (HYP-66)
+// MARK: - CellBuffer blit primitive
 //
 // Compile-probe pin for the public API surface. Behavioural tests
 // (rect blit, clipping, paint-empty-cells, measurement) live in
@@ -174,7 +174,7 @@ struct CellBufferBlitTests {
     }
 }
 
-// MARK: - Global shortcuts API (HYP-80)
+// MARK: - Global shortcuts API
 //
 // Today only Ctrl+C is hardcoded at TerminalApp.swift:280-281. There
 // is no `TerminalAppProtocol.shortcuts` registry. Filing a single
@@ -196,7 +196,7 @@ struct GlobalShortcutsTests {
 }
 */
 
-// MARK: - Flexible / responsive sizing (HYP-78)
+// MARK: - Flexible / responsive sizing
 //
 // `.frame(min: max:)` exists; `Spacer` is the flex-grow analog. The
 // gap is a SwiftUI-style `maxWidth: .infinity` declaration that lets
@@ -217,9 +217,9 @@ struct FillAvailableTests {
 }
 */
 
-// MARK: - ScrollView thumb-track scrollbar (HYP-76)
+// MARK: - ScrollView thumb-track scrollbar
 //
-// Edge indicators (▲▼◀▶) shipped via HYP-83. The thumb-track
+// Edge indicators (▲▼◀▶) already ship. The thumb-track
 // scrollbar (proportional thumb, click-to-jump) is what's left.
 //
 // To enable: uncomment when ScrollIndicatorVisibility gains a

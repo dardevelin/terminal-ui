@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Walk every Storybook page and assert the preview is non-empty.
 
-Runs on top of the HYP-71 remote-control Python client. Fails fast when a
+Runs on top of the remote-control Python client. Fails fast when a
 page renders nothing, shows a focus regression (arrows swallowed by the
 sidebar ScrollView), or when the code/preview block goes blank — the exact
 class of regressions our unit-test suite doesn't catch.

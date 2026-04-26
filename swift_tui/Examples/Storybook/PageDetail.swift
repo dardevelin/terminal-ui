@@ -28,7 +28,7 @@ struct PageDetail: TerminalView {
             // Code pane: border is the outer frame, ScrollView lives INSIDE
             // the border so the closing ╰─╯ is always visible even for long
             // snippets. frame(height:) gives a fixed window; content scrolls
-            // within. Still wants HYP-76 (visible scrollbar affordance).
+            // within. Still wants a visible scrollbar affordance.
             Text("Code").foreground(.gray).bold()
             ScrollView(.vertical) {
                 CodeBlock(code: info.code)

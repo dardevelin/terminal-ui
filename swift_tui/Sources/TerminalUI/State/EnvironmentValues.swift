@@ -53,9 +53,9 @@ public struct EnvironmentValues: Sendable {
     public var lineBreakMode: LineBreakMode = .byClipping
 
     /// How mouse events interact with keyboard focus and routing.
-    /// Default `.clickToLock` keeps the post-HYP-107 behaviour:
-    /// hover does not move keyboard focus, click promotes, wheel
-    /// routes to the hover-target focusable. See `MouseFocusPolicy`.
+    /// Default `.clickToLock`: hover does not move keyboard focus,
+    /// click promotes, wheel routes to the hover-target focusable.
+    /// See `MouseFocusPolicy`.
     public var mouseFocusPolicy: MouseFocusPolicy = .clickToLock
 
     public init() {}

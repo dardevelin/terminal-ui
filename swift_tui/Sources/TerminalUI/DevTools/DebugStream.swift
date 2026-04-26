@@ -48,8 +48,8 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// means the user projected `$state` inside a deferred closure
     /// (e.g. inside `GeometryReader { ... }`) — project in `body`
     /// outside the closure and capture the binding instead. The
-    /// canary case was TreeView pre-HYP-108. See memory entry
-    /// `feedback_bindings_in_geometryreader.md`.
+    /// canary case was TreeView before its body bindings were lifted
+    /// out of its `GeometryReader` closure.
     case bindingProjectedWithoutNode
 }
 

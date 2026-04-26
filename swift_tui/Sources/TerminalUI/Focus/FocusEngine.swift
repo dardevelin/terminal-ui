@@ -258,7 +258,7 @@ public final class FocusEngine {
     /// - `.clickToLock` / `.hoverFollows`: route to the focusable
     ///   under the cursor. When the cursor is over inert space the
     ///   event is DROPPED — falling back to keyboardFocusID would
-    ///   resurrect the HYP-107 bug where wheeling over an inert region
+    ///   resurrect the bug where wheeling over an inert region
     ///   advances the keyboard-focused element in another subtree.
     /// - `.clickOnly`: route to keyboardFocusID. Wheel is part of the
     ///   active document, not the cursor.

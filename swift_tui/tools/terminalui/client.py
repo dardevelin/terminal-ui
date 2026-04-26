@@ -1,4 +1,4 @@
-"""Typed Python client for the TerminalUI remote-control socket (HYP-71).
+"""Typed Python client for the TerminalUI remote-control socket.
 
 Design:
 - One request per call, one response per call, framed as JSON lines over

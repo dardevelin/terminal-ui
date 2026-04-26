@@ -1,8 +1,8 @@
 /// How mouse events interact with keyboard focus and routing. The
-/// default `.clickToLock` matches the post-HYP-107 behaviour: hover
-/// updates a separate hover-target without touching keyboard focus,
-/// click promotes the hover target to keyboard focus, and the wheel
-/// scrolls whatever is under the cursor.
+/// default `.clickToLock`: hover updates a separate hover-target
+/// without touching keyboard focus, click promotes the hover target
+/// to keyboard focus, and the wheel scrolls whatever is under the
+/// cursor.
 ///
 /// Override per subtree (or app-wide) with `.mouseFocusPolicy(_:)`:
 ///

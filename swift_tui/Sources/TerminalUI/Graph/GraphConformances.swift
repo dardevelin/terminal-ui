@@ -36,7 +36,7 @@
 //   `_GraphVStack` (or sibling) and provide an explicit
 //   `graphChildren()` that does NOT route through Mirror.
 //
-// Replacing the Mirror fallback is HYP-5 — parameter packs let us
+// Replacing the Mirror fallback with parameter packs would let us
 // type-erase the children list without reflection, but the rewrite
 // has reverted once already, so the cost is documented here as the
 // stable fall-back rather than removed.

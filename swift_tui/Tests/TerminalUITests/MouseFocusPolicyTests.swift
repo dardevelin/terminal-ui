@@ -1,9 +1,11 @@
 import Testing
 @testable import TerminalUI
 
-// Policy-driven mouse routing. The framework default (.clickToLock) was
-// pinned by HYP-107; this suite exercises the three additional cases
-// behind the public env enum and the .disabled escape hatch.
+// Policy-driven mouse routing. The framework default (.clickToLock)
+// covers the canonical "click promotes, wheel routes to hover, hover
+// alone never moves keyboard focus" semantics; this suite exercises
+// the three additional cases behind the public env enum and the
+// .disabled escape hatch.
 //
 // Tests sit at the FocusEngine boundary: it exposes a policy-aware
 // `applyMouseMove(x:y:root:policy:)` and `applyMouseWheel(...)` that the
@@ -112,11 +114,12 @@ struct MouseFocusPolicyClickOnlyTests {
         #expect(target == rightID, ".clickToLock wheel must route to hover-target focusable")
     }
 
-    /// HYP-107 contract: when the cursor sits over inert space (no
-    /// focusable hit), wheel events must be DROPPED, not fall back to
-    /// the keyboard-focused element. Falling back resurrects the
-    /// original bug — wheeling over the Storybook preview while the
-    /// sidebar is keyboard-focused advances the sidebar selection.
+    /// Wheel-over-inert contract: when the cursor sits over inert
+    /// space (no focusable hit), wheel events must be DROPPED, not
+    /// fall back to the keyboard-focused element. Falling back
+    /// resurrects the original bug — wheeling over the Storybook
+    /// preview while the sidebar is keyboard-focused advances the
+    /// sidebar selection.
     @Test(".clickToLock wheel returns nil when cursor is over inert space")
     func clickToLockWheelDropsOverInert() {
         let (engine, graph, leftID, _) = makeTwoFocusableHarness()

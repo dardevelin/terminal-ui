@@ -4,14 +4,15 @@ import Testing
 
 #if DEBUG
 
-// HYP-111 — bindings-in-GeometryReader-closure anti-pattern guardrail.
+// Bindings-in-GeometryReader-closure anti-pattern guardrail.
 //
 // Every composite view in `Sources/TerminalUI/Views/` was audited
-// 2026-04-26; only TreeView ever had this bug and it was fixed in
-// HYP-108 (commit 54f5723). The audit verdict left no production
-// view to fix, but we still want a permanent guardrail so the
-// framework loudly warns the next time someone projects `$foo`
-// inside a deferred closure where `GraphContext.currentNode` is nil.
+// 2026-04-26; only TreeView ever had this bug and it was fixed by
+// projecting bindings outside the GR closure (commit 54f5723). The
+// audit verdict left no production view to fix, but we still want a
+// permanent guardrail so the framework loudly warns the next time
+// someone projects `$foo` inside a deferred closure where
+// `GraphContext.currentNode` is nil.
 //
 // The warning routes through `DebugStream.frameworkWarning` with
 // stable code `.bindingProjectedWithoutNode`. Inspectors, the F2

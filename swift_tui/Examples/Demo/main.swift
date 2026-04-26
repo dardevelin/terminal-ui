@@ -797,7 +797,7 @@ struct TextAreaTab: TerminalView {
 
 // MARK: - Tab 12: Focus Scopes Demo
 
-// HYP-40: three .focusScope("...") rows. Arrow keys stay within a row,
+// Three .focusScope("...") rows. Arrow keys stay within a row,
 // Tab/Shift+Tab crosses rows.
 
 struct FocusScopesTab: TerminalView {

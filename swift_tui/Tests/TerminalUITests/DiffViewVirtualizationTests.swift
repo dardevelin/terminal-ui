@@ -1,8 +1,8 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-117 — `DiffView.renderSideBySide` ignored `visibleHeight` and
-// iterated every pair from scrollOffset to end-of-diff. For a 5,000-
+// `DiffView.renderSideBySide` used to ignore `visibleHeight` and
+// iterate every pair from scrollOffset to end-of-diff. For a 5,000-
 // line diff in a 20-row viewport, the renderer walked ~5,000 pairs
 // per frame, generated 5,000 worth of spans, and let the framework's
 // rect clip drop the off-screen output.
