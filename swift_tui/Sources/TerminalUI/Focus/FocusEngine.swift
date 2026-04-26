@@ -256,8 +256,10 @@ public final class FocusEngine {
     /// event so the runtime can short-circuit routing.
     ///
     /// - `.clickToLock` / `.hoverFollows`: route to the focusable
-    ///   under the cursor. Falls back to keyboardFocusID when the
-    ///   cursor is over inert space.
+    ///   under the cursor. When the cursor is over inert space the
+    ///   event is DROPPED — falling back to keyboardFocusID would
+    ///   resurrect the HYP-107 bug where wheeling over an inert region
+    ///   advances the keyboard-focused element in another subtree.
     /// - `.clickOnly`: route to keyboardFocusID. Wheel is part of the
     ///   active document, not the cursor.
     /// - `.disabled`: no auto-route. Returns nil; runtime drops.
@@ -268,11 +270,8 @@ public final class FocusEngine {
         case .clickOnly:
             return keyboardFocusID
         case .clickToLock, .hoverFollows:
-            guard let root else { return keyboardFocusID }
-            if let hit = findFocusableAt(x: x, y: y, in: root) {
-                return hit.id
-            }
-            return keyboardFocusID
+            guard let root else { return nil }
+            return findFocusableAt(x: x, y: y, in: root)?.id
         }
     }
 

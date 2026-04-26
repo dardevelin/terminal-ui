@@ -724,6 +724,71 @@ def storybook_focusable_joins_tab_order(app: Client) -> None:
     )
 
 
+def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
+    """`.onHover` page (34): hover the indicator-bound row in the preview
+    and watch the indicator text flip from '(not hovering)' → 'hovering'
+    → 'left'. The page lays out the row + indicator inside a bordered
+    Preview pane; we move the cursor far inside the preview to ensure
+    we're hovering the row and not the indicator below it."""
+    app.goto_storybook_page(34)
+    initial = app.preview_text()
+    assert_true("hover this row" in initial, ".onHover preview missing target row")
+    # Find the row's location in the rendered preview to pick a cursor
+    # coordinate. Probe-by-grep: look up "hover this row" in the page
+    # text and use its y for the mouse_move.
+    full = app.text()
+    target_y = None
+    for y, row in enumerate(full.split("\n")):
+        if "hover this row" in row:
+            target_y = y
+            break
+    assert_true(target_y is not None, "could not locate 'hover this row' in screen")
+
+    # Mouse into the row — picking column 60 places the cursor inside
+    # the bordered Preview pane on a wide-enough terminal.
+    app.mouse_move(60, target_y)
+    app.wait_for_frame(1, timeout=0.5)
+    after_enter = app.preview_text()
+    assert_true(
+        "hover indicator: hovering" in after_enter,
+        f".onHover did not fire 'hovering' on enter — preview was: {after_enter[:200]}",
+    )
+
+    # Mouse out — far corner.
+    app.mouse_move(0, 0)
+    app.wait_for_frame(1, timeout=0.5)
+    after_leave = app.preview_text()
+    assert_true(
+        "hover indicator: left" in after_leave,
+        f".onHover did not fire 'left' on exit — preview was: {after_leave[:200]}",
+    )
+
+
+def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
+    """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
+    (default policy) + inner (subtree override to .disabled). Smoke proof
+    that the page renders + the per-subtree env modifier doesn't crash
+    the runtime. Behavioural assertions live in unit tests."""
+    app.goto_storybook_page(35)
+    preview = app.preview_text()
+    assert_true("default .clickToLock" in preview,
+                ".mouseFocusPolicy preview missing outer subtree label")
+    assert_true(".disabled" in preview,
+                ".mouseFocusPolicy preview missing inner subtree label")
+
+
+def storybook_bufferview_blits_demo_cells(app: Client) -> None:
+    """`BufferView` page (36): a 24x4 demo CellBuffer is built in code and
+    blitted into the view's rect. Smoke proof that all four rows of the
+    source buffer appear verbatim in the rendered preview — the basic
+    BufferView contract."""
+    app.goto_storybook_page(36)
+    preview = app.preview_text()
+    for needle in ("BufferView demo", "CellBuffer -> blit", "12345 67890"):
+        assert_true(needle in preview,
+                    f"BufferView preview missing source row: '{needle}' — preview was: {preview[:300]}")
+
+
 def storybook_layout_stable_under_mouse_hover(app: Client) -> None:
     """Bug #3: moving the mouse over the screen must NOT change layout.
     The Code box width must stay constant whether or not the cursor is
@@ -956,6 +1021,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.padding_wraps_text", "Storybook", storybook_padding_wraps_text),
     SmokeCase("storybook.frame_sizes_bordered_box", "Storybook", storybook_frame_sizes_bordered_box),
     SmokeCase("storybook.focusable_joins_tab_order", "Storybook", storybook_focusable_joins_tab_order),
+    SmokeCase("storybook.onhover_callback_fires_on_enter_leave", "Storybook", storybook_onhover_callback_fires_on_enter_leave),
+    SmokeCase("storybook.mousefocuspolicy_renders_subtrees", "Storybook", storybook_mousefocuspolicy_renders_subtrees),
+    SmokeCase("storybook.bufferview_blits_demo_cells", "Storybook", storybook_bufferview_blits_demo_cells),
     SmokeCase("storybook.walks_past_promptinput", "Storybook", storybook_walks_past_promptinput),
     # HYP-93 follow-on: mouse + layout-stability regressions reported 2026-04-25
     SmokeCase("storybook.layout_stable_under_mouse_hover", "Storybook", storybook_layout_stable_under_mouse_hover),

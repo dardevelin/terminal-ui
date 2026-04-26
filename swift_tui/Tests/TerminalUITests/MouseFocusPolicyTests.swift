@@ -111,6 +111,27 @@ struct MouseFocusPolicyClickOnlyTests {
         let target = engine.wheelTargetID(x: 2, y: 1, root: graph.root!, policy: .clickToLock)
         #expect(target == rightID, ".clickToLock wheel must route to hover-target focusable")
     }
+
+    /// HYP-107 contract: when the cursor sits over inert space (no
+    /// focusable hit), wheel events must be DROPPED, not fall back to
+    /// the keyboard-focused element. Falling back resurrects the
+    /// original bug — wheeling over the Storybook preview while the
+    /// sidebar is keyboard-focused advances the sidebar selection.
+    @Test(".clickToLock wheel returns nil when cursor is over inert space")
+    func clickToLockWheelDropsOverInert() {
+        let (engine, graph, leftID, _) = makeTwoFocusableHarness()
+        engine.keyboardFocusID = leftID
+        let target = engine.wheelTargetID(x: 99, y: 99, root: graph.root!, policy: .clickToLock)
+        #expect(target == nil, ".clickToLock wheel over inert space must drop, not fall back to keyboard focus")
+    }
+
+    @Test(".hoverFollows wheel returns nil when cursor is over inert space")
+    func hoverFollowsWheelDropsOverInert() {
+        let (engine, graph, leftID, _) = makeTwoFocusableHarness()
+        engine.keyboardFocusID = leftID
+        let target = engine.wheelTargetID(x: 99, y: 99, root: graph.root!, policy: .hoverFollows)
+        #expect(target == nil, ".hoverFollows wheel over inert space must drop, not fall back to keyboard focus")
+    }
 }
 
 @Suite("MouseFocusPolicy — .disabled")
