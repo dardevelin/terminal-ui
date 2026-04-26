@@ -966,6 +966,36 @@ def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
     )
 
 
+def storybook_list_actions_returns_quit_default(app: Client) -> None:
+    """RemoteControl `list_actions` exposes the framework's default
+    Ctrl+C → app.quit binding. Validates the LLM-side action graph
+    surface — agents can ask "what can I do here?" and find the
+    framework defaults without scraping cells or guessing chords."""
+    actions = app.list_actions()
+    quit_action = next((a for a in actions if a.id == "app.quit"), None)
+    assert_true(quit_action is not None,
+                f"app.quit must appear in list_actions; got: {[a.id for a in actions]}")
+    assert_true(quit_action.title == "Quit",
+                f"app.quit title should be 'Quit'; got '{quit_action.title}'")
+    assert_true(quit_action.enabled,
+                "app.quit must be enabled by default")
+    keyboard_bindings = [b for b in quit_action.bindings if b.kind == "keyboard"]
+    assert_true(any(b.key == "c" and b.modifiers == ["ctrl"] for b in keyboard_bindings),
+                f"app.quit must be bound to Ctrl+C; got: {[(b.key, b.modifiers) for b in keyboard_bindings]}")
+
+
+def storybook_invoke_action_quits_app(app: Client) -> None:
+    """RemoteControl `invoke_action` fires an action by stable ID
+    without simulating a chord. Invoking app.quit must exit the
+    process cleanly via the same framework-default path Ctrl+C uses.
+    Critical contract for LLM-driven test harnesses."""
+    fired = app.invoke_action("app.quit")
+    assert_true(fired,
+                "invoke_action('app.quit') must return fired=True (action graph dispatched)")
+    # Note: process exits asynchronously via the QuitSignal poll in
+    # the event loop; the runner's __exit__ tears down anyway.
+
+
 def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
     """`.actions` page (Modifiers group, last index 37): a focusable
     VStack carries an action bound to Ctrl+P. Tab into the preview,
@@ -1064,6 +1094,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.mouse_wheel_routes_to_hover_target", "Storybook", storybook_mouse_wheel_routes_to_hover_target),
     SmokeCase("storybook.mouse_click_locks_until_next_click", "Storybook", storybook_mouse_click_locks_until_next_click),
     SmokeCase("storybook.actions_modifier_fires_via_chord", "Storybook", storybook_actions_modifier_fires_via_chord),
+    SmokeCase("storybook.list_actions_returns_quit_default", "Storybook", storybook_list_actions_returns_quit_default),
+    SmokeCase("demo.invoke_action_quits", "Demo", storybook_invoke_action_quits_app),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
 ]
 

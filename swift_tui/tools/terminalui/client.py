@@ -114,6 +114,26 @@ class CellSlice:
 
 
 @dataclass(frozen=True)
+class ActionBindingInfo:
+    """One InputBinding for an action — what chord/click/voice prompt fires it."""
+    kind: str  # "keyboard" | "mouse" | "gesture" | "voice" | "accessibility"
+    key: Optional[str] = None
+    modifiers: Optional[Sequence[str]] = None
+    button: Optional[str] = None
+    payload: Optional[str] = None
+
+
+@dataclass(frozen=True)
+class ActionInfo:
+    """One Action reachable from the focused node — what the app can do."""
+    id: str
+    title: str
+    description: Optional[str]
+    enabled: bool
+    bindings: Sequence[ActionBindingInfo]
+
+
+@dataclass(frozen=True)
 class Probe:
     cursor_x: int
     cursor_y: int
@@ -550,6 +570,49 @@ class Client:
         Files land under the captures directory configured by
         ``.terminalui/terminalui.toml``."""
         self._call("screenshot")
+
+    def list_actions(self) -> Sequence[ActionInfo]:
+        """Enumerate the action graph reachable from the focused node.
+
+        Includes framework defaults (Ctrl+C → app.quit, Esc → app.dismissOrQuit)
+        + every action declared via `.actions { ... }` in scope. Disabled
+        actions are returned with `enabled=False` so an LLM can see what's
+        currently unavailable.
+        """
+        response = self._call("list_actions")
+        actions_raw = response.result.get("actions") or []
+        result: list[ActionInfo] = []
+        for entry in actions_raw:
+            bindings_raw = entry.get("bindings") or []
+            bindings = [
+                ActionBindingInfo(
+                    kind=b.get("kind", ""),
+                    key=b.get("key"),
+                    modifiers=b.get("modifiers"),
+                    button=b.get("button"),
+                    payload=b.get("payload"),
+                )
+                for b in bindings_raw
+            ]
+            result.append(ActionInfo(
+                id=entry.get("id", ""),
+                title=entry.get("title", ""),
+                description=entry.get("description"),
+                enabled=bool(entry.get("enabled", True)),
+                bindings=bindings,
+            ))
+        return result
+
+    def invoke_action(self, action_id: str) -> bool:
+        """Fire an action by its stable ID. Returns True if a matching
+        enabled action was found and its handler invoked, False if not.
+
+        Bypasses any input device — same behaviour the harness gets via
+        keystrokes, but addressable by name. Lets agents script the app
+        without scraping cells or guessing chords.
+        """
+        response = self._call("invoke_action", action_id=action_id)
+        return bool(response.result.get("fired", False))
 
     # -- internal --
 

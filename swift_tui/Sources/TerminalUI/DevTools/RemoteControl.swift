@@ -53,6 +53,9 @@ public struct RemoteRequest: Codable, Sendable {
     public var matchKind: String?
     public var matchText: String?
     public var matchFocused: Bool?
+    /// Action invocation payload — the stable Action.ID to fire via
+    /// ActionDispatch.invoke. Used by the `invoke_action` command.
+    public var actionId: String?
 }
 
 public struct RemoteResponse: Codable, Sendable {
@@ -81,6 +84,11 @@ public struct RemoteResult: Codable, Sendable {
     /// Multiple probes — one per cell in the requested range. Used by
     /// `inspect_range` so a single round trip covers a whole rect.
     public var probes: [InspectorProbe]?
+    /// Action graph reachable from the focused node. Populated by
+    /// `list_actions`. Empty when no scope reaches the focused node.
+    public var actions: [ActionRemoteInfo]?
+    /// Whether `invoke_action` matched and fired an action.
+    public var fired: Bool?
 
     public init(focus: FocusInfo? = nil,
                 cells: CellSlice? = nil,
@@ -88,7 +96,9 @@ public struct RemoteResult: Codable, Sendable {
                 frame: Int? = nil,
                 screenshotPath: String? = nil,
                 inspector: InspectorProbe? = nil,
-                probes: [InspectorProbe]? = nil) {
+                probes: [InspectorProbe]? = nil,
+                actions: [ActionRemoteInfo]? = nil,
+                fired: Bool? = nil) {
         self.focus = focus
         self.cells = cells
         self.tree = tree
@@ -96,7 +106,32 @@ public struct RemoteResult: Codable, Sendable {
         self.screenshotPath = screenshotPath
         self.inspector = inspector
         self.probes = probes
+        self.actions = actions
+        self.fired = fired
     }
+}
+
+/// Wire-format action info — what `list_actions` returns. Mirrors
+/// `Action` plus its bound input bindings, so an LLM can introspect
+/// "what can I do here?" and invoke by stable ID.
+public struct ActionRemoteInfo: Codable, Sendable {
+    public var id: String
+    public var title: String
+    public var description: String?
+    public var enabled: Bool
+    public var bindings: [ActionBindingRemoteInfo]
+}
+
+public struct ActionBindingRemoteInfo: Codable, Sendable {
+    /// "keyboard" / "mouse" / "gesture" / "voice" / "accessibility".
+    public var kind: String
+    /// Keyboard binding fields.
+    public var key: String?
+    public var modifiers: [String]?
+    /// Mouse binding field.
+    public var button: String?
+    /// Gesture / voice / accessibility identifier.
+    public var payload: String?
 }
 
 /// Inspector probe result — what the in-app inspector shows for the node at
@@ -342,6 +377,10 @@ public protocol RemoteControlRuntime: AnyObject {
     func remotePreviousBuffer() -> CellBuffer?
     func remoteRequestCapture()
     func remoteCurrentFrameNumber() -> Int
+    /// Build the framework's default action scope (Ctrl+C → Action.quit,
+    /// Esc → Action.dismissOrQuit) so `list_actions` / `invoke_action`
+    /// can route through the same data the runtime dispatch uses.
+    func remoteFrameworkDefaultsScope() -> ActionScope
 }
 
 /// Concrete dispatcher that translates `RemoteRequest` → actions on the
@@ -375,6 +414,8 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case "frame_number":return frameNumber(request, runtime: runtime)
         case "screenshot":  return screenshot(request, runtime: runtime)
         case "quit":        return quit(request, runtime: runtime)
+        case "list_actions": return listActions(request, runtime: runtime)
+        case "invoke_action": return invokeAction(request, runtime: runtime)
         case "ping":        return RemoteResponse(id: request.id, ok: true)
         default:
             return RemoteResponse(id: request.id, ok: false, error: "unknown cmd: \(request.cmd)")
@@ -778,6 +819,168 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
     private func quit(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
         runtime.enqueueEvent(.key(KeyEvent(key: .character("c"), modifiers: [.ctrl], source: .remote)))
         return RemoteResponse(id: request.id, ok: true)
+    }
+
+    // MARK: Action graph (HYP-199 / R5)
+
+    /// Enumerate the action graph reachable from the focused node.
+    /// Includes framework defaults so LLM clients see Ctrl+C → app.quit
+    /// and Esc → app.dismissOrQuit alongside any user-declared actions.
+    /// Disabled actions are returned with `enabled: false` so an agent
+    /// can introspect "what's currently unavailable here."
+    private func listActions(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        guard let root = runtime.remoteCurrentGraphRoot() else {
+            return RemoteResponse(id: request.id, ok: true, result: RemoteResult(actions: []))
+        }
+        let focused = runtime.remoteFocusEngine().focusedNode(in: root) ?? root
+        let defaults = runtime.remoteFrameworkDefaultsScope()
+
+        // Reachable actions, deduped by ID, innermost-first.
+        let actions = ActionDispatch.reachableActions(from: focused, frameworkDefaults: defaults)
+
+        // For each action, collect every binding that reaches it from
+        // the focus chain. Walk the scope chain locally so we can
+        // pair (action, binding) — ActionDispatch.reachableActions
+        // gives us actions only.
+        let scopes = collectScopes(from: focused, frameworkDefaults: defaults)
+        let bindings = bindingsByActionID(scopes: scopes)
+
+        let infos = actions.map { action in
+            ActionRemoteInfo(
+                id: action.id.raw,
+                title: action.title.resolved(),
+                description: action.description?.resolved(),
+                enabled: action.isEnabled,
+                bindings: bindings[action.id] ?? []
+            )
+        }
+        return RemoteResponse(id: request.id, ok: true, result: RemoteResult(actions: infos))
+    }
+
+    /// Fire an action by stable ID. Wraps `ActionDispatch.invoke` so
+    /// LLMs / scripts / debuggers can drive the app without simulating
+    /// keystrokes. Returns `fired: true` when an enabled action with
+    /// the requested ID existed in scope and its handler ran.
+    private func invokeAction(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        guard let actionID = request.actionId else {
+            return RemoteResponse(id: request.id, ok: false, error: "invoke_action requires `action_id`")
+        }
+        guard let root = runtime.remoteCurrentGraphRoot() else {
+            return RemoteResponse(id: request.id, ok: true, result: RemoteResult(fired: false))
+        }
+        let focused = runtime.remoteFocusEngine().focusedNode(in: root) ?? root
+        let defaults = runtime.remoteFrameworkDefaultsScope()
+        let fired = ActionDispatch.invoke(
+            id: ActionID(actionID),
+            from: focused,
+            frameworkDefaults: defaults
+        )
+        return RemoteResponse(id: request.id, ok: true, result: RemoteResult(fired: fired))
+    }
+
+    /// Walk focused node → root collecting scopes; appends framework
+    /// defaults at the outermost end if provided. Mirrors
+    /// `ActionDispatch.scopeChain` (which is private on the dispatcher).
+    private func collectScopes(from node: AttributeNode, frameworkDefaults: ActionScope?) -> [ActionScope] {
+        var scopes: [ActionScope] = []
+        var current: AttributeNode? = node
+        while let n = current {
+            if let scope = n._actionScope {
+                scopes.append(scope)
+            }
+            current = n.parent
+        }
+        if let defaults = frameworkDefaults {
+            scopes.append(defaults)
+        }
+        return scopes
+    }
+
+    /// Build a map ActionID → [BindingRemoteInfo] by walking every
+    /// scope and grouping bound actions by their action ID.
+    /// Innermost-first: the first scope mentioning an action owns its
+    /// bindings list; outer-scope rebindings of the same ID are
+    /// shadowed (matches dispatch precedence).
+    private func bindingsByActionID(scopes: [ActionScope]) -> [ActionID: [ActionBindingRemoteInfo]] {
+        var ownedBy: [ActionID: Int] = [:]  // first scope index that owns this ID
+        var out: [ActionID: [ActionBindingRemoteInfo]] = [:]
+        for (i, scope) in scopes.enumerated() {
+            for bound in scope.boundActions {
+                let id = bound.action.id
+                if ownedBy[id] == nil {
+                    ownedBy[id] = i
+                }
+                if ownedBy[id] == i {
+                    out[id, default: []].append(serializeBinding(bound.binding))
+                }
+                // Outer scopes that re-bind a shadowed ID contribute nothing.
+            }
+        }
+        return out
+    }
+
+    private func serializeBinding(_ binding: InputBinding) -> ActionBindingRemoteInfo {
+        switch binding {
+        case .keyboard(let key, let mods):
+            return ActionBindingRemoteInfo(
+                kind: "keyboard",
+                key: serializeKey(key),
+                modifiers: serializeModifiers(mods),
+                button: nil,
+                payload: nil
+            )
+        case .mouse(let button, let mods):
+            return ActionBindingRemoteInfo(
+                kind: "mouse",
+                key: nil,
+                modifiers: serializeModifiers(mods),
+                button: serializeMouseButton(button),
+                payload: nil
+            )
+        case .gesture(let id):
+            return ActionBindingRemoteInfo(kind: "gesture", payload: id.raw)
+        case .voice(let phrase):
+            return ActionBindingRemoteInfo(kind: "voice", payload: phrase)
+        case .accessibility(let label):
+            return ActionBindingRemoteInfo(kind: "accessibility", payload: label)
+        }
+    }
+
+    private func serializeKey(_ key: Key) -> String {
+        switch key {
+        case .character(let c): return String(c)
+        case .enter: return "enter"
+        case .tab: return "tab"
+        case .escape: return "escape"
+        case .backspace: return "backspace"
+        case .delete: return "delete"
+        case .up: return "up"
+        case .down: return "down"
+        case .left: return "left"
+        case .right: return "right"
+        case .home: return "home"
+        case .end: return "end"
+        case .pageUp: return "pageup"
+        case .pageDown: return "pagedown"
+        case .f(let n): return "f\(n)"
+        case .unknown: return "unknown"
+        }
+    }
+
+    private func serializeModifiers(_ mods: KeyModifiers) -> [String]? {
+        var out: [String] = []
+        if mods.contains(.shift) { out.append("shift") }
+        if mods.contains(.alt) { out.append("alt") }
+        if mods.contains(.ctrl) { out.append("ctrl") }
+        return out.isEmpty ? nil : out
+    }
+
+    private func serializeMouseButton(_ button: MouseButton) -> String {
+        switch button {
+        case .left: return "left"
+        case .middle: return "middle"
+        case .right: return "right"
+        }
     }
 
     // MARK: Helpers

@@ -933,6 +933,18 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// Expose the inspector for remote probing.
     public func remoteInspector() -> Inspector { inspector }
 
+    /// Build the framework's default action scope so remote
+    /// `list_actions` / `invoke_action` route through the same data
+    /// the runtime's own dispatch uses. Each call yields a fresh
+    /// scope wired to a new QuitSignal — the LLM-side invoke path
+    /// fires the signal and the event loop's poll exits cleanly,
+    /// matching the keyboard Ctrl+C path exactly.
+    public func remoteFrameworkDefaultsScope() -> ActionScope {
+        let signal = QuitSignal()
+        self.pendingQuitSignal = signal
+        return makeFrameworkDefaultsScope(signal: signal)
+    }
+
     /// Expose the last rendered buffer for `query_cells`. The runtime keeps
     /// `previousBuffer` around between frames; after the first render it
     /// mirrors what's on screen.
