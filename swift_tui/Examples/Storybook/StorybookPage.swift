@@ -34,13 +34,11 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Input
     case button, textInput, textArea, toggle, promptInput
     // Display
-    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar
+    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
     case foreground, bold, border, padding, focusable, frame, onHover, mouseFocusPolicy
-    // Display (additions)
-    case bufferView
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
