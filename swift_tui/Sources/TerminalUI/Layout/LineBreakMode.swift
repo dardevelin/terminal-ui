@@ -45,31 +45,66 @@ public enum LineBreakMode: Sendable, Equatable, CaseIterable {
     /// regardless of mode.
     public func apply(to s: String, width: Int) -> String {
         guard width > 0 else { return s }
-        if s.count <= width { return s }
+        // Use display-cell width, not grapheme count. CJK ideographs
+        // are 2 cells; emoji are typically 2 cells; combining marks
+        // are 0 cells. CellBuffer.write paints at cell boundaries, so
+        // wrapping/truncating must measure the same way or content
+        // misaligns at the rendered column.
+        if s.displayWidth <= width { return s }
         switch self {
         case .byClipping:
-            return String(s.prefix(width))
+            return prefixOfWidth(s, width: width)
         case .byCharWrapping, .byWordWrapping:
             return wrap(s, width: width).first ?? ""
         case .byTruncatingHead:
-            // Ellipsis(1) + tail(width-1) — preserves the END of the
-            // string, useful for paths like "…/long/path/file".
-            let tail = s.suffix(max(0, width - 1))
-            return "…" + tail
+            // Ellipsis (1 cell) + tail filling the rest. Preserves
+            // the END of the string, useful for paths like "…/long/path/file".
+            return "…" + suffixOfWidth(s, width: max(0, width - 1))
         case .byTruncatingMiddle:
-            // Symmetric split around an ellipsis. With odd `width-1`,
-            // the head gets the extra character.
-            let room = width - 1
-            let headLen = (room + 1) / 2
-            let tailLen = room - headLen
-            let head = s.prefix(headLen)
-            let tail = s.suffix(tailLen)
-            return String(head) + "…" + String(tail)
+            // Symmetric split around an ellipsis (1 cell). With odd
+            // remainder the head gets the extra cell.
+            let room = max(0, width - 1)
+            let headWidth = (room + 1) / 2
+            let tailWidth = room - headWidth
+            return prefixOfWidth(s, width: headWidth) + "…" + suffixOfWidth(s, width: tailWidth)
         case .byTruncatingTail:
-            // Head(width-1) + ellipsis(1).
-            let head = s.prefix(max(0, width - 1))
-            return String(head) + "…"
+            // Head fills width-1, ellipsis closes at the right edge.
+            return prefixOfWidth(s, width: max(0, width - 1)) + "…"
         }
+    }
+
+    /// Slice `s` to the longest prefix whose `displayWidth ≤ width`.
+    /// Stops *before* a grapheme that would push the running width
+    /// past `width`, so a trailing 2-cell character at the boundary
+    /// is dropped rather than overflowing.
+    private func prefixOfWidth(_ s: String, width: Int) -> String {
+        guard width > 0 else { return "" }
+        var running = 0
+        var result = ""
+        for ch in s {
+            let w = ch.displayWidth
+            if running + w > width { break }
+            result.append(ch)
+            running += w
+        }
+        return result
+    }
+
+    /// Slice `s` to the longest suffix whose `displayWidth ≤ width`.
+    /// Walks from the end so the rightmost cells fit; the leftmost
+    /// boundary character is dropped if it would overflow.
+    private func suffixOfWidth(_ s: String, width: Int) -> String {
+        guard width > 0 else { return "" }
+        let chars = Array(s)
+        var running = 0
+        var startIndex = chars.count
+        for idx in (0..<chars.count).reversed() {
+            let w = chars[idx].displayWidth
+            if running + w > width { break }
+            running += w
+            startIndex = idx
+        }
+        return String(chars[startIndex..<chars.count])
     }
 
     /// Multi-row wrap. Defined for the wrap modes; for non-wrap

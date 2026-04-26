@@ -44,6 +44,7 @@ public enum TextLayout {
 
         var chunks: [String] = []
         var current = ""
+        var currentWidth = 0
         var i = line.startIndex
         while i < line.endIndex {
             // Tokenise: a maximal run of non-space OR a maximal run
@@ -56,24 +57,29 @@ public enum TextLayout {
                 j = line.index(after: j)
             }
             let token = String(line[i..<j])
+            let tokenWidth = token.displayWidth
             i = j
 
             // Long word: flush current and hard-break at char level.
-            if token.count > width {
+            // displayWidth means CJK / emoji measure correctly.
+            if tokenWidth > width {
                 if !current.isEmpty {
                     chunks.append(current)
                     current = ""
+                    currentWidth = 0
                 }
                 chunks.append(contentsOf: charStrideChunks(token, width: width))
                 continue
             }
 
-            if current.count + token.count <= width {
+            if currentWidth + tokenWidth <= width {
                 current += token
+                currentWidth += tokenWidth
             } else {
                 if !current.isEmpty {
                     chunks.append(current)
                     current = ""
+                    currentWidth = 0
                 }
                 if token.first == " " {
                     // Pure-space token at a wrap boundary — drop it
@@ -81,6 +87,7 @@ public enum TextLayout {
                     continue
                 }
                 current = token
+                currentWidth = tokenWidth
             }
         }
         if !current.isEmpty {
@@ -92,17 +99,29 @@ public enum TextLayout {
         return chunks
     }
 
-    /// Slice `s` into ≤`width`-character chunks at character level.
-    /// Used as a fallback for tokens longer than `width` and for
-    /// spaceless input. Reassembly is exact.
+    /// Slice `s` into chunks each ≤`width` cells. Used as a fallback
+    /// for tokens longer than `width` and for spaceless input.
+    /// Reassembly is exact (every character lands in exactly one chunk).
+    /// CJK / emoji are measured as 2 cells per grapheme; combining
+    /// marks as 0 cells. A 2-cell character at a chunk boundary moves
+    /// to the next chunk rather than overflowing.
     public static func charStrideChunks(_ s: String, width: Int) -> [String] {
         guard width > 0 else { return [s] }
         var out: [String] = []
-        var idx = s.startIndex
-        while idx < s.endIndex {
-            let end = s.index(idx, offsetBy: width, limitedBy: s.endIndex) ?? s.endIndex
-            out.append(String(s[idx..<end]))
-            idx = end
+        var current = ""
+        var currentWidth = 0
+        for ch in s {
+            let w = ch.displayWidth
+            if currentWidth + w > width && !current.isEmpty {
+                out.append(current)
+                current = ""
+                currentWidth = 0
+            }
+            current.append(ch)
+            currentWidth += w
+        }
+        if !current.isEmpty {
+            out.append(current)
         }
         return out.isEmpty ? [""] : out
     }
