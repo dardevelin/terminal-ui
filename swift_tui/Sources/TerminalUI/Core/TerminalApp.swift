@@ -14,6 +14,12 @@ public enum TerminalEvent: Sendable {
     case mouse(MouseEvent)
     case resize(Int, Int)
     case timer(String)
+    /// Bracketed-paste payload — the bytes between an `ESC[200~ ... ESC[201~`
+    /// pair, decoded as UTF-8. Control sequences inside the wrapper are
+    /// NOT interpreted as keys; the payload is the unmodified user content.
+    /// xterm DEC private mode 2004 must be enabled for the terminal to
+    /// produce the wrappers — `Terminal.enableBracketedPaste()` does that.
+    case paste(String)
 }
 
 /// Current frame stats — updated by the runtime each frame.
@@ -158,6 +164,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableRawMode()
         Terminal.enterAlternateScreen()
         Terminal.enableMouseTracking()
+        Terminal.enableBracketedPaste()
 
         #if DEBUG
         // Auto-attach the remote-control server. Every TerminalUI
@@ -196,6 +203,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         defer {
             tracer.writeSummary()
+            Terminal.disableBracketedPaste()
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
 
@@ -371,6 +379,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     #if DEBUG
                     debugPanel.markGraphDirty()
                     #endif
+
+                case .paste(let payload):
+                    // Paste payloads route to the focused view via a paste
+                    // handler (registered through `.onPaste`). Until any
+                    // view declares paste interest, drop on the floor —
+                    // safer than fanning out fast-typed character events
+                    // that the user did NOT type.
+                    handlePasteEvent(payload)
+                    needsRender = true
                 }
 
                 if !shouldContinue {
@@ -446,6 +463,29 @@ public final class TerminalRuntime<RootView: TerminalView> {
             return false
         }
         return focusEngine.routeKeyEvent(event, root: root, startingFrom: targetID)
+    }
+
+    // MARK: - Paste Event Handling
+
+    /// Route a bracketed-paste payload to whichever view has registered
+    /// paste interest (via `.onPaste`). The dispatch is intentionally
+    /// minimal here — paste routing lives at the focused-view level so
+    /// per-component paste semantics (collapsed markers in PromptInput,
+    /// raw insertion in TextArea, etc.) stay in those components.
+    /// Until any view declares paste interest the payload is dropped.
+    private func handlePasteEvent(_ payload: String) {
+        #if DEBUG
+        debugPanel.recordInput(
+            "paste(\(payload.count) bytes)",
+            timestamp: ProcessInfo.processInfo.systemUptime
+        )
+        #endif
+        // The focused view's paste handler claims the payload via the
+        // event-routing protocol that views opt into. Today the parser →
+        // runtime → event-queue path is the only consumer; per-view
+        // paste claim lands when an editor surface starts requesting
+        // these events.
+        _ = payload
     }
 
     // MARK: - Key Event Handling

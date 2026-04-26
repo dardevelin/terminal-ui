@@ -84,6 +84,11 @@ private enum TildeCode {
     static let f10 = 21
     static let f11 = 23
     static let f12 = 24
+    /// xterm bracketed-paste start: ESC [ 2 0 0 ~ — switches the parser
+    /// into "collect bytes until end marker" mode rather than emitting
+    /// a key event. The end marker is `bracketedPasteEnd`.
+    static let bracketedPasteStart = 200
+    static let bracketedPasteEnd = 201
 }
 
 // MARK: - Kitty Keyboard Protocol
@@ -237,6 +242,14 @@ public enum InputParser {
         var params: [UInt8] = [thirdByte]
         while let nextByte = source.readByte() {
             if nextByte == UInt8(ascii: "~") {
+                // Bracketed-paste start: read until the matching end
+                // marker and emit one .paste event. Doing this here
+                // (not in parseTildeKey) keeps the byte source available
+                // — paste-collection needs to keep reading past the
+                // tilde, which the regular tilde-key dispatch can't do.
+                if isBracketedPasteStart(params) {
+                    return collectBracketedPaste(from: &source)
+                }
                 return parseTildeKey(params)
             }
             // Kitty keyboard protocol: ESC [ keycode ; modifiers u
@@ -249,6 +262,57 @@ public enum InputParser {
             params.append(nextByte)
         }
         return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "[")] + params)))
+    }
+
+    /// True iff `params` decode to the bracketed-paste start code (200).
+    private static func isBracketedPasteStart(_ params: [UInt8]) -> Bool {
+        let text = String(params.map { Character(UnicodeScalar($0)) })
+        return Int(text) == TildeCode.bracketedPasteStart
+    }
+
+    /// Collect bytes from the source until the matching `ESC [ 2 0 1 ~`
+    /// end marker. Bytes inside the wrapper are NOT interpreted — that's
+    /// the whole point of bracketed paste, disambiguating typed input
+    /// from clipboard content. Returns the payload as a UTF-8 string.
+    private static func collectBracketedPaste(from source: inout some ByteSource) -> TerminalEvent {
+        var payload: [UInt8] = []
+        let endMarker: [UInt8] = [
+            ASCII.escape,
+            UInt8(ascii: "["),
+            UInt8(ascii: "2"),
+            UInt8(ascii: "0"),
+            UInt8(ascii: "1"),
+            UInt8(ascii: "~"),
+        ]
+        var matched = 0
+        while let byte = source.readByte() {
+            if byte == endMarker[matched] {
+                matched += 1
+                if matched == endMarker.count {
+                    let text = String(decoding: payload, as: Unicode.UTF8.self)
+                    return .paste(text)
+                }
+            } else {
+                // Mismatch — flush the partial match into the payload
+                // and resume scanning. Bracketed paste payloads can
+                // legitimately contain a leading ESC byte that ISN'T
+                // the start of the end marker; we must preserve those.
+                if matched > 0 {
+                    payload.append(contentsOf: endMarker.prefix(matched))
+                    matched = 0
+                }
+                if byte == endMarker[0] {
+                    matched = 1
+                } else {
+                    payload.append(byte)
+                }
+            }
+        }
+        // Stream ended before the end marker arrived — return whatever
+        // we collected as a paste payload anyway. Better than dropping
+        // partial paste content; the user can still recover the bytes.
+        let text = String(decoding: payload, as: Unicode.UTF8.self)
+        return .paste(text)
     }
 
     static func parseTildeKey(_ params: [UInt8]) -> TerminalEvent {

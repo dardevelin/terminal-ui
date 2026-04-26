@@ -26,6 +26,11 @@ private enum ANSIMode {
     /// SGR 1006: extended mouse coordinate format — supports positions beyond column 223
     /// where the legacy X10 encoding breaks (single-byte limit)
     static let mouseSGR = 1006
+    /// xterm bracketed paste mode (2004): the terminal wraps pasted content
+    /// in `ESC[200~ ... ESC[201~` so the InputParser can disambiguate a
+    /// real paste burst from very fast typed input. Without this, pasted
+    /// content arrives byte-by-byte indistinguishable from keyboard input.
+    static let bracketedPaste = 2004
 }
 
 private let csi = "\u{1B}["
@@ -273,6 +278,19 @@ public enum Terminal {
             + disableMode(ANSIMode.mouseDrag)
             + disableMode(ANSIMode.mouseBasic)
         write(sequence)
+    }
+
+    /// Enable xterm bracketed-paste mode. The terminal will wrap any
+    /// pasted content in `ESC[200~ ... ESC[201~`, which the InputParser
+    /// converts into a single `TerminalEvent.paste(String)`. Without
+    /// this, paste content arrives byte-by-byte indistinguishable from
+    /// fast typed input. Idempotent — calling twice is harmless.
+    public static func enableBracketedPaste() {
+        write(enableMode(ANSIMode.bracketedPaste))
+    }
+
+    public static func disableBracketedPaste() {
+        write(disableMode(ANSIMode.bracketedPaste))
     }
 
     /// Bypass Swift's buffered print — writes raw bytes to stdout via POSIX write().
