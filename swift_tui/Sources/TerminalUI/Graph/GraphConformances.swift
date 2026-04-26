@@ -2,17 +2,48 @@
 
 // MARK: - TupleView unpacking
 //
-// @TerminalViewBuilder produces TupleView<(V0, V1, ...)> wrapping a tuple.
-// To get individual children, we use Swift's Mirror API (runtime reflection)
-// to inspect the tuple's elements.
+// `@TerminalViewBuilder` produces `TupleView<(V0, V1, ...)>` wrapping a
+// tuple. The framework needs the individual children for layout, focus,
+// and reconciliation, so containers call `extractChildren(from:)` to
+// flatten the wrapper.
 //
-// Two-stage check:
-// 1. Protocol check — TupleView conforms to _TupleViewProtocol for explicit extraction.
-// 2. Mirror fallback — raw tuples from nested result builders.
-// 3. Single view — if neither, it's one child.
+// Dispatch story (cheap → expensive):
 //
-// This is the [Any] boxing hot path. Parameter packs will replace it.
+// 1. **Explicit protocol path.** `TupleView` conforms to
+//    `_TupleViewProtocol`; `extractChildren` invokes its `children()`
+//    method directly. No reflection.
+// 2. **Mirror fallback.** Raw tuples (e.g. nested result builders that
+//    surface a tuple value without the `TupleView` wrapper) walk a
+//    `Mirror` to enumerate elements. Pays the runtime-reflection cost
+//    every frame the container re-evaluates.
+// 3. **Single view.** Anything else returns `[value]` and is treated
+//    as one child.
+//
+// Cost-bearing audience:
+//
+// - `extractChildren` is called only from the built-in container
+//   conformances of `_GraphVStack` / `_GraphHStack` / `_GraphZStack`
+//   (`TupleView`, `VStack`, `HStack`, `ZStack` extensions in this
+//   file). User-defined composite views never enter this function
+//   directly — their bodies become `.viewBody` nodes whose children
+//   are extracted via the protocol of whatever container *those*
+//   bodies return.
+// - The Mirror fallback at step 2 fires for raw tuple values inside
+//   a built-in container's `content`, so a user nesting two-stage
+//   result builders inside a `VStack` can pay it. App authors who
+//   write a custom container and want to participate in the graph's
+//   per-child reconciliation must conform their container to
+//   `_GraphVStack` (or sibling) and provide an explicit
+//   `graphChildren()` that does NOT route through Mirror.
+//
+// Replacing the Mirror fallback is HYP-5 — parameter packs let us
+// type-erase the children list without reflection, but the rewrite
+// has reverted once already, so the cost is documented here as the
+// stable fall-back rather than removed.
 
+/// Flatten a `@TerminalViewBuilder` tuple value into its individual
+/// child views for the attribute graph. See the file-header comment
+/// for the dispatch story and which call paths pay the Mirror cost.
 func extractChildren(from value: Any) -> [Any] {
     let mirror = Mirror(reflecting: value)
 
