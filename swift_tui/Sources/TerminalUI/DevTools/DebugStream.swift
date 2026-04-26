@@ -42,6 +42,15 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// `DebugStream.shared.suppressWarning(.onHoverWithHoverFollows)`
     /// if the duplication is intentional.
     case onHoverWithHoverFollows
+    /// `@TerminalState`'s `$projectedValue` was read at a moment when
+    /// `GraphContext.currentNode` was nil. The binding falls back to
+    /// the initial value and writes will silently no-op. Almost always
+    /// means the user projected `$state` inside a deferred closure
+    /// (e.g. inside `GeometryReader { ... }`) — project in `body`
+    /// outside the closure and capture the binding instead. The
+    /// canary case was TreeView pre-HYP-108. See memory entry
+    /// `feedback_bindings_in_geometryreader.md`.
+    case bindingProjectedWithoutNode
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {

@@ -77,6 +77,21 @@ public struct TerminalState<Value> {
         let capturedKey = key
         let fallback = initialValue
 
+        #if DEBUG
+        if capturedNode == nil {
+            // The user projected `$foo` at a moment when no node was
+            // current — almost always inside a `GeometryReader { ... }`
+            // closure that runs at GR-rebuild time. The returned
+            // binding will fall back to the initial value forever and
+            // silently swallow writes. Surface as a framework warning
+            // so the bug is loud, not silent.
+            DebugStream.shared.emitWarning(
+                .bindingProjectedWithoutNode,
+                message: "Binding for state '\(capturedKey)' projected with no current node — likely projected inside a deferred closure (GeometryReader). Project the binding in `body` outside the closure and capture it."
+            )
+        }
+        #endif
+
         if let node = capturedNode, node.stateSlots[capturedKey] == nil {
             node.stateSlots[capturedKey] = StateSlot(key: capturedKey, initialValue: fallback)
         }
