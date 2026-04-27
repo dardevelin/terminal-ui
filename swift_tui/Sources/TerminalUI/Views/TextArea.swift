@@ -135,6 +135,16 @@ public struct TextArea: TerminalView {
     /// (default) preserves backward-compat; `.display` enables
     /// SwiftUI-style display-row navigation through wrapped chunks.
     public let arrowMode: TextAreaArrowMode
+    /// Optional syntax highlighter. When non-nil, each rendered line
+    /// is tokenised through this highlighter and the matching
+    /// `SyntaxTheme` color is applied as the FOREGROUND of plain
+    /// (non-cursor, non-selection) characters. Default `nil` keeps
+    /// the legacy plain-text rendering — non-breaking.
+    public let highlighter: (any SyntaxHighlighter)?
+    /// Theme used to map `SyntaxToken` → `Color`. Ignored when
+    /// `highlighter` is nil. Default `.defaultDark` matches the
+    /// shipping syntax-highlighting palette.
+    public let theme: SyntaxTheme
 
     /// Boundary-feedback mode read at body-eval time. Drives the
     /// `BoundaryFeedbackEmitter.shared.emit` calls at the four
@@ -172,13 +182,17 @@ public struct TextArea: TerminalView {
         state: Binding<TextAreaState>,
         lineNumbers: Bool = false,
         visibleHeight: Int? = nil,
-        arrowMode: TextAreaArrowMode = .logical
+        arrowMode: TextAreaArrowMode = .logical,
+        highlighter: (any SyntaxHighlighter)? = nil,
+        theme: SyntaxTheme = .defaultDark
     ) {
         self.text = text
         self.state = state
         self.lineNumbers = lineNumbers
         self.visibleHeight = visibleHeight
         self.arrowMode = arrowMode
+        self.highlighter = highlighter
+        self.theme = theme
     }
 
     // MARK: - Body
@@ -266,7 +280,9 @@ public struct TextArea: TerminalView {
             scrollOffset: scrollOffset,
             visibleHeight: visibleHeight,
             lineNumbers: lineNumbers,
-            wrapWidth: wrapWidth
+            wrapWidth: wrapWidth,
+            highlighter: highlighter,
+            theme: theme
         )
         return Text(spans: displaySpans)
             .foreground(isEnabled ? .default : .gray)
@@ -630,7 +646,9 @@ public struct TextArea: TerminalView {
         scrollOffset: Int,
         visibleHeight: Int,
         lineNumbers: Bool,
-        wrapWidth: Int = 0
+        wrapWidth: Int = 0,
+        highlighter: (any SyntaxHighlighter)? = nil,
+        theme: SyntaxTheme = .defaultDark
     ) -> [TextSpan] {
         var spans: [TextSpan] = []
         let totalLines = lines.count
@@ -695,18 +713,48 @@ public struct TextArea: TerminalView {
                 } else {
                     enum CharStyle { case normal, cursor, selected }
                     var currentStyle: CharStyle = .normal
+                    var currentColor: Color = theme.plain
                     var runStart = 0
+
+                    // Precompute syntax-token color per character of
+                    // this chunk. Tokens come from the FULL logical
+                    // line (highlighter is per-line); we map each
+                    // chunk character back to its line offset and
+                    // look up the covering token's color.
+                    let tokenColors: [Color]
+                    if let highlighter {
+                        tokenColors = lineTokenColors(
+                            line: lines[row], highlighter: highlighter, theme: theme,
+                            chunkColStart: chunkColStart, chunkLength: chunk.count
+                        )
+                    } else {
+                        tokenColors = []  // empty → flushRun uses default fg
+                    }
 
                     func flushRun(upTo end: Int) {
                         guard end > runStart else { return }
                         let text = String(chunk[chunk.index(chunk.startIndex, offsetBy: runStart)..<chunk.index(chunk.startIndex, offsetBy: end)])
                         switch currentStyle {
                         case .cursor:
+                            // Cursor styling overrides syntax color — the
+                            // cursor cell needs to be visible against the
+                            // editor's bg regardless of token kind.
                             spans.append(TextSpan(text, foreground: cursorFg, background: cursorBg, bold: true))
                         case .selected:
-                            spans.append(TextSpan(text, background: selectionBg))
+                            // Selection keeps its blue background; foreground
+                            // honours syntax color so highlighted code
+                            // stays readable inside a selection.
+                            if highlighter != nil {
+                                spans.append(TextSpan(text, foreground: currentColor, background: selectionBg))
+                            } else {
+                                spans.append(TextSpan(text, background: selectionBg))
+                            }
                         case .normal:
-                            spans.append(TextSpan(text))
+                            if highlighter != nil {
+                                spans.append(TextSpan(text, foreground: currentColor))
+                            } else {
+                                spans.append(TextSpan(text))
+                            }
                         }
                     }
 
@@ -715,12 +763,15 @@ public struct TextArea: TerminalView {
                         let atCursor = row == cursor.row && logicalCol == cursor.col
                         let selected = isPositionSelected(row: row, col: logicalCol, selection: selection)
                         let style: CharStyle = atCursor ? .cursor : selected ? .selected : .normal
+                        let charColor: Color = tokenColors.isEmpty ? theme.plain : tokenColors[col]
 
                         if col == 0 {
                             currentStyle = style
-                        } else if style != currentStyle {
+                            currentColor = charColor
+                        } else if style != currentStyle || charColor != currentColor {
                             flushRun(upTo: col)
                             currentStyle = style
+                            currentColor = charColor
                             runStart = col
                         }
                     }
@@ -778,6 +829,40 @@ public struct TextArea: TerminalView {
     static func gutterWidth(for totalLines: Int) -> Int {
         let digits = max(minGutterDigits, String(totalLines).count)
         return digits + gutterPadding
+    }
+
+    /// For one wrapped chunk of `line`, return the per-character
+    /// foreground colors derived by tokenising the FULL logical
+    /// line through `highlighter` and looking up each token's
+    /// theme color. Indices map back to the chunk's local cols
+    /// (`chunkColStart` is the chunk's offset in the line; the
+    /// returned array has `chunkLength` entries).
+    static func lineTokenColors(
+        line: String,
+        highlighter: any SyntaxHighlighter,
+        theme: SyntaxTheme,
+        chunkColStart: Int,
+        chunkLength: Int
+    ) -> [Color] {
+        guard chunkLength > 0 else { return [] }
+        var colors = Array(repeating: theme.plain, count: chunkLength)
+        let spans = highlighter.tokenize(line: line)
+        let chunkEnd = chunkColStart + chunkLength
+        for span in spans {
+            // Convert the span's String.Index range back to integer
+            // offsets into `line`.
+            let start = line.distance(from: line.startIndex, to: span.range.lowerBound)
+            let end = line.distance(from: line.startIndex, to: span.range.upperBound)
+            // Intersect with this chunk's [chunkColStart, chunkEnd).
+            let lo = max(start, chunkColStart)
+            let hi = min(end, chunkEnd)
+            guard lo < hi else { continue }
+            let color = theme.color(for: span.token)
+            for c in lo..<hi {
+                colors[c - chunkColStart] = color
+            }
+        }
+        return colors
     }
 
     static func isPositionSelected(row: Int, col: Int, selection: TextAreaSelection?) -> Bool {
