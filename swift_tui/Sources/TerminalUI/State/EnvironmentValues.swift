@@ -36,6 +36,17 @@ public struct EnvironmentValues: Sendable {
     /// `nil` keeps the existing focus-driven behaviour.
     /// SwiftUI parity: `View.scrollPosition(id:)` (iOS 17+).
     public var scrollTargetID: ScrollTargetID? = nil
+
+    /// How `PromptInput` presents pasted content. Default
+    /// `.placeholder(lines: 2, chars: 200)` mirrors Claude Code:
+    /// pastes with a newline OR over 200 chars collapse to a marker.
+    /// Override via `.pasteMode(.inline)` or `.pasteMode(.alwaysPlaceholder)`.
+    public var pasteMode: PasteMode = .claudeCode
+
+    /// Whether the "paste again to expand" auto-hint row is visible
+    /// beneath the prompt when the cursor is adjacent to a collapsed
+    /// reference. Override via `.pasteHint(.hidden)`.
+    public var pasteHint: PasteHintVisibility = .visible
     /// How text-input components react to boundary hits (cursor at start/end,
     /// maxLength reached). Default `.bounce` — visible cursor animation.
     /// Scaffolding exists; per-component wiring lands incrementally.

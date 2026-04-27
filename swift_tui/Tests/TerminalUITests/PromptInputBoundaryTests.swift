@@ -145,7 +145,7 @@ struct PromptInputBoundaryEmitTests {
 
         var value = "live"
         var st = PromptInputState()
-        st.history = ["older command"]  // one entry available
+        st.history = [PromptInputHistoryEntry(text: "older command")]  // one entry available
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()

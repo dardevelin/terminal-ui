@@ -87,4 +87,28 @@ extension TerminalView {
         -> ModifiedView<Self, EnvironmentModifier<ScrollTargetID?>> {
         environment(\.scrollTargetID, id.map { ScrollTargetID($0) })
     }
+
+    /// Configure how `PromptInput` (and any descendant prompt-style
+    /// inputs) handle paste. Default — `.claudeCode` shape — collapses
+    /// pastes with newlines or over ~200 chars into a `[Pasted text #N
+    /// +M lines]` marker. `.inline` keeps the legacy expand-everything
+    /// behaviour; `.alwaysPlaceholder` collapses every paste.
+    ///
+    /// User direction (verbatim 2026-04-27):
+    /// > *"by default we opt for claude code approach but otherwise
+    /// > we also allow configurable, the user should be able to
+    /// > define what they consider the proper trigger easily"*
+    public func pasteMode(_ mode: PasteMode)
+        -> ModifiedView<Self, EnvironmentModifier<PasteMode>> {
+        environment(\.pasteMode, mode)
+    }
+
+    /// Show or hide the "paste again to expand" auto-hint row beneath
+    /// `PromptInput`s in this subtree. Default `.visible`. Set
+    /// `.hidden` to suppress when the hint would crowd the layout
+    /// (e.g. status-bar-driven prompts).
+    public func pasteHint(_ visibility: PasteHintVisibility)
+        -> ModifiedView<Self, EnvironmentModifier<PasteHintVisibility>> {
+        environment(\.pasteHint, visibility)
+    }
 }

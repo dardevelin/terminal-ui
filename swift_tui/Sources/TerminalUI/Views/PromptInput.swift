@@ -60,6 +60,174 @@ public enum PromptHeightPolicy: Sendable, Equatable {
     case containerCapped(Int)
 }
 
+/// How `PromptInput` presents pasted content. Drives the threshold +
+/// rendering decision at the per-paste level.
+///
+/// User direction (verbatim 2026-04-27):
+/// > *"by default we opt for claude code approach but otherwise we
+/// > also allow configurable, the user should be able to define what
+/// > they consider the proper trigger easily"*
+///
+/// Defaults match Claude Code: a paste collapses to a marker if it
+/// has 1+ newline OR exceeds `chars` characters. Single-line pastes
+/// under the threshold land inline (current behaviour).
+public enum PasteMode: Equatable, Sendable {
+    /// Collapse the paste to a marker when EITHER threshold is hit.
+    /// `lines` counts newline-separated logical rows in the payload
+    /// (so a single `\n` triggers `lines = 2`); `chars` counts UTF-8
+    /// characters. Either condition fires the marker.
+    ///
+    /// Claude Code defaults: `lines = 2, chars = 200`. SwiftUI parity
+    /// is N/A — Claude Code is the reference, this is its mirror.
+    case placeholder(lines: Int = 2, chars: Int = 200)
+    /// Always render paste content inline. Legacy mode (pre-HYP-195).
+    /// Useful for prompts that want the user to see the full pasted
+    /// text every time (e.g. command-bar autocomplete previews).
+    case inline
+    /// Collapse every paste regardless of size. Useful when the prompt
+    /// is meant to look "atomic" (chat-style with ZERO inline paste).
+    case alwaysPlaceholder
+
+    /// Convenience constructor matching Claude Code's defaults exactly.
+    public static let claudeCode = PasteMode.placeholder(lines: 2, chars: 200)
+
+    /// Decide whether `payload` should collapse under this mode.
+    public func shouldCollapse(_ payload: String) -> Bool {
+        switch self {
+        case .inline: return false
+        case .alwaysPlaceholder: return true
+        case .placeholder(let lineThreshold, let charThreshold):
+            // `lines >= threshold` matches the design's "≥1 newline →
+            // collapse" rule when default threshold = 2 (since a single
+            // newline produces 2 lines).
+            let lineCount = payload.split(separator: "\n", omittingEmptySubsequences: false).count
+            if lineCount >= lineThreshold { return true }
+            if payload.count > charThreshold { return true }
+            return false
+        }
+    }
+}
+
+/// Whether the auto-hint row beneath the prompt ("paste again to
+/// expand") is rendered. Library users opt out via `.pasteHint(.hidden)`.
+public enum PasteHintVisibility: Equatable, Sendable {
+    case visible
+    case hidden
+}
+
+/// Content held by a `PasteBuffer`. Phase A ships text only; image paste
+/// flows through a separate input pipeline (kitty graphics / OSC 52)
+/// tracked as a follow-up ticket. The case shape is forward-compatible
+/// so the consumer-facing API stays stable when image paste lands.
+public enum PasteBufferContent: Hashable, Equatable, Sendable {
+    case text(String)
+    // Reserved for image paste. Adding the case later is source-compatible
+    // because callers must already handle `default:` on switch (Phase A
+    // returns only `.text`). The image variant carries opaque payload
+    // bytes plus mime type so the kitty/OSC-52 wiring stays in its own
+    // pipeline.
+    // case image(bytes: Data, mimeType: String)
+}
+
+/// One paste payload (or future selection-collapsed buffer) stored in the
+/// PromptInput's per-state pool. Buffers are append-only and survive
+/// reference deletion — that's what lets `Backspace` on a marker
+/// "delete the presentation" without losing the data, so a Phase B
+/// buffer-picker can re-insert the same buffer later.
+///
+/// User design quote (verbatim 2026-04-26):
+/// > *"deleting regions don't delete the buffer, they delete the
+/// > presentation, thus allowing to re-apply"*
+public struct PasteBuffer: Identifiable, Equatable, Sendable {
+    public typealias ID = Int
+    public let id: ID
+    public let content: PasteBufferContent
+    /// Content hash for dedupe. Same payload pasted twice reuses the
+    /// existing buffer (per the C2 sign-off in the design memory).
+    /// Plain Hasher-based hash is enough for collision-resistance at
+    /// session scope; we don't need a cryptographic hash.
+    public let contentHash: Int
+
+    public init(id: ID, content: PasteBufferContent) {
+        self.id = id
+        self.content = content
+        self.contentHash = Self.hash(content)
+    }
+
+    public static func hash(_ content: PasteBufferContent) -> Int {
+        var hasher = Hasher()
+        hasher.combine(content)
+        return hasher.finalize()
+    }
+}
+
+/// A view of a buffer at a specific position in the binding text. One
+/// buffer can be inserted multiple times — each insertion gets its own
+/// `Reference`. Phase A: paste creates references; Phase B will add
+/// selection-collapse and named references.
+///
+/// `range` is stored as `(start: Int, length: Int)` rather than
+/// `Range<String.Index>` because the binding is mutable (cursor edits
+/// shift positions); integer offsets survive mutation when we re-anchor
+/// references after each text change. Length is in UTF-8 view characters,
+/// matching how the binding's String index counts.
+public struct PasteReference: Identifiable, Equatable, Sendable {
+    public typealias ID = Int
+    public let id: ID
+    public let bufferID: PasteBuffer.ID
+    /// Start offset in the expanded binding text (character count from
+    /// `text.startIndex`). Reference's range is `[start, start + length)`.
+    public var start: Int
+    /// Length in characters of the underlying buffer's expanded text
+    /// (the number of characters the marker stands in for). Image
+    /// references have length 0 — their marker is a synthetic insertion
+    /// that occupies a sentinel character in the binding.
+    public var length: Int
+    /// `true` when the reference's underlying text is rendered inline.
+    /// `false` (default) collapses to a marker (`[Pasted text #N +M lines]`).
+    /// Toggled by "paste again to expand" and (Phase B) by
+    /// `expand(refID:)` API.
+    public var isExpanded: Bool
+    /// Optional human-readable name. Phase A: always nil — markers
+    /// render with `#N` numeric tag. Phase B: selection-collapse and
+    /// LLM-suggested names populate this field.
+    public var name: String?
+
+    public init(
+        id: ID,
+        bufferID: PasteBuffer.ID,
+        start: Int,
+        length: Int,
+        isExpanded: Bool = false,
+        name: String? = nil
+    ) {
+        self.id = id
+        self.bufferID = bufferID
+        self.start = start
+        self.length = length
+        self.isExpanded = isExpanded
+        self.name = name
+    }
+}
+
+/// Snapshot of state suitable for storing in `history` so ↑-recall
+/// restores both the text and the reference set with original IDs.
+public struct PromptInputHistoryEntry: Equatable, Sendable {
+    public let text: String
+    public let buffers: [PasteBuffer]
+    public let references: [PasteReference]
+
+    public init(
+        text: String,
+        buffers: [PasteBuffer] = [],
+        references: [PasteReference] = []
+    ) {
+        self.text = text
+        self.buffers = buffers
+        self.references = references
+    }
+}
+
 public struct PromptInputState: Equatable, Sendable {
     /// Cursor column within the current text (logical, counts characters
     /// left of the cursor in `lines[cursorRow]`).
@@ -69,12 +237,27 @@ public struct PromptInputState: Equatable, Sendable {
     /// Top visible display row (post-wrap). Unit is display rows, not
     /// logical lines, so scrolling inside a single long wrapped line works.
     public var scrollDisplayRow: Int = 0
-    /// Command history — index 0 is most recent.
-    public var history: [String] = []
+    /// Command history — index 0 is most recent. New rich entries
+    /// preserve buffers + references for history recall.
+    public var history: [PromptInputHistoryEntry] = []
     /// Current history navigation index (-1 = live input, 0 = most recent).
     public var historyIndex: Int = -1
     /// Text saved when entering history so arrow-down can restore it.
     public var savedInput: String = ""
+    /// Buffer pool — append-only across the prompt's lifetime. References
+    /// point into here; deleting a reference does NOT delete its buffer
+    /// (Phase B re-applies via the buffer picker). Indexed by `id`.
+    public var buffers: [PasteBuffer] = []
+    /// Live references in the current text. Empty when no paste has
+    /// happened yet (or all references were deleted).
+    public var references: [PasteReference] = []
+    /// Monotonic counter for next-allocated buffer ID. Never rewound,
+    /// even when buffers logically disappear from the active set.
+    public var nextBufferID: PasteBuffer.ID = 1
+    /// Monotonic counter for next-allocated reference ID. Same posture
+    /// as `nextBufferID`. The counter is shared across kinds (text +
+    /// future image) per the design's "single shared counter" decision.
+    public var nextReferenceID: PasteReference.ID = 1
 
     public init() {}
 }
@@ -100,6 +283,11 @@ public struct PromptInput: TerminalView {
 
     /// Optional `.onBoundaryHit { reason in ... }` callback.
     @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+
+    /// Paste presentation mode. Default `.claudeCode` collapses
+    /// pastes with newlines or > 200 chars into a marker. Override
+    /// per-subtree via `.pasteMode(.inline)` etc.
+    @TerminalEnvironment(\.pasteMode) var pasteMode
 
     private static let cursorChar: Character = "\u{2588}"  // █
     private static let promptColor: Color = .cyan
@@ -146,7 +334,18 @@ public struct PromptInput: TerminalView {
         let onBoundaryHit = self.onBoundaryHit
         return GeometryReader { size in
             let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
-            let lines = Self.splitLines(self.text.get())
+            let st = self.state.get()
+            // Project the EXPANDED binding text + reference set into
+            // the COLLAPSED display text. Markers replace each
+            // collapsed reference's range with `[Pasted text #N +M
+            // lines]`. The mapping is also used to translate cursor
+            // (row, col) in expanded space → display space.
+            let projection = Self.projectCollapsedDisplay(
+                expandedText: self.text.get(),
+                references: st.references,
+                buffers: st.buffers
+            )
+            let lines = Self.splitLines(projection.displayText)
             let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
             let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
             let ceiling = Self.resolveCeiling(
@@ -161,7 +360,8 @@ public struct PromptInput: TerminalView {
                 wraps: wraps,
                 totalDisplayRows: totalDisplayRows,
                 wrapWidth: contentWidth,
-                visibleLines: renderedHeight
+                visibleLines: renderedHeight,
+                projection: projection
             )
             return Text(spans: spans)
                 .focusable()
@@ -176,13 +376,14 @@ public struct PromptInput: TerminalView {
                         onBoundaryHit: onBoundaryHit
                     )
                 }
-                .onPaste { [text, state] payload in
+                .onPaste { [text, state, pasteMode] payload in
                     Self.handlePaste(
                         payload,
                         text: text,
                         state: state,
                         maxVisibleLines: renderedHeight,
-                        wrapWidth: contentWidth
+                        wrapWidth: contentWidth,
+                        pasteMode: pasteMode
                     )
                 }
         }
@@ -269,6 +470,137 @@ public struct PromptInput: TerminalView {
         return (displayRow + lastIdx, chunks[lastIdx].count)
     }
 
+    // MARK: - Collapsed-display projection
+
+    /// Result of projecting expanded binding text + references into
+    /// the collapsed display string used for rendering. `cursorDelta`
+    /// is the per-cursor-offset shift induced by markers BEFORE the
+    /// cursor; the body adds it to the cursor's logical position when
+    /// computing display row/col.
+    struct CollapsedProjection: Equatable {
+        let displayText: String
+        /// `(start, end, label)` triples in DISPLAY coordinates for
+        /// each rendered marker. The renderer can re-style these
+        /// segments distinctly (dim color) by walking spans.
+        let markerRanges: [(start: Int, end: Int, label: String, isExpanded: Bool)]
+        /// Sum of `(markerLength - referenceLength)` for every
+        /// reference whose range ends at or before `expandedOffset`.
+        /// Caller adds this to cursor offset to get display offset.
+        let deltas: [DeltaPoint]
+
+        struct DeltaPoint: Equatable {
+            let upToExpandedOffset: Int   // delta applies for positions strictly less than this
+            let delta: Int                // accumulated displayLen - expandedLen up to here
+        }
+
+        static func == (lhs: CollapsedProjection, rhs: CollapsedProjection) -> Bool {
+            lhs.displayText == rhs.displayText
+                && lhs.markerRanges.elementsEqual(rhs.markerRanges) { $0 == $1 }
+                && lhs.deltas == rhs.deltas
+        }
+    }
+
+    /// Build a collapsed display projection from the expanded binding
+    /// text and the live reference set. Each `isExpanded == false`
+    /// reference's range is replaced with a marker label.
+    static func projectCollapsedDisplay(
+        expandedText: String,
+        references: [PasteReference],
+        buffers: [PasteBuffer]
+    ) -> CollapsedProjection {
+        // Sort references by start so we can walk left-to-right and
+        // accumulate deltas. Phase A's "cursor snaps to edge" rule
+        // means references never overlap; sort is stable in that case.
+        let sortedRefs = references.sorted { $0.start < $1.start }
+        guard !sortedRefs.isEmpty else {
+            return CollapsedProjection(
+                displayText: expandedText,
+                markerRanges: [],
+                deltas: []
+            )
+        }
+
+        var displayText = ""
+        var markerRanges: [(start: Int, end: Int, label: String, isExpanded: Bool)] = []
+        var deltas: [CollapsedProjection.DeltaPoint] = []
+        var cursorDelta = 0
+        var expandedCursor = 0
+
+        for ref in sortedRefs {
+            // Copy text from `expandedCursor` up to `ref.start`.
+            let startIdx = expandedText.index(expandedText.startIndex, offsetBy: expandedCursor)
+            let refStartIdx = expandedText.index(expandedText.startIndex, offsetBy: ref.start)
+            displayText.append(contentsOf: expandedText[startIdx..<refStartIdx])
+
+            if ref.isExpanded {
+                // Render underlying text inline.
+                let refEndIdx = expandedText.index(refStartIdx, offsetBy: ref.length)
+                displayText.append(contentsOf: expandedText[refStartIdx..<refEndIdx])
+            } else {
+                // Render marker.
+                let label = markerLabel(for: ref, buffers: buffers)
+                let markerStart = displayText.count
+                displayText.append(label)
+                let markerEnd = displayText.count
+                markerRanges.append((markerStart, markerEnd, label, false))
+                cursorDelta += label.count - ref.length
+                deltas.append(.init(
+                    upToExpandedOffset: ref.start + ref.length,
+                    delta: cursorDelta
+                ))
+            }
+            expandedCursor = ref.start + ref.length
+        }
+
+        // Tail after the last reference.
+        if expandedCursor < expandedText.count {
+            let startIdx = expandedText.index(expandedText.startIndex, offsetBy: expandedCursor)
+            displayText.append(contentsOf: expandedText[startIdx...])
+        }
+
+        return CollapsedProjection(
+            displayText: displayText,
+            markerRanges: markerRanges,
+            deltas: deltas
+        )
+    }
+
+    /// Format the marker label for a reference per the shipping design:
+    /// `[Pasted text #N +M lines]` (multi-line) or `[Pasted text #N +M
+    /// chars]` (single-line). Counter is the reference's ID, M is the
+    /// underlying buffer's logical line count or character count.
+    static func markerLabel(for ref: PasteReference, buffers: [PasteBuffer]) -> String {
+        guard let buffer = buffers.first(where: { $0.id == ref.bufferID }) else {
+            // Defensive: stale reference, render an inert tag.
+            return "[Pasted text #\(ref.id)]"
+        }
+        switch buffer.content {
+        case .text(let body):
+            let lineCount = body.split(separator: "\n", omittingEmptySubsequences: false).count
+            if lineCount > 1 {
+                return "[Pasted text #\(ref.id) +\(lineCount) lines]"
+            }
+            return "[Pasted text #\(ref.id) +\(body.count) chars]"
+        }
+    }
+
+    /// Translate an expanded-text offset to its display-text offset
+    /// using the projection's deltas. `expandedOffset == ref.start`
+    /// (left edge of a collapsed reference) returns the marker's left
+    /// edge; `ref.start + ref.length` (right edge) returns the
+    /// marker's right edge.
+    static func translateOffset(_ expandedOffset: Int, deltas: [CollapsedProjection.DeltaPoint]) -> Int {
+        var cumulative = 0
+        for point in deltas {
+            if expandedOffset >= point.upToExpandedOffset {
+                cumulative = point.delta
+            } else {
+                break
+            }
+        }
+        return expandedOffset + cumulative
+    }
+
     // MARK: - Display
 
     private func buildDisplay(
@@ -276,11 +608,24 @@ public struct PromptInput: TerminalView {
         wraps: [[String]],
         totalDisplayRows: Int,
         wrapWidth: Int,
-        visibleLines: Int
+        visibleLines: Int,
+        projection: CollapsedProjection
     ) -> [TextSpan] {
         let st = state.get()
-        let cursorRow = min(st.cursorRow, max(0, lines.count - 1))
-        let cursorCol = min(st.cursorCol, lines[cursorRow].count)
+        // Translate cursor from expanded coordinates → display
+        // coordinates. Markers shift the column count for any
+        // position past their start. Phase A: cursor never lives
+        // INSIDE a collapsed range (input handlers snap to edges),
+        // so a single-pass delta lookup is sufficient.
+        let expandedLines = Self.splitLines(text.get())
+        let cursorRowInExpanded = min(st.cursorRow, max(0, expandedLines.count - 1))
+        let cursorColInExpanded = min(st.cursorCol, expandedLines[cursorRowInExpanded].count)
+        var expandedOffset = 0
+        for r in 0..<cursorRowInExpanded { expandedOffset += expandedLines[r].count + 1 }
+        expandedOffset += cursorColInExpanded
+        let displayOffset = Self.translateOffset(expandedOffset, deltas: projection.deltas)
+        let (cursorRow, cursorCol) = Self.absoluteOffsetToRowCol(displayOffset, lines: lines)
+        let _ = cursorCol  // silence unused-let if mapping changes
         let (cursorDisplayRow, cursorDisplayCol) = Self.projectCursor(
             logicalRow: cursorRow, logicalCol: cursorCol, wraps: wraps
         )
@@ -360,23 +705,36 @@ public struct PromptInput: TerminalView {
 
     // MARK: - Paste Handling
 
-    /// Insert a bracketed-paste payload at the cursor, splitting on
-    /// `\n` so embedded newlines become real logical-row breaks.
-    /// HYP-195 will replace this with collapsed `[Pasted +N lines]`
-    /// markers; for now functional paste is the goal — the user's
-    /// blocked-workflow ticket.
+    /// Insert a bracketed-paste payload at the cursor.
+    ///
+    /// The binding always holds the EXPANDED text — references are
+    /// sidecar metadata that drive marker rendering. This keeps
+    /// `onSubmit`, history, and downstream consumers oblivious to
+    /// the marker UX layer (per design 2026-04-26).
+    ///
+    /// Three things happen on every paste:
+    ///   1. Splice the expanded payload into the binding at cursor.
+    ///   2. If `pasteMode.shouldCollapse(payload)` is true, register
+    ///      a `PasteBuffer` (deduped by content hash) and a
+    ///      `PasteReference` covering the inserted range.
+    ///   3. Existing references AFTER the insertion point shift right
+    ///      by `payload.count` so their stored offsets stay accurate.
+    ///
+    /// Phase A intentionally keeps "paste again to expand" + auto-hint
+    /// scaffolding integrated; the cursor-adjacency check fires when
+    /// the same content is pasted right after a collapsed reference.
     static func handlePaste(
         _ payload: String,
         text: Binding<String>,
         state: Binding<PromptInputState>,
         maxVisibleLines: Int,
-        wrapWidth: Int
+        wrapWidth: Int,
+        pasteMode: PasteMode = .claudeCode
     ) {
         guard !payload.isEmpty else { return }
 
         let normalised = payload.replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
-        let segments = normalised.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
         var st = state.get()
         var lines = splitLines(text.get())
@@ -384,6 +742,39 @@ public struct PromptInput: TerminalView {
         st.cursorRow = min(st.cursorRow, lines.count - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
 
+        // Compute the absolute character offset of the cursor in the
+        // joined text. Each row contributes `count + 1` (the `+1` is
+        // the joining `\n`); the final row contributes its `count`
+        // alone.
+        var insertOffset = 0
+        for r in 0..<st.cursorRow {
+            insertOffset += lines[r].count + 1
+        }
+        insertOffset += st.cursorCol
+
+        // "Paste again to expand" — cursor at the right edge of a
+        // collapsed reference + same content hash → flip that
+        // reference back to expanded. Don't insert again; the binding
+        // already contains the expanded text from the prior paste.
+        let incomingHash = PasteBuffer.hash(.text(normalised))
+        if let adjacentIdx = st.references.firstIndex(where: { ref in
+            ref.start + ref.length == insertOffset && !ref.isExpanded
+        }), let buffer = st.buffers.first(where: { $0.id == st.references[adjacentIdx].bufferID }),
+           buffer.contentHash == incomingHash
+        {
+            st.references[adjacentIdx].isExpanded = true
+            st.historyIndex = -1
+            // Move cursor to the end of the now-expanded range.
+            let range = st.references[adjacentIdx]
+            let endOffset = range.start + range.length
+            (st.cursorRow, st.cursorCol) = absoluteOffsetToRowCol(endOffset, lines: lines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+            state.set(st)
+            return
+        }
+
+        // Splice: insert the EXPANDED payload into the binding.
+        let segments = normalised.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         let row = lines[st.cursorRow]
         let splitAt = row.index(row.startIndex, offsetBy: st.cursorCol)
         let before = String(row[row.startIndex..<splitAt])
@@ -405,10 +796,59 @@ public struct PromptInput: TerminalView {
             st.cursorCol = lastSegment.count
         }
 
+        // Shift any existing reference whose range starts at or after
+        // the insertion point. References that ENCLOSE the insertion
+        // point are split: not supported in Phase A (cursor snaps to
+        // edges, so insertion inside a reference can't happen).
+        let insertedLength = normalised.count
+        for i in 0..<st.references.count {
+            if st.references[i].start >= insertOffset {
+                st.references[i].start += insertedLength
+            }
+        }
+
+        // Register a buffer + reference if the mode says collapse.
+        if pasteMode.shouldCollapse(normalised) {
+            let bufferID: PasteBuffer.ID
+            if let existing = st.buffers.first(where: { $0.contentHash == incomingHash }) {
+                bufferID = existing.id
+            } else {
+                let newBuffer = PasteBuffer(id: st.nextBufferID, content: .text(normalised))
+                st.buffers.append(newBuffer)
+                bufferID = newBuffer.id
+                st.nextBufferID += 1
+            }
+            let ref = PasteReference(
+                id: st.nextReferenceID,
+                bufferID: bufferID,
+                start: insertOffset,
+                length: insertedLength,
+                isExpanded: false
+            )
+            st.references.append(ref)
+            st.nextReferenceID += 1
+        }
+
         st.historyIndex = -1
         text.set(lines.joined(separator: "\n"))
         adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
         state.set(st)
+    }
+
+    /// Convert an absolute character offset (counting `\n` as one
+    /// character) back to `(row, col)` against `lines`. Used by the
+    /// "paste again to expand" path to position the cursor at the
+    /// end of the newly expanded range.
+    static func absoluteOffsetToRowCol(_ offset: Int, lines: [String]) -> (row: Int, col: Int) {
+        var remaining = offset
+        for (i, line) in lines.enumerated() {
+            if remaining <= line.count {
+                return (i, remaining)
+            }
+            remaining -= line.count + 1   // +1 for the joining `\n`
+        }
+        let lastIdx = max(0, lines.count - 1)
+        return (lastIdx, lines[lastIdx].count)
     }
 
     // MARK: - Key Handling
@@ -459,10 +899,20 @@ public struct PromptInput: TerminalView {
             return .handled
 
         case .enter:
-            // Plain Enter = submit
+            // Plain Enter = submit. The submitted text is the EXPANDED
+            // binding content; references are stripped before
+            // `onSubmit` fires (per design — receivers get pristine
+            // text, marker UX is purely a display concern). History
+            // entry preserves both so ↑-recall restores the marker
+            // view alongside the text.
             let submitted = content.trimmingCharacters(in: .whitespacesAndNewlines)
             if !submitted.isEmpty {
-                st.history.insert(submitted, at: 0)
+                let snapshot = PromptInputHistoryEntry(
+                    text: submitted,
+                    buffers: st.buffers,
+                    references: st.references
+                )
+                st.history.insert(snapshot, at: 0)
                 st.historyIndex = -1
                 st.savedInput = ""
                 onSubmit?(submitted)
@@ -470,6 +920,7 @@ public struct PromptInput: TerminalView {
                 st.cursorRow = 0
                 st.cursorCol = 0
                 st.scrollDisplayRow = 0
+                st.references = []  // Clear live references; buffers stay in pool.
             }
             state.set(st)
             return .handled
@@ -491,6 +942,40 @@ public struct PromptInput: TerminalView {
 
         // MARK: Backspace
         case .backspace:
+            // Atomic delete of a collapsed marker: if cursor sits at
+            // the right edge of a collapsed reference, remove the
+            // ENTIRE underlying range instead of one character. The
+            // buffer stays in the pool (Phase B picker can re-insert).
+            //
+            // Compute current absolute cursor offset.
+            var absCursor = 0
+            for r in 0..<st.cursorRow { absCursor += lines[r].count + 1 }
+            absCursor += st.cursorCol
+            if let refIdx = st.references.firstIndex(where: {
+                !$0.isExpanded && $0.start + $0.length == absCursor
+            }) {
+                let ref = st.references[refIdx]
+                // Splice the underlying range out of `lines`.
+                var joined = lines.joined(separator: "\n")
+                let lo = joined.index(joined.startIndex, offsetBy: ref.start)
+                let hi = joined.index(joined.startIndex, offsetBy: ref.start + ref.length)
+                joined.removeSubrange(lo..<hi)
+                lines = splitLines(joined)
+                // Cursor lands where the marker used to start.
+                (st.cursorRow, st.cursorCol) = absoluteOffsetToRowCol(ref.start, lines: lines)
+                // Shift later refs left by `ref.length`. Remove this ref.
+                let length = ref.length
+                st.references.remove(at: refIdx)
+                for i in 0..<st.references.count where st.references[i].start > ref.start {
+                    st.references[i].start -= length
+                }
+                st.historyIndex = -1
+                text.set(joined)
+                adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+                state.set(st)
+                return .handled
+            }
+
             if st.cursorCol > 0 {
                 let line = lines[st.cursorRow]
                 let delIdx = line.index(line.startIndex, offsetBy: st.cursorCol - 1)
@@ -504,6 +989,13 @@ public struct PromptInput: TerminalView {
                 lines.remove(at: st.cursorRow)
                 st.cursorRow -= 1
                 st.cursorCol = prevLen
+            }
+            // After a single-char delete, shift any reference whose
+            // range starts after the deletion offset left by 1.
+            for i in 0..<st.references.count {
+                if st.references[i].start > absCursor - 1 {
+                    st.references[i].start -= 1
+                }
             }
             text.set(lines.joined(separator: "\n"))
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
@@ -569,8 +1061,14 @@ public struct PromptInput: TerminalView {
                     let nextIdx = min(st.historyIndex + 1, st.history.count - 1)
                     if nextIdx != st.historyIndex {
                         st.historyIndex = nextIdx
-                        text.set(st.history[nextIdx])
-                        let newLines = splitLines(st.history[nextIdx])
+                        let entry = st.history[nextIdx]
+                        text.set(entry.text)
+                        // Restore reference-set snapshot too — markers
+                        // re-appear on recall instead of devolving into
+                        // raw paste content. Buffers stay in pool
+                        // throughout, so re-binding by ID is enough.
+                        st.references = entry.references
+                        let newLines = splitLines(entry.text)
                         st.cursorRow = newLines.count - 1
                         st.cursorCol = newLines.last?.count ?? 0
                         recalled = true
@@ -593,12 +1091,15 @@ public struct PromptInput: TerminalView {
                 st.historyIndex -= 1
                 if st.historyIndex < 0 {
                     text.set(st.savedInput)
+                    st.references = []
                     let newLines = splitLines(st.savedInput)
                     st.cursorRow = newLines.count - 1
                     st.cursorCol = newLines.last?.count ?? 0
                 } else {
-                    text.set(st.history[st.historyIndex])
-                    let newLines = splitLines(st.history[st.historyIndex])
+                    let entry = st.history[st.historyIndex]
+                    text.set(entry.text)
+                    st.references = entry.references
+                    let newLines = splitLines(entry.text)
                     st.cursorRow = newLines.count - 1
                     st.cursorCol = newLines.last?.count ?? 0
                 }

@@ -46,9 +46,11 @@ private func withProbe(_ body: (WarningProbe) -> Void) {
     let probe = WarningProbe()
     DebugStream.shared.addSink(probe)
     DebugStream.shared.unsuppressAllWarnings()  // reset filter state
+    DebugStream.shared.resetWarningDedup()       // clear per-session dedupe so prior tests don't suppress new emits
     defer {
         DebugStream.shared.removeAllSinks()
         DebugStream.shared.unsuppressAllWarnings()
+        DebugStream.shared.resetWarningDedup()
     }
     body(probe)
 }

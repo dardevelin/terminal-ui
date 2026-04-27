@@ -479,12 +479,12 @@ def storybook_textarea_paste_splits_lines(app: Client) -> None:
 
 
 def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
-    """HYP-219 regression: a large multi-line paste must NOT split
-    across InputParser reads and bleed bytes into the terminal. The
-    fix makes collectBracketedPaste tolerate transient `readByte()`
-    nils. Verify by pasting a ~3KB blob into PromptInput and
-    confirming the visible viewport still shows app chrome (not raw
-    payload bytes leaking through)."""
+    """HYP-219 + HYP-195 regression: a large multi-line paste must
+    arrive intact AND collapse to a marker. Verifies that:
+      1. App chrome still renders post-paste (parser fix from HYP-219).
+      2. PromptInput's default `.pasteMode(.claudeCode)` collapses
+         the paste into a `[Pasted text #N +M lines]` marker so the
+         viewport doesn't flood with raw paste content."""
     app.goto_storybook_page(13)  # promptInput
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
@@ -493,41 +493,39 @@ def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
     app.paste(blob)
     app.wait_for_frame(2, timeout=1.0)
     rendered = app.text()
-    # Sentinel: the Storybook chrome (sidebar header) must still render.
-    # If raw paste bytes leaked into the terminal as keystrokes, the
-    # framework would have re-rendered the title bar with garbage or
-    # the viewport would have collapsed.
     assert_true(
         "TerminalUI Storybook" in rendered,
         f"app chrome should still render after large paste; got:\n{rendered[:600]}",
     )
-    # And: the paste content should be in the rendered output (not
-    # swallowed entirely). PromptInput soft-wraps + scrolls, so the
-    # cursor sits on the LAST inserted line. Look for any line marker;
-    # which exact lines are visible depends on the wrap-and-scroll
-    # math, but at least some must be there.
-    visible_lines = [i for i in range(100) if f"line{i:03d}" in rendered]
+    # Marker should be visible — Claude Code parity. Match either
+    # `+100 lines` literal OR the `[Pasted text #` prefix in case the
+    # exact line count rendering shifts (we still want the marker).
     assert_true(
-        bool(visible_lines),
-        f"at least one pasted line marker must be visible in the rendered output; "
-        f"none of line000..line099 appear in:\n{rendered[:600]}",
+        "[Pasted text #" in rendered,
+        f"PromptInput should collapse the multi-line paste into a marker; got:\n{rendered[:800]}",
+    )
+    # And: raw payload should NOT be visible — markers replace it.
+    assert_true(
+        "line050" not in rendered,
+        "raw payload content should be hidden under marker; marker default is .placeholder",
     )
 
 
 def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
-    """PromptInput accepts a multi-line paste and renders the resulting
-    logical rows. Soft-wrap renders these as multiple display rows."""
+    """PromptInput collapses a multi-line paste to a marker by default
+    (Claude Code parity). The underlying expanded text remains in the
+    binding and gets sent on submit; only the rendered presentation
+    is collapsed."""
     app.goto_storybook_page(13)  # promptInput
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.paste("zenAlpha\nzenBeta\nzenGamma")
     app.wait_for_frame(1, timeout=0.5)
     rendered = app.text()
-    for token in ("zenAlpha", "zenBeta", "zenGamma"):
-        assert_true(
-            token in rendered,
-            f"PromptInput should show '{token}' after paste; got:\n{rendered}",
-        )
+    assert_true(
+        "[Pasted text #" in rendered,
+        f"multi-line paste should collapse to a marker; got:\n{rendered}",
+    )
 
 
 # ---------------------------------------------------------------------------
