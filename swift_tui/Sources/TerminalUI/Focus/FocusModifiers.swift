@@ -43,6 +43,17 @@ public struct OnHoverModifier: ViewModifier {
     public let handler: (_ isHovering: Bool) -> Void
 }
 
+/// Modifier that attaches a bracketed-paste handler to a view.
+/// Fires when the keyboard-focused view (or an ancestor) receives a
+/// paste payload — `ESC[200~ … ESC[201~` decoded by InputParser.
+/// SwiftUI parity: `.onPaste { (payload: String) in ... }` — without
+/// the type-filter form (`.onPaste(of:)`) since terminals only
+/// transport text.
+public struct OnPasteModifier: ViewModifier {
+    public typealias ModifierType = Void
+    public let handler: (_ payload: String) -> Void
+}
+
 // MARK: - View Extensions
 
 extension TerminalView {
@@ -85,5 +96,15 @@ extension TerminalView {
     /// navigation is clamped within the scope; Tab still crosses scopes.
     public func focusScope(_ id: String) -> ModifiedView<Self, FocusScopeModifier> {
         ModifiedView(content: self, modifier: FocusScopeModifier(id: id))
+    }
+
+    /// Receive bracketed-paste payloads delivered to the focused view.
+    /// The handler fires with the full payload as a single string —
+    /// embedded newlines preserved, payload bytes uninterpreted (that's
+    /// the whole point of bracketed paste). Components decide their
+    /// own per-paste semantics: TextInput strips newlines, TextArea
+    /// splits on `\n` into rows, PromptInput inserts logical newlines.
+    public func onPaste(_ handler: @escaping (_ payload: String) -> Void) -> ModifiedView<Self, OnPasteModifier> {
+        ModifiedView(content: self, modifier: OnPasteModifier(handler: handler))
     }
 }

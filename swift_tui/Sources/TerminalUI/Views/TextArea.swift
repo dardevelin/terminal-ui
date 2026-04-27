@@ -252,6 +252,79 @@ public struct TextArea: TerminalView {
                     onBoundaryHit: onBoundaryHit
                 )
             }
+            .onPaste { [text, state, visibleHeight] payload in
+                Self.handlePaste(
+                    payload,
+                    text: text,
+                    state: state,
+                    visibleHeight: visibleHeight
+                )
+            }
+    }
+
+    /// Insert a bracketed-paste payload at the cursor, splitting on
+    /// `\n` so embedded newlines become real logical-row breaks.
+    /// Selection (if any) is replaced first, matching the type-a-char
+    /// path. Cursor lands at the end of the last inserted segment.
+    /// Scroll is re-clamped so the new cursor row is in view.
+    static func handlePaste(_ payload: String,
+                            text: Binding<String>,
+                            state: Binding<TextAreaState>,
+                            visibleHeight: Int) {
+        guard !payload.isEmpty else { return }
+
+        // Normalise CRLF / lone CR so paste from Windows or classic-Mac
+        // sources splits on the same `\n` boundary as native input.
+        let normalised = payload.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let segments = normalised.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        var editorState = state.get()
+        var lines = splitLines(text.get())
+        var cursor = clampCursor(editorState.cursor, lines: lines)
+
+        if let sel = editorState.selection, !sel.isEmpty {
+            deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
+            editorState.selection = nil
+        }
+
+        // Splice: first segment merges into current row at the cursor;
+        // remaining segments become new rows below. Tail of the
+        // original row latches onto the LAST inserted segment so the
+        // post-cursor content stays contiguous after paste.
+        let row = lines[cursor.row]
+        let splitAt = row.index(row.startIndex, offsetBy: min(cursor.col, row.count))
+        let before = String(row[row.startIndex..<splitAt])
+        let after = String(row[splitAt..<row.endIndex])
+
+        if segments.count == 1 {
+            lines[cursor.row] = before + segments[0] + after
+            cursor.col = before.count + segments[0].count
+        } else {
+            // Multi-segment paste: replace current row with `before +
+            // first`, then insert middle segments as standalone rows,
+            // then a final row of `last + after`.
+            lines[cursor.row] = before + segments[0]
+            var insertAt = cursor.row + 1
+            for segment in segments[1..<(segments.count - 1)] {
+                lines.insert(segment, at: insertAt)
+                insertAt += 1
+            }
+            let lastSegment = segments[segments.count - 1]
+            lines.insert(lastSegment + after, at: insertAt)
+            cursor.row = insertAt
+            cursor.col = lastSegment.count
+        }
+
+        editorState.cursor = cursor
+        editorState.desiredCol = nil
+        editorState.scrollOffset = clampScroll(
+            cursor: cursor,
+            currentScroll: editorState.scrollOffset,
+            visibleHeight: visibleHeight
+        )
+        text.set(joinLines(lines))
+        state.set(editorState)
     }
 
     // MARK: - Line Splitting

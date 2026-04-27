@@ -891,6 +891,9 @@ public enum GraphRenderer {
         case .onHover:
             render(child, into: &buffer, context: ctx)
 
+        case .onPaste:
+            render(child, into: &buffer, context: ctx)
+
         case .actions:
             // ActionScope is captured on the modifier node during build
             // (see `FocusGraphIntegration.registerIfNeeded`). The

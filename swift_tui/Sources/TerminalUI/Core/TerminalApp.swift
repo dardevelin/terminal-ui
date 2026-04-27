@@ -531,12 +531,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
             timestamp: ProcessInfo.processInfo.systemUptime
         )
         #endif
-        // The focused view's paste handler claims the payload via the
-        // event-routing protocol that views opt into. Today the parser →
-        // runtime → event-queue path is the only consumer; per-view
-        // paste claim lands when an editor surface starts requesting
-        // these events.
-        _ = payload
+        // Route to the keyboard-focused subtree's `.onPaste` handler.
+        // Drop on the floor when no view declares paste interest —
+        // safer than fanning out fast-typed character events that
+        // the user did NOT type.
+        _ = focusEngine.routePasteEvent(payload, root: graph.root)
     }
 
     // MARK: - Key Event Handling

@@ -147,6 +147,7 @@ extension ModifiedView: _GraphModified {
         case is OnDisappearModifier: .onDisappear
         case is OnClickModifier: .onClick
         case is OnHoverModifier: .onHover
+        case is OnPasteModifier: .onPaste
         case let env as any _AnyEnvironmentModifier: .environment(env.apply(to:))
         case let actions as ActionsModifier: .actions(actions.scope)
         default:

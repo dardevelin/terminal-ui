@@ -314,6 +314,7 @@ public final class DebugStream: @unchecked Sendable {
             case .onDisappear: kind = "onDisappear"; value = ""
             case .onClick: kind = "onClick"; value = ""
             case .onHover: kind = "onHover"; value = ""
+            case .onPaste: kind = "onPaste"; value = ""
             case .environment: kind = "environment"; value = ""
             case .actions(let scope): kind = "actions"; value = "bound=\(scope.boundActions.count)"
             }

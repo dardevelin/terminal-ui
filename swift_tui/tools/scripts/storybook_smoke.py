@@ -418,6 +418,59 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     )
 
 
+def storybook_textinput_paste_inserts(app: Client) -> None:
+    """Bracketed-paste payload reaches a focused TextInput and inserts
+    at the cursor. Single-line component → embedded \\n must NOT
+    produce visible new rows in the preview pane."""
+    app.goto_storybook_page(10)  # textInput
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.paste("PASTED-TEXT")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(
+        "PASTED-TEXT" in app.preview_text(),
+        f"TextInput should show pasted payload; got:\n{app.preview_text()}",
+    )
+
+
+def storybook_textarea_paste_splits_lines(app: Client) -> None:
+    """Pasting `alpha\\nbeta\\ngamma` into TextArea must produce three
+    distinct logical rows. Visible in the preview pane after gutter."""
+    app.goto_storybook_page(11)  # textArea
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("end")
+    app.wait_for_frame(1, timeout=0.5)
+    # Newline before the multi-line paste so pasted rows don't merge
+    # with the seeded "Hello" line.
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    app.paste("alphaPaste\nbetaPaste\ngammaPaste")
+    app.wait_for_frame(1, timeout=0.5)
+    rendered = app.text()
+    for token in ("alphaPaste", "betaPaste", "gammaPaste"):
+        assert_true(
+            token in rendered,
+            f"TextArea preview should show '{token}' after paste; got:\n{rendered}",
+        )
+
+
+def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
+    """PromptInput accepts a multi-line paste and renders the resulting
+    logical rows. Soft-wrap renders these as multiple display rows."""
+    app.goto_storybook_page(13)  # promptInput
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.paste("zenAlpha\nzenBeta\nzenGamma")
+    app.wait_for_frame(1, timeout=0.5)
+    rendered = app.text()
+    for token in ("zenAlpha", "zenBeta", "zenGamma"):
+        assert_true(
+            token in rendered,
+            f"PromptInput should show '{token}' after paste; got:\n{rendered}",
+        )
+
+
 # ---------------------------------------------------------------------------
 # Static-render coverage (Tier 1 sweep)
 #
@@ -1205,6 +1258,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
     SmokeCase("storybook.treeview_expand_collapse", "Storybook", storybook_treeview_expand_collapse),
     SmokeCase("storybook.textarea_accepts_input", "Storybook", storybook_textarea_accepts_input),
+    SmokeCase("storybook.textinput_paste_inserts", "Storybook", storybook_textinput_paste_inserts),
+    SmokeCase("storybook.textarea_paste_splits_lines", "Storybook", storybook_textarea_paste_splits_lines),
+    SmokeCase("storybook.promptinput_paste_creates_logical_rows", "Storybook", storybook_promptinput_paste_creates_logical_rows),
     SmokeCase("storybook.vstack_renders_three_rows", "Storybook", storybook_vstack_renders_three_rows),
     SmokeCase("storybook.hstack_renders_horizontal", "Storybook", storybook_hstack_renders_horizontal),
     SmokeCase("storybook.divider_renders_rule", "Storybook", storybook_divider_renders_rule),

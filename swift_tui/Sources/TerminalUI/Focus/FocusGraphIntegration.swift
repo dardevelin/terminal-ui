@@ -16,6 +16,12 @@ extension OnClickModifier: _FocusGraphModifier {
     }
 }
 
+extension OnPasteModifier: _FocusGraphModifier {
+    func registerWithFocusEngine(nodeID: NodeID) {
+        GraphContext.currentFocusEngine?.registerPasteHandler(for: nodeID, handler: handler)
+    }
+}
+
 extension OnHoverModifier: _FocusGraphModifier {
     func registerWithFocusEngine(nodeID: NodeID) {
         GraphContext.currentFocusEngine?.registerHoverHandler(for: nodeID, handler: handler)

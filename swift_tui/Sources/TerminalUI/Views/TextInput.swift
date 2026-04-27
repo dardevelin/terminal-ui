@@ -198,6 +198,14 @@ public struct TextInput: TerminalView {
                                        boundaryMode: boundaryMode,
                                        onBoundaryHit: onBoundaryHit)
                     }
+                    .onPaste { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] payload in
+                        Self.handlePaste(payload,
+                                         text: text,
+                                         cursor: cursorBinding,
+                                         maxLength: maxLength,
+                                         boundaryMode: boundaryMode,
+                                         onBoundaryHit: onBoundaryHit)
+                    }
             }
             // Single-row height for horizontal axis OR clip/truncation
             // modes (which always render single-row regardless of
@@ -318,6 +326,51 @@ public struct TextInput: TerminalView {
 
         default:
             return .ignored
+        }
+    }
+
+    /// Handle a bracketed-paste payload. TextInput is single-line, so
+    /// embedded `\n` and `\r` are stripped (replaced with spaces) — the
+    /// alternative would silently truncate the paste at the first
+    /// newline, which is worse UX. Paste inserts at the cursor and
+    /// respects `maxLength`: when the resulting value would exceed the
+    /// ceiling, the paste is truncated to fit and `.maxLength` fires.
+    static func handlePaste(_ payload: String,
+                            text: Binding<String>,
+                            cursor: Binding<Int>,
+                            maxLength: Int?,
+                            boundaryMode: BoundaryFeedback,
+                            onBoundaryHit: BoundaryHitCallback?) {
+        guard !payload.isEmpty else { return }
+
+        let cleaned = payload.map { ($0 == "\n" || $0 == "\r") ? " " : $0 }
+        var insertion = String(cleaned)
+        let value = text.get()
+        let pos = resolveCursor(cursor.get(), valueCount: value.count)
+
+        var truncated = false
+        if let limit = maxLength {
+            let room = max(0, limit - value.count)
+            if insertion.count > room {
+                insertion = String(insertion.prefix(room))
+                truncated = true
+            }
+        }
+
+        if !insertion.isEmpty {
+            let insertAt = value.index(value.startIndex, offsetBy: pos)
+            var mutated = value
+            mutated.insert(contentsOf: insertion, at: insertAt)
+            text.set(mutated)
+            cursor.set(pos + insertion.count)
+        }
+
+        if truncated {
+            var env = EnvironmentValues()
+            env.boundaryFeedback = boundaryMode
+            env.onBoundaryHit = onBoundaryHit
+            BoundaryFeedbackEmitter.shared.emit(
+                reason: .maxLength, env: env, callback: onBoundaryHit)
         }
     }
 

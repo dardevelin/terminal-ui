@@ -238,6 +238,7 @@ extension NodeKind {
             case .onDisappear: "onDisappear"
             case .onClick: "onClick"
             case .onHover: "onHover"
+            case .onPaste: "onPaste"
             case .environment: "environment"
             case .actions: "actions"
             }
@@ -333,6 +334,7 @@ public enum ModifierEffect {
     case onDisappear // fires action when node is removed from the tree
     case onClick     // attaches click handler (handler stored on FocusEngine)
     case onHover     // attaches hover handler (handler stored on FocusEngine)
+    case onPaste     // attaches paste handler (handler stored on FocusEngine)
     /// `.actions { ... }` attaches an `ActionScope` to the modifier
     /// node. The runtime's input dispatcher walks the focus chain to
     /// root collecting these scopes and matches input bindings against

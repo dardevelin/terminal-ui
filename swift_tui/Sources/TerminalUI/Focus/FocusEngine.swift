@@ -34,6 +34,11 @@ public final class FocusEngine: @unchecked Sendable {
     /// state transitions only (cursor enters or leaves the rect).
     var hoverHandlers: [NodeID: (_ isHovering: Bool) -> Void] = [:]
 
+    /// Registered paste handlers — keyed by NodeID. Fired when the
+    /// runtime decodes an `ESC[200~ … ESC[201~` payload and routes
+    /// it to the keyboard-focused subtree.
+    var pasteHandlers: [NodeID: (_ payload: String) -> Void] = [:]
+
     /// IDs whose hover handler currently believes the cursor is INSIDE
     /// their rect. Updated by `applyMouseMove` so transition events
     /// (true on enter, false on leave) fire exactly once. Survives
@@ -494,6 +499,36 @@ public final class FocusEngine: @unchecked Sendable {
         hoverHandlers[nodeID] = handler
     }
 
+    /// Register a paste handler for a node. Called during graph
+    /// construction by the `.onPaste` modifier.
+    public func registerPasteHandler(for nodeID: NodeID, handler: @escaping (_ payload: String) -> Void) {
+        pasteHandlers[nodeID] = handler
+    }
+
+    /// Route a bracketed-paste payload starting at the keyboard-focused
+    /// node, walking up to the root. The first ancestor with a registered
+    /// `.onPaste` handler claims the payload. Returns true iff a handler
+    /// fired — caller drops the payload otherwise (safer than fanning
+    /// out fast-typed character events the user did NOT type).
+    public func routePasteEvent(_ payload: String, root: AttributeNode?) -> Bool {
+        guard let focused = keyboardFocusID, let root else { return false }
+        guard let startNode = findNode(id: focused, in: root) else { return false }
+
+        if let handler = pasteHandlers[focused] {
+            handler(payload)
+            return true
+        }
+        var ancestor = startNode.parent
+        while let node = ancestor {
+            if let handler = pasteHandlers[node.id] {
+                handler(payload)
+                return true
+            }
+            ancestor = node.parent
+        }
+        return false
+    }
+
     /// True when the given node has a registered hover handler. Used
     /// by harness code that needs to locate the hover-target node by
     /// walking the tree.
@@ -506,6 +541,7 @@ public final class FocusEngine: @unchecked Sendable {
         keyHandlers.removeAll(keepingCapacity: true)
         clickHandlers.removeAll(keepingCapacity: true)
         hoverHandlers.removeAll(keepingCapacity: true)
+        pasteHandlers.removeAll(keepingCapacity: true)
         // hoveredHandlerIDs is intentionally NOT cleared — it tracks
         // cursor-inside state across frames so a node that survives
         // the rebuild keeps its hover transition bookkeeping.

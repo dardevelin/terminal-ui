@@ -387,6 +387,7 @@ public final class DebugPanel {
             case .onDisappear: kind = "dis"; detail = ""
             case .onClick: kind = "clk"; detail = ""
             case .onHover: kind = "hov"; detail = ""
+            case .onPaste: kind = "pst"; detail = ""
             case .environment: kind = "env"; detail = ""
             case .actions(let scope): kind = "act"; detail = "(\(scope.boundActions.count))"
             }

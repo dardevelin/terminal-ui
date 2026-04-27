@@ -130,6 +130,7 @@ public struct HitResult {
             case .onDisappear: values.append(("modifier", "onDisappear"))
             case .onClick: values.append(("modifier", "onClick"))
             case .onHover: values.append(("modifier", "onHover"))
+            case .onPaste: values.append(("modifier", "onPaste"))
             case .environment: values.append(("modifier", "environment"))
             case .actions(let scope): values.append(("modifier", "actions(bound:\(scope.boundActions.count))"))
             }
@@ -172,6 +173,7 @@ public struct HitResult {
                 case .onDisappear: return "onDisappear"
                 case .onClick: return "onClick"
                 case .onHover: return "onHover"
+                case .onPaste: return "onPaste"
                 case .environment: return "environment"
                 case .actions(let scope): return "actions(\(scope.boundActions.count))"
                 }

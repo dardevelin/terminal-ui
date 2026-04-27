@@ -176,6 +176,15 @@ public struct PromptInput: TerminalView {
                         onBoundaryHit: onBoundaryHit
                     )
                 }
+                .onPaste { [text, state] payload in
+                    Self.handlePaste(
+                        payload,
+                        text: text,
+                        state: state,
+                        maxVisibleLines: renderedHeight,
+                        wrapWidth: contentWidth
+                    )
+                }
         }
     }
 
@@ -347,6 +356,59 @@ public struct PromptInput: TerminalView {
         }
 
         return spans
+    }
+
+    // MARK: - Paste Handling
+
+    /// Insert a bracketed-paste payload at the cursor, splitting on
+    /// `\n` so embedded newlines become real logical-row breaks.
+    /// HYP-195 will replace this with collapsed `[Pasted +N lines]`
+    /// markers; for now functional paste is the goal — the user's
+    /// blocked-workflow ticket.
+    static func handlePaste(
+        _ payload: String,
+        text: Binding<String>,
+        state: Binding<PromptInputState>,
+        maxVisibleLines: Int,
+        wrapWidth: Int
+    ) {
+        guard !payload.isEmpty else { return }
+
+        let normalised = payload.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        let segments = normalised.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
+
+        var st = state.get()
+        var lines = splitLines(text.get())
+
+        st.cursorRow = min(st.cursorRow, lines.count - 1)
+        st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+
+        let row = lines[st.cursorRow]
+        let splitAt = row.index(row.startIndex, offsetBy: st.cursorCol)
+        let before = String(row[row.startIndex..<splitAt])
+        let after = String(row[splitAt..<row.endIndex])
+
+        if segments.count == 1 {
+            lines[st.cursorRow] = before + segments[0] + after
+            st.cursorCol = before.count + segments[0].count
+        } else {
+            lines[st.cursorRow] = before + segments[0]
+            var insertAt = st.cursorRow + 1
+            for segment in segments[1..<(segments.count - 1)] {
+                lines.insert(segment, at: insertAt)
+                insertAt += 1
+            }
+            let lastSegment = segments[segments.count - 1]
+            lines.insert(lastSegment + after, at: insertAt)
+            st.cursorRow = insertAt
+            st.cursorCol = lastSegment.count
+        }
+
+        st.historyIndex = -1
+        text.set(lines.joined(separator: "\n"))
+        adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+        state.set(st)
     }
 
     // MARK: - Key Handling
