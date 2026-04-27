@@ -563,6 +563,34 @@ def storybook_scrollview_initial_viewport(app: Client) -> None:
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
 
 
+def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
+    """`.boundaryFeedback` page: TextInput with `.modal` mode +
+    `.onBoundaryHit { ... }`. Pressing Right with cursor at end of
+    an empty value must dispatch `.rightEdge` to the callback,
+    visible as 'boundary: rightEdge' in the preview pane."""
+    app.goto_storybook_page(40)  # .boundaryFeedback page
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Empty value: cursor at 0, both Left and Right are walls. Press
+    # Right — under .modal the onBoundaryHit callback fires and
+    # writes "boundary: rightEdge" into state.boundaryHitMessage.
+    app.send_key("right")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true(
+        "boundary: rightEdge" in preview,
+        f"Right at empty TextInput should fire .rightEdge via .modal callback; preview: {preview[:300]!r}",
+    )
+    # Now Left at cursor=0 fires .leftEdge.
+    app.send_key("left")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true(
+        "boundary: leftEdge" in preview,
+        f"Left at cursor=0 should fire .leftEdge via .modal callback; preview: {preview[:300]!r}",
+    )
+
+
 def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     """TextInput cursor model: typing 'AC', then Left, then 'B' must
     produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
@@ -1149,6 +1177,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
     SmokeCase("storybook.disabled_skips_focus", "Storybook", storybook_disabled_skips_focus),
     SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
+    SmokeCase("storybook.textinput_boundary_emits_under_modal", "Storybook", storybook_textinput_boundary_emits_under_modal),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),

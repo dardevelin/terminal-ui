@@ -398,6 +398,18 @@ struct PreviewPane: TerminalView {
                     .disabled()
                 Text("counter: \(state.actionFired)").foreground(.gray)
             }
+        case .boundaryFeedback:
+            VStack {
+                Text("Type, then Left/Right past the edges").foreground(.gray)
+                TextInput(text: Binding(get: { state.boundaryHitValue },
+                                         set: { state.boundaryHitValue = $0 }),
+                          placeholder: "type then arrow...")
+                    .boundaryFeedback(.modal)
+                    .onBoundaryHit { reason in
+                        recordBoundaryHit(reason)
+                    }
+                Text("→ \(state.boundaryHitMessage)").foreground(.gray)
+            }
         }
     }
 }
@@ -412,6 +424,17 @@ struct PreviewPane: TerminalView {
 private func fireStorybookAction() {
     MainActor.assumeIsolated {
         state.actionFired += 1
+    }
+}
+
+/// Trampoline for the boundary-feedback page's `.onBoundaryHit`
+/// callback. Same pattern as `fireStorybookAction` — the @Sendable
+/// closure can't capture the non-Sendable StorybookState directly,
+/// so it hops onto MainActor and mutates the global.
+@Sendable
+private func recordBoundaryHit(_ reason: BoundaryHitReason) {
+    MainActor.assumeIsolated {
+        state.boundaryHitMessage = "boundary: \(reason)"
     }
 }
 

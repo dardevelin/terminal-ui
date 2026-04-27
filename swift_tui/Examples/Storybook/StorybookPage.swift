@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled, boundaryFeedback
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -399,6 +399,15 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Button("Live") { fired += 1 }
                     Button("Dead") { fired += 1 }.disabled()
                 }
+                """)
+        case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
+            summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",
+            code: """
+                TextInput(text: $value)
+                    .boundaryFeedback(.modal)
+                    .onBoundaryHit { reason in
+                        message = "boundary: \\(reason)"
+                    }
                 """)
         }
     }

@@ -29,6 +29,10 @@ final class StorybookState {
     var hoverIndicator: String = "(not hovering)"
     // Action graph demo state
     var actionFired: Int = 0
+    // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit
+    // captures the most recent boundary reason for visual confirmation.
+    var boundaryHitValue: String = ""
+    var boundaryHitMessage: String = "(no boundary hit yet)"
 }
 
 nonisolated(unsafe) let state = StorybookState()

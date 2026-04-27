@@ -75,6 +75,18 @@ public struct TextInput: TerminalView {
     /// `.lineBreakMode(_:)` on this view or any ancestor.
     @TerminalEnvironment(\.lineBreakMode) var lineBreakMode
 
+    /// Boundary-feedback mode read at body-eval time. Drives the
+    /// `BoundaryFeedbackEmitter.shared.emit` calls at the wall sites
+    /// in `handleKey` (cursor at 0 + Left, cursor at value.count +
+    /// Right). Captured via env so app authors override per subtree
+    /// with `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.boundaryFeedback) var boundaryFeedback
+
+    /// Optional `.onBoundaryHit { reason in ... }` callback registered
+    /// by an ancestor. Forwarded to the emitter so `.modal` mode
+    /// dispatches to app code instead of the bell/bounce sinks.
+    @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+
     /// Insertion index in `value` (`0...value.count`). Internal
     /// `@TerminalState` so it survives re-renders without leaking
     /// into the public API. The projected `$cursor` binding is
@@ -131,6 +143,13 @@ public struct TextInput: TerminalView {
         // slot. Same pattern as TreeView's $expandedIDs.
         let cursorBinding = $cursor
 
+        // Capture env-resolved boundary-feedback channels at body
+        // eval. The handler closure runs later when GraphContext's
+        // env may be unset; passing the captured values keeps the
+        // emit path deterministic.
+        let boundaryMode = boundaryFeedback
+        let onBoundaryHit = self.onBoundaryHit
+
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
         return VStack {
@@ -155,10 +174,12 @@ public struct TextInput: TerminalView {
                     mode: mode,
                     axis: axis))
                     .focusable()
-                    .onKeyPress { [text, cursorBinding] event in
+                    .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit] event in
                         Self.handleKey(event,
                                        text: text,
-                                       cursor: cursorBinding)
+                                       cursor: cursorBinding,
+                                       boundaryMode: boundaryMode,
+                                       onBoundaryHit: onBoundaryHit)
                     }
             }
             // Single-row height for horizontal axis OR clip/truncation
@@ -188,11 +209,25 @@ public struct TextInput: TerminalView {
     /// Single dispatch site for key events, factored out of the body
     /// closure so the binding capture list stays small and the logic
     /// is unit-testable in isolation if needed.
+    ///
+    /// `boundaryMode` + `onBoundaryHit` are env values captured at
+    /// body-eval time and threaded in so the wall-hit emit path
+    /// works without re-reading `GraphContext.currentEnvironment`
+    /// (which would be nil inside the deferred handler closure).
     static func handleKey(_ event: KeyEvent,
                           text: Binding<String>,
-                          cursor: Binding<Int>) -> KeyEventResult {
+                          cursor: Binding<Int>,
+                          boundaryMode: BoundaryFeedback,
+                          onBoundaryHit: BoundaryHitCallback?) -> KeyEventResult {
         let value = text.get()
         let pos = resolveCursor(cursor.get(), valueCount: value.count)
+
+        // Synthesize the env slice the emitter actually consults so
+        // the call site doesn't need to know which fields matter.
+        var env = EnvironmentValues()
+        env.boundaryFeedback = boundaryMode
+        env.onBoundaryHit = onBoundaryHit
+
         switch event.key {
         case .character(let c):
             guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
@@ -225,11 +260,21 @@ public struct TextInput: TerminalView {
             return .handled
 
         case .left:
-            cursor.set(max(0, pos - 1))
+            if pos == 0 {
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .leftEdge, env: env, callback: onBoundaryHit)
+            } else {
+                cursor.set(pos - 1)
+            }
             return .handled
 
         case .right:
-            cursor.set(min(value.count, pos + 1))
+            if pos == value.count {
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .rightEdge, env: env, callback: onBoundaryHit)
+            } else {
+                cursor.set(pos + 1)
+            }
             return .handled
 
         case .home:
