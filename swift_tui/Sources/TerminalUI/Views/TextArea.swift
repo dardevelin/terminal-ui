@@ -114,6 +114,11 @@ public struct TextArea: TerminalView {
     /// Optional `.onBoundaryHit { reason in ... }` callback.
     @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
 
+    /// Read at body-eval time. When false (a `.disabled()` ancestor
+    /// has run), the editor's visible content is rendered through a
+    /// `.gray` foreground modifier — the visual half of `.disabled()`.
+    @TerminalEnvironment(\.isEnabled) var isEnabled
+
     // -- Display constants --
 
     /// Width of line number gutter (separator + space after digits)
@@ -148,18 +153,20 @@ public struct TextArea: TerminalView {
     // MARK: - Body
 
     public var body: some TerminalView {
-        // Capture boundary-feedback env at body-eval time; the GR
-        // closure runs later when GraphContext.currentEnvironment may
-        // be nil. Same pattern as TextInput
+        // Capture boundary-feedback + isEnabled env at body-eval time;
+        // the GR closure runs later when GraphContext.currentEnvironment
+        // may be nil. Same pattern as TextInput
         // (`feedback_bindings_in_geometryreader.md`).
         let boundaryMode = boundaryFeedback
         let onBoundaryHit = self.onBoundaryHit
+        let isEnabled = self.isEnabled
         return GeometryReader { size in
             self.renderEditor(
                 containerWidth: size.width,
                 containerHeight: size.height,
                 boundaryMode: boundaryMode,
-                onBoundaryHit: onBoundaryHit
+                onBoundaryHit: onBoundaryHit,
+                isEnabled: isEnabled
             )
         }
     }
@@ -191,7 +198,8 @@ public struct TextArea: TerminalView {
     private func renderEditor(containerWidth: Int,
                               containerHeight: Int,
                               boundaryMode: BoundaryFeedback,
-                              onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
+                              onBoundaryHit: BoundaryHitCallback?,
+                              isEnabled: Bool) -> some TerminalView {
         let visibleHeight = effectiveVisibleHeight(containerHeight: containerHeight)
         let content = text.get()
         let editorState = state.get()
@@ -230,6 +238,7 @@ public struct TextArea: TerminalView {
             wrapWidth: wrapWidth
         )
         return Text(spans: displaySpans)
+            .foreground(isEnabled ? .default : .gray)
             .focusable()
             .onKeyPress { [text, state, arrowMode, boundaryMode, onBoundaryHit] event in
                 Self.handleKey(

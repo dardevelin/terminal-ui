@@ -93,6 +93,11 @@ public struct TextInput: TerminalView {
     /// dispatches to app code instead of the bell/bounce sinks.
     @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
 
+    /// Read at body-eval time. When false (a `.disabled()` ancestor
+    /// has run), the rendered value is dimmed via `.foreground(.gray)`
+    /// — the visual half of `.disabled()`.
+    @TerminalEnvironment(\.isEnabled) var isEnabled
+
     /// Insertion index in `value` (`0...value.count`). Internal
     /// `@TerminalState` so it survives re-renders without leaking
     /// into the public API. The projected `$cursor` binding is
@@ -200,7 +205,7 @@ public struct TextInput: TerminalView {
             // intrinsic height (driven by Text spans' newline count)
             // grow naturally — no fixed-height frame.
             .frame(height: Self.shouldUseFixedHeight(axis: axis, mode: mode) ? 1 : nil)
-            .foreground(accent ?? .default)
+            .foreground(isEnabled ? (accent ?? .default) : .gray)
 
             if let message = validation?.message {
                 Text(message).foreground(accent ?? .gray)
