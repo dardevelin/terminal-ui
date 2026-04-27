@@ -106,6 +106,22 @@ public struct TextInput: TerminalView {
     /// `feedback_bindings_in_geometryreader.md`.
     @TerminalState var cursor: Int = -1
 
+    /// Stored left-edge offset of the visible window over `value`.
+    /// `-1` is the uninitialised sentinel — first observation pins
+    /// to the value's tail (legacy "scroll the tail into view"
+    /// rendering for the typing case). Persisted across renders so
+    /// the window stays put while the cursor moves WITHIN it; it
+    /// only slides when the cursor would clip an edge. Same node-
+    /// resident-state pattern as `cursor`.
+    ///
+    /// Bug fix history: HYP-208 introduced a centring formula that
+    /// recomputed `windowStart` from the cursor every frame; that
+    /// broke editing flow because the visible window jumped as soon
+    /// as the user arrowed left mid-buffer. HYP-218 reverted to
+    /// "scroll only on edge-clip" by giving `windowedSlice` a
+    /// stored anchor.
+    @TerminalState var windowStart: Int = -1
+
     public init(
         _ prompt: String = "",
         text: Binding<String>,
@@ -157,6 +173,12 @@ public struct TextInput: TerminalView {
         // closure) so handler closures see the same node-resident
         // slot. Same pattern as TreeView's $expandedIDs.
         let cursorBinding = $cursor
+        // Same pattern for the persisted window-start anchor. The
+        // GR closure reads + writes this so the window stays put
+        // while the cursor moves within it; only edge-clip events
+        // (cursor < windowStart, cursor > windowStart + room - 1)
+        // slide the window. See HYP-218 for the regression history.
+        let windowStartBinding = $windowStart
 
         // Capture env-resolved boundary-feedback channels at body
         // eval. The handler closure runs later when GraphContext's
@@ -188,7 +210,8 @@ public struct TextInput: TerminalView {
                     showPlaceholder: showPlaceholder,
                     maxValueWidth: available,
                     mode: mode,
-                    axis: axis))
+                    axis: axis,
+                    windowStart: windowStartBinding))
                     .focusable()
                     .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] event in
                         Self.handleKey(event,
@@ -418,7 +441,8 @@ public struct TextInput: TerminalView {
                                showPlaceholder: Bool,
                                maxValueWidth: Int,
                                mode: LineBreakMode,
-                               axis: TextInputAxis) -> [TextSpan] {
+                               axis: TextInputAxis,
+                               windowStart: Binding<Int>) -> [TextSpan] {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
             spans.append(TextSpan(prompt, foreground: .gray))
@@ -468,14 +492,23 @@ public struct TextInput: TerminalView {
         switch mode {
         case .byClipping, .byCharWrapping, .byWordWrapping:
             // Virtual horizontal scroll: when the value exceeds the
-            // available room, slide the visible window so the cursor
-            // is always on screen. Window anchors to the cursor's
-            // tail when cursor is at end (legacy behaviour preserved).
-            let (visible, visibleCursor) = Self.windowedSlice(
-                value: value, cursor: cursor, room: valueRoom)
+            // available room, slide the visible window only when the
+            // cursor would otherwise clip an edge. Persisted
+            // `windowStart` anchors the window across renders so
+            // arrow-left mid-buffer doesn't recentre the view (HYP-218).
+            let result = Self.windowedSlice(
+                value: value, cursor: cursor, room: valueRoom,
+                windowStart: windowStart.get())
+            // Persist the (possibly slid) anchor for the next frame.
+            // Equality guard avoids state churn when the window didn't
+            // actually move, which would otherwise mark the node dirty
+            // every render.
+            if result.windowStart != windowStart.get() {
+                windowStart.set(result.windowStart)
+            }
             Self.appendWithCursor(into: &spans,
-                                   text: visible,
-                                   cursorIndex: visibleCursor)
+                                   text: result.visible,
+                                   cursorIndex: result.cursorOffset)
         case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
             // Truncation modes: apply to fit the value into
             // `valueRoom`, then drop the cursor at the matching
@@ -493,36 +526,68 @@ public struct TextInput: TerminalView {
     }
 
     /// Slide a fixed-width window of `room` chars over `value` so
-    /// the cursor is always inside it. Returns the visible substring
-    /// and the cursor's offset within that substring.
+    /// the cursor stays visible. Returns the visible substring, the
+    /// cursor's offset within it, and the (possibly updated)
+    /// `windowStart` so the caller can persist it across renders.
     ///
-    /// Legacy behaviour preserved: when the value fits in `room`,
-    /// the window is the whole value. When it doesn't, the window
-    /// shows `room` consecutive chars sliding to keep the cursor on
-    /// screen — anchored at the start when cursor is near the head,
-    /// at the tail when cursor is near the end (the legacy
-    /// `value.suffix(room)` rendering when cursor sits at end).
-    static func windowedSlice(value: String, cursor: Int, room: Int) -> (visible: String, cursorOffset: Int) {
+    /// Behaviour: "scroll only when the cursor would clip" —
+    ///   * Value fits in room → window covers the whole value.
+    ///   * Cursor < windowStart → slide windowStart to cursor.
+    ///   * Cursor > windowStart + room - 1 → slide windowStart so
+    ///     cursor sits at the right edge.
+    ///   * Cursor inside [windowStart, windowStart + room - 1] →
+    ///     leave windowStart alone. Cursor moves WITHIN the window.
+    ///
+    /// `windowStart == -1` is the uninitialised sentinel: first
+    /// observation pins to the tail (legacy "scroll the tail into
+    /// view" rendering for the typing case).
+    ///
+    /// Bug history: HYP-208 introduced a centring formula that
+    /// recomputed start from cursor every frame; that broke editing
+    /// flow because the window jumped when the user arrowed left
+    /// mid-buffer. HYP-218 reverted to "scroll only on edge-clip"
+    /// by giving this function a stored anchor.
+    static func windowedSlice(value: String, cursor: Int, room: Int, windowStart: Int = -1)
+        -> (visible: String, cursorOffset: Int, windowStart: Int)
+    {
+        // Whole value fits — no window math needed.
         if value.count <= room {
-            return (value, cursor)
+            return (value, cursor, 0)
         }
-        // Cursor at end → anchor to tail (legacy "pin right" rendering).
-        // Cursor mid-buffer → roughly centre, so the user sees context on
-        // both sides while editing. Clamp so we never run off either end.
+
         let maxStart = value.count - room
-        let proposedStart: Int
-        if cursor >= value.count {
-            // At end: show the trailing window so the cursor sits past
-            // the last char and the legacy assertions still hold.
-            proposedStart = maxStart
+        var start: Int
+
+        if windowStart < 0 {
+            // First render — pin to tail when cursor is at end (the
+            // typical typing case), otherwise centre on cursor as a
+            // sane default for non-typing first observation.
+            start = (cursor >= value.count) ? maxStart : max(0, min(maxStart, cursor - room / 2))
         } else {
-            // Mid-buffer: anchor the cursor near the centre.
-            proposedStart = cursor - room / 2
+            start = windowStart
         }
-        let windowStart = max(0, min(maxStart, proposedStart))
-        let startIdx = value.index(value.startIndex, offsetBy: windowStart)
-        let endIdx = value.index(value.startIndex, offsetBy: windowStart + room)
-        return (String(value[startIdx..<endIdx]), cursor - windowStart)
+
+        // "Scroll only when the cursor would clip" — single direction
+        // per call.
+        if cursor < start {
+            // Clip-left → slide window left so cursor sits at offset 0.
+            start = cursor
+        } else if cursor > start + room - 1 {
+            // Clip-right → slide window right so cursor sits at the
+            // right edge. Formula `cursor - room + 1` puts the cursor
+            // at offset `room - 1`. When `cursor == value.count`
+            // (typing past the last char), the start clamps to
+            // `maxStart` and the cursor lands at offset `room` — the
+            // legacy "after-tail cursor" rendering that
+            // `appendWithCursor` expects.
+            start = cursor - room + 1
+        }
+        // Clamp into [0, maxStart].
+        start = max(0, min(maxStart, start))
+
+        let startIdx = value.index(value.startIndex, offsetBy: start)
+        let endIdx = value.index(value.startIndex, offsetBy: start + room)
+        return (String(value[startIdx..<endIdx]), cursor - start, start)
     }
 
     /// Emit `text` as a span, inserting the cursor glyph `│` at
