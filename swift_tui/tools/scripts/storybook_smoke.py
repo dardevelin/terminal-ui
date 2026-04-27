@@ -1027,6 +1027,49 @@ def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
     )
 
 
+def storybook_mouse_wheel_scrolls_hovered_scrollview(app: Client) -> None:
+    """HYP-212 regression: wheel-down at a hovered scrollable ScrollView
+    must advance its scrollOffset, even when keyboard focus is on the
+    sidebar. Pre-fix: handleScrollKey read engine.keyboardFocusID and
+    walked the SIDEBAR's subtree for a scroll-layout (none found),
+    returning .ignored — wheel did nothing visible. Post-fix: routing
+    target is read from GraphContext.currentRoutingNodeID, so the
+    handler resolves the ScrollView's own scroll-layout."""
+    app.goto_storybook_page(5)  # ScrollView page
+    # Capture preview's first content row before wheel.
+    text_before = app.preview_text()
+    # Find "row 0" position to hover precisely.
+    full = app.text()
+    rows = full.split("\n")
+    target_x, target_y = None, None
+    for y, row in enumerate(rows):
+        if "row 0" in row:
+            target_x = row.find("row 0") + 2
+            target_y = y
+            break
+    assert_true(
+        target_x is not None,
+        "ScrollView page should display 'row 0' before wheel-down",
+    )
+    # Mouse-move + wheel-down WITHOUT a Tab. Pre-fix path would return
+    # .ignored because keyboard focus is still on the sidebar; post-fix
+    # routes through currentRoutingNodeID and scrolls the hovered view.
+    app.mouse_move(target_x, target_y)
+    app.wait_for_frame(1, timeout=0.3)
+    app.mouse_wheel("down", target_x, target_y)
+    app.wait_for_frame(2, timeout=0.5)
+
+    text_after = app.preview_text()
+    # Post-fix: viewport advances by 3 rows per wheel-down (the runtime
+    # synthesises 3 arrow events). Earliest visible row should now be
+    # "row 3" or later, not "row 0".
+    assert_true(
+        text_before != text_after,
+        f"wheel-down at hovered ScrollView must advance the viewport; "
+        f"before == after content unchanged",
+    )
+
+
 def storybook_mouse_wheel_routes_to_hover_target(app: Client) -> None:
     """Bug #1 (sister): wheel-scroll must route to the hover target,
     not the keyboard-focused element. With keyboard focus on the
@@ -1205,6 +1248,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.treeview_keyboard_expand_collapse", "Storybook", storybook_treeview_keyboard_expand_collapse),
     SmokeCase("storybook.mouse_click_on_sidebar_navigates", "Storybook", storybook_mouse_click_on_sidebar_navigates),
     SmokeCase("storybook.mouse_wheel_routes_to_hover_target", "Storybook", storybook_mouse_wheel_routes_to_hover_target),
+    SmokeCase("storybook.mouse_wheel_scrolls_hovered_scrollview", "Storybook", storybook_mouse_wheel_scrolls_hovered_scrollview),
     SmokeCase("storybook.mouse_click_locks_until_next_click", "Storybook", storybook_mouse_click_locks_until_next_click),
     SmokeCase("storybook.actions_modifier_fires_via_chord", "Storybook", storybook_actions_modifier_fires_via_chord),
     SmokeCase("storybook.list_actions_returns_quit_default", "Storybook", storybook_list_actions_returns_quit_default),

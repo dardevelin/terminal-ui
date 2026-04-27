@@ -39,4 +39,11 @@ public enum GraphContext {
     @TaskLocal public static var currentEnvironment: EnvironmentValues?
     @TaskLocal public static var currentFocusEngine: FocusEngine?
     @TaskLocal public static var currentProposedSize: Size?
+    /// The node ID the active key handler was dispatched to. Set by
+    /// `FocusEngine.routeKeyEvent(...startingFrom:)` for the duration
+    /// of the handler's invocation, nil otherwise. Lets handlers that
+    /// would normally read `keyboardFocusID` (e.g. `.scrollable()`'s
+    /// arrow handler) find their owning node when wheel routing
+    /// dispatches them at a non-focused target — fixes HYP-212.
+    @TaskLocal public static var currentRoutingNodeID: NodeID?
 }

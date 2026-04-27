@@ -438,19 +438,27 @@ public final class FocusEngine: @unchecked Sendable {
     public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode, startingFrom nodeID: NodeID) -> Bool {
         guard let startNode = findNode(id: nodeID, in: root) else { return false }
 
-        if let handler = keyHandlers[nodeID] {
-            if handler(event) == .handled { return true }
-        }
-
-        var ancestor = startNode.parent
-        while let node = ancestor {
-            if let handler = keyHandlers[node.id] {
+        // Bind `currentRoutingNodeID` so handlers like `.scrollable()`'s
+        // arrow dispatch resolve the owning node from the routing
+        // target rather than `keyboardFocusID`. See HYP-212 — wheel
+        // routes the synthetic arrow to the hover target, NOT the
+        // focused element, so handlers that previously read
+        // `keyboardFocusID` would resolve the wrong subtree.
+        return GraphContext.$currentRoutingNodeID.withValue(nodeID) {
+            if let handler = keyHandlers[nodeID] {
                 if handler(event) == .handled { return true }
             }
-            ancestor = node.parent
-        }
 
-        return routeToSubtree(event, node: startNode)
+            var ancestor = startNode.parent
+            while let node = ancestor {
+                if let handler = keyHandlers[node.id] {
+                    if handler(event) == .handled { return true }
+                }
+                ancestor = node.parent
+            }
+
+            return routeToSubtree(event, node: startNode)
+        }
     }
 
     private func routeToSubtree(_ event: KeyEvent, node: AttributeNode) -> Bool {

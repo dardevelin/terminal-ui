@@ -50,14 +50,19 @@ public struct ScrollableScrollView<Content: TerminalView>: TerminalView {
 /// node's cached rect — render sets it each frame, so by the time a
 /// key arrives we already have the viewport geometry.
 private func handleScrollKey(_ event: KeyEvent, axis: ScrollAxis) -> KeyEventResult {
-    guard let engine = GraphContext.currentFocusEngine,
-          let focusedID = engine.keyboardFocusID else { return .ignored }
-    // The focused node is the `.focusable` modifier wrapping the content.
-    // Walk its subtree to find the first scroll-layout child — that's the
-    // ScrollView we should mutate.
-    guard let root = engine.lastIndexedRoot,
-          let focused = engine.findNode(id: focusedID, in: root),
-          let scrollNode = findEnclosedScrollNode(focused) else { return .ignored }
+    guard let engine = GraphContext.currentFocusEngine else { return .ignored }
+    // Prefer the routing-target node (set by FocusEngine.routeKeyEvent
+    // during dispatch) over keyboardFocusID. Wheel events route to the
+    // focusable under the cursor, NOT the keyboard-focused element —
+    // reading keyboardFocusID here would resolve the wrong subtree
+    // when the user wheels over a scrollable while keyboard focus is
+    // elsewhere. Falls back to keyboardFocusID for direct keypresses
+    // (Tab-to-focus then arrow), which preserves the legacy path.
+    let ownerID = GraphContext.currentRoutingNodeID ?? engine.keyboardFocusID
+    guard let ownerID,
+          let root = engine.lastIndexedRoot,
+          let owner = engine.findNode(id: ownerID, in: root),
+          let scrollNode = findEnclosedScrollNode(owner) else { return .ignored }
     return mutateScroll(event: event, axis: axis, node: scrollNode)
 }
 
