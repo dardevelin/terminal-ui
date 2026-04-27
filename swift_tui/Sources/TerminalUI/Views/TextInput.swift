@@ -68,6 +68,12 @@ public struct TextInput: TerminalView {
     public let text: Binding<String>
     public let validate: ((String) -> TextInputValidation)?
     public let axis: TextInputAxis
+    /// Hard ceiling on `value.count`. When non-nil, `.character`
+    /// insertions that would push the value past `maxLength` are
+    /// blocked at the handler and the `.maxLength` boundary reason
+    /// fires through `BoundaryFeedbackEmitter.shared`. Backspace
+    /// still works — the ceiling is not a one-way ratchet.
+    public let maxLength: Int?
 
     /// HIG line-break behaviour for content that exceeds the field
     /// width. Default `.byClipping` matches HIG's prescription for
@@ -99,6 +105,7 @@ public struct TextInput: TerminalView {
         _ prompt: String = "",
         text: Binding<String>,
         placeholder: String = "",
+        maxLength: Int? = nil,
         validate: ((String) -> TextInputValidation)? = nil
     ) {
         self.prompt = prompt
@@ -106,6 +113,7 @@ public struct TextInput: TerminalView {
         self.placeholder = placeholder
         self.validate = validate
         self.axis = .horizontal
+        self.maxLength = maxLength
     }
 
     /// Vertical-axis overload. When combined with a wrap-y
@@ -116,6 +124,7 @@ public struct TextInput: TerminalView {
         text: Binding<String>,
         axis: TextInputAxis,
         placeholder: String = "",
+        maxLength: Int? = nil,
         validate: ((String) -> TextInputValidation)? = nil
     ) {
         self.prompt = prompt
@@ -123,6 +132,7 @@ public struct TextInput: TerminalView {
         self.placeholder = placeholder
         self.validate = validate
         self.axis = axis
+        self.maxLength = maxLength
     }
 
     public var body: some TerminalView {
@@ -149,6 +159,7 @@ public struct TextInput: TerminalView {
         // emit path deterministic.
         let boundaryMode = boundaryFeedback
         let onBoundaryHit = self.onBoundaryHit
+        let maxLength = self.maxLength
 
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
@@ -174,10 +185,11 @@ public struct TextInput: TerminalView {
                     mode: mode,
                     axis: axis))
                     .focusable()
-                    .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit] event in
+                    .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] event in
                         Self.handleKey(event,
                                        text: text,
                                        cursor: cursorBinding,
+                                       maxLength: maxLength,
                                        boundaryMode: boundaryMode,
                                        onBoundaryHit: onBoundaryHit)
                     }
@@ -217,6 +229,7 @@ public struct TextInput: TerminalView {
     static func handleKey(_ event: KeyEvent,
                           text: Binding<String>,
                           cursor: Binding<Int>,
+                          maxLength: Int?,
                           boundaryMode: BoundaryFeedback,
                           onBoundaryHit: BoundaryHitCallback?) -> KeyEventResult {
         let value = text.get()
@@ -232,6 +245,15 @@ public struct TextInput: TerminalView {
         case .character(let c):
             guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
                 return .ignored
+            }
+            // maxLength is a hard ceiling on value.count. When the
+            // buffer is full, block the insert and emit .maxLength.
+            // Backspace remains unrestricted so the ceiling isn't a
+            // one-way ratchet.
+            if let limit = maxLength, value.count >= limit {
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .maxLength, env: env, callback: onBoundaryHit)
+                return .handled
             }
             let insertAt = value.index(value.startIndex, offsetBy: pos)
             var mutated = value
