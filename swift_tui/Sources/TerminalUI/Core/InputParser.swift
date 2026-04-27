@@ -274,6 +274,15 @@ public enum InputParser {
     /// end marker. Bytes inside the wrapper are NOT interpreted — that's
     /// the whole point of bracketed paste, disambiguating typed input
     /// from clipboard content. Returns the payload as a UTF-8 string.
+    ///
+    /// `readByte()` may return nil mid-payload because raw mode reads
+    /// at VTIME=1 (100ms) and the OS can split a large paste across
+    /// multiple read() syscalls. Inside this function we KNOW more
+    /// bytes are coming — the start marker is a contract that the end
+    /// marker will follow — so we treat nil as "wait, retry" rather
+    /// than "stream ended." Bounded retry budget guards against a
+    /// terminal that opened a paste and disconnected without closing
+    /// (mostly a theoretical concern; real terminals do close).
     private static func collectBracketedPaste(from source: inout some ByteSource) -> TerminalEvent {
         var payload: [UInt8] = []
         let endMarker: [UInt8] = [
@@ -285,7 +294,28 @@ public enum InputParser {
             UInt8(ascii: "~"),
         ]
         var matched = 0
-        while let byte = source.readByte() {
+        // Budget: each VTIME=1 timeout is ~100ms, so this caps total
+        // wait at ~3s for the end marker after a transient gap. Real
+        // pastes complete in milliseconds; this only fires if the
+        // terminal abandoned the paste mid-payload.
+        let consecutiveNilLimit = 30
+        var consecutiveNils = 0
+
+        while true {
+            guard let byte = source.readByte() else {
+                consecutiveNils += 1
+                if consecutiveNils > consecutiveNilLimit {
+                    // Terminal abandoned the paste mid-payload. Return
+                    // whatever we collected so the user doesn't lose
+                    // typed content; the unread end marker (if it ever
+                    // arrives) will fall through to the standard CSI
+                    // path and be ignored as an unknown tilde code.
+                    break
+                }
+                continue
+            }
+            consecutiveNils = 0
+
             if byte == endMarker[matched] {
                 matched += 1
                 if matched == endMarker.count {
@@ -308,9 +338,9 @@ public enum InputParser {
                 }
             }
         }
-        // Stream ended before the end marker arrived — return whatever
-        // we collected as a paste payload anyway. Better than dropping
-        // partial paste content; the user can still recover the bytes.
+        // Budget exhausted with no end marker in sight — return the
+        // partial payload. Better than dropping all bytes; the
+        // collected content is still legitimate paste data.
         let text = String(decoding: payload, as: Unicode.UTF8.self)
         return .paste(text)
     }

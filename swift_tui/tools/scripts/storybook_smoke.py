@@ -478,6 +478,42 @@ def storybook_textarea_paste_splits_lines(app: Client) -> None:
         )
 
 
+def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
+    """HYP-219 regression: a large multi-line paste must NOT split
+    across InputParser reads and bleed bytes into the terminal. The
+    fix makes collectBracketedPaste tolerate transient `readByte()`
+    nils. Verify by pasting a ~3KB blob into PromptInput and
+    confirming the visible viewport still shows app chrome (not raw
+    payload bytes leaking through)."""
+    app.goto_storybook_page(13)  # promptInput
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # 100-line blob ≈ 3KB. Realistic for clipboard contents.
+    blob = "\n".join(f"line{i:03d} alpha beta gamma delta epsilon" for i in range(100))
+    app.paste(blob)
+    app.wait_for_frame(2, timeout=1.0)
+    rendered = app.text()
+    # Sentinel: the Storybook chrome (sidebar header) must still render.
+    # If raw paste bytes leaked into the terminal as keystrokes, the
+    # framework would have re-rendered the title bar with garbage or
+    # the viewport would have collapsed.
+    assert_true(
+        "TerminalUI Storybook" in rendered,
+        f"app chrome should still render after large paste; got:\n{rendered[:600]}",
+    )
+    # And: the paste content should be in the rendered output (not
+    # swallowed entirely). PromptInput soft-wraps + scrolls, so the
+    # cursor sits on the LAST inserted line. Look for any line marker;
+    # which exact lines are visible depends on the wrap-and-scroll
+    # math, but at least some must be there.
+    visible_lines = [i for i in range(100) if f"line{i:03d}" in rendered]
+    assert_true(
+        bool(visible_lines),
+        f"at least one pasted line marker must be visible in the rendered output; "
+        f"none of line000..line099 appear in:\n{rendered[:600]}",
+    )
+
+
 def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
     """PromptInput accepts a multi-line paste and renders the resulting
     logical rows. Soft-wrap renders these as multiple display rows."""
@@ -1285,6 +1321,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.textinput_paste_inserts", "Storybook", storybook_textinput_paste_inserts),
     SmokeCase("storybook.textarea_paste_splits_lines", "Storybook", storybook_textarea_paste_splits_lines),
     SmokeCase("storybook.promptinput_paste_creates_logical_rows", "Storybook", storybook_promptinput_paste_creates_logical_rows),
+    SmokeCase("storybook.large_paste_does_not_corrupt_ui", "Storybook", storybook_large_paste_does_not_corrupt_ui),
     SmokeCase("storybook.vstack_renders_three_rows", "Storybook", storybook_vstack_renders_three_rows),
     SmokeCase("storybook.hstack_renders_horizontal", "Storybook", storybook_hstack_renders_horizontal),
     SmokeCase("storybook.divider_renders_rule", "Storybook", storybook_divider_renders_rule),
