@@ -1296,6 +1296,95 @@ def demo_app_renders(app: Client) -> None:
     assert_contains(snap_tabs, "Build", context="Demo Build tab label")
 
 
+# ---- GitClient demo ----------------------------------------------------
+# A flagship dogfood demo: file tree + diff view + commit prompt, with
+# keyboard-driven hunk staging. Pinned by these smoke cases so future
+# regressions in TreeView focus, HunkDiffView range selection, or
+# PromptInput submit can't slip past us.
+
+
+def gitclient_renders(app: Client) -> None:
+    """Boots and shows the three-pane layout: file tree on the left,
+    diff view on the right, commit prompt at the bottom. We assert
+    against the demo's fixture data so a broken layout (panes
+    overlapping, diff swallowed, prompt dropped) lights up."""
+    snap = app.cells()
+    full = snap.text()
+    assert_true("file_a.swift" in full or "src/" in full,
+                "expected file tree to list fixture file")
+    assert_true("@@" in full,
+                "expected hunk header from default-selected file's diff")
+    assert_true("Commit" in full or "commit" in full,
+                "expected commit prompt label")
+
+
+def gitclient_tab_focuses_diff(app: Client) -> None:
+    """Tab cycles focus tree → diff → commit. After one Tab, the
+    diff pane should own keyboard focus. We assert by rect rather
+    than kind: the DiffPane sits in the right half of the screen,
+    so focus's x-coordinate must land beyond the file-tree pane's
+    right edge (col 32 in our layout)."""
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    focus = app.focus()
+    rect = getattr(focus, "rect", None)
+    assert_true(rect is not None, "Tab should land on a focusable node")
+    assert_true(
+        rect[0] >= 32,
+        f"after Tab, focus rect x={rect[0]} should be in the right pane (>=32)",
+    )
+
+
+def gitclient_s_stages_hunk(app: Client) -> None:
+    """`s` on the focused hunk moves it from "unstaged" to "staged".
+    The status bar / footer renders the count, so we assert the
+    "1 staged" hint appears after pressing `s` once."""
+    # Tab to diff pane, then press `s` to stage the hunk under cursor.
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("s")
+    app.wait_for_frame(1, timeout=0.5)
+    snap = app.cells()
+    full = snap.text()
+    assert_true(
+        "1 staged" in full or "staged: 1" in full or "[1]" in full,
+        "expected staged-count indicator after pressing `s`",
+    )
+
+
+def gitclient_commit_clears_staged(app: Client) -> None:
+    """Enter inside the focused PromptInput commits the staged
+    set and appends the message to the fake log. Sequence:
+    Tab → s → Tab → type message → Enter. SwiftUI parity:
+    PromptInput.onSubmit is the canonical commit channel — no
+    global `c` chord that would swallow the letter while typing."""
+    app.send_key("tab")              # focus diff
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("s")               # stage hunk
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("tab")              # focus commit prompt
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("test commit")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")            # PromptInput.onSubmit fires
+    app.wait_for_frame(1, timeout=0.5)
+    snap = app.cells()
+    full = snap.text()
+    assert_true(
+        "0 staged" in full or "staged: 0" in full or "[0]" in full,
+        "after commit, staged count should be zero",
+    )
+
+
+def gitclient_q_quits(app: Client) -> None:
+    """`q` exits the app cleanly. The runner's spawn_and_connect
+    context manager teardown will hang or raise if the process
+    doesn't actually exit — we just press `q` and let the harness
+    do the rest."""
+    app.send_text("q")
+    # No assertion here: clean teardown is the success signal.
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -1369,6 +1458,11 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.list_actions_returns_quit_default", "Storybook", storybook_list_actions_returns_quit_default),
     SmokeCase("demo.invoke_action_quits", "Demo", storybook_invoke_action_quits_app),
     SmokeCase("demo.renders", "Demo", demo_app_renders),
+    SmokeCase("gitclient.renders", "GitClient", gitclient_renders),
+    SmokeCase("gitclient.tab_focuses_diff", "GitClient", gitclient_tab_focuses_diff),
+    SmokeCase("gitclient.s_stages_hunk", "GitClient", gitclient_s_stages_hunk),
+    SmokeCase("gitclient.commit_clears_staged", "GitClient", gitclient_commit_clears_staged),
+    SmokeCase("gitclient.q_quits", "GitClient", gitclient_q_quits),
 ]
 
 
