@@ -66,11 +66,25 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Rebuild both indices with a single depth-first walk.
     /// Called after graph.update() when the graph structure changed.
+    ///
+    /// Validates `keyboardFocusID` against the new index — if it
+    /// doesn't resolve (graph rebuilt from a structurally different
+    /// view, or the previously-focused node was removed), the ID is
+    /// cleared to nil. The runtime's auto-focus path then picks the
+    /// first focusable in the new tree, instead of routing arrow
+    /// events to a dangling NodeID. HYP-215 — sidebar mouse click
+    /// triggered a `state.selectedIndex` change → graph rebuild from
+    /// the new page → old NodeID became stale, arrow handlers
+    /// stopped firing because routeKeyEvent walked a node not in
+    /// the new tree.
     public func rebuildIndex(root: AttributeNode) {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
         lastIndexedRoot = root
         buildIndexRecursive(root)
+        if let focused = keyboardFocusID, nodeIndex[focused] == nil {
+            keyboardFocusID = nil
+        }
     }
 
     private func buildIndexRecursive(_ node: AttributeNode) {
