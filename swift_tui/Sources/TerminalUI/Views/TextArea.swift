@@ -667,6 +667,17 @@ public struct TextArea: TerminalView {
         // can't overflow the viewport.
         var emittedRows = 0
 
+        // Pre-compute per-row syntax token colors with stateful carry
+        // so `/* … */` and `"""…"""` spanning multiple lines colour
+        // every continuation line correctly. We seed state by
+        // scanning rows 0..<scrollOffset (lines above the viewport)
+        // — this is O(scrollOffset) per render but keeps the
+        // visible-row loop linear in width, not in scroll position.
+        let perRowColors: [Int: [Color]] = perRowTokenColors(
+            lines: lines, highlighter: highlighter, theme: theme,
+            scrollOffset: scrollOffset, endRow: endRow
+        )
+
         outer: for row in scrollOffset..<endRow {
             let line = lines[row]
 
@@ -716,19 +727,16 @@ public struct TextArea: TerminalView {
                     var currentColor: Color = theme.plain
                     var runStart = 0
 
-                    // Precompute syntax-token color per character of
-                    // this chunk. Tokens come from the FULL logical
-                    // line (highlighter is per-line); we map each
-                    // chunk character back to its line offset and
-                    // look up the covering token's color.
+                    // Slice this chunk's token-color window out of
+                    // the per-row pre-computed array (built with
+                    // stateful carry up at the top of buildDisplaySpans).
                     let tokenColors: [Color]
-                    if let highlighter {
-                        tokenColors = lineTokenColors(
-                            line: lines[row], highlighter: highlighter, theme: theme,
-                            chunkColStart: chunkColStart, chunkLength: chunk.count
-                        )
+                    if highlighter != nil, let rowColors = perRowColors[row] {
+                        let lo = min(chunkColStart, rowColors.count)
+                        let hi = min(chunkColStart + chunk.count, rowColors.count)
+                        tokenColors = lo < hi ? Array(rowColors[lo..<hi]) : []
                     } else {
-                        tokenColors = []  // empty → flushRun uses default fg
+                        tokenColors = []  // no highlighter → flushRun uses default fg
                     }
 
                     func flushRun(upTo end: Int) {
@@ -863,6 +871,51 @@ public struct TextArea: TerminalView {
             }
         }
         return colors
+    }
+
+    /// Build per-row token-color arrays for every row in the visible
+    /// window, with multi-line carry-state threaded through. We seed
+    /// `TokenizerState` by tokenising rows 0..<scrollOffset (lines
+    /// above the viewport) so a `/* … */` opened above the visible
+    /// area still colours its continuation rows correctly. Returns
+    /// an empty dict when `highlighter` is nil — caller falls back
+    /// to default fg.
+    static func perRowTokenColors(
+        lines: [String],
+        highlighter: (any SyntaxHighlighter)?,
+        theme: SyntaxTheme,
+        scrollOffset: Int,
+        endRow: Int
+    ) -> [Int: [Color]] {
+        guard let highlighter else { return [:] }
+        var result: [Int: [Color]] = [:]
+        // Seed state by scanning above-viewport rows, discarding
+        // their spans (we only want the carry).
+        var state = TokenizerState()
+        let preEnd = min(scrollOffset, lines.count)
+        for row in 0..<preEnd {
+            _ = highlighter.tokenize(line: lines[row], state: &state)
+        }
+        // Tokenise visible rows and build per-row color arrays.
+        let visibleEnd = min(endRow, lines.count)
+        for row in scrollOffset..<visibleEnd {
+            let line = lines[row]
+            let spans = highlighter.tokenize(line: line, state: &state)
+            var colors = Array(repeating: theme.plain, count: line.count)
+            for span in spans {
+                let start = line.distance(from: line.startIndex, to: span.range.lowerBound)
+                let end = line.distance(from: line.startIndex, to: span.range.upperBound)
+                let color = theme.color(for: span.token)
+                let lo = max(0, start)
+                let hi = min(line.count, end)
+                guard lo < hi else { continue }
+                for c in lo..<hi {
+                    colors[c] = color
+                }
+            }
+            result[row] = colors
+        }
+        return result
     }
 
     static func isPositionSelected(row: Int, col: Int, selection: TextAreaSelection?) -> Bool {
