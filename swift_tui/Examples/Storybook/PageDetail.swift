@@ -390,6 +390,14 @@ struct PreviewPane: TerminalView {
                 )
                 .bound(to: .keyboard(.character("p"), [.ctrl]))
             }
+        case .disabled:
+            VStack {
+                Text("Tab cycles only Live; Dead is skipped").foreground(.gray)
+                Button("Live") { state.actionFired += 1 }
+                Button("Dead") { state.actionFired += 1 }
+                    .disabled()
+                Text("counter: \(state.actionFired)").foreground(.gray)
+            }
         }
     }
 }

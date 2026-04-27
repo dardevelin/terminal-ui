@@ -87,8 +87,15 @@ enum FocusGraphIntegration {
 
     /// After constructing or updating a modifier node, register any focus-related
     /// behavior with the FocusEngine.
+    ///
+    /// Gated on `EnvironmentValues.isEnabled` so a `.disabled()` ancestor
+    /// drops the handler from the engine entirely — there is no later
+    /// "should I fire?" check on dispatch, the handler simply isn't there.
+    /// Matches SwiftUI's `\.isEnabled` semantics.
     static func registerIfNeeded(modifier: any ViewModifier, nodeID: NodeID) {
         if let focusMod = modifier as? any _FocusGraphModifier {
+            let env = GraphContext.currentEnvironment ?? EnvironmentValues()
+            guard env.isEnabled else { return }
             focusMod.registerWithFocusEngine(nodeID: nodeID)
         }
     }

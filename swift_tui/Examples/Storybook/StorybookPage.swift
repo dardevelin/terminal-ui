@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -391,6 +391,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         }
                         .bound(to: .keyboard(.character("p"), [.ctrl]))
                     }
+                """)
+        case .disabled: return PageInfo(id: self, category: .modifiers, name: ".disabled",
+            summary: "Turn an interactive subtree off. Tab order skips it, key/click handlers don't fire. SwiftUI parity: most-restrictive wins (descendants can't re-enable).",
+            code: """
+                VStack {
+                    Button("Live") { fired += 1 }
+                    Button("Dead") { fired += 1 }.disabled()
+                }
                 """)
         }
     }

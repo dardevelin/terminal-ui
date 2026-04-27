@@ -70,7 +70,11 @@ public final class FocusEngine: @unchecked Sendable {
 
     private func buildIndexRecursive(_ node: AttributeNode) {
         nodeIndex[node.id] = node
-        if node.isFocusable {
+        // `.disabled()` writes `EnvironmentValues.isEnabled = false` into
+        // the persisted env on every node in the subtree (set during
+        // graph construction by the env-modifier traversal). A disabled
+        // node drops out of the Tab order entirely — SwiftUI parity.
+        if node.isFocusable && (node._resolvedEnv?.isEnabled ?? true) {
             focusableList.append(node)
         }
         for child in node.children {

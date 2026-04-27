@@ -73,6 +73,14 @@ public struct EnvironmentValues: Sendable {
     /// silent in that case, same as `.none`).
     public var onBoundaryHit: BoundaryHitCallback? = nil
 
+    /// Whether interactive subtrees are live. Default `true`.
+    /// `.disabled(_)` writes `false`, which gates handler registration
+    /// (`onKeyPress` / `onClick` / `onHover`) and removes focusables
+    /// from Tab order. SwiftUI parity: most-restrictive wins —
+    /// a descendant cannot re-enable a subtree disabled higher up,
+    /// see `DisabledModifier.apply`.
+    public var isEnabled: Bool = true
+
     public init() {}
 }
 

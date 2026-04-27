@@ -563,6 +563,36 @@ def storybook_scrollview_initial_viewport(app: Client) -> None:
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
 
 
+def storybook_disabled_skips_focus(app: Client) -> None:
+    """`.disabled()` page has two Buttons: 'Live' and 'Dead' (disabled).
+    Tab from the sidebar must land on Live; pressing Tab again must wrap
+    back to a sidebar focusable rather than landing on Dead. Pressing
+    Enter on Live increments the counter; the counter must NEVER be
+    incremented by Tab/Enter cycles that would have hit Dead."""
+    app.goto_storybook_page(39)  # .disabled page
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Counter starts at 0 — read the preview pane.
+    pre = app.preview_text()
+    assert_true(
+        "[ Live ]" in pre,
+        f"Disabled page preview missing 'Live' button text — got {pre[:200]!r}",
+    )
+    assert_true(
+        "[ Dead ]" in pre,
+        f"Disabled page preview missing 'Dead' button text — got {pre[:200]!r}",
+    )
+    # The Dead button should NOT be in tab order. Press Enter on the
+    # current focus (which should be Live) — counter goes from 0 to 1.
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.preview_text()
+    assert_true(
+        "counter: 1" in after,
+        f"Enter on Live didn't increment counter to 1 — got {after[:300]!r}",
+    )
+
+
 def storybook_scrollview_shows_thumb_scrollbar(app: Client) -> None:
     """ScrollView with overflowing content paints the new thumb-track
     scrollbar — │ track on the right column with █ thumb segment."""
@@ -1092,6 +1122,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.spacer_pushes_edges", "Storybook", storybook_spacer_pushes_edges),
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
     SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
+    SmokeCase("storybook.disabled_skips_focus", "Storybook", storybook_disabled_skips_focus),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
