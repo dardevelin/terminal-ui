@@ -47,6 +47,13 @@ public struct EnvironmentValues: Sendable {
     /// beneath the prompt when the cursor is adjacent to a collapsed
     /// reference. Override via `.pasteHint(.hidden)`.
     public var pasteHint: PasteHintVisibility = .visible
+
+    /// Translation seam for `PromptInput`'s marker + hint strings.
+    /// Default ships English; override per subtree via
+    /// `.promptInputLocalizer(_:)` for other languages or custom
+    /// marker shapes. Stored as `any PromptInputLocalizer` so
+    /// callers can plug in their own conforming type.
+    public var promptInputLocalizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()
     /// How text-input components react to boundary hits (cursor at start/end,
     /// maxLength reached). Default `.bounce` — visible cursor animation.
     /// Scaffolding exists; per-component wiring lands incrementally.

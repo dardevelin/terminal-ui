@@ -1,3 +1,5 @@
+import Foundation
+
 /// A chat-style multi-line input that grows with content.
 /// Designed for CLI tool prompts — Claude Code, Codex, OpenCode style.
 ///
@@ -115,18 +117,72 @@ public enum PasteHintVisibility: Equatable, Sendable {
     case hidden
 }
 
+/// Library-author-facing translation seam for PromptInput's
+/// marker + hint strings. Default English implementation
+/// (`DefaultPromptInputLocalizer`) ships verbatim; override to
+/// localize for other languages or to customize the marker shape.
+///
+/// User direction (verbatim 2026-04-26):
+/// > *"Notice this text might need to be translatable otherwise
+/// > writing a tui for different locals might be difficult."*
+///
+/// Sendable so app authors can ship custom implementations as
+/// reference types without leaking actor-isolation concerns
+/// through the env value plumbing.
+public protocol PromptInputLocalizer: Sendable {
+    /// Marker for a multi-line text paste — e.g. `[Pasted text #1 +24 lines]`.
+    /// `id` is the reference's monotonic counter; `lineCount` is the
+    /// underlying buffer's `\n`-separated line count.
+    func textMarker(id: Int, lineCount: Int) -> String
+
+    /// Marker for a single-line paste over the chars threshold —
+    /// e.g. `[Pasted text #2 +250 chars]`.
+    func charsMarker(id: Int, charCount: Int) -> String
+
+    /// Marker for an image paste — e.g. `[Image #3]`.
+    func imageMarker(id: Int) -> String
+
+    /// Hint row text shown beneath the prompt when the cursor sits
+    /// adjacent to a collapsed reference. Default English: "paste
+    /// again to expand".
+    func pasteAgainHint() -> String
+}
+
+/// Default English implementation of `PromptInputLocalizer`. The
+/// strings here are the spec'd defaults from the design memo
+/// 2026-04-26 (`project_promptinput_paste_design_apr26.md`).
+public struct DefaultPromptInputLocalizer: PromptInputLocalizer {
+    public init() {}
+
+    public func textMarker(id: Int, lineCount: Int) -> String {
+        "[Pasted text #\(id) +\(lineCount) lines]"
+    }
+
+    public func charsMarker(id: Int, charCount: Int) -> String {
+        "[Pasted text #\(id) +\(charCount) chars]"
+    }
+
+    public func imageMarker(id: Int) -> String {
+        "[Image #\(id)]"
+    }
+
+    public func pasteAgainHint() -> String {
+        "paste again to expand"
+    }
+}
+
 /// Content held by a `PasteBuffer`. Phase A ships text only; image paste
 /// flows through a separate input pipeline (kitty graphics / OSC 52)
 /// tracked as a follow-up ticket. The case shape is forward-compatible
 /// so the consumer-facing API stays stable when image paste lands.
 public enum PasteBufferContent: Hashable, Equatable, Sendable {
     case text(String)
-    // Reserved for image paste. Adding the case later is source-compatible
-    // because callers must already handle `default:` on switch (Phase A
-    // returns only `.text`). The image variant carries opaque payload
-    // bytes plus mime type so the kitty/OSC-52 wiring stays in its own
-    // pipeline.
-    // case image(bytes: Data, mimeType: String)
+    /// Image buffer — opaque payload bytes plus mime type. The actual
+    /// kitty graphics protocol / OSC 52 clipboard wiring lives in its
+    /// own pipeline (separate ticket); this case is the stable
+    /// data-shape side so the consumer-facing API doesn't churn when
+    /// image paste arrives.
+    case image(bytes: Data, mimeType: String)
 }
 
 /// One paste payload (or future selection-collapsed buffer) stored in the
@@ -289,6 +345,15 @@ public struct PromptInput: TerminalView {
     /// per-subtree via `.pasteMode(.inline)` etc.
     @TerminalEnvironment(\.pasteMode) var pasteMode
 
+    /// Translation seam for marker + hint strings. Default English
+    /// ships via `DefaultPromptInputLocalizer`; override per-subtree
+    /// via `.promptInputLocalizer(_:)`.
+    @TerminalEnvironment(\.promptInputLocalizer) var localizer
+
+    /// Whether the auto-hint row beneath the prompt is rendered when
+    /// cursor sits adjacent to a collapsed reference.
+    @TerminalEnvironment(\.pasteHint) var pasteHint
+
     private static let cursorChar: Character = "\u{2588}"  // █
     private static let promptColor: Color = .cyan
     private static let cursorColor: Color = .white
@@ -332,7 +397,16 @@ public struct PromptInput: TerminalView {
         // be nil (`feedback_bindings_in_geometryreader.md`).
         let boundaryMode = boundaryFeedback
         let onBoundaryHit = self.onBoundaryHit
-        return GeometryReader { size in
+        // Capture the hint visibility + localizer up-front so the
+        // VStack body sees a stable value (the GR closure inside
+        // would re-read env at rebuild time, which is later than
+        // body eval — same `feedback_bindings_in_geometryreader.md`
+        // rule).
+        let hintVisible = pasteHint == .visible
+        let hintLocalizer = localizer
+        let st = state.get()
+        let cursorAdjacentToCollapsed = Self.isCursorAtCollapsedRightEdge(state: st, expandedText: text.get())
+        let promptInput = GeometryReader { size in
             let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
             let st = self.state.get()
             // Project the EXPANDED binding text + reference set into
@@ -343,7 +417,8 @@ public struct PromptInput: TerminalView {
             let projection = Self.projectCollapsedDisplay(
                 expandedText: self.text.get(),
                 references: st.references,
-                buffers: st.buffers
+                buffers: st.buffers,
+                localizer: localizer
             )
             let lines = Self.splitLines(projection.displayText)
             let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
@@ -386,6 +461,36 @@ public struct PromptInput: TerminalView {
                         pasteMode: pasteMode
                     )
                 }
+        }
+        // Compose the prompt + optional auto-hint row. The hint
+        // surfaces "paste again to expand" beneath the input when
+        // the cursor sits at the right edge of a collapsed
+        // reference. `.pasteHint(.hidden)` opts out per-subtree.
+        return VStack {
+            promptInput
+            if hintVisible && cursorAdjacentToCollapsed {
+                Text(hintLocalizer.pasteAgainHint())
+                    .foreground(Self.dimColor)
+            }
+        }
+    }
+
+    /// Returns true when the cursor sits exactly at the right edge of
+    /// a collapsed `PasteReference` in the live reference set. Used
+    /// by the auto-hint row to decide whether to render. Computes the
+    /// cursor's absolute character offset in the expanded text and
+    /// matches it against `ref.start + ref.length` for any
+    /// non-expanded reference.
+    static func isCursorAtCollapsedRightEdge(state: PromptInputState, expandedText: String) -> Bool {
+        guard !state.references.isEmpty else { return false }
+        let lines = splitLines(expandedText)
+        let row = min(state.cursorRow, max(0, lines.count - 1))
+        let col = min(state.cursorCol, lines[row].count)
+        var absOffset = 0
+        for r in 0..<row { absOffset += lines[r].count + 1 }
+        absOffset += col
+        return state.references.contains { ref in
+            !ref.isExpanded && (ref.start + ref.length) == absOffset
         }
     }
 
@@ -506,7 +611,8 @@ public struct PromptInput: TerminalView {
     static func projectCollapsedDisplay(
         expandedText: String,
         references: [PasteReference],
-        buffers: [PasteBuffer]
+        buffers: [PasteBuffer],
+        localizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()
     ) -> CollapsedProjection {
         // Sort references by start so we can walk left-to-right and
         // accumulate deltas. Phase A's "cursor snaps to edge" rule
@@ -537,8 +643,8 @@ public struct PromptInput: TerminalView {
                 let refEndIdx = expandedText.index(refStartIdx, offsetBy: ref.length)
                 displayText.append(contentsOf: expandedText[refStartIdx..<refEndIdx])
             } else {
-                // Render marker.
-                let label = markerLabel(for: ref, buffers: buffers)
+                // Render marker (routes through the supplied localizer).
+                let label = markerLabel(for: ref, buffers: buffers, localizer: localizer)
                 let markerStart = displayText.count
                 displayText.append(label)
                 let markerEnd = displayText.count
@@ -565,22 +671,31 @@ public struct PromptInput: TerminalView {
         )
     }
 
-    /// Format the marker label for a reference per the shipping design:
-    /// `[Pasted text #N +M lines]` (multi-line) or `[Pasted text #N +M
-    /// chars]` (single-line). Counter is the reference's ID, M is the
-    /// underlying buffer's logical line count or character count.
-    static func markerLabel(for ref: PasteReference, buffers: [PasteBuffer]) -> String {
+    /// Format the marker label for a reference per the shipping
+    /// design. Routes through `PromptInputLocalizer` so app authors
+    /// can translate or customize shapes per locale; default English
+    /// implementation ships `[Pasted text #N +M lines]` etc.
+    static func markerLabel(for ref: PasteReference,
+                             buffers: [PasteBuffer],
+                             localizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()) -> String {
         guard let buffer = buffers.first(where: { $0.id == ref.bufferID }) else {
-            // Defensive: stale reference, render an inert tag.
-            return "[Pasted text #\(ref.id)]"
+            // Defensive: stale reference, render an inert tag. We
+            // route through the localizer with chars=0 to keep the
+            // shape consistent — apps that customize markers will
+            // see this branch when references have been disconnected
+            // from their buffer (Phase B picker may legitimately
+            // produce that state).
+            return localizer.charsMarker(id: ref.id, charCount: 0)
         }
         switch buffer.content {
         case .text(let body):
             let lineCount = body.split(separator: "\n", omittingEmptySubsequences: false).count
             if lineCount > 1 {
-                return "[Pasted text #\(ref.id) +\(lineCount) lines]"
+                return localizer.textMarker(id: ref.id, lineCount: lineCount)
             }
-            return "[Pasted text #\(ref.id) +\(body.count) chars]"
+            return localizer.charsMarker(id: ref.id, charCount: body.count)
+        case .image:
+            return localizer.imageMarker(id: ref.id)
         }
     }
 
@@ -658,13 +773,29 @@ public struct PromptInput: TerminalView {
                     spans.append(TextSpan(indent, foreground: Self.dimColor))
                 }
 
+                // Compute this chunk's start offset in the
+                // collapsed display text. Walk earlier logical lines
+                // (each contributes its full `lines[i].count + 1` for
+                // the joining `\n`), then earlier chunks of the
+                // current logical line.
+                var chunkStartInDisplay = 0
+                for r in 0..<logicalIdx {
+                    chunkStartInDisplay += lines[r].count + 1
+                }
+                for c in 0..<chunkIdx {
+                    chunkStartInDisplay += wraps[logicalIdx][c].count
+                }
+
                 let isCursorRow = (currentDisplayRow == cursorDisplayRow)
                 if isCursorRow {
                     // Split the chunk around the cursor column.
                     let col = min(cursorDisplayCol, chunk.count)
                     if col > 0 {
                         let before = String(chunk.prefix(col))
-                        spans.append(TextSpan(before, foreground: Self.textColor))
+                        appendStyledChunkSpans(into: &spans,
+                                                chunk: before,
+                                                chunkStartInDisplay: chunkStartInDisplay,
+                                                projection: projection)
                     }
                     if col < chunk.count {
                         let idx = chunk.index(chunk.startIndex, offsetBy: col)
@@ -677,7 +808,10 @@ public struct PromptInput: TerminalView {
                         ))
                         if col + 1 < chunk.count {
                             let after = String(chunk.suffix(from: chunk.index(after: idx)))
-                            spans.append(TextSpan(after, foreground: Self.textColor))
+                            appendStyledChunkSpans(into: &spans,
+                                                    chunk: after,
+                                                    chunkStartInDisplay: chunkStartInDisplay + col + 1,
+                                                    projection: projection)
                         }
                     } else {
                         // Cursor sits past the last character of this chunk —
@@ -687,7 +821,10 @@ public struct PromptInput: TerminalView {
                         spans.append(TextSpan(String(Self.cursorChar), foreground: Self.promptColor))
                     }
                 } else {
-                    spans.append(TextSpan(chunk, foreground: Self.textColor))
+                    appendStyledChunkSpans(into: &spans,
+                                            chunk: chunk,
+                                            chunkStartInDisplay: chunkStartInDisplay,
+                                            projection: projection)
                 }
             }
         }
@@ -701,6 +838,76 @@ public struct PromptInput: TerminalView {
         }
 
         return spans
+    }
+
+    /// Emit `chunk` as one or more `TextSpan`s, splitting at marker
+    /// boundaries so collapsed-reference text gets `dimColor` while
+    /// regular content stays in `textColor`. `chunkStartInDisplay`
+    /// is the chunk's character offset in the collapsed display text;
+    /// the helper intersects it with `projection.markerRanges` to
+    /// locate marker segments inside the chunk.
+    private func appendStyledChunkSpans(
+        into spans: inout [TextSpan],
+        chunk: String,
+        chunkStartInDisplay: Int,
+        projection: CollapsedProjection
+    ) {
+        guard !chunk.isEmpty else { return }
+        if projection.markerRanges.isEmpty {
+            spans.append(TextSpan(chunk, foreground: Self.textColor))
+            return
+        }
+        let chunkEndInDisplay = chunkStartInDisplay + chunk.count
+        // Find marker ranges that intersect this chunk.
+        let intersecting = projection.markerRanges.filter { range in
+            range.start < chunkEndInDisplay && range.end > chunkStartInDisplay
+        }
+        if intersecting.isEmpty {
+            spans.append(TextSpan(chunk, foreground: Self.textColor))
+            return
+        }
+        // Walk the chunk left-to-right, alternating text-color and
+        // dim-color segments. Marker ranges are sorted by start so a
+        // simple sweep is sufficient (Phase A: no nested markers).
+        var cursor = chunkStartInDisplay
+        for range in intersecting {
+            // Pre-marker plain segment.
+            if range.start > cursor {
+                let preStart = cursor - chunkStartInDisplay
+                let preEnd = min(range.start, chunkEndInDisplay) - chunkStartInDisplay
+                if preEnd > preStart {
+                    let segment = String(chunk[
+                        chunk.index(chunk.startIndex, offsetBy: preStart)
+                        ..<
+                        chunk.index(chunk.startIndex, offsetBy: preEnd)
+                    ])
+                    spans.append(TextSpan(segment, foreground: Self.textColor))
+                }
+                cursor = min(range.start, chunkEndInDisplay)
+            }
+            // Marker segment (clipped to chunk bounds).
+            let markStart = max(cursor, range.start) - chunkStartInDisplay
+            let markEnd = min(range.end, chunkEndInDisplay) - chunkStartInDisplay
+            if markEnd > markStart {
+                let segment = String(chunk[
+                    chunk.index(chunk.startIndex, offsetBy: markStart)
+                    ..<
+                    chunk.index(chunk.startIndex, offsetBy: markEnd)
+                ])
+                spans.append(TextSpan(segment, foreground: Self.dimColor, italic: true))
+            }
+            cursor = min(range.end, chunkEndInDisplay)
+        }
+        // Tail after the last marker.
+        if cursor < chunkEndInDisplay {
+            let tailStart = cursor - chunkStartInDisplay
+            let segment = String(chunk[
+                chunk.index(chunk.startIndex, offsetBy: tailStart)
+                ..<
+                chunk.endIndex
+            ])
+            spans.append(TextSpan(segment, foreground: Self.textColor))
+        }
     }
 
     // MARK: - Paste Handling

@@ -111,4 +111,14 @@ extension TerminalView {
         -> ModifiedView<Self, EnvironmentModifier<PasteHintVisibility>> {
         environment(\.pasteHint, visibility)
     }
+
+    /// Inject a custom `PromptInputLocalizer` for the descendant
+    /// `PromptInput`s. Default English ships via
+    /// `DefaultPromptInputLocalizer`; override for other locales or
+    /// to customize marker shapes (e.g. emoji-prefixed markers,
+    /// per-app branding).
+    public func promptInputLocalizer(_ localizer: any PromptInputLocalizer)
+        -> ModifiedView<Self, EnvironmentModifier<any PromptInputLocalizer>> {
+        environment(\.promptInputLocalizer, localizer)
+    }
 }
