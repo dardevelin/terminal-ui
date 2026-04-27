@@ -7,6 +7,20 @@
 /// @TerminalState var editorState = TextAreaState()
 /// TextArea(text: $source, state: $editorState)
 /// ```
+/// One undo-stack snapshot — captures everything the editor needs to
+/// restore the pre-edit state.
+public struct TextAreaSnapshot: Equatable, Sendable {
+    public let text: String
+    public let cursor: TextAreaCursor
+    public let selection: TextAreaSelection?
+
+    public init(text: String, cursor: TextAreaCursor, selection: TextAreaSelection?) {
+        self.text = text
+        self.cursor = cursor
+        self.selection = selection
+    }
+}
+
 public struct TextAreaState: Equatable, Sendable {
     /// Current cursor row/col within the document.
     public var cursor: TextAreaCursor = .zero
@@ -16,8 +30,25 @@ public struct TextAreaState: Equatable, Sendable {
     public var selection: TextAreaSelection?
     /// Desired column preserved during vertical movement (sticky column).
     public var desiredCol: Int?
+    /// Bounded undo/redo history. Each text-mutating key path pushes
+    /// a snapshot of (text, cursor, selection) BEFORE the mutation.
+    /// Ctrl+Z restores from `undoStack.undo()`; Ctrl+Shift+Z (or
+    /// Ctrl+Y) restores from `undoStack.redo()`. Default 100 entries
+    /// per the HYP-65 design memo. Equatable conformance ignores the
+    /// internal stack contents to keep state-equality cheap on hot
+    /// paths — the public-facing edit position is what `==` checks.
+    public var undoStack: UndoStack<TextAreaSnapshot> = UndoStack(maxSize: 100)
 
     public init() {}
+
+    public static func == (lhs: TextAreaState, rhs: TextAreaState) -> Bool {
+        lhs.cursor == rhs.cursor
+            && lhs.scrollOffset == rhs.scrollOffset
+            && lhs.selection == rhs.selection
+            && lhs.desiredCol == rhs.desiredCol
+        // undoStack intentionally excluded — equality compares the
+        // visible editor state, not the history depth.
+    }
 }
 
 /// Row/column position within a TextArea document.
@@ -283,6 +314,14 @@ public struct TextArea: TerminalView {
         var lines = splitLines(text.get())
         var cursor = clampCursor(editorState.cursor, lines: lines)
 
+        // Snapshot pre-paste state for undo. Pastes are atomic edits —
+        // a single Ctrl+Z reverts the whole inserted block.
+        editorState.undoStack.push(TextAreaSnapshot(
+            text: text.get(),
+            cursor: editorState.cursor,
+            selection: editorState.selection
+        ))
+
         if let sel = editorState.selection, !sel.isEmpty {
             deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
             editorState.selection = nil
@@ -324,6 +363,56 @@ public struct TextArea: TerminalView {
             visibleHeight: visibleHeight
         )
         text.set(joinLines(lines))
+        state.set(editorState)
+    }
+
+    // MARK: - Undo / Redo dispatch
+
+    /// Apply the next undo snapshot. Builds a "current" snapshot from
+    /// the live binding so the stack can preserve it for a subsequent
+    /// Ctrl+Shift+Z redo. Restores text + cursor + selection from the
+    /// popped pre-mutation snapshot. No-op when the stack has nothing
+    /// to undo.
+    static func applyUndo(text: Binding<String>,
+                          state: Binding<TextAreaState>,
+                          visibleHeight: Int) {
+        var editorState = state.get()
+        let now = TextAreaSnapshot(
+            text: text.get(),
+            cursor: editorState.cursor,
+            selection: editorState.selection
+        )
+        guard let snap = editorState.undoStack.undo(now: now) else { return }
+        text.set(snap.text)
+        editorState.cursor = snap.cursor
+        editorState.selection = snap.selection
+        editorState.scrollOffset = clampScroll(
+            cursor: snap.cursor,
+            currentScroll: editorState.scrollOffset,
+            visibleHeight: visibleHeight
+        )
+        state.set(editorState)
+    }
+
+    /// Apply the next redo snapshot. Mirror of `applyUndo`.
+    static func applyRedo(text: Binding<String>,
+                          state: Binding<TextAreaState>,
+                          visibleHeight: Int) {
+        var editorState = state.get()
+        let now = TextAreaSnapshot(
+            text: text.get(),
+            cursor: editorState.cursor,
+            selection: editorState.selection
+        )
+        guard let snap = editorState.undoStack.redo(now: now) else { return }
+        text.set(snap.text)
+        editorState.cursor = snap.cursor
+        editorState.selection = snap.selection
+        editorState.scrollOffset = clampScroll(
+            cursor: snap.cursor,
+            currentScroll: editorState.scrollOffset,
+            visibleHeight: visibleHeight
+        )
         state.set(editorState)
     }
 
@@ -731,6 +820,19 @@ public struct TextArea: TerminalView {
         // Capture anchor for selection before any movement
         let anchorBeforeMove = cursor
 
+        /// Snapshot the pre-edit (text, cursor, selection) and push
+        /// onto the undo stack. Called from each text-mutating key
+        /// path so Ctrl+Z restores the prior state. Bounded — old
+        /// snapshots dropped on overflow.
+        func pushUndoSnapshot() {
+            let snap = TextAreaSnapshot(
+                text: content,
+                cursor: editorState.cursor,
+                selection: editorState.selection
+            )
+            editorState.undoStack.push(snap)
+        }
+
         func commitCursorMove() {
             if hasShift {
                 if editorState.selection == nil {
@@ -780,6 +882,20 @@ public struct TextArea: TerminalView {
                     editorState.desiredCol = nil
                     commitCursorMove()
                     return .handled
+                case "z":
+                    // Ctrl+Z = undo, Ctrl+Shift+Z = redo. Common
+                    // editor binding (matches macOS / Linux text
+                    // editors). Ctrl+Y is also a redo alias.
+                    if hasShift {
+                        applyRedo(text: text, state: state, visibleHeight: visibleHeight)
+                    } else {
+                        applyUndo(text: text, state: state, visibleHeight: visibleHeight)
+                    }
+                    return .handled
+                case "y":
+                    // Redo alias used by some terminals (Windows-style).
+                    applyRedo(text: text, state: state, visibleHeight: visibleHeight)
+                    return .handled
                 default:
                     return .ignored
                 }
@@ -787,6 +903,8 @@ public struct TextArea: TerminalView {
 
             guard !event.modifiers.contains(.alt) else { return .ignored }
 
+            // Snapshot BEFORE mutating so Ctrl+Z restores this state.
+            pushUndoSnapshot()
             // Replace selection with typed character
             if let sel = editorState.selection, !sel.isEmpty {
                 deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
@@ -799,6 +917,7 @@ public struct TextArea: TerminalView {
         // MARK: Enter
 
         case .enter:
+            pushUndoSnapshot()
             if let sel = editorState.selection, !sel.isEmpty {
                 deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
             }
@@ -810,11 +929,22 @@ public struct TextArea: TerminalView {
 
         case .backspace:
             if let sel = editorState.selection, !sel.isEmpty {
+                pushUndoSnapshot()
                 deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
                 commitTextEdit()
                 return .handled
             }
+            // Snapshot only when the operation will actually mutate —
+            // performBackspace returns false at the (0, 0) wall.
+            let preBackspaceContent = content
+            let preBackspaceCursor = editorState.cursor
+            let preBackspaceSelection = editorState.selection
             guard performBackspace(at: &cursor, in: &lines) else { return .handled }
+            editorState.undoStack.push(TextAreaSnapshot(
+                text: preBackspaceContent,
+                cursor: preBackspaceCursor,
+                selection: preBackspaceSelection
+            ))
             commitTextEdit()
             return .handled
 
@@ -822,11 +952,21 @@ public struct TextArea: TerminalView {
 
         case .delete:
             if let sel = editorState.selection, !sel.isEmpty {
+                pushUndoSnapshot()
                 deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
                 commitTextEdit()
                 return .handled
             }
+            // Snapshot only when the operation will actually mutate.
+            let preDeleteContent = content
+            let preDeleteCursor = editorState.cursor
+            let preDeleteSelection = editorState.selection
             guard performDeleteForward(at: &cursor, in: &lines) else { return .handled }
+            editorState.undoStack.push(TextAreaSnapshot(
+                text: preDeleteContent,
+                cursor: preDeleteCursor,
+                selection: preDeleteSelection
+            ))
             commitTextEdit()
             return .handled
 
