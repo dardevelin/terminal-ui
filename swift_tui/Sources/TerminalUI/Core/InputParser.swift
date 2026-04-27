@@ -240,7 +240,26 @@ public enum InputParser {
     /// Accumulate numeric parameters: ESC [ N ; M ~ or ESC [ 1 ; M A/B/C/D or ESC [ N ; M u
     static func parseExtendedCsi(_ thirdByte: UInt8, from source: inout some ByteSource) -> TerminalEvent {
         var params: [UInt8] = [thirdByte]
-        while let nextByte = source.readByte() {
+        // Bounded-retry on nil — same shape as parseSgrMouse and
+        // collectBracketedPaste. A CSI sequence is a contract: the
+        // ESC[ start has a final byte coming. raw-mode VTIME=1
+        // timeouts return nil mid-sequence under tmux/screen
+        // multiplexing or when arrow-key bursts straddle a read()
+        // boundary. Cap at 30 iterations (~3s at 100ms per timeout);
+        // genuinely broken streams fall through to the .unknown
+        // fallback rather than hang forever.
+        let consecutiveNilLimit = 30
+        var consecutiveNils = 0
+
+        while true {
+            guard let nextByte = source.readByte() else {
+                consecutiveNils += 1
+                if consecutiveNils > consecutiveNilLimit {
+                    return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "[")] + params)))
+                }
+                continue
+            }
+            consecutiveNils = 0
             if nextByte == UInt8(ascii: "~") {
                 // Bracketed-paste start: read until the matching end
                 // marker and emit one .paste event. Doing this here
@@ -261,7 +280,6 @@ public enum InputParser {
             }
             params.append(nextByte)
         }
-        return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "[")] + params)))
     }
 
     /// True iff `params` decode to the bracketed-paste start code (200).
@@ -448,10 +466,26 @@ public enum InputParser {
         var rawBytes: [UInt8] = []
         var finalByte: UInt8 = 0
 
+        // Bounded-retry on nil: raw-mode VTIME=1 timeouts return nil
+        // mid-sequence when the OS splits an SGR mouse sequence across
+        // read() syscalls. The start marker `ESC[<` is a contract that
+        // a final byte (M or m) follows — treat nil as "wait, retry"
+        // up to a budget. Budget chosen as 30 (~3s at 100ms per
+        // timeout); a real terminal completes a mouse sequence in
+        // microseconds, so this only fires if the source genuinely
+        // disconnected mid-sequence.
+        let consecutiveNilLimit = 30
+        var consecutiveNils = 0
+
         while true {
             guard let byte = source.readByte() else {
-                return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), UInt8(ascii: "<")] + rawBytes)))
+                consecutiveNils += 1
+                if consecutiveNils > consecutiveNilLimit {
+                    return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), UInt8(ascii: "<")] + rawBytes)))
+                }
+                continue
             }
+            consecutiveNils = 0
             if byte == UInt8(ascii: "M") || byte == UInt8(ascii: "m") {
                 finalByte = byte
                 break
