@@ -20,12 +20,12 @@ public struct TextInputValidation: Sendable, Equatable {
     public static let ok = TextInputValidation(.ok)
 }
 
-/// An editable single-line text field.
-/// Currently appends typed characters and removes from the tail on
-/// backspace / delete. A real cursor model (insertion index, left/right,
-/// home/end, delete-forward) is; until then arrow
-/// keys are routed to the parent and the visible cursor sits at the
-/// right edge of the value. corrected this doc to match.
+/// An editable single-line text field with insertion-index cursor.
+///
+/// Left/Right move the cursor by one character clamped to `[0, value.count]`;
+/// Home/End jump to the extremes. Character insertion + backspace operate
+/// at the cursor index, not the tail. The visible cursor glyph (`│`)
+/// renders at the insertion point.
 ///
 /// The first positional argument is a persistent **prompt/label** rendered
 /// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
@@ -75,6 +75,14 @@ public struct TextInput: TerminalView {
     /// `.lineBreakMode(_:)` on this view or any ancestor.
     @TerminalEnvironment(\.lineBreakMode) var lineBreakMode
 
+    /// Insertion index in `value` (`0...value.count`). Internal
+    /// `@TerminalState` so it survives re-renders without leaking
+    /// into the public API. The projected `$cursor` binding is
+    /// captured in `body` (NOT inside the GR closure) so handler
+    /// closures observe the same node-resident slot — see
+    /// `feedback_bindings_in_geometryreader.md`.
+    @TerminalState var cursor: Int = -1
+
     public init(
         _ prompt: String = "",
         text: Binding<String>,
@@ -118,47 +126,39 @@ public struct TextInput: TerminalView {
         let mode = lineBreakMode
         let axis = self.axis
 
+        // Project the cursor binding in `body` (NOT inside the GR
+        // closure) so handler closures see the same node-resident
+        // slot. Same pattern as TreeView's $expandedIDs.
+        let cursorBinding = $cursor
+
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
         return VStack {
             GeometryReader { size in
                 let value = text.get()
                 let showPlaceholder = value.isEmpty && !placeholder.isEmpty
+                // Resolve insertion index. `-1` is the uninitialized
+                // sentinel — first observation snaps to value.count
+                // (legacy "cursor pinned to end" behaviour for the
+                // initial render). Callers seeing the binding always
+                // see a clamped value.
+                let resolvedCursor = Self.resolveCursor(cursorBinding.get(), valueCount: value.count)
                 // The whole post-prompt rect is available for value + cursor.
                 // `composeSpans` reserves its own cell for the cursor glyph;
                 // rect-clip keeps any residual writes inside the rect.
                 let available = max(1, size.width - prompt.count)
                 return Text(spans: composeSpans(
                     value: value,
+                    cursor: resolvedCursor,
                     showPlaceholder: showPlaceholder,
                     maxValueWidth: available,
                     mode: mode,
                     axis: axis))
                     .focusable()
-                    .onKeyPress { [text] event in
-                        switch event.key {
-                        case .character(let c):
-                            guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
-                                return .ignored
-                            }
-                            text.set(text.get() + String(c))
-                            return .handled
-
-                        case .backspace, .delete:
-                            var current = text.get()
-                            if !current.isEmpty {
-                                current.removeLast()
-                                text.set(current)
-                            }
-                            return .handled
-
-                        case .enter:
-                            // Let Enter bubble up so parent handlers can submit.
-                            return .ignored
-
-                        default:
-                            return .ignored
-                        }
+                    .onKeyPress { [text, cursorBinding] event in
+                        Self.handleKey(event,
+                                       text: text,
+                                       cursor: cursorBinding)
                     }
             }
             // Single-row height for horizontal axis OR clip/truncation
@@ -172,6 +172,80 @@ public struct TextInput: TerminalView {
             if let message = validation?.message {
                 Text(message).foreground(accent ?? .gray)
             }
+        }
+    }
+
+    /// Snap a stored cursor value to a valid insertion index for the
+    /// current value length. `-1` is the uninitialized sentinel —
+    /// resolves to `valueCount` so initial renders pin the cursor at
+    /// the tail (legacy behaviour). Otherwise clamps into
+    /// `[0, valueCount]`.
+    static func resolveCursor(_ stored: Int, valueCount: Int) -> Int {
+        if stored < 0 { return valueCount }
+        return max(0, min(stored, valueCount))
+    }
+
+    /// Single dispatch site for key events, factored out of the body
+    /// closure so the binding capture list stays small and the logic
+    /// is unit-testable in isolation if needed.
+    static func handleKey(_ event: KeyEvent,
+                          text: Binding<String>,
+                          cursor: Binding<Int>) -> KeyEventResult {
+        let value = text.get()
+        let pos = resolveCursor(cursor.get(), valueCount: value.count)
+        switch event.key {
+        case .character(let c):
+            guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
+                return .ignored
+            }
+            let insertAt = value.index(value.startIndex, offsetBy: pos)
+            var mutated = value
+            mutated.insert(c, at: insertAt)
+            text.set(mutated)
+            cursor.set(pos + 1)
+            return .handled
+
+        case .backspace:
+            // Remove the char BEFORE the cursor; clamp at 0.
+            guard pos > 0 else { return .handled }
+            let removeAt = value.index(value.startIndex, offsetBy: pos - 1)
+            var mutated = value
+            mutated.remove(at: removeAt)
+            text.set(mutated)
+            cursor.set(pos - 1)
+            return .handled
+
+        case .delete:
+            // Forward delete — remove char AT the cursor; no-op at end.
+            guard pos < value.count else { return .handled }
+            let removeAt = value.index(value.startIndex, offsetBy: pos)
+            var mutated = value
+            mutated.remove(at: removeAt)
+            text.set(mutated)
+            return .handled
+
+        case .left:
+            cursor.set(max(0, pos - 1))
+            return .handled
+
+        case .right:
+            cursor.set(min(value.count, pos + 1))
+            return .handled
+
+        case .home:
+            cursor.set(0)
+            return .handled
+
+        case .end:
+            cursor.set(value.count)
+            return .handled
+
+        case .enter:
+            // Let Enter bubble up so parent handlers can submit.
+            return .ignored
+
+        default:
+            return .ignored
         }
     }
 
@@ -215,7 +289,8 @@ public struct TextInput: TerminalView {
     ///
     /// - `axis == .vertical` with clip/truncation modes: still
     ///   single-row (clipping is inherently single-line).
-    private func composeSpans(value: String, showPlaceholder: Bool,
+    private func composeSpans(value: String, cursor: Int,
+                               showPlaceholder: Bool,
                                maxValueWidth: Int,
                                mode: LineBreakMode,
                                axis: TextInputAxis) -> [TextSpan] {
@@ -240,7 +315,10 @@ public struct TextInput: TerminalView {
 
         // Vertical-axis wrap path: emit chunks separated by `\n` so
         // the Text primitive renders one row per chunk. Cursor pins
-        // to the right edge of the final chunk.
+        // to the right edge of the final chunk for now (mid-buffer
+        // cursor in vertical-wrap mode is tracked separately — the
+        // wrap mode targets multi-line authoring where the cursor's
+        // visual position depends on which display row it falls in).
         if axis == .vertical {
             switch mode {
             case .byCharWrapping, .byWordWrapping:
@@ -261,28 +339,87 @@ public struct TextInput: TerminalView {
         }
 
         // Single-row path (horizontal axis or non-wrap modes).
+        // Render value with cursor glyph at the insertion index.
         switch mode {
         case .byClipping, .byCharWrapping, .byWordWrapping:
-            // Virtual horizontal scroll: cursor always pinned at the
-            // right edge once the value exceeds available width. Left
-            // edge clips older chars. Wrap modes on horizontal axis
-            // degrade to clipping (vertical axis above handled them).
-            let visible: String
-            if value.count <= valueRoom {
-                visible = value
-            } else {
-                visible = String(value.suffix(valueRoom))
-            }
-            spans.append(TextSpan(visible))
-            spans.append(TextSpan("│"))
+            // Virtual horizontal scroll: when the value exceeds the
+            // available room, slide the visible window so the cursor
+            // is always on screen. Window anchors to the cursor's
+            // tail when cursor is at end (legacy behaviour preserved).
+            let (visible, visibleCursor) = Self.windowedSlice(
+                value: value, cursor: cursor, room: valueRoom)
+            Self.appendWithCursor(into: &spans,
+                                   text: visible,
+                                   cursorIndex: visibleCursor)
         case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
-            // Apply the truncation mode to fit the value into
-            // `valueRoom`. Cursor lands at the right edge of the
-            // truncated string for visual consistency with clipping.
+            // Truncation modes: apply to fit the value into
+            // `valueRoom`, then drop the cursor at the matching
+            // position in the visible string. Mid-buffer cursor
+            // alignment under non-tail truncation is approximate —
+            // the cursor lands at the visible offset, not the logical
+            // one — which is a HIG-acceptable trade-off.
             let visible = mode.apply(to: value, width: valueRoom)
-            spans.append(TextSpan(visible))
-            spans.append(TextSpan("│"))
+            let visibleCursor = min(cursor, visible.count)
+            Self.appendWithCursor(into: &spans,
+                                   text: visible,
+                                   cursorIndex: visibleCursor)
         }
         return spans
+    }
+
+    /// Slide a fixed-width window of `room` chars over `value` so
+    /// the cursor is always inside it. Returns the visible substring
+    /// and the cursor's offset within that substring.
+    ///
+    /// Legacy behaviour preserved: when the value fits in `room`,
+    /// the window is the whole value. When it doesn't, the window
+    /// shows `room` consecutive chars sliding to keep the cursor on
+    /// screen — anchored at the start when cursor is near the head,
+    /// at the tail when cursor is near the end (the legacy
+    /// `value.suffix(room)` rendering when cursor sits at end).
+    static func windowedSlice(value: String, cursor: Int, room: Int) -> (visible: String, cursorOffset: Int) {
+        if value.count <= room {
+            return (value, cursor)
+        }
+        // Cursor at end → anchor to tail (legacy "pin right" rendering).
+        // Cursor mid-buffer → roughly centre, so the user sees context on
+        // both sides while editing. Clamp so we never run off either end.
+        let maxStart = value.count - room
+        let proposedStart: Int
+        if cursor >= value.count {
+            // At end: show the trailing window so the cursor sits past
+            // the last char and the legacy assertions still hold.
+            proposedStart = maxStart
+        } else {
+            // Mid-buffer: anchor the cursor near the centre.
+            proposedStart = cursor - room / 2
+        }
+        let windowStart = max(0, min(maxStart, proposedStart))
+        let startIdx = value.index(value.startIndex, offsetBy: windowStart)
+        let endIdx = value.index(value.startIndex, offsetBy: windowStart + room)
+        return (String(value[startIdx..<endIdx]), cursor - windowStart)
+    }
+
+    /// Emit `text` as a span, inserting the cursor glyph `│` at
+    /// `cursorIndex` (an offset within `text`). Splits the run when
+    /// the cursor is mid-buffer; appends the glyph at the tail
+    /// otherwise.
+    static func appendWithCursor(into spans: inout [TextSpan], text: String, cursorIndex: Int) {
+        let clamped = max(0, min(cursorIndex, text.count))
+        if clamped >= text.count {
+            spans.append(TextSpan(text))
+            spans.append(TextSpan("│"))
+            return
+        }
+        let splitIdx = text.index(text.startIndex, offsetBy: clamped)
+        let head = String(text[text.startIndex..<splitIdx])
+        let tail = String(text[splitIdx..<text.endIndex])
+        if !head.isEmpty {
+            spans.append(TextSpan(head))
+        }
+        spans.append(TextSpan("│"))
+        if !tail.isEmpty {
+            spans.append(TextSpan(tail))
+        }
     }
 }

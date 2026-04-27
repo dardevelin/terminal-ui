@@ -563,6 +563,31 @@ def storybook_scrollview_initial_viewport(app: Client) -> None:
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
 
 
+def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
+    """TextInput cursor model: typing 'AC', then Left, then 'B' must
+    produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
+    Pins the HYP-208 cursor contract end-to-end through the live
+    Storybook TextInput page."""
+    app.goto_storybook_page(10)  # TextInput page
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    # Type "AC", then Left, then 'B'. With a real cursor model, 'B'
+    # inserts between A and C, so the value is "ABC".
+    app.send_key("A")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("C")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("left")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("B")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true(
+        "→ ABC" in preview,
+        f"mid-buffer insert produced wrong value (expected 'ABC'); preview: {preview[:300]!r}",
+    )
+
+
 def storybook_disabled_skips_focus(app: Client) -> None:
     """`.disabled()` page has two Buttons: 'Live' and 'Dead' (disabled).
     Tab from the sidebar must land on Live; pressing Tab again must wrap
@@ -1123,6 +1148,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
     SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
     SmokeCase("storybook.disabled_skips_focus", "Storybook", storybook_disabled_skips_focus),
+    SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
