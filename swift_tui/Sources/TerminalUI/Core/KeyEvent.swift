@@ -15,6 +15,14 @@ public enum Key: Hashable, Sendable {
     case delete
     case f(Int)
     case unknown([UInt8])
+    /// Synthesized when a click lands on a focusable that has no
+    /// `.onClick` handler. Activatable widgets (Button) treat
+    /// `.activate` the same as `.enter`; text-input components
+    /// (TextArea / TextInput / PromptInput) ignore it because their
+    /// `.enter` handler interprets Enter as user input (newline /
+    /// submit). Lets the framework deliver "click means activate"
+    /// without inserting a newline into focused text fields.
+    case activate
 }
 
 /// Where a key event came from. Used by the debug input log and audit

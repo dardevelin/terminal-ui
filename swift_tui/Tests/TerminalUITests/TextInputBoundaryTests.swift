@@ -2,16 +2,16 @@ import Testing
 @testable import TerminalUI
 
 // TextInput → BoundaryFeedbackEmitter wiring. The emitter API +
-// reason enum + .onBoundaryHit modifier shipped in HYP-81; the
-// cursor model shipped in HYP-208. This pins the actual emit calls
+// reason enum + .onBoundaryHit modifier ship in BoundaryFeedback.swift;
+// the cursor model ships in TextInput.swift. This pins the actual emit calls
 // at the two TextInput wall sites:
 //
 //   * cursor at column 0 + Left → .leftEdge
 //   * cursor at value.count + Right → .rightEdge
 //
 // .maxLength is excluded — TextInput doesn't yet have a maxLength
-// parameter (HYP-209 introduces it; the .maxLength wall site lands
-// on top of HYP-209).
+// parameter — the .maxLength wall is exercised by TextInputMaxLengthTests
+// once the parameter exists. Excluded from this suite.
 
 /// Replace the shared emitter's sinks with counter closures bound to
 /// a class-typed box. Returns the box so the test can read

@@ -2,7 +2,7 @@ import Testing
 @testable import TerminalUI
 
 // PromptInput → BoundaryFeedbackEmitter wiring. Mirrors TextArea
-// (HYP-206) but with two PromptInput-specific quirks:
+// (TextAreaBoundaryTests) but with two PromptInput-specific quirks:
 //
 //   1. Plain Enter submits — it doesn't fall through to a wall
 //      check. So "Enter at end of last row" is NOT a .bottomEdge

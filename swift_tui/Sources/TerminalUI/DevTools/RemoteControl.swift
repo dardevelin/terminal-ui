@@ -964,6 +964,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case .pageDown: return "pagedown"
         case .f(let n): return "f\(n)"
         case .unknown: return "unknown"
+        case .activate: return "activate"
         }
     }
 

@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-213 regression: a vertical thumb-track scrollbar appeared on
+// Regression guard: a vertical thumb-track scrollbar appeared on
 // content that doesn't actually overflow. The pure helper
 // `scrollbarThumb(viewport:content:offset:)` returns nil when
 // `content <= viewport` — verified by `ScrollbarGeometryTests`.
@@ -13,7 +13,7 @@ import Testing
 // genuinely fits, but somewhere upstream the measurement reports an
 // overflowing height. The track + thumb paint as if there's overflow.
 
-@Suite("HYP-213 — scrollbar must not paint when content fits")
+@Suite("Scrollbar must not paint when content fits")
 @MainActor
 struct ScrollbarNoOverflowTests {
 

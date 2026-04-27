@@ -285,6 +285,7 @@ public final class DevTracer: @unchecked Sendable {
         case .delete: parts.append("delete")
         case .f(let n): parts.append("F\(n)")
         case .unknown(let bytes): parts.append("unknown(\(bytes))")
+        case .activate: parts.append("activate")
         }
 
         return parts.joined(separator: "+")

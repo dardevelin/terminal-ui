@@ -594,7 +594,7 @@ def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
 def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     """TextInput cursor model: typing 'AC', then Left, then 'B' must
     produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
-    Pins the HYP-208 cursor contract end-to-end through the live
+    Pins the cursor contract end-to-end through the live
     Storybook TextInput page."""
     app.goto_storybook_page(10)  # TextInput page
     app.send_key("tab")
@@ -1028,7 +1028,7 @@ def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
 
 
 def storybook_mouse_wheel_scrolls_hovered_scrollview(app: Client) -> None:
-    """HYP-212 regression: wheel-down at a hovered scrollable ScrollView
+    """Regression guard: wheel-down at a hovered scrollable ScrollView
     must advance its scrollOffset, even when keyboard focus is on the
     sidebar. Pre-fix: handleScrollKey read engine.keyboardFocusID and
     walked the SIDEBAR's subtree for a scroll-layout (none found),

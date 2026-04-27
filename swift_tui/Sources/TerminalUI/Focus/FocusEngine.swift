@@ -354,8 +354,14 @@ public final class FocusEngine: @unchecked Sendable {
                 let relY = y - target.rect.y
                 handler(relX, relY)
             } else {
-                let syntheticEnter = KeyEvent(key: .enter)
-                _ = routeKeyEvent(syntheticEnter, root: root)
+                // Synthesize `.activate` (not `.enter`) so click-to-
+                // activate works for Button without inserting newlines
+                // into focused text-input components. Button treats
+                // `.activate` the same as `.enter`; TextArea / TextInput /
+                // PromptInput ignore it because their `.enter` arms
+                // interpret Enter as user input.
+                let syntheticActivate = KeyEvent(key: .activate)
+                _ = routeKeyEvent(syntheticActivate, root: root)
             }
             return
         }
@@ -440,7 +446,7 @@ public final class FocusEngine: @unchecked Sendable {
 
         // Bind `currentRoutingNodeID` so handlers like `.scrollable()`'s
         // arrow dispatch resolve the owning node from the routing
-        // target rather than `keyboardFocusID`. See HYP-212 — wheel
+        // target rather than `keyboardFocusID`. Wheel
         // routes the synthetic arrow to the hover target, NOT the
         // focused element, so handlers that previously read
         // `keyboardFocusID` would resolve the wrong subtree.

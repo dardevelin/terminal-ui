@@ -3,7 +3,8 @@ import Testing
 
 // `.disabled()` on an interactive subtree should DIM the rendered
 // foreground so users see they can't interact. Pairs with the
-// behavioral half (handler gating + focus skip) shipped in HYP-12.
+// behavioral half (handler gating + focus skip) ships with the
+// .disabled() modifier in DisabledModifier.swift.
 //
 // Pattern: each interactive component reads
 // `@TerminalEnvironment(\.isEnabled)` and routes its rendered

@@ -2,7 +2,7 @@ import Testing
 @testable import TerminalUI
 
 // TextArea → BoundaryFeedbackEmitter wiring. Mirrors the TextInput
-// suite (HYP-205) but exercises the four buffer-edge walls instead
+// suite (TextInputBoundaryTests) but exercises the four buffer-edge walls instead
 // of two:
 //
 //   * cursor at (0, 0), user pressed Left  → .leftEdge

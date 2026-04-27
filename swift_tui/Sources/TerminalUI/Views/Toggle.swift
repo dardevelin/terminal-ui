@@ -11,7 +11,7 @@ public struct Toggle: TerminalView {
 
     /// Read at body-eval time so a `.disabled()` ancestor dims the
     /// rendered checkbox + label. Behavioural half (handler gating +
-    /// focus skip) shipped in HYP-12.
+    /// focus skip) ships behaviorally with the .disabled() modifier.
     @TerminalEnvironment(\.isEnabled) var isEnabled
 
     public init(_ label: String, isOn: Binding<Bool>) {
@@ -27,7 +27,16 @@ public struct Toggle: TerminalView {
         .foreground(isEnabled ? .default : .gray)
         .focusable()
         .onKeyPress { [isOn] event in
-            if event.key == .enter || event.key == .character(" ") {
+            // `.activate` mirrors Enter/Space for click-to-fire — see
+            // Button.swift for the rationale. Without this, clicking
+            // a focused Toggle synthesised `.enter` and toggled — but
+            // adjacent TextArea clicks would have inserted newlines.
+            // The framework now synthesises `.activate` on click;
+            // Toggle accepts it.
+            if event.key == .enter
+                || event.key == .character(" ")
+                || event.key == .activate
+            {
                 isOn.set(!isOn.get())
                 return .handled
             }

@@ -904,6 +904,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         case .delete: parts.append("del")
         case .f(let n): parts.append("F\(n)")
         case .unknown(let b): parts.append("?\(b)")
+        case .activate: parts.append("act")
         }
         return parts.joined(separator: "-")
     }

@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-212: Mouse-wheel scroll routes the synthetic arrow event to the
+// Mouse-wheel scroll routes the synthetic arrow event to the
 // focusable under the cursor (per MouseFocusPolicy.clickToLock), but
 // `ScrollableScrollView.handleScrollKey` reads `engine.keyboardFocusID`
 // to find the scroll-layout node — which is the SIDEBAR's focusable,
@@ -17,7 +17,7 @@ import Testing
 // that the handler resolves its *owning* scroll node, not the global
 // keyboard-focused one.
 
-@Suite("HYP-212 — wheel routes to hover target's scroll node, not keyboard focus")
+@Suite("Wheel routes to hover target's scroll node, not keyboard focus")
 @MainActor
 struct WheelRoutingTargetTests {
 

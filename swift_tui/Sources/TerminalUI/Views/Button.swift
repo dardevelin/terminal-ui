@@ -27,7 +27,15 @@ public struct Button: TerminalView {
             .foreground(isEnabled ? .default : .gray)
             .focusable()
             .onKeyPress { event in
-                if event.key == .enter || event.key == .character(" ") {
+                // `.activate` is synthesized by FocusEngine when the
+                // user clicks a focused Button (no .onClick handler);
+                // treat it identically to Enter / Space so click-to-
+                // fire keeps working without misinterpreting clicks
+                // on text-input siblings as newline keypresses.
+                if event.key == .enter
+                    || event.key == .character(" ")
+                    || event.key == .activate
+                {
                     action()
                     return .handled
                 }

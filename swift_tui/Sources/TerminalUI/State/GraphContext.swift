@@ -44,6 +44,6 @@ public enum GraphContext {
     /// of the handler's invocation, nil otherwise. Lets handlers that
     /// would normally read `keyboardFocusID` (e.g. `.scrollable()`'s
     /// arrow handler) find their owning node when wheel routing
-    /// dispatches them at a non-focused target — fixes HYP-212.
+    /// dispatches them at a non-focused target.
     @TaskLocal public static var currentRoutingNodeID: NodeID?
 }
