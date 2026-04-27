@@ -28,6 +28,14 @@ public struct EnvironmentValues: Sendable {
     /// Whether `ScrollView` paints its edge indicator glyphs (▲▼◀▶) when more
     /// content exists off-viewport. Default `.visible` — drop-in affordance.
     public var scrollIndicators: ScrollIndicatorVisibility = .visible
+
+    /// Explicit scroll target for the nearest enclosing `ScrollView`.
+    /// Set via `.scrollPosition(id:)`; the renderer locates the descendant
+    /// tagged with `.id(matching)` and adjusts the ScrollView's offset to
+    /// keep that node visible — independent of keyboard focus. Default
+    /// `nil` keeps the existing focus-driven behaviour.
+    /// SwiftUI parity: `View.scrollPosition(id:)` (iOS 17+).
+    public var scrollTargetID: ScrollTargetID? = nil
     /// How text-input components react to boundary hits (cursor at start/end,
     /// maxLength reached). Default `.bounce` — visible cursor animation.
     /// Scaffolding exists; per-component wiring lands incrementally.

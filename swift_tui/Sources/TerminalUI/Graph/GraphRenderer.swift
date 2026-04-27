@@ -378,7 +378,37 @@ public enum GraphRenderer {
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
         if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
+        // Transparent modifiers (env, lifecycle, focus hooks, paint
+        // effects) don't impose a height of their own — peel through
+        // to detect a flex descendant. Without this, wrapping a
+        // ScrollView in `.environment(...)` (e.g. `.scrollPosition(id:)`)
+        // collapses it to its intrinsic 1-row size in a VStack.
+        if case .modifier(let effect) = node.kind, isTransparentModifier(effect),
+           let child = node.children.first {
+            return isVFlexChild(child)
+        }
         return false
+    }
+
+    /// A modifier is "transparent" for flex/sizing purposes when it
+    /// doesn't impose its own size on the child. Painting effects
+    /// (foreground/bold/etc), lifecycle hooks, focus modifiers,
+    /// click/hover/key dispatch, environment passthrough — none of
+    /// these change layout. Frames, padding, borders, .flexible, and
+    /// the modal/overlay shapes DO change layout and are NOT
+    /// transparent.
+    private static func isTransparentModifier(_ effect: ModifierEffect) -> Bool {
+        switch effect {
+        case .foreground, .background, .bold, .italic, .underline,
+             .focusable, .focusScope,
+             .onKeyPress, .onAppear, .onChange, .onDisappear,
+             .onClick, .onHover, .onPaste,
+             .actions, .environment, .explicitID:
+            return true
+        case .padding, .border, .frame, .flexible,
+             .overlay, .backgroundView, .modal:
+            return false
+        }
     }
 
     /// Grow weight for a vertical flex child. Spacers, scroll views,
@@ -691,6 +721,95 @@ public enum GraphRenderer {
             }
             current = parent
         }
+    }
+
+    /// Adjust scroll offsets on every scroll container whose resolved env
+    /// has `scrollTargetID` set. Walks each scroll container's subtree to
+    /// find the descendant tagged with `.id(matching)` and runs the same
+    /// position math as `adjustScrollForFocus` to keep that node visible.
+    ///
+    /// Independent of keyboard focus — this is the SwiftUI
+    /// `.scrollPosition(id:)` path. Runs as a sibling pass; either path
+    /// (focus-driven OR target-driven) may set the offset, last writer
+    /// wins per scroll container per frame. In practice they don't
+    /// conflict: `.scrollPosition(id:)` is opt-in, and apps using it
+    /// know they're driving scroll explicitly.
+    ///
+    /// Must run AFTER graph update, BEFORE render — render uses scrollOffset.
+    public static func adjustScrollForExplicitTarget(root: AttributeNode?,
+                                                     viewportWidth: Int, viewportHeight: Int) {
+        guard let root else { return }
+        adjustScrollForExplicitTargetWalk(root, viewportWidth: viewportWidth, viewportHeight: viewportHeight)
+    }
+
+    private static func adjustScrollForExplicitTargetWalk(_ node: AttributeNode,
+                                                          viewportWidth: Int,
+                                                          viewportHeight: Int,
+                                                          env: EnvironmentValues = EnvironmentValues()) {
+        // Apply this node's env contribution before recursing — env
+        // modifiers stack as we descend. Mirrors the render walk's
+        // environment propagation, except we compute it in one pass
+        // here instead of relying on `_resolvedEnv` (which is only
+        // populated during render — but the scroll-adjust pass runs
+        // BEFORE render, so the cache is one frame stale or absent).
+        var currentEnv = env
+        if case .modifier(.environment(let apply)) = node.kind {
+            apply(&currentEnv)
+        }
+
+        // Is this a scroll container with an explicit target ID set?
+        if case .layout(let info) = node.kind,
+           case .scroll(let axis) = info.kind,
+           let targetID = currentEnv.scrollTargetID,
+           let contentChild = node.children.first
+        {
+            // Find the descendant whose subtree was tagged with .id(targetID).
+            if let targetNode = findExplicitlyIDedNode(in: contentChild, matching: targetID) {
+                let focusedPosition = measureFocusedPosition(
+                    in: contentChild, focusedID: targetNode.id, axis: axis
+                )
+                if let (start, size) = focusedPosition {
+                    let scrollRect = node.rect
+                    let viewportSize: Int
+                    switch axis {
+                    case .horizontal:
+                        viewportSize = scrollRect.width > 0 ? scrollRect.width : viewportWidth
+                    case .vertical:
+                        viewportSize = scrollRect.height > 0 ? scrollRect.height : viewportHeight
+                    }
+                    adjustScrollOffset(
+                        node: node, axis: axis, focusedStart: start, focusedSize: size,
+                        viewportSize: viewportSize
+                    )
+                }
+            }
+        }
+        // Recurse — nested ScrollViews may each have their own target.
+        for child in node.children {
+            adjustScrollForExplicitTargetWalk(child,
+                                              viewportWidth: viewportWidth,
+                                              viewportHeight: viewportHeight,
+                                              env: currentEnv)
+        }
+    }
+
+    /// Locate the node directly beneath an `.id(matching)` modifier in
+    /// `subtree`. Returns the modifier's child (the tagged content)
+    /// whose position the renderer can compute against the scroll axis.
+    /// `nil` when no matching tag exists.
+    private static func findExplicitlyIDedNode(in subtree: AttributeNode,
+                                                matching targetID: ScrollTargetID) -> AttributeNode? {
+        if case .modifier(.explicitID(let id)) = subtree.kind, id == targetID.id {
+            // .id() wraps a single child — that's the node whose
+            // position we want to bring into view.
+            return subtree.children.first ?? subtree
+        }
+        for child in subtree.children {
+            if let found = findExplicitlyIDedNode(in: child, matching: targetID) {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Compute the position and size of the focused node within a content subtree.

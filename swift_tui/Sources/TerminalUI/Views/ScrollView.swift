@@ -41,10 +41,50 @@ public enum ScrollIndicatorVisibility: Sendable, Equatable {
     case hidden
 }
 
+/// Type-erased identifier carried through the environment by
+/// `.scrollPosition(id:)` to point an enclosing `ScrollView` at a
+/// `.id(_:)`-tagged descendant. Exists as a Sendable wrapper because
+/// `EnvironmentValues` itself is `Sendable` and bare `AnyHashable?`
+/// is only conditionally Sendable on its inner type.
+///
+/// The framework relies on the same MainActor runtime invariant as
+/// the rest of `EnvironmentValues` — env values are read during body
+/// evaluation, which happens on the main actor. The `@unchecked`
+/// marker formalises that contract for the type-system without
+/// changing runtime behaviour.
+public struct ScrollTargetID: Equatable, @unchecked Sendable {
+    public let id: AnyHashable
+
+    public init<ID: Hashable>(_ id: ID) {
+        self.id = AnyHashable(id)
+    }
+
+    public static func == (lhs: ScrollTargetID, rhs: ScrollTargetID) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
 extension TerminalView {
     /// Show or hide the scroll-indicator glyphs on enclosed `ScrollView`s.
     public func scrollIndicators(_ visibility: ScrollIndicatorVisibility)
         -> ModifiedView<Self, EnvironmentModifier<ScrollIndicatorVisibility>> {
         environment(\.scrollIndicators, visibility)
+    }
+
+    /// Scroll an enclosing `ScrollView` so the descendant tagged with
+    /// `.id(id)` stays visible. Independent of keyboard focus — the
+    /// runtime adjusts the ScrollView's offset on every render so the
+    /// targeted node sits inside the viewport.
+    ///
+    /// SwiftUI parity: `View.scrollPosition(id:)` (iOS 17+ / macOS 14+).
+    /// HIG basis: *"Avoid changing focus without user interaction"* —
+    /// `.scrollPosition` moves the viewport, NOT focus, so an
+    /// app-driven autoscroll (chat tail, jump-to-bookmark) doesn't
+    /// surprise the keyboard-focus location.
+    ///
+    /// Pass `nil` to clear an inherited target.
+    public func scrollPosition<ID: Hashable>(id: ID?)
+        -> ModifiedView<Self, EnvironmentModifier<ScrollTargetID?>> {
+        environment(\.scrollTargetID, id.map { ScrollTargetID($0) })
     }
 }

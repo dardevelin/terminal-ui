@@ -678,6 +678,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
             root: graph.root, focusedID: focusEngine.keyboardFocusID,
             viewportWidth: size.cols, viewportHeight: size.rows
         )
+        GraphRenderer.adjustScrollForExplicitTarget(
+            root: graph.root,
+            viewportWidth: size.cols, viewportHeight: size.rows
+        )
 
         // Phase separation: layout fires GR rebuilders + stamps rects
         // ahead of render so the render walk is a pure draw.
@@ -797,6 +801,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 // Adjust scroll offsets to keep focused child visible
                 GraphRenderer.adjustScrollForFocus(
                     root: graph.root, focusedID: focusEngine.keyboardFocusID,
+                    viewportWidth: size.cols, viewportHeight: size.rows
+                )
+                GraphRenderer.adjustScrollForExplicitTarget(
+                    root: graph.root,
                     viewportWidth: size.cols, viewportHeight: size.rows
                 )
 

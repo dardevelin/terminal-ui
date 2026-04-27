@@ -392,6 +392,29 @@ def storybook_treeview_expand_collapse(app: Client) -> None:
     )
 
 
+def storybook_sidebar_autoscrolls_with_selection(app: Client) -> None:
+    """Pressing Down past the visible sidebar window must keep the ▸
+    cursor visible — the ScrollView should auto-scroll to follow the
+    selection. HYP-217: prior to the fix, ▸ moved off-screen because
+    only the bottom hint row was focusable, so adjustScrollForFocus
+    never had a moving target."""
+    # Press Down 35 times — past the ~33-row visible window.
+    for _ in range(35):
+        app.send_key("down")
+        time.sleep(0.03)
+    app.wait_for_frame(1, timeout=0.5)
+    # Scrape sidebar column (left ~30 cells) and confirm ▸ is visible.
+    rendered = app.text()
+    sidebar_cols = [line[:30] for line in rendered.splitlines()]
+    has_cursor = any("▸" in row for row in sidebar_cols)
+    assert_true(
+        has_cursor,
+        "After 35 down-arrows, ▸ cursor must still be visible in the sidebar viewport "
+        f"(sidebar should auto-scroll to follow selection). Got:\n"
+        + "\n".join(f"  {r!r}" for r in sidebar_cols if r.strip()),
+    )
+
+
 def storybook_textarea_accepts_input(app: Client) -> None:
     """TextArea preview is pre-seeded with three lines. Typing appends
     characters at the cursor, with the gutter showing line numbers.
@@ -1257,6 +1280,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.list_selection_advances", "Storybook", storybook_list_selection_advances),
     SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
     SmokeCase("storybook.treeview_expand_collapse", "Storybook", storybook_treeview_expand_collapse),
+    SmokeCase("storybook.sidebar_autoscrolls_with_selection", "Storybook", storybook_sidebar_autoscrolls_with_selection),
     SmokeCase("storybook.textarea_accepts_input", "Storybook", storybook_textarea_accepts_input),
     SmokeCase("storybook.textinput_paste_inserts", "Storybook", storybook_textinput_paste_inserts),
     SmokeCase("storybook.textarea_paste_splits_lines", "Storybook", storybook_textarea_paste_splits_lines),

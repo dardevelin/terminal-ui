@@ -49,6 +49,11 @@ struct Sidebar: TerminalView {
             Text("TerminalUI Storybook").bold().foreground(.cyan)
             Text("\(Storybook.allPages.count) pages").foreground(.gray)
             Divider()
+            // .scrollPosition(id:) tells the framework to keep the row
+            // tagged with `.id(selectedIndex)` visible. Mirrors SwiftUI's
+            // `View.scrollPosition(id:)` (iOS 17+) and HIG's selection-row
+            // visibility requirement: *"Persistently highlight selected
+            // row to clarify navigation path."*
             ScrollView(.vertical) {
                 VStack {
                     ForEachWithID(Array(PageInfo.Category.allCases), id: \.self) { category in
@@ -65,6 +70,7 @@ struct Sidebar: TerminalView {
                     }
                 }
             }
+            .scrollPosition(id: st.selectedIndex)
             Divider()
             Text(" ↑↓ navigate").foreground(.gray)
             Text(" Tab → preview").foreground(.gray)
@@ -121,6 +127,12 @@ struct SidebarRow: TerminalView {
 
     var body: some TerminalView {
         let prefix = isSelected ? "▸ " : "  "
+        // The selected row is `.id(index)`-tagged so the sidebar's
+        // `.scrollPosition(id: selectedIndex)` knows which descendant
+        // to keep visible. Untagged rows are invisible to the
+        // explicit-target scroll path; that's fine — only the moving
+        // selection matters.
+        //
         // Rows accept clicks so a mouse-driven user can jump straight
         // to a page. The single-focusable architecture (one focusable
         // on the bottom hint row) handles keyboard navigation; the
@@ -132,6 +144,7 @@ struct SidebarRow: TerminalView {
             .onClick { [state, index] _, _ in
                 state.selectedIndex = index
             }
+            .id(index)
     }
 }
 
