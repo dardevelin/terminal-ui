@@ -91,6 +91,16 @@ public struct PromptInput: TerminalView {
     public let arrowMode: PromptArrowMode
     public let onSubmit: ((String) -> Void)?
 
+    /// Boundary-feedback mode read at body-eval time. Drives the
+    /// `BoundaryFeedbackEmitter.shared.emit` calls at the four
+    /// buffer-edge walls in `handleKey`. PromptInput's Up/Down walls
+    /// are history-aware: emit only when arrow movement was blocked
+    /// AND no history entry was available to recall.
+    @TerminalEnvironment(\.boundaryFeedback) var boundaryFeedback
+
+    /// Optional `.onBoundaryHit { reason in ... }` callback.
+    @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+
     private static let cursorChar: Character = "\u{2588}"  // █
     private static let promptColor: Color = .cyan
     private static let cursorColor: Color = .white
@@ -128,7 +138,13 @@ public struct PromptInput: TerminalView {
         // would force VStack to give us a fixed allocation on the FIRST
         // frame and then lock that size in, because GR reports last
         // frame's height.
-        GeometryReader { size in
+        //
+        // Capture boundary-feedback env at body-eval time; the GR
+        // closure runs later when GraphContext.currentEnvironment may
+        // be nil (`feedback_bindings_in_geometryreader.md`).
+        let boundaryMode = boundaryFeedback
+        let onBoundaryHit = self.onBoundaryHit
+        return GeometryReader { size in
             let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
             let lines = Self.splitLines(self.text.get())
             let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
@@ -149,13 +165,15 @@ public struct PromptInput: TerminalView {
             )
             return Text(spans: spans)
                 .focusable()
-                .onKeyPress { [text, state, onSubmit, prompt, arrowMode] event in
+                .onKeyPress { [text, state, onSubmit, prompt, arrowMode, boundaryMode, onBoundaryHit] event in
                     Self.handleKey(
                         event, text: text, state: state,
                         onSubmit: onSubmit, promptWidth: prompt.count + 1,
                         maxVisibleLines: renderedHeight,
                         wrapWidth: contentWidth,
-                        arrowMode: arrowMode
+                        arrowMode: arrowMode,
+                        boundaryMode: boundaryMode,
+                        onBoundaryHit: onBoundaryHit
                     )
                 }
         }
@@ -341,7 +359,9 @@ public struct PromptInput: TerminalView {
         promptWidth: Int,
         maxVisibleLines: Int,
         wrapWidth: Int = .max,
-        arrowMode: PromptArrowMode = .display
+        arrowMode: PromptArrowMode = .display,
+        boundaryMode: BoundaryFeedback = .bounce,
+        onBoundaryHit: BoundaryHitCallback? = nil
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
@@ -351,6 +371,11 @@ public struct PromptInput: TerminalView {
         // Clamp cursor
         st.cursorRow = min(st.cursorRow, lineCount - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
+
+        // Synthesize emit env slice — same pattern as TextInput/TextArea.
+        var emitEnv = EnvironmentValues()
+        emitEnv.boundaryFeedback = boundaryMode
+        emitEnv.onBoundaryHit = onBoundaryHit
 
         switch event.key {
         // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
@@ -445,6 +470,10 @@ public struct PromptInput: TerminalView {
             } else if st.cursorRow > 0 {
                 st.cursorRow -= 1
                 st.cursorCol = lines[st.cursorRow].count
+            } else {
+                // Wall: cursor at (0, 0).
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .leftEdge, env: emitEnv, callback: onBoundaryHit)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -457,6 +486,10 @@ public struct PromptInput: TerminalView {
             } else if st.cursorRow < lineCount - 1 {
                 st.cursorRow += 1
                 st.cursorCol = 0
+            } else {
+                // Wall: cursor at end of last logical row.
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .rightEdge, env: emitEnv, callback: onBoundaryHit)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -464,6 +497,7 @@ public struct PromptInput: TerminalView {
 
         case .up:
             let moved = moveCursorUp(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
+            var recalled = false
             if !moved {
                 // At the visual top of the current input → recall history.
                 if !st.history.isEmpty {
@@ -477,8 +511,14 @@ public struct PromptInput: TerminalView {
                         let newLines = splitLines(st.history[nextIdx])
                         st.cursorRow = newLines.count - 1
                         st.cursorCol = newLines.last?.count ?? 0
+                        recalled = true
                     }
                 }
+            }
+            if !moved && !recalled {
+                // Wall: arrow couldn't navigate AND no older history.
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .topEdge, env: emitEnv, callback: onBoundaryHit)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -486,6 +526,7 @@ public struct PromptInput: TerminalView {
 
         case .down:
             let moved = moveCursorDown(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
+            var advanced = false
             if !moved && st.historyIndex >= 0 {
                 st.historyIndex -= 1
                 if st.historyIndex < 0 {
@@ -499,6 +540,12 @@ public struct PromptInput: TerminalView {
                     st.cursorRow = newLines.count - 1
                     st.cursorCol = newLines.last?.count ?? 0
                 }
+                advanced = true
+            }
+            if !moved && !advanced {
+                // Wall: arrow couldn't navigate AND no newer history.
+                BoundaryFeedbackEmitter.shared.emit(
+                    reason: .bottomEdge, env: emitEnv, callback: onBoundaryHit)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
