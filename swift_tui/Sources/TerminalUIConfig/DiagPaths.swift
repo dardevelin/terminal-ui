@@ -92,6 +92,13 @@ public enum DiagPaths {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.jsonl")
     }
 
+    /// Path to the framework warnings log file. Append-only across the
+    /// session — DebugStream writes here when a TerminalApp is live so
+    /// stderr writes don't corrupt the rendered viewport.
+    public static func warningsLogPath(useTmp: Bool) -> String {
+        (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("warnings.log")
+    }
+
     // MARK: - Directory setup
 
     /// Create all necessary directories and the symlink.

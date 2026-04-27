@@ -144,6 +144,21 @@ public final class DebugStream: @unchecked Sendable {
     private let lock = NSLock()
     private var enabled = false
     private var suppressedWarnings: Set<FrameworkWarningCode> = []
+    /// Set when a `TerminalApp` is in raw mode and OWNS the visible
+    /// terminal. While true, `emitWarning`'s stderr fallback is
+    /// disabled — printing to stderr would corrupt the rendered
+    /// viewport. Warnings still reach in-process sinks (debug panel,
+    /// remote socket) and the on-disk warnings log.
+    private var isLiveTUI = false
+    /// Dedupe set for `emitWarning`. A misbehaving node typically
+    /// re-fires the same `(code, message)` every frame; flooding the
+    /// terminal (or a log file) at 60+ Hz is unusable. Each unique
+    /// pair fires AT MOST ONCE per session — same posture as SwiftUI
+    /// runtime warnings. Cleared by `resetWarningDedup()` for tests.
+    private var seenWarnings: Set<String> = []
+    /// Path to the warnings log file (set when DiagPaths reports a
+    /// data dir). Lazily appended via `Foundation.FileHandle`.
+    private var warningsLogURL: URL?
 
     private init() {}
 
@@ -195,6 +210,28 @@ public final class DebugStream: @unchecked Sendable {
         return suppressedWarnings.contains(code)
     }
 
+    /// Mark the runtime as in-or-out of the "owns the terminal" state.
+    /// Called by `TerminalApp.run()` around its raw-mode lifetime.
+    /// While true, framework warnings DO NOT fall back to stderr —
+    /// they'd corrupt the rendered viewport. They route to the
+    /// `.terminalui/data/warnings.log` file instead so developers can
+    /// grep them after exit (or during, via `tail -f`).
+    public func setLiveTUI(_ live: Bool, logFileURL: URL? = nil) {
+        lock.lock()
+        isLiveTUI = live
+        warningsLogURL = logFileURL
+        lock.unlock()
+    }
+
+    /// Clear the per-session warning dedupe set. Tests call this
+    /// between cases so a warning fired in one test doesn't get
+    /// dropped as "already seen" in the next.
+    public func resetWarningDedup() {
+        lock.lock()
+        seenWarnings.removeAll(keepingCapacity: true)
+        lock.unlock()
+    }
+
     public func emit(_ event: DebugEvent) {
         guard enabled else { return }
         lock.lock()
@@ -217,21 +254,65 @@ public final class DebugStream: @unchecked Sendable {
         lock.lock()
         let suppressed = suppressedWarnings.contains(code)
         let currentSinks = sinks
+        let live = isLiveTUI
+        let logURL = warningsLogURL
+        // Dedupe: each (code, nodeID, message-hash) fires at most once
+        // per session. A misbehaving node otherwise re-emits the same
+        // warning every frame and floods stderr / the log file. The
+        // dedupe key is broader than `code` alone so warnings about
+        // different nodes are still distinct, narrower than the full
+        // message so wording-only changes don't break the dedupe.
+        let dedupeKey = "\(code.rawValue)\u{1F}\(nodeID)\u{1F}\(message.hashValue)"
+        let alreadySeen = seenWarnings.contains(dedupeKey)
+        if !alreadySeen { seenWarnings.insert(dedupeKey) }
         lock.unlock()
         guard !suppressed else { return }
+        guard !alreadySeen else { return }
+
         let info = FrameworkWarningInfo(code: code, message: message, nodeID: nodeID)
         let event = DebugEvent.frameworkWarning(info)
         for sink in currentSinks {
             sink.receive(event)
         }
         if currentSinks.isEmpty {
-            // No inspector attached — fall back to TerminalLog (warn
-            // level routes to stderr) so the warning still reaches
-            // the developer. Format is `[TerminalUI] WARN: code: msg`
-            // — same grep-friendliness as the prior raw stderr line,
-            // with capability-aware coloring for free.
-            log.warn("\(code.rawValue): \(message)")
+            // No inspector attached. Two paths:
+            // * Live TUI: write to the warnings log file so the
+            //   rendered viewport stays uncorrupted. Developers grep
+            //   the file after exit, or `tail -f` during.
+            // * Not live (CLI tool, unit test, swift run swtui): use
+            //   TerminalLog's stderr fallback — same as before — so
+            //   CI / oncall greps still see the message.
+            if live, let logURL {
+                appendWarningToLog(code: code, message: message, nodeID: nodeID, url: logURL)
+            } else if !live {
+                log.warn("\(code.rawValue): \(message)")
+            }
+            // else: live TUI with no log URL configured → drop. Better
+            // a silent drop than corrupting the user's terminal.
         }
+    }
+
+    /// Append a single line to the warnings log file. Best-effort —
+    /// errors are swallowed because warning emission must never throw
+    /// or crash the runtime. File grows unbounded across sessions
+    /// (clean via `swtui clean` or manual rm).
+    private func appendWarningToLog(code: FrameworkWarningCode,
+                                    message: String,
+                                    nodeID: String,
+                                    url: URL) {
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        let nodeTag = nodeID.isEmpty ? "" : " (node \(nodeID))"
+        let line = "[\(String(format: "%.3f", timestamp))] \(code.rawValue): \(message)\(nodeTag)\n"
+        guard let data = line.data(using: .utf8) else { return }
+        // Ensure file exists, then append.
+        let fm = FileManager.default
+        if !fm.fileExists(atPath: url.path) {
+            fm.createFile(atPath: url.path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        _ = try? handle.seekToEnd()
+        try? handle.write(contentsOf: data)
     }
 
     // MARK: - Convenience emitters

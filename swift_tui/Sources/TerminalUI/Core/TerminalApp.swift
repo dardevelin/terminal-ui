@@ -205,6 +205,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableBracketedPaste()
 
         #if DEBUG
+        // Tell DebugStream the visible terminal is now ours. Framework
+        // warnings will route to .terminalui/data/warnings.log instead
+        // of stderr — stderr writes corrupt the rendered viewport.
+        let liveDiagConfig = DiagPaths.loadConfig()
+        let warningsURL = URL(fileURLWithPath: DiagPaths.warningsLogPath(useTmp: liveDiagConfig.useTmp))
+        DebugStream.shared.setLiveTUI(true, logFileURL: warningsURL)
+        #endif
+
+        #if DEBUG
         // Auto-attach the remote-control server. Every TerminalUI
         // debug build becomes MCP-drivable without any per-app setup. Socket
         // path is PID-scoped so multiple apps running concurrently don't
@@ -241,6 +250,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         defer {
             tracer.writeSummary()
+            #if DEBUG
+            // Hand the terminal back; warnings can return to stderr now.
+            DebugStream.shared.setLiveTUI(false)
+            #endif
             Terminal.disableBracketedPaste()
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
