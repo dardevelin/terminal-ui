@@ -110,6 +110,12 @@ let package = Package(
             path: "Examples/GitClient",
             swiftSettings: strictSettings
         ),
+        .executableTarget(
+            name: "Chat",
+            dependencies: ["TerminalUI"],
+            path: "Examples/Chat",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],

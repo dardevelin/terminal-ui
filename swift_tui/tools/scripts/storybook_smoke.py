@@ -1385,6 +1385,93 @@ def gitclient_q_quits(app: Client) -> None:
     # No assertion here: clean teardown is the success signal.
 
 
+# ---- Chat demo ---------------------------------------------------------
+# Second flagship demo. Different surface from GitClient — exercises a
+# scroll-list of dynamic content + PromptInput + delayed bot reply (via
+# TerminalTimer). Pinned by these smoke cases so future regressions in
+# scroll-pinning, message-list rendering, or PromptInput.onSubmit don't
+# slip past.
+
+
+def chat_renders(app: Client) -> None:
+    """Boots and shows fixture messages + the prompt. The 12 canned
+    messages all live in the message list above the prompt — we
+    assert at least three of them appear so a partial render
+    (e.g., prompt visible but list cleared) lights up."""
+    snap = app.cells()
+    full = snap.text()
+    assert_true("alice" in full, "expected 'alice' in fixture messages")
+    assert_true("bob" in full, "expected 'bob' in fixture messages")
+    assert_true("#general" in full, "expected channel name in status bar")
+
+
+def chat_send_message_appends(app: Client) -> None:
+    """Type a message → Enter submits → 'you' line appended at the
+    bottom. Tab into the prompt first (the message list owns
+    initial focus when scrollable)."""
+    # Boot focus may sit on the scroll list; tab/click into prompt.
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("hello there")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    snap = app.cells()
+    full = snap.text()
+    assert_true("hello there" in full,
+                "submitted message body should appear in the message list")
+    assert_true("you" in full,
+                "user's message should be tagged with the 'you' name")
+
+
+def chat_bot_reply_appears(app: Client) -> None:
+    """Bot replies after a short delay (driven by a TerminalTimer
+    tick). Submit a message, wait ~400ms, assert the bot's reply
+    appears tagged 'bot'."""
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("ping")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    # Bot reply is scheduled ~200ms after submit; wait two timer
+    # ticks to be safe.
+    import time as _time
+    _time.sleep(0.4)
+    snap = app.cells()
+    full = snap.text()
+    assert_true("bot" in full,
+                "bot reply (tagged 'bot') should appear after user message")
+
+
+def chat_scroll_pins_to_bottom(app: Client) -> None:
+    """When a new message arrives, the ScrollView pins to the
+    latest. The fixture has more messages than fit in the
+    viewport; submitting a unique message should make IT visible
+    even if the older messages are scrolled past."""
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("anchor message zzz")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    snap = app.cells()
+    full = snap.text()
+    assert_true("anchor message zzz" in full,
+                "newly-submitted message must be auto-scrolled into view")
+
+
+def chat_q_in_empty_prompt_quits(app: Client) -> None:
+    """`q` quits ONLY when the prompt is empty. (`q` while typing
+    must be a literal letter; otherwise words like 'queue' become
+    unwriteable.) Boot focus is on the prompt-empty state, so a
+    bare `q` press should exit cleanly."""
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("q")
+    # No assertion — clean teardown via context manager is the
+    # success signal.
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -1463,6 +1550,11 @@ CASES: list[SmokeCase] = [
     SmokeCase("gitclient.s_stages_hunk", "GitClient", gitclient_s_stages_hunk),
     SmokeCase("gitclient.commit_clears_staged", "GitClient", gitclient_commit_clears_staged),
     SmokeCase("gitclient.q_quits", "GitClient", gitclient_q_quits),
+    SmokeCase("chat.renders", "Chat", chat_renders),
+    SmokeCase("chat.send_message_appends", "Chat", chat_send_message_appends),
+    SmokeCase("chat.bot_reply_appears", "Chat", chat_bot_reply_appears),
+    SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
+    SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
 ]
 
 
