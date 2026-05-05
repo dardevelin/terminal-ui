@@ -38,6 +38,10 @@ let package = Package(
         // Levels with colored prefixes, console + file sinks, ANSI
         // auto-stripping for non-TTY targets.
         .library(name: "TerminalLog", targets: ["TerminalLog"]),
+        // TerminalUIIO: image + media rendering. Opt-in module so apps
+        // without image needs don't pay the cost. Hosts ImageBuffer,
+        // ImageDecoder protocol, future Image view + renderers.
+        .library(name: "TerminalUIIO", targets: ["TerminalUIIO"]),
     ],
     dependencies: [
         // DocC — documentation generator. Only used at `swift package generate-documentation` time.
@@ -71,6 +75,13 @@ let package = Package(
             name: "TerminalUI",
             dependencies: ["TerminalUIConfig", "TerminalInk", "TerminalLog"],
             path: "Sources/TerminalUI",
+            swiftSettings: strictSettings
+        ),
+        // TerminalUIIO — image + media rendering. Opt-in.
+        .target(
+            name: "TerminalUIIO",
+            dependencies: ["TerminalUI"],
+            path: "Sources/TerminalUIIO",
             swiftSettings: strictSettings
         ),
         // Developer CLI tool for managing .terminalui/ config
@@ -120,6 +131,12 @@ let package = Package(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],
             path: "Tests/TerminalUITests",
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalUIIOTests",
+            dependencies: ["TerminalUIIO", "TerminalUI"],
+            path: "Tests/TerminalUIIOTests",
             swiftSettings: strictSettings
         ),
         .testTarget(
