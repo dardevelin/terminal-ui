@@ -468,7 +468,11 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
         log.error("failed to encode payload")
         exit(1)
     }
+    #if canImport(Glibc)
+    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+    #else
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    #endif
     guard fd >= 0 else {
         log.error("socket() failed")
         exit(1)
@@ -579,7 +583,11 @@ private func ctlKill(socketDir: String, positional: [String], defaultPath: Strin
             print("pid=\(pid) status=encode-failed")
             continue
         }
+        #if canImport(Glibc)
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        #endif
         if fd < 0 {
             print("pid=\(pid) status=socket-failed")
             continue
