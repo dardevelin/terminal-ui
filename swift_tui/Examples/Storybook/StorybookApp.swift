@@ -174,6 +174,14 @@ struct StorybookApp: TerminalView {
 
 @main
 struct StorybookMain: TerminalAppProtocol {
+    /// 100ms ticker advances `state.timelineFrame` so the Timeline page's
+    /// braille spinner cycles. The timer fires whether or not the
+    /// Timeline page is visible — the cost is one Int increment per
+    /// 100ms which is negligible.
+    static var timers: [TerminalTimer] {[
+        TerminalTimer("timeline-tick", every: .milliseconds(100))
+    ]}
+
     static func onEvent(_ event: TerminalEvent) -> Bool {
         // Global-only binding: Esc quits. Arrow keys are handled by the
         // sidebar's hint-line `.onKeyPress` when focused (see Sidebar).
@@ -183,6 +191,9 @@ struct StorybookMain: TerminalAppProtocol {
         // silently dropped.
         if case .key(let k) = event, k.key == .escape {
             return false
+        }
+        if case .timer(let name) = event, name == "timeline-tick" {
+            state.timelineFrame &+= 1
         }
         return true
     }

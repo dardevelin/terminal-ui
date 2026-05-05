@@ -27,10 +27,18 @@ struct PageInfo: Identifiable, Sendable {
 /// concrete preview view. Adding a component = add a case here + a switch
 /// arm in PageDetail + an entry in `allPages`.
 enum PageID: String, Sendable, Hashable, CaseIterable {
+    // CRITICAL: enum declaration order MUST match the visual sidebar
+    // order — `selectedIndex` is incremented linearly by arrow nav
+    // (see StorybookApp.swift's onKeyPress) but the sidebar groups
+    // by `info.category` for display. If a new case is declared at
+    // a different position than its category section in the sidebar,
+    // arrow nav skips over it visually. Append within the matching
+    // category group below.
+    //
     // Layout
     case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader
     // Primitives
-    case text, forEach
+    case text, forEach, subCell, timeline, capabilities
     // Input
     case button, textInput, textArea, toggle, promptInput
     // Display
@@ -39,9 +47,6 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
     case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled, boundaryFeedback
-    // Framework primitives — appended at the end so index-based smoke
-    // harness doesn't shift. Adding new framework primitives goes here.
-    case subCell, timeline, capabilities
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
