@@ -149,6 +149,41 @@ struct RenderPhasePurityTests {
                 "after Layout.measureAndPlace, render must not invoke geometryRebuilder; got \(counter.value)")
     }
 
+    // HYP-204 Layer 2 contract: for a tree containing only modifiers
+    // + ZStack + primitives (no flex distribution from VStack/HStack/
+    // ScrollView), render must NOT alter any node's rect after layout
+    // has stamped them. The previous test pinned children-identity
+    // purity; this one strengthens the contract to rect purity.
+    //
+    // VStack/HStack/Scroll are deliberately excluded: their flex
+    // distribution still lives in render and re-stamps child rects
+    // (via Layout.measureAndPlace called from the flex distributor)
+    // on every render call. That re-stamping is by design until
+    // Layer 3 ships — once it does, this test should be widened to
+    // cover stack subtrees too.
+    @Test("Layer 2: render does NOT mutate rects in a modifier+ZStack subtree")
+    func renderDoesNotMutateRectsInLayer2Subtree() {
+        let graph = AttributeGraph()
+        graph.update(from: ZStack {
+            Text("inner")
+                .padding(2)
+                .border(.rounded)
+                .frame(width: 12, height: 4)
+        })
+        guard let root = graph.root else {
+            Issue.record("no root after build")
+            return
+        }
+        let allocated = Rect(x: 0, y: 0, width: 24, height: 10)
+        Layout.measureAndPlace(graph: root, in: allocated)
+        let rectsBefore = collectRectSnapshot(of: root)
+        var buffer = CellBuffer(width: allocated.width, height: allocated.height)
+        GraphRenderer.render(root, into: &buffer, context: .init(rect: allocated))
+        let rectsAfter = collectRectSnapshot(of: root)
+        #expect(rectsBefore == rectsAfter,
+                "Layer 2 contract: render must read pre-stamped rects, not recompute them")
+    }
+
     @Test("repeated render calls produce identical output (no first-call-mutates-second)")
     func repeatedRenderIsIdempotent() {
         let graph = AttributeGraph()
@@ -243,4 +278,24 @@ private func findGeometryReaderNode(from node: AttributeNode) -> AttributeNode? 
         if let found = findGeometryReaderNode(from: child) { return found }
     }
     return nil
+}
+
+@MainActor
+private func collectRectSnapshot(of node: AttributeNode) -> [LocalRectSnapshot] {
+    var out: [LocalRectSnapshot] = []
+    walkRectSnapshot(node, into: &out)
+    return out
+}
+
+@MainActor
+private func walkRectSnapshot(_ node: AttributeNode, into out: inout [LocalRectSnapshot]) {
+    out.append(LocalRectSnapshot(identity: ObjectIdentifier(node), rect: node.rect))
+    for child in node.children {
+        walkRectSnapshot(child, into: &out)
+    }
+}
+
+private struct LocalRectSnapshot: Equatable {
+    let identity: ObjectIdentifier
+    let rect: Rect
 }

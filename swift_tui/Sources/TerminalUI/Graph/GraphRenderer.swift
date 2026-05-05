@@ -359,6 +359,14 @@ public enum GraphRenderer {
                 } else {
                     let childRect = Rect(x: context.rect.x, y: y,
                                          width: context.rect.width, height: max(1, flexHeight))
+                    // Re-stamp the subtree's Layer-2 rects from this
+                    // child's anchor. VStack/HStack/Scroll still own
+                    // distribution (Layer 3), so the top-level Layout
+                    // pass placed this child at the parent's rect; we
+                    // need a fresh stamp now that flex resolved the
+                    // real slot. Once Layer 3 lands, this call goes
+                    // away and render becomes a pure walk.
+                    Layout.measureAndPlace(graph: child, in: childRect)
                     render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     y += flexHeight
                 }
@@ -366,6 +374,7 @@ public enum GraphRenderer {
             }
             let h = childHeights[i]
             let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: max(1, h))
+            Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             y += h
         }
@@ -465,6 +474,7 @@ public enum GraphRenderer {
                 } else {
                     let childRect = Rect(x: x, y: context.rect.y,
                                          width: max(1, flexWidth), height: context.rect.height)
+                    Layout.measureAndPlace(graph: child, in: childRect)
                     render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     x += flexWidth
                 }
@@ -473,6 +483,7 @@ public enum GraphRenderer {
             let w = childWidths[i]
             let clampedWidth = min(w, maxX - x)
             let childRect = Rect(x: x, y: context.rect.y, width: max(1, clampedWidth), height: context.rect.height)
+            Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w
         }
@@ -524,6 +535,13 @@ public enum GraphRenderer {
             // Render content into a local buffer at (0,0) with natural width
             var contentBuffer = CellBuffer(width: contentWidth, height: viewport.height)
             let contentRect = Rect(x: 0, y: 0, width: contentWidth, height: viewport.height)
+            // Re-stamp the content subtree's Layer-2 rects from the
+            // local-buffer origin (0, 0) — the top-level Layout pass
+            // placed contentChild at the viewport rect, but the local
+            // render is anchored at (0, 0). offsetRects(...) below
+            // translates back to screen coords after the content is
+            // drawn.
+            Layout.measureAndPlace(graph: contentChild, in: contentRect)
             render(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
@@ -593,6 +611,9 @@ public enum GraphRenderer {
 
             var contentBuffer = CellBuffer(width: viewport.width, height: contentHeight)
             let contentRect = Rect(x: 0, y: 0, width: viewport.width, height: contentHeight)
+            // Re-stamp from local-buffer origin (0, 0); offsetRects
+            // below translates back to screen coords.
+            Layout.measureAndPlace(graph: contentChild, in: contentRect)
             render(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
@@ -670,9 +691,13 @@ public enum GraphRenderer {
     }
 
     static func renderZStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        // All children occupy the full rect — last child renders on top
+        // Layer 2: Layout stamps every ZStack child's rect to the
+        // parent's rect. Render reads the pre-stamped rect — last
+        // child wins on overlapping cells.
         for child in children {
-            render(child, into: &buffer, context: context)
+            var childCtx = context
+            childCtx.rect = child.rect
+            render(child, into: &buffer, context: childCtx)
         }
     }
 
@@ -928,25 +953,26 @@ public enum GraphRenderer {
             ctx.style.underline = true
             render(child, into: &buffer, context: ctx)
 
-        case .padding(let amount):
-            ctx.rect = ctx.rect.inset(by: amount)
+        case .padding:
+            // Layer 2: Layout has pre-stamped child.rect with the
+            // padding inset. Render reads it and passes through —
+            // no rect computation here.
+            ctx.rect = child.rect
             render(child, into: &buffer, context: ctx)
 
         case .border(let style):
+            // Border ring draws at the modifier node's OUTER rect
+            // (`ctx.rect`); the child draws inside the inset rect
+            // that Layout already stamped on `child.rect`.
             renderBorder(style, into: &buffer, context: ctx)
-            ctx.rect = ctx.rect.inset(by: 1)
+            ctx.rect = child.rect
             render(child, into: &buffer, context: ctx)
 
-        case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight):
-            if let w = width { ctx.rect.width = min(w, ctx.rect.width) }
-            // .infinity skips the min() clamp — the rect already
-            // carries the proposed width from the parent stack's flex
-            // distribution. Only finite caps narrow the rect further.
-            if let maxW = maxWidth?.fixedValue { ctx.rect.width = min(maxW, ctx.rect.width) }
-            if let minW = minWidth?.fixedValue { ctx.rect.width = max(minW, ctx.rect.width) }
-            if let h = height { ctx.rect.height = min(h, ctx.rect.height) }
-            if let maxH = maxHeight?.fixedValue { ctx.rect.height = min(maxH, ctx.rect.height) }
-            if let minH = minHeight?.fixedValue { ctx.rect.height = max(minH, ctx.rect.height) }
+        case .frame:
+            // Layer 2: Layout has pre-stamped child.rect with the
+            // frame's clamped dimensions. Render passes the resolved
+            // rect through unchanged.
+            ctx.rect = child.rect
             render(child, into: &buffer, context: ctx)
 
         case .flexible:
@@ -1067,10 +1093,12 @@ public enum GraphRenderer {
                     x: mx, y: my,
                     style: .transparent  // only overwrite cells that have content
                 )
-                let modalContext = RenderContext(
-                    style: .plain,
-                    rect: Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
-                )
+                let modalRect = Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
+                let modalContext = RenderContext(style: .plain, rect: modalRect)
+                // Re-stamp the modal subtree's Layer-2 rects from
+                // (0, 0); offsetRects(...) below translates to screen
+                // coords after the modal layer is composited.
+                Layout.measureAndPlace(graph: modalNode, in: modalRect)
                 render(modalNode, into: &modalLayer.buffer, context: modalContext)
 
                 // Offset resolved rects so hit testing works in screen coordinates
