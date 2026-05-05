@@ -5,12 +5,25 @@ public struct Style: Equatable, Sendable {
     public var italic: Bool
     public var underline: Bool
 
+    public init(foreground: Color?, background: Color?, bold: Bool, italic: Bool, underline: Bool) {
+        self.foreground = foreground
+        self.background = background
+        self.bold = bold
+        self.italic = italic
+        self.underline = underline
+    }
+
     public static let plain = Style(foreground: nil, background: nil, bold: false, italic: false, underline: false)
 }
 
 public struct Cell: Equatable, Sendable {
     public var character: Character
     public var style: Style
+
+    public init(character: Character, style: Style) {
+        self.character = character
+        self.style = style
+    }
 
     public static let empty = Cell(character: " ", style: .plain)
 }
