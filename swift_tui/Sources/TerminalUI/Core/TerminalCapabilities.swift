@@ -33,9 +33,15 @@ public struct DetectionStep: Sendable, Equatable {
 }
 
 /// Observable framework-level capability state.
+///
+/// Non-isolated to match the framework's "main thread by convention"
+/// rule (matches `GraphRenderer`, `Runtime.outputs` and the existing
+/// `nonisolated(unsafe)` statics in `GraphContext`). Capabilities are
+/// detected once at startup and read from view bodies that run on the
+/// main thread; making this `@MainActor` was over-restrictive and
+/// blocked cross-module access from non-isolated render contexts.
 @Observable
-@MainActor
-public final class TerminalCapabilities {
+public final class TerminalCapabilities: @unchecked Sendable {
     public private(set) var graphics: GraphicsProtocol
     public private(set) var detectionLog: [DetectionStep]
 
@@ -96,7 +102,6 @@ public final class TerminalCapabilities {
 
 /// Framework-level runtime singletons. `Runtime.capabilities`
 /// is the canonical place to read graphics-protocol detection.
-@MainActor
 public enum Runtime {
     public static let capabilities = TerminalCapabilities()
 }

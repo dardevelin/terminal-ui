@@ -176,6 +176,80 @@ struct PreviewPane: TerminalView {
                     Text(" ")
                 }
             }
+        case .subCell:
+            // Show one glyph per major case so the visual atlas is
+            // immediate. Cases left out (eighthVertical other levels,
+            // braille, full quadrant set) are documented in the code
+            // string for the user to copy-paste.
+            VStack {
+                Text("Full / halves / quadrants:")
+                HStack {
+                    Text(String(SubCellGlyph.full.character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.halfTop.character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.halfBottom.character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.halfLeft.character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.halfRight.character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.quadrant([.topLeft, .bottomRight]).character)).foreground(.cyan)
+                    Text(" ")
+                    Text(String(SubCellGlyph.quadrant([.topRight, .bottomLeft]).character)).foreground(.cyan)
+                }
+                Text(" ")
+                Text("Eighths (vertical fill):")
+                HStack {
+                    Text(String(SubCellGlyph.eighthVertical(.oneEighth).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.twoEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.threeEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.fourEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.fiveEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.sixEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.sevenEighths).character)).foreground(.green)
+                    Text(String(SubCellGlyph.eighthVertical(.eightEighths).character)).foreground(.green)
+                }
+                Text(" ")
+                Text("Shades:")
+                HStack {
+                    Text(String(SubCellGlyph.shade(.light).character)).foreground(.yellow)
+                    Text(" ")
+                    Text(String(SubCellGlyph.shade(.medium).character)).foreground(.yellow)
+                    Text(" ")
+                    Text(String(SubCellGlyph.shade(.dark).character)).foreground(.yellow)
+                }
+            }
+        case .timeline:
+            // Timeline is observable; the running ticker reads
+            // `state.timelineFrame` which the StorybookApp advances
+            // via TerminalTimer. Without that wiring the page still
+            // renders — just shows frame 0 statically.
+            VStack {
+                Text("FrameTimeline (frames=8, fps=10):").foreground(.gray)
+                HStack {
+                    let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+                    Text(frames[state.timelineFrame % frames.count]).foreground(.cyan)
+                    Text(" frame=\(state.timelineFrame % 8)").foreground(.gray)
+                }
+                Text(" ")
+                Text("CurveTimeline (.easeInOut, fixed sample at 0.5):").foreground(.gray)
+                Text("progress=\(AnimationCurve.easeInOut.apply(0.5))").foreground(.green)
+                Text("(linear=0.50, easeIn=0.25, easeOut=0.75, easeInOut=0.50)")
+                    .foreground(.gray)
+            }
+        case .capabilities:
+            // Read the framework-level singleton.
+            let caps = Runtime.capabilities
+            VStack {
+                Text("Detected graphics protocol:").foreground(.gray)
+                Text(String(describing: caps.graphics)).foreground(.cyan).bold()
+                Text(" ")
+                Text("Detection log:").foreground(.gray)
+                ForEachWithID(caps.detectionLog, id: \.probe) { step in
+                    Text("• \(step.probe): \(step.result)")
+                }
+            }
 
         // ───── Input ─────
         case .button:

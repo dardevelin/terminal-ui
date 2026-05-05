@@ -39,6 +39,9 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
     case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled, boundaryFeedback
+    // Framework primitives — appended at the end so index-based smoke
+    // harness doesn't shift. Adding new framework primitives goes here.
+    case subCell, timeline, capabilities
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -137,6 +140,43 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         Text("[\\(name)]").foreground(.cyan)
                         Text(" ")
                     }
+                }
+                """)
+        case .subCell: return PageInfo(id: self, category: .primitives, name: "SubCellGlyph",
+            summary: "Sub-cell precision atlas: full / halves / quadrants / eighths / shade / braille glyphs. Used by Image circle clip + chart precision + .disabled() alpha overlay (HYP-298).",
+            code: """
+                // Full atlas of glyph classes:
+                Text(String(SubCellGlyph.full.character))                            // █
+                Text(String(SubCellGlyph.halfTop.character))                         // ▀
+                Text(String(SubCellGlyph.halfBottom.character))                      // ▄
+                Text(String(SubCellGlyph.quadrant([.topLeft, .bottomRight]).character)) // ▚
+                Text(String(SubCellGlyph.eighthVertical(.fourEighths).character))    // ▄
+                Text(String(SubCellGlyph.shade(.medium).character))                  // ▒
+                """)
+        case .timeline: return PageInfo(id: self, category: .primitives, name: "Timeline",
+            summary: "Animation primitive — FrameTimeline (frame-step at fps) + CurveTimeline (eased 0..1 progress). @Observable so view bodies reactively re-render (HYP-302).",
+            code: """
+                // Frame timeline: cycle 0..<8 at 10fps
+                let frame = FrameTimeline(frames: 8, fps: 10)
+                frame.start()
+                // ... view reads `frame.currentFrame` ...
+
+                // Curve timeline: 500ms ease-out
+                let curve = CurveTimeline(duration: .milliseconds(500), curve: .easeOut)
+                curve.start()
+                // ... view reads `curve.progress` (0..1) ...
+                """)
+        case .capabilities: return PageInfo(id: self, category: .primitives, name: "TerminalCapabilities",
+            summary: "Detected terminal graphics protocol via env-sniff (TERM, TERM_PROGRAM, NO_COLOR). Read Runtime.capabilities.graphics to know which renderer to use (HYP-295).",
+            code: """
+                // Read the framework-level singleton:
+                let caps = Runtime.capabilities
+                Text("Graphics: \\(caps.graphics)")
+                  .foreground(.cyan)
+
+                // Detection log shows each step:
+                ForEachWithID(caps.detectionLog, id: \\.probe) { step in
+                    Text("• \\(step.probe): \\(step.result)")
                 }
                 """)
 

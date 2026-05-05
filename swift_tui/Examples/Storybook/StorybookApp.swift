@@ -33,6 +33,11 @@ final class StorybookState {
     // captures the most recent boundary reason for visual confirmation.
     var boundaryHitValue: String = ""
     var boundaryHitMessage: String = "(no boundary hit yet)"
+    // Timeline-page demo: app advances `timelineFrame` via TerminalTimer
+    // so the rendered braille-spinner cycles. The page reads
+    // `timelineFrame % 8` to pick the displayed glyph; if no timer is
+    // running, it shows frame 0 statically.
+    var timelineFrame: Int = 0
 }
 
 nonisolated(unsafe) let state = StorybookState()
