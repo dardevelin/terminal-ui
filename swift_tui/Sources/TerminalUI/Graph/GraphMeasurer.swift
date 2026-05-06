@@ -149,6 +149,26 @@ public enum GraphMeasurer {
                     }
                     return maxW
                 }
+            case .split(let axis):
+                // SplitView: horizontal axis sums child widths + dividers;
+                // vertical axis takes max child width. Mirrors hstack/vstack
+                // measurement but accounts for the 1-cell divider per
+                // sibling boundary.
+                switch axis {
+                case .horizontal:
+                    var total = 0
+                    for (i, child) in children.enumerated() {
+                        if i > 0 { total += 1 }  // divider column
+                        total += measureWidth(child)
+                    }
+                    return total
+                case .vertical:
+                    var maxW = 0
+                    for child in children {
+                        maxW = max(maxW, measureWidth(child))
+                    }
+                    return maxW
+                }
             }
 
         case .modifier(let effect):
@@ -228,6 +248,24 @@ public enum GraphMeasurer {
                     }
                     return maxH
                 case .vertical: return 0
+                }
+            case .split(let axis):
+                // Mirror of width measurement: vertical sums + 1 row per
+                // sibling boundary; horizontal takes max child height.
+                switch axis {
+                case .horizontal:
+                    var maxH = 0
+                    for child in children {
+                        maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
+                    }
+                    return maxH
+                case .vertical:
+                    var total = 0
+                    for (i, child) in children.enumerated() {
+                        if i > 0 { total += 1 }  // divider row
+                        total += measureHeight(child, proposedWidth: proposedWidth)
+                    }
+                    return total
                 }
             }
 

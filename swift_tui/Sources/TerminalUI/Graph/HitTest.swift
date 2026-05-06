@@ -104,6 +104,8 @@ public struct HitResult {
             case .zstack: values.append(("type", "ZStack"))
             case .scroll(let axis):
                 values.append(("type", axis == .horizontal ? "ScrollView(H)" : "ScrollView(V)"))
+            case .split(let axis):
+                values.append(("type", axis == .horizontal ? "SplitView(H)" : "SplitView(V)"))
             }
             values.append(("children", "\(node.children.count)"))
 

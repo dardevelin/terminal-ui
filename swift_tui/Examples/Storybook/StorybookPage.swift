@@ -36,7 +36,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // category group below.
     //
     // Layout
-    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader
+    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView
     // Primitives
     case text, forEach, subCell, timeline, capabilities
     // Input
@@ -121,6 +121,26 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         .foreground(.magenta)
                 }
                 .frame(height: 2)
+                """)
+        case .splitView: return PageInfo(id: self, category: .layout, name: "SplitView",
+            summary: "Resizable split-pane container. Tree-as-state — declare a SplitNode tree with per-child ratios; SplitView renders it with a 1-cell divider between siblings (`│` horizontal, `─` vertical). Mutation API + i3 hotkeys ship in later slices.",
+            code: """
+                let split = SplitState(root: .split(
+                    axis: .horizontal,
+                    children: [
+                        .leaf(Text("left pane").foreground(.cyan)),
+                        .split(
+                            axis: .vertical,
+                            children: [
+                                .leaf(Text("top right").foreground(.green)),
+                                .leaf(Text("bottom right").foreground(.yellow)),
+                            ],
+                            ratios: [0.5, 0.5]),
+                    ],
+                    ratios: [0.4, 0.6]))
+
+                SplitView(state: split)
+                    .frame(height: 6)
                 """)
 
         // ───── Primitives ─────

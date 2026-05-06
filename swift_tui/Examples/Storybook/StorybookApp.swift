@@ -38,6 +38,22 @@ final class StorybookState {
     // `timelineFrame % 8` to pick the displayed glyph; if no timer is
     // running, it shows frame 0 statically.
     var timelineFrame: Int = 0
+    // SplitView demo: nested two-level tree. Left pane is one leaf; right
+    // pane is itself a vertical split. Holding the SplitState here means
+    // mutations (slice 2 mutation API) will survive page switches.
+    var splitState: SplitState = SplitState(root: .split(
+        axis: .horizontal,
+        children: [
+            .leaf(Text("left pane").foreground(.cyan)),
+            .split(
+                axis: .vertical,
+                children: [
+                    .leaf(Text("top right").foreground(.green)),
+                    .leaf(Text("bottom right").foreground(.yellow)),
+                ],
+                ratios: [0.5, 0.5]),
+        ],
+        ratios: [0.4, 0.6]))
 }
 
 nonisolated(unsafe) let state = StorybookState()

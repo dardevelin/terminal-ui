@@ -986,6 +986,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
             case .zstack: kind = "ZStack[\(node.children.count)]"
             case .scroll(let axis):
                 kind = "ScrollView(\(axis == .horizontal ? "H" : "V"))[\(node.children.count)]"
+            case .split(let axis):
+                kind = "SplitView(\(axis == .horizontal ? "H" : "V"))[\(node.children.count)]"
             }
         case .modifier(let effect):
             kind = ".\(effect)"

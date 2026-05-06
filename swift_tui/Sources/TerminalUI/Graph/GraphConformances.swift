@@ -111,6 +111,10 @@ extension ScrollView: _GraphScrollView {
     func graphChild() -> Any { content }
 }
 
+// MARK: - SplitView
+
+extension SplitView: _GraphSplitView {}
+
 // MARK: - GeometryReader
 
 extension GeometryReader: _GraphGeometryReader {

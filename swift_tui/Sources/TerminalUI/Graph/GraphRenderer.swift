@@ -223,6 +223,12 @@ public enum GraphRenderer {
             buffer.fill(context.rect, character: " ", style: context.style)
         case .zstack, .scroll:
             break
+        case .split:
+            // Split owns its rect arithmetic in Layout (Layer 2) and
+            // each child's rect carries its slice. Clear the parent
+            // rect once so divider columns/rows aren't ghosted from
+            // the previous frame, then walk children + draw dividers.
+            buffer.fill(context.rect, character: " ", style: context.style)
         }
 
         switch info.kind {
@@ -234,6 +240,45 @@ public enum GraphRenderer {
             renderZStack(children, into: &buffer, context: context)
         case .scroll(let axis):
             renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
+        case .split(let axis):
+            renderSplit(axis: axis, children: children, into: &buffer, context: context)
+        }
+    }
+
+    /// Render a SplitView's children at their pre-stamped rects (set by
+    /// `Layout.placeSplit`) and draw the divider glyph in the gap between
+    /// adjacent siblings.
+    ///
+    /// Layer-2 contract: rects are read, never recomputed here.
+    /// Divider glyph: U+2502 BOX DRAWINGS LIGHT VERTICAL `│` for
+    /// horizontal-axis splits (column gap), U+2500 BOX DRAWINGS LIGHT
+    /// HORIZONTAL `─` for vertical-axis splits (row gap).
+    private static func renderSplit(
+        axis: SplitAxis,
+        children: [AttributeNode],
+        into buffer: inout CellBuffer,
+        context: RenderContext
+    ) {
+        for child in children {
+            render(child, into: &buffer, context: RenderContext(style: context.style, rect: child.rect))
+        }
+
+        // Dividers sit in the 1-cell gap between adjacent child rects.
+        let glyph: Character = axis == .horizontal ? "│" : "─"
+        for i in 0..<(children.count - 1) {
+            let leading = children[i].rect
+            switch axis {
+            case .horizontal:
+                let dividerX = leading.x + leading.width
+                for y in context.rect.y..<(context.rect.y + context.rect.height) {
+                    buffer[dividerX, y] = Cell(character: glyph, style: context.style)
+                }
+            case .vertical:
+                let dividerY = leading.y + leading.height
+                for x in context.rect.x..<(context.rect.x + context.rect.width) {
+                    buffer[x, dividerY] = Cell(character: glyph, style: context.style)
+                }
+            }
         }
     }
 

@@ -114,6 +114,120 @@ public enum Layout {
             for child in node.children {
                 measureAndPlace(graph: child, in: rect)
             }
+
+        case .split(let axis):
+            // SplitView is Layer-2 native: ratios are first-class, so
+            // layout owns child rect arithmetic end-to-end (renderer
+            // becomes a pure walk). Distribute width/height across
+            // children by node.splitRatios, accounting for one
+            // divider cell per sibling boundary.
+            placeSplit(node, axis: axis, in: rect)
+        }
+    }
+
+    /// Distribute `rect` across split children along `axis`, weighted
+    /// by `node.splitRatios`. Reserves one cell per sibling boundary
+    /// for the divider; the remainder goes to children.
+    ///
+    /// Rounding rule lives in the inner per-child loop — declared
+    /// ratios are honoured to the cell with the trailing child
+    /// absorbing rounding error. See the comment block on the loop
+    /// for why this beats `round` or Hamilton apportionment.
+    private static func placeSplit(_ node: AttributeNode, axis: SplitAxis, in rect: Rect) {
+        let n = node.children.count
+        guard n > 0 else { return }
+        if n == 1 {
+            measureAndPlace(graph: node.children[0], in: rect)
+            return
+        }
+
+        // Normalize ratios — the public API allows any non-negative
+        // doubles; we treat them as proportional weights. Empty or
+        // all-zero arrays fall back to uniform distribution so a
+        // misconfigured caller still renders cleanly.
+        let rawRatios = node.splitRatios.count == n ? node.splitRatios : Array(repeating: 1.0, count: n)
+        let total = rawRatios.reduce(0, +)
+        let weights: [Double] = total > 0
+            ? rawRatios.map { $0 / total }
+            : Array(repeating: 1.0 / Double(n), count: n)
+
+        let dividers = n - 1
+        let totalLength: Int
+        let crossLength: Int
+        switch axis {
+        case .horizontal:
+            totalLength = rect.width
+            crossLength = rect.height
+        case .vertical:
+            totalLength = rect.height
+            crossLength = rect.width
+        }
+        let availableForChildren = max(0, totalLength - dividers)
+
+        // Per-child distribution rule:
+        //
+        // Non-last children take `ceil(weight × availableForChildren)`.
+        // The last child absorbs the remainder so children + dividers
+        // sum to `totalLength` exactly.
+        //
+        // Why ceil-and-trail rather than round-and-trail:
+        //
+        // 1. Stable visual share. Declaring `[0.6, 0.4]` of a 100-cell
+        //    rect produces `[60, 39]` (with 1-cell divider) — the
+        //    declared 60% pane is visibly 60 cells, not 59 because of
+        //    a `round(0.6 × 99)=59` rounding-down accident. Ratios are
+        //    a statement of intent; the first-listed child is the
+        //    "anchor" pane and gets at least its declared share.
+        //
+        // 2. Trailing-error placement is consistent. The last child
+        //    always carries any accumulated remainder, matching
+        //    i3wm's con_resize behaviour where the last sibling mops
+        //    up cell drift. No leftover drifts into a middle pane.
+        //
+        // 3. No starvation. The clamp in the inner branch caps each
+        //    child's size at `available - assigned - dividersAfter`
+        //    so a misconfigured ratio set (e.g. `[10, 0.1]` against
+        //    20 cells) can't push the last pane below zero.
+        var sizes: [Int] = []
+        sizes.reserveCapacity(n)
+        var assigned = 0
+        for (i, weight) in weights.enumerated() {
+            let dividersAfter = n - 1 - i
+            if i == n - 1 {
+                sizes.append(availableForChildren - assigned)
+            } else {
+                let exact = Double(availableForChildren) * weight
+                // ceil(): for non-negative reals, this is "round up
+                // unless already an integer". `Int(exact)` floors;
+                // adding 1 only when there's a fractional part gives
+                // ceil without importing Foundation.
+                let floored = Int(exact)
+                let size = (Double(floored) == exact) ? floored : floored + 1
+                let maxAllowed = max(0, availableForChildren - assigned - dividersAfter)
+                let clamped = min(size, maxAllowed)
+                sizes.append(clamped)
+                assigned += clamped
+            }
+        }
+
+        var cursor: Int
+        switch axis {
+        case .horizontal:
+            cursor = rect.x
+            for (i, child) in node.children.enumerated() {
+                let childRect = Rect(x: cursor, y: rect.y, width: sizes[i], height: crossLength)
+                measureAndPlace(graph: child, in: childRect)
+                cursor += sizes[i]
+                if i < n - 1 { cursor += 1 }  // divider cell
+            }
+        case .vertical:
+            cursor = rect.y
+            for (i, child) in node.children.enumerated() {
+                let childRect = Rect(x: rect.x, y: cursor, width: crossLength, height: sizes[i])
+                measureAndPlace(graph: child, in: childRect)
+                cursor += sizes[i]
+                if i < n - 1 { cursor += 1 }  // divider cell
+            }
         }
     }
 

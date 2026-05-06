@@ -99,6 +99,12 @@ public class AttributeNode: @unchecked Sendable {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// Per-child ratios for SplitView (LayoutKind.split). Populated
+    /// at graph construction; consumed by Layout.measureAndPlace to
+    /// distribute width/height across siblings.
+    /// Empty for any non-split layout. HYP-277.
+    public var splitRatios: [Double] = []
+
     /// `ActionScope` attached to this node by the `.actions { ... }`
     /// modifier. The runtime's input dispatcher walks the focus chain
     /// to root collecting scopes and matches input bindings against
@@ -214,6 +220,8 @@ extension NodeKind {
             case .zstack: "ZStack"
             case .scroll(let axis):
                 axis == .horizontal ? "ScrollView(H)" : "ScrollView(V)"
+            case .split(let axis):
+                axis == .horizontal ? "SplitView(H)" : "SplitView(V)"
             }
         case .modifier(let effect):
             switch effect {
@@ -291,6 +299,13 @@ public enum LayoutKind: Equatable {
     case hstack
     case zstack
     case scroll(ScrollAxis)
+    /// Resizable split container with explicit per-child ratios.
+    /// Children laid side-by-side (`.horizontal`) or stacked
+    /// (`.vertical`) with one cell of divider between siblings.
+    /// Per-child ratios live on the AttributeNode itself
+    /// (`splitRatios`); read by Layout to distribute width/height.
+    /// HYP-277.
+    case split(SplitAxis)
 }
 
 public struct Size: Equatable, Sendable {

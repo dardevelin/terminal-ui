@@ -370,6 +370,7 @@ public final class DebugStream: @unchecked Sendable {
             case .hstack: kind = "hstack"
             case .zstack: kind = "zstack"
             case .scroll(let axis): kind = axis == .horizontal ? "scroll(h)" : "scroll(v)"
+            case .split(let axis): kind = axis == .horizontal ? "split(h)" : "split(v)"
             }
             value = "\(node.children.count) children"
         case .modifier(let effect):

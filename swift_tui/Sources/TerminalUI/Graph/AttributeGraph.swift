@@ -382,6 +382,22 @@ public final class AttributeGraph: @unchecked Sendable {
             }
         }
 
+        // SplitView — rebuild the layout tree from the SplitState's
+        // current root. Slice 1 doesn't try to diff individual SplitNode
+        // mutations; the @Observable hook will mark the SplitView's
+        // ancestor dirty whenever `root` is reassigned, and update walks
+        // the new tree. Tree shape changes (depth, children count) are
+        // structurally invasive — rebuilding the children is correct
+        // behaviour. Identity-preserving diff lands with Slice 2's
+        // mutation API.
+        if let split = view as? any _GraphSplitView {
+            if case .layout(let info) = node.kind, case .split = info.kind {
+                rebuildSplitChildren(node, from: split.state.root)
+                node.isDirty = false
+                return
+            }
+        }
+
         // GeometryReader — refresh the closure so captures (like an updated
         // `text` binding) stay in sync. The renderer invokes the rebuilder
         // each frame; post-it updates the existing child in place
@@ -726,6 +742,24 @@ public final class AttributeGraph: @unchecked Sendable {
         if let scroll = view as? any _GraphScrollView {
             return node.kind.isLayout(.scroll(scroll.scrollAxis))
         }
+        // SplitView's kind match is on the axis at the *root* of the
+        // current SplitState tree. If the consumer reassigns root from
+        // a `.split(.horizontal, ...)` to a `.leaf(...)` or to a
+        // different axis, the node kind no longer matches and the
+        // graph will rebuild — same shape rule that other layout
+        // containers follow.
+        if let split = view as? any _GraphSplitView {
+            switch split.state.root {
+            case .split(let axis, _, _):
+                return node.kind.isLayout(.split(axis))
+            case .leaf:
+                // A bare-leaf root has no split layout shell of its own;
+                // no kind to match. Returning false forces a rebuild,
+                // which then constructs a single-leaf tree without a
+                // split node. Acceptable for Slice 1 — degenerate case.
+                return false
+            }
+        }
         // Modifiers, conditionals, forEach — check structural kind
         if view is any _GraphModified { return node.kind.isModifier }
         if view is any _GraphConditional { return node.kind.isViewBody } // conditionals are viewBody("Conditional") nodes
@@ -784,6 +818,9 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         if let scroll = view as? any _GraphScrollView {
             return constructScrollView(scroll, id: id)
+        }
+        if let split = view as? any _GraphSplitView {
+            return constructSplitView(split, id: id)
         }
         if let geom = view as? any _GraphGeometryReader {
             return constructGeometryReader(geom, id: id)
@@ -901,6 +938,69 @@ public final class AttributeGraph: @unchecked Sendable {
             node.children.append(childNode)
         }
         return node
+    }
+
+    /// Build the AttributeNode subtree for a `SplitView`'s current
+    /// `SplitState.root`. Recursively walks the value-typed `SplitNode`
+    /// tree, mapping each `.split(axis:, children:, ratios:)` to a
+    /// `LayoutKind.split(axis)` node carrying the per-child ratios on
+    /// `node.splitRatios`. Leaves construct as their underlying view.
+    ///
+    /// Slice 1 ships fixed ratios at construction time. Slice 2 (mutation
+    /// API) will re-enter via `rebuildSplitChildren` when `root` changes.
+    func constructSplitView(_ split: any _GraphSplitView, id: NodeID) -> AttributeNode {
+        constructSplitNode(split.state.root, id: id)
+    }
+
+    private func constructSplitNode(_ tree: SplitNode, id: NodeID) -> AttributeNode {
+        switch tree {
+        case .leaf(let view):
+            return constructAnyView(view, id: id)
+
+        case .split(let axis, let children, let ratios):
+            let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .split(axis))))
+            node.splitRatios = ratios
+            for (i, child) in children.enumerated() {
+                let childID = id.appending(.index(i))
+                let childNode = constructSplitNode(child, id: childID)
+                childNode.parent = node
+                node.children.append(childNode)
+            }
+            return node
+        }
+    }
+
+    /// Rebuild a SplitView's children from a (possibly mutated)
+    /// `SplitNode` root. Used by `updateNode` when the consumer
+    /// reassigns `state.root`. Replaces the existing subtree rather
+    /// than diffing — Slice 2 will introduce identity-preserving diff
+    /// once the mutation API has stable identifiers.
+    private func rebuildSplitChildren(_ node: AttributeNode, from tree: SplitNode) {
+        guard case .split(let axis, let children, let ratios) = tree else {
+            // Defensive: kindMatches() rejects a leaf root before we
+            // get here (the calling updateNode falls through to the
+            // structural rebuild path). Bail out without mutating so
+            // the caller's rebuild fires cleanly.
+            return
+        }
+        // Sync node kind in case the axis flipped.
+        node.kind = .layout(LayoutInfo(kind: .split(axis)))
+        node.splitRatios = ratios
+
+        // Rebuild children — Slice 1's "good enough" strategy. Mark
+        // the tree dirty so downstream consumers re-render. Identity-
+        // preserving diff is Slice 2 work.
+        for old in node.children {
+            fireDisappear(on: old)
+        }
+        node.children.removeAll()
+        for (i, child) in children.enumerated() {
+            let childID = node.id.appending(.index(i))
+            let childNode = constructSplitNode(child, id: childID)
+            childNode.parent = node
+            node.children.append(childNode)
+        }
+        changed = true
     }
 
     func constructScrollView(_ scroll: any _GraphScrollView, id: NodeID) -> AttributeNode {
@@ -1113,6 +1213,14 @@ protocol _GraphForEach {
 protocol _GraphScrollView {
     var scrollAxis: ScrollAxis { get }
     func graphChild() -> Any
+}
+
+/// SplitView's graph hook. The view exposes its `SplitState` so the
+/// graph can walk the recursive `SplitNode` tree at construct/update
+/// time and build a matching tree of `LayoutKind.split(...)` nodes —
+/// each carrying the per-child ratios that drive `Layout.placeSplit`.
+protocol _GraphSplitView {
+    var state: SplitState { get }
 }
 
 /// Marks `GeometryReader` so the graph can detect it and install its lazy

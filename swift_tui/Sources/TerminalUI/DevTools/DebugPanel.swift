@@ -356,6 +356,7 @@ public final class DebugPanel {
             case .hstack: kind = "H"
             case .zstack: kind = "Z"
             case .scroll(let axis): kind = axis == .horizontal ? "Sc(H)" : "Sc(V)"
+            case .split(let axis): kind = axis == .horizontal ? "Sp(H)" : "Sp(V)"
             }
             let childCount = isCollapsed ? "[\(node.children.count)…]" : "[\(node.children.count)]"
             detail = childCount

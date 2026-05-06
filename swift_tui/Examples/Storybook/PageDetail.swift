@@ -160,6 +160,9 @@ struct PreviewPane: TerminalView {
                     .foreground(.magenta)
             }
             .frame(height: 2)
+        case .splitView:
+            SplitView(state: state.splitState)
+                .frame(height: 6)
 
         // ───── Primitives ─────
         case .text:
