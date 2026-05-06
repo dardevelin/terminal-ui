@@ -119,6 +119,15 @@ public struct EnvironmentValues: Sendable {
     /// HYP-326. Override via `.focusGranularity(_:)`.
     public var focusGranularity: FocusGranularity = .container
 
+    /// Currently-active mode stack for context-scoped key bindings.
+    /// Bindings carrying a `whenContext:` / `whenContextContains:`
+    /// requirement only fire when this stack satisfies the predicate.
+    /// Empty stack = the "default" context (no requirements).
+    /// HYP-327. Mutate via `actionContext.push(...)` from inside an
+    /// action's `perform` closure or via `.environment(\.actionContext, ...)`
+    /// at the view level.
+    public var actionContext: ActionContext = ActionContext()
+
     public init() {}
 }
 

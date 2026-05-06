@@ -45,13 +45,24 @@ public struct GestureID: Hashable, Sendable, ExpressibleByStringLiteral {
 /// tables hold `BoundAction` values keyed by binding so a chord lookup
 /// returns the action to fire. Multiple `BoundAction`s can carry the
 /// same action (one action, many bindings).
+///
+/// `contextRequirement` (HYP-327) gates whether the binding fires given
+/// the runtime's current `ActionContext`. Nil = unconditional (legacy
+/// behaviour). Set via the `whenContext:` / `whenContextContains:`
+/// overloads on `Action.bound(to:)`.
 public struct BoundAction: Sendable {
     public let action: Action
     public let binding: InputBinding
+    public let contextRequirement: ContextRequirement?
 
-    public init(action: Action, binding: InputBinding) {
+    public init(
+        action: Action,
+        binding: InputBinding,
+        contextRequirement: ContextRequirement? = nil
+    ) {
         self.action = action
         self.binding = binding
+        self.contextRequirement = contextRequirement
     }
 }
 
@@ -60,5 +71,29 @@ extension Action {
     /// framework's dispatcher can register in its binding table.
     public func bound(to binding: InputBinding) -> BoundAction {
         BoundAction(action: self, binding: binding)
+    }
+
+    /// Pair this action with a binding that only fires when the runtime
+    /// `ActionContext` has `context` as its topmost entry. Models i3's
+    /// `mode "resize"` block — bindings declared inside are scoped to
+    /// the mode they live in. HYP-327.
+    public func bound(to binding: InputBinding, whenContext context: String) -> BoundAction {
+        BoundAction(
+            action: self,
+            binding: binding,
+            contextRequirement: .equalsTop(context)
+        )
+    }
+
+    /// Pair this action with a binding that fires when `context` appears
+    /// anywhere on the runtime `ActionContext` stack — including under
+    /// nested sub-modes. Useful for "always available while mode X is
+    /// somewhere active" affordances. HYP-327.
+    public func bound(to binding: InputBinding, whenContextContains context: String) -> BoundAction {
+        BoundAction(
+            action: self,
+            binding: binding,
+            contextRequirement: .containsAny(context)
+        )
     }
 }

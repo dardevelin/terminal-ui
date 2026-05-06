@@ -467,6 +467,43 @@ struct PreviewPane: TerminalView {
                 )
                 .bound(to: .keyboard(.character("p"), [.ctrl]))
             }
+        case .actionContext:
+            VStack {
+                Text("Tab here.").foreground(.cyan)
+                Text("Alt+R → enter resize mode  ·  L grows  ·  H shrinks  ·  Esc exits")
+                    .foreground(.gray)
+                Text("mode: \(state.currentMode.current ?? "default")")
+                    .foreground(.yellow).bold()
+                Text("width: \(state.actionFired) cells").foreground(.gray)
+            }
+            .focusable()
+            .environment(\.actionContext, state.currentMode)
+            .actions {
+                Action(
+                    id: "storybook.context.enter",
+                    title: .literal("Enter Resize Mode"),
+                    perform: { enterResizeMode() }
+                )
+                .bound(to: .keyboard(.character("r"), [.alt]))
+                Action(
+                    id: "storybook.context.grow",
+                    title: .literal("Grow Right"),
+                    perform: { fireStorybookAction() }
+                )
+                .bound(to: .keyboard(.character("l"), []), whenContext: "resize")
+                Action(
+                    id: "storybook.context.shrink",
+                    title: .literal("Shrink Right"),
+                    perform: { shrinkResize() }
+                )
+                .bound(to: .keyboard(.character("h"), []), whenContext: "resize")
+                Action(
+                    id: "storybook.context.exit",
+                    title: .literal("Exit Resize Mode"),
+                    perform: { exitResizeMode() }
+                )
+                .bound(to: .keyboard(.escape, []), whenContext: "resize")
+            }
         case .disabled:
             VStack {
                 Text("Tab cycles only Live; Dead is skipped").foreground(.gray)
@@ -512,6 +549,31 @@ private func fireStorybookAction() {
 private func recordBoundaryHit(_ reason: BoundaryHitReason) {
     MainActor.assumeIsolated {
         state.boundaryHitMessage = "boundary: \(reason)"
+    }
+}
+
+/// Push "resize" onto the actionContext stack — invoked by Alt+R on the
+/// .actionContext page. The page's `.environment(\.actionContext, ...)`
+/// modifier feeds the new value down to the binding dispatcher so the
+/// resize-scoped bindings start matching.
+@Sendable
+private func enterResizeMode() {
+    MainActor.assumeIsolated {
+        state.currentMode.push("resize")
+    }
+}
+
+@Sendable
+private func exitResizeMode() {
+    MainActor.assumeIsolated {
+        state.currentMode.pop()
+    }
+}
+
+@Sendable
+private func shrinkResize() {
+    MainActor.assumeIsolated {
+        state.actionFired = max(0, state.actionFired - 1)
     }
 }
 

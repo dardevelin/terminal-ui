@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, disabled, boundaryFeedback
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, disabled, boundaryFeedback
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -456,6 +456,25 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         }
                         .bound(to: .keyboard(.character("p"), [.ctrl]))
                     }
+                """)
+        case .actionContext: return PageInfo(id: self, category: .modifiers, name: ".actionContext",
+            summary: "Stack-based 'mode' system — i3 in spirit, sparse predicate in code. Bindings declared with .bound(to:whenContext:) only fire when the runtime ActionContext stack matches. Lets resize-mode / move-mode hotkeys live alongside default bindings without a global state machine.",
+            code: """
+                // bindings in scope:
+                Action(id: "enter.resize", title: .literal("Resize Mode")) {
+                    env.actionContext.push("resize")
+                }
+                .bound(to: .keyboard(.character("r"), [.alt]))
+
+                Action(id: "resize.right", title: .literal("Grow Right")) {
+                    state.width += 1
+                }
+                .bound(to: .keyboard(.character("l"), []), whenContext: "resize")
+
+                Action(id: "exit.resize", title: .literal("Done")) {
+                    env.actionContext.pop()
+                }
+                .bound(to: .keyboard(.escape, []), whenContext: "resize")
                 """)
         case .disabled: return PageInfo(id: self, category: .modifiers, name: ".disabled",
             summary: "Turn an interactive subtree off. Tab order skips it, key/click handlers don't fire. SwiftUI parity: most-restrictive wins (descendants can't re-enable).",

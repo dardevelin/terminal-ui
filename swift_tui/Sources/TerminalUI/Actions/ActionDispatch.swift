@@ -22,14 +22,20 @@ public enum ActionDispatch {
     /// so user-supplied bindings shadow framework defaults via the
     /// standard innermost-wins rule. Pass `nil` for tests / scopes
     /// where defaults aren't relevant.
+    ///
+    /// Context-scoped bindings (HYP-327) consult `node._resolvedEnv?.actionContext`
+    /// to filter — bindings declared with `whenContext:` / `whenContextContains:`
+    /// only fire when their predicate is satisfied by the current
+    /// context stack.
     @discardableResult
     public static func dispatch(
         binding: InputBinding,
         from node: AttributeNode,
         frameworkDefaults: ActionScope? = nil
     ) -> Bool {
+        let context = node._resolvedEnv?.actionContext ?? ActionContext()
         for scope in scopeChain(from: node, frameworkDefaults: frameworkDefaults) {
-            if let bound = scope.boundAction(for: binding) {
+            if let bound = scope.boundAction(for: binding, context: context) {
                 bound.action.perform()
                 return true
             }

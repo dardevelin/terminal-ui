@@ -41,6 +41,12 @@ final class StorybookState {
     // SplitView demo: nested two-level tree. Left pane is one leaf; right
     // pane is itself a vertical split. Holding the SplitState here means
     // mutations (slice 2 mutation API) will survive page switches.
+    /// Active mode stack for the .actionContext storybook page. Pushed
+    /// by .alt+r (enter resize), popped by Esc (exit). The page reads
+    /// `currentMode.current` to render the visible mode indicator and
+    /// pushes the value into the env so scoped bindings dispatch.
+    var currentMode: ActionContext = ActionContext()
+
     var splitState: SplitState = SplitState(root: .split(
         axis: .horizontal,
         children: [

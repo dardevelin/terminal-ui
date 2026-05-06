@@ -44,8 +44,30 @@ public struct ActionScope: Sendable {
     /// Look up the bound action for an input binding. Disabled actions
     /// are excluded — they still surface in readouts (help / menu) so
     /// the user sees the chord, but firing it is a no-op.
+    ///
+    /// Legacy overload: pass through to the context-aware variant with
+    /// an empty `ActionContext`. Bindings without a `whenContext:` /
+    /// `whenContextContains:` requirement match unconditionally, so
+    /// existing callers keep their behaviour.
     public func boundAction(for binding: InputBinding) -> BoundAction? {
+        boundAction(for: binding, context: ActionContext())
+    }
+
+    /// Look up the bound action for an input binding within the given
+    /// `ActionContext`. Bindings carrying a `contextRequirement` (set
+    /// via `bound(to:whenContext:)` / `bound(to:whenContextContains:)`)
+    /// only match when their predicate is satisfied by `context`;
+    /// requirement-less bindings always match.
+    ///
+    /// Order matters — the first matching binding wins. Callers that
+    /// declare both a context-scoped and a default binding for the same
+    /// chord should list the context-scoped one first so it shadows the
+    /// fallback when its predicate is satisfied. HYP-327.
+    public func boundAction(for binding: InputBinding, context: ActionContext) -> BoundAction? {
         for entry in boundActions where entry.binding == binding && entry.action.isEnabled {
+            if let requirement = entry.contextRequirement, !requirement.matches(context) {
+                continue
+            }
             return entry
         }
         return nil
