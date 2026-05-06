@@ -56,6 +56,35 @@ internal func posixWrite(_ fd: Int32, _ buf: UnsafeRawPointer, _ count: Int) -> 
 /// between the signal handler (any thread) and the main loop polling.
 private let _resizeFlag = Atomic<Bool>(false)
 
+// MARK: - Crash-path signal cleanup (HYP-324)
+//
+// Signal handlers and atexit hooks must be `@convention(c)` and
+// non-capturing. Swift forbids forming C function pointers from
+// closures that close over Self or any state, so these live at
+// file scope and call into `Terminal`'s static surface directly.
+// Both handlers are async-signal-safe: they only invoke
+// `posix_write` and `tcsetattr`, both on POSIX.1's signal-safe list.
+
+@_cdecl("_terminalSignalHandler")
+internal func _terminalSignalHandler(signum: Int32) {
+    Terminal.runCleanup()
+    // Restore default disposition + re-raise so the parent shell
+    // sees the conventional exit code (130 for SIGINT, 143 for
+    // SIGTERM, 129 for SIGHUP).
+    #if canImport(Darwin)
+    _ = Darwin.signal(signum, SIG_DFL)
+    _ = Darwin.raise(signum)
+    #elseif canImport(Glibc)
+    _ = Glibc.signal(signum, SIG_DFL)
+    _ = Glibc.raise(signum)
+    #endif
+}
+
+@_cdecl("_terminalAtExitHandler")
+internal func _terminalAtExitHandler() {
+    Terminal.runCleanup()
+}
+
 // MARK: - Terminal Size
 
 private let vt100DefaultCols = 80
@@ -323,6 +352,88 @@ public enum Terminal {
         signal(SIGWINCH) { _ in
             _resizeFlag.store(true, ordering: .relaxed)
         }
+    }
+
+    // MARK: - Crash-path cleanup (HYP-324)
+
+    /// Concatenated DEC private-mode disable sequence covering every
+    /// state TerminalApp.run() enables. Precomputed at file scope so
+    /// the signal handler doesn't allocate or call the Swift runtime
+    /// (async-signal-safe constraint).
+    ///
+    /// Ordering matters: the four mouse modes (1006/1003/1002/1000)
+    /// disable FIRST so any in-flight mouse events stop being
+    /// reported BEFORE the alternate screen is exited and the user's
+    /// shell becomes visible again. Disabling alt-screen first would
+    /// briefly leave the shell rendering SGR 1006 coordinate strings
+    /// before mouse mode is off — that's the corruption pattern that
+    /// triggered HYP-324.
+    public static let cleanupEscapeSequence: String =
+        "\u{1B}[?1006l" +    // SGR 1006 mouse extended-coordinates off
+        "\u{1B}[?1003l" +    // mouse motion (any-event) off
+        "\u{1B}[?1002l" +    // mouse drag off
+        "\u{1B}[?1000l" +    // mouse basic click tracking off
+        "\u{1B}[?2004l" +    // bracketed-paste off
+        "\u{1B}[?25h"   +    // cursor visible
+        "\u{1B}[?1049l"      // alt-screen exit (must be last)
+
+    /// Emit the cleanup sequence + restore termios using ONLY async-
+    /// signal-safe syscalls (posix_write + tcsetattr per POSIX.1).
+    ///
+    /// Called from three paths:
+    ///   1. Signal handler installed by `installSignalCleanup()`.
+    ///   2. `atexit` hook for direct `exit()` calls.
+    ///   3. The normal `defer` block in TerminalApp.run() (idempotent
+    ///      — a second cleanup is a no-op against an already-restored
+    ///      terminal).
+    ///
+    /// No Swift heap allocations. No ARC traffic. The escape sequence
+    /// is materialised once at file-scope `cleanupEscapeSequence`;
+    /// `withCString` reuses that storage without allocating.
+    public static func runCleanup() {
+        cleanupEscapeSequence.withCString { ptr in
+            // strlen is async-signal-safe.
+            let len = strlen(ptr)
+            _ = posixWrite(STDOUT_FILENO, ptr, len)
+        }
+        // Restore termios from the cached value taken before raw mode.
+        // tcsetattr is on the POSIX list of async-signal-safe functions.
+        if var orig = originalTermios {
+            #if canImport(Darwin)
+            _ = Darwin.tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig)
+            #elseif canImport(Glibc)
+            _ = Glibc.tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig)
+            #endif
+        }
+    }
+
+    /// Install signal handlers that disable mouse / alt-screen / raw
+    /// mode + restore termios on SIGINT, SIGTERM, SIGHUP. Each handler
+    /// re-raises the signal with the default disposition so the
+    /// parent shell observes the correct exit code.
+    ///
+    /// Also registers an `atexit` hook so direct `exit()` calls run
+    /// the same cleanup. SIGKILL cannot be intercepted by design;
+    /// document recovery via `printf '\x1b[?1006l...\x1b[?1049l'` in
+    /// the troubleshooting guide.
+    ///
+    /// Safe to call multiple times — each call replaces any prior
+    /// handler with the cleanup-then-default-action shape.
+    public static func installSignalCleanup() {
+        // The handlers are declared at file scope (see below) — Swift
+        // forbids C-function-pointer formation from any closure that
+        // captures Self / context, even via static-function calls.
+        // File-scope free functions sidestep that.
+        #if canImport(Darwin)
+        _ = Darwin.signal(SIGINT, _terminalSignalHandler)
+        _ = Darwin.signal(SIGTERM, _terminalSignalHandler)
+        _ = Darwin.signal(SIGHUP, _terminalSignalHandler)
+        #elseif canImport(Glibc)
+        _ = Glibc.signal(SIGINT, _terminalSignalHandler)
+        _ = Glibc.signal(SIGTERM, _terminalSignalHandler)
+        _ = Glibc.signal(SIGHUP, _terminalSignalHandler)
+        #endif
+        atexit(_terminalAtExitHandler)
     }
 
     /// Atomically check and clear the resize flag. Single exchange — no TOCTOU.

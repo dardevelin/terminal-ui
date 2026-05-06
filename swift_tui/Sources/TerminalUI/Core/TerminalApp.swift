@@ -204,6 +204,18 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableMouseTracking()
         Terminal.enableBracketedPaste()
 
+        // HYP-324: install signal handlers + atexit hook so terminal
+        // escape state never leaks to the parent on SIGINT/SIGTERM/
+        // SIGHUP/exit(). Without this, a Ctrl+C exit leaves the
+        // terminal stuck in SGR 1006 mouse-tracking mode (mouse
+        // movements paint coordinate strings into the user's shell)
+        // and alternate-screen mode (shell prompt invisible). Bad
+        // escape state IS a security concern: shell pipelines and
+        // log readers can be hijacked by lingering DCS / OSC
+        // sequences that survive a crashed child. Installed AFTER
+        // raw-mode entry so `originalTermios` is captured.
+        Terminal.installSignalCleanup()
+
         #if DEBUG
         // Tell DebugStream the visible terminal is now ours. Framework
         // warnings will route to .terminalui/data/warnings.log instead
