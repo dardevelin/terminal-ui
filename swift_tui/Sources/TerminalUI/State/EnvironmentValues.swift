@@ -107,6 +107,18 @@ public struct EnvironmentValues: Sendable {
     /// see `DisabledModifier.apply`.
     public var isEnabled: Bool = true
 
+    /// What the directional focus engine does when arrow navigation
+    /// hits a container's edge with no neighbor on the requested
+    /// axis. Default `.escapeToParent` — i3 convention.
+    /// HYP-326. Override via `.focusBoundaryPolicy(_:)`.
+    public var focusBoundaryPolicy: FocusBoundaryPolicy = .escapeToParent
+
+    /// How thoroughly a container's panes participate in focus when
+    /// they have no focusable descendants. Default `.container` —
+    /// SwiftUI list-row pattern (rows focusable as units).
+    /// HYP-326. Override via `.focusGranularity(_:)`.
+    public var focusGranularity: FocusGranularity = .container
+
     public init() {}
 }
 

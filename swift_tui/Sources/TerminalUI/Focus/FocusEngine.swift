@@ -226,6 +226,135 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
+    // MARK: - FocusableContainer-driven directional move (HYP-326)
+
+    /// Move focus by a 4-way direction, dispatching through the
+    /// `FocusableContainer` protocol. Walks up the focused node's
+    /// ancestor chain looking for a container whose
+    /// `traversalGeometry.axis` accepts `direction`. When one is
+    /// found, asks for `focusableChildren()` and picks the next
+    /// sibling along the axis. Falls back per `focusBoundaryPolicy`
+    /// when no neighbor exists.
+    ///
+    /// Co-exists with the legacy `focusInDirection(_:root:crossStack:)`
+    /// path that handles VStack/HStack arrow nav. The legacy path
+    /// stays in place until every container kind (Tab, Stack,
+    /// Floating) conforms to FocusableContainer; new container kinds
+    /// (split today, Tab/Stack/Floating later) route exclusively
+    /// through this method.
+    ///
+    /// HYP-326. Designed for SplitView (HYP-328) and the rest of the
+    /// i3 family.
+    public func move(_ direction: FocusDirection, root: AttributeNode) {
+        guard let current = keyboardFocusID,
+              let currentNode = findNode(id: current, in: root) else {
+            // Nothing focused yet — Tab order falls back to "first focusable."
+            focusNext()
+            return
+        }
+
+        let requestedAxis: TraversalGeometry.Axis = (direction == .up || direction == .down)
+            ? .vertical
+            : .horizontal
+
+        // Walk up looking for the nearest FocusableContainer that handles
+        // the requested axis AND reports `currentNode` as a descendant of
+        // one of its children. The match has to be on a CONTAINER node,
+        // not just any ancestor — the protocol's existential conformance
+        // returns [] for non-split nodes today, which is how we filter.
+        var ancestor: AttributeNode? = currentNode.parent
+        var descendantFromAncestor: AttributeNode = currentNode
+
+        while let candidate = ancestor {
+            let geom = candidate.traversalGeometry
+            let axisMatches = geom.axis == requestedAxis || geom.axis == .both
+            let children = candidate.focusableChildren()
+
+            if axisMatches, !children.isEmpty,
+               let idx = children.firstIndex(where: { $0.id == descendantFromAncestor.id })
+                       ?? children.firstIndex(where: { subtreeContains(node: $0, id: currentNode.id) }) {
+                let target = nextChild(in: children, from: idx, direction: direction)
+                if let target {
+                    keyboardFocusID = leafFocusID(in: target) ?? target.id
+                    return
+                }
+                // No neighbor in this container — apply boundary policy.
+                let policy = candidate._resolvedEnv?.focusBoundaryPolicy
+                    ?? currentNode._resolvedEnv?.focusBoundaryPolicy
+                    ?? .escapeToParent
+                switch policy {
+                case .wrap:
+                    let wrapped = wrapTarget(in: children, from: idx, direction: direction)
+                    if let wrapped {
+                        keyboardFocusID = leafFocusID(in: wrapped) ?? wrapped.id
+                    }
+                    return
+                case .stay:
+                    return
+                case .escapeToParent:
+                    // Continue walking up — try the next container.
+                    break
+                }
+            }
+
+            descendantFromAncestor = candidate
+            ancestor = candidate.parent
+        }
+
+        // No container handled the move; do nothing (legacy
+        // focusInDirection covers the VStack/HStack case for now).
+    }
+
+    private func nextChild(
+        in children: [AttributeNode],
+        from idx: Int,
+        direction: FocusDirection
+    ) -> AttributeNode? {
+        switch direction {
+        case .right, .down:
+            return idx + 1 < children.count ? children[idx + 1] : nil
+        case .left, .up:
+            return idx > 0 ? children[idx - 1] : nil
+        }
+    }
+
+    private func wrapTarget(
+        in children: [AttributeNode],
+        from idx: Int,
+        direction: FocusDirection
+    ) -> AttributeNode? {
+        guard children.count > 1 else { return nil }
+        switch direction {
+        case .right, .down: return children.first
+        case .left, .up: return children.last
+        }
+    }
+
+    /// Resolve the focusable leaf id at or below `node`. If `node` is
+    /// itself focusable, returns its id. Otherwise picks the first
+    /// focusable descendant in declaration order. Returns nil if
+    /// the subtree has no focusable — in which case the caller falls
+    /// back to focusing the container itself (i3 "container without
+    /// leaf widget" pattern).
+    private func leafFocusID(in node: AttributeNode) -> NodeID? {
+        if node.isFocusable { return node.id }
+        for child in node.children {
+            if let id = leafFocusID(in: child) { return id }
+        }
+        return nil
+    }
+
+    /// True iff `id` is `node.id` or matches any descendant. Used by
+    /// `move(_:)` to map a deeply-nested focused node back to the
+    /// container child that owns its subtree.
+    private func subtreeContains(node: AttributeNode, id: NodeID) -> Bool {
+        if node.id == id { return true }
+        for child in node.children {
+            if subtreeContains(node: child, id: id) { return true }
+        }
+        return false
+    }
+
     // MARK: - Mouse Handling
 
     /// Update hover state from mouse position.
