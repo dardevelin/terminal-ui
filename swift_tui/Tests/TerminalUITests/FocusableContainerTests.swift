@@ -178,6 +178,82 @@ struct FocusableContainerTests {
                 "should escape inner-horizontal to outer-vertical and land on C; got \(String(describing: engine.keyboardFocusID))")
     }
 
+    // MARK: - Nested boundary-policy composition
+
+    @Test("nested containers compose boundary policy — inner .wrap stops the walk")
+    func nestedContainersInnerWrapStopsWalk() {
+        // outer-vertical with inner-horizontal.wrap [A, B] as its only child.
+        // Focus on A. move(.left) at left edge:
+        //   inner.wrap → wraps inside inner → focus lands on B.
+        // The walk MUST NOT continue up to outer (outer's policy is irrelevant).
+        let outer = AttributeNode(id: NodeID.root, kind: .layout(LayoutInfo(kind: .split(.vertical))))
+        outer.rect = Rect(x: 0, y: 0, width: 20, height: 5)
+
+        var innerEnv = EnvironmentValues()
+        innerEnv.focusBoundaryPolicy = .wrap
+        let inner = AttributeNode(id: NodeID.root.appending(.index(0)), kind: .layout(LayoutInfo(kind: .split(.horizontal))))
+        inner.parent = outer
+        inner.rect = Rect(x: 0, y: 0, width: 20, height: 5)
+        inner._resolvedEnv = innerEnv
+        outer.children.append(inner)
+
+        let a = makeFocusableLeaf(parent: inner, at: 0, rect: Rect(x: 0, y: 0, width: 9, height: 5), env: innerEnv)
+        let b = makeFocusableLeaf(parent: inner, at: 1, rect: Rect(x: 11, y: 0, width: 9, height: 5), env: innerEnv)
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: outer)
+        engine.keyboardFocusID = a.id
+
+        engine.move(.left, root: outer)
+        #expect(engine.keyboardFocusID == b.id,
+                "inner .wrap should wrap to B inside the inner container; got \(String(describing: engine.keyboardFocusID))")
+    }
+
+    @Test("nested containers compose boundary policy — inner .escapeToParent bubbles, outer .wrap then wraps")
+    func nestedContainersBubbleThenWrap() {
+        // outer-horizontal.wrap with two children:
+        //   - inner-horizontal.escapeToParent [A, B]
+        //   - C
+        // Focus on A. move(.left) at left edge:
+        //   inner is .escapeToParent → bubbles past inner.
+        //   outer-horizontal handles .left axis, A's container child is `inner`,
+        //   inner's index is 0 in outer.children → no left neighbor.
+        //   outer is .wrap → wraps to last child C.
+        var outerEnv = EnvironmentValues()
+        outerEnv.focusBoundaryPolicy = .wrap
+        let outer = AttributeNode(id: NodeID.root, kind: .layout(LayoutInfo(kind: .split(.horizontal))))
+        outer.rect = Rect(x: 0, y: 0, width: 30, height: 5)
+        outer._resolvedEnv = outerEnv
+
+        // Inner explicitly carries .escapeToParent (same as default, but pinned for clarity)
+        var innerEnv = EnvironmentValues()
+        innerEnv.focusBoundaryPolicy = .escapeToParent
+        let inner = AttributeNode(id: NodeID.root.appending(.index(0)), kind: .layout(LayoutInfo(kind: .split(.horizontal))))
+        inner.parent = outer
+        inner.rect = Rect(x: 0, y: 0, width: 18, height: 5)
+        inner._resolvedEnv = innerEnv
+        outer.children.append(inner)
+
+        let a = makeFocusableLeaf(parent: inner, at: 0, rect: Rect(x: 0, y: 0, width: 8, height: 5), env: innerEnv)
+        _ = makeFocusableLeaf(parent: inner, at: 1, rect: Rect(x: 10, y: 0, width: 8, height: 5), env: innerEnv)
+
+        // outer's second child is C — declared after inner so outer.children = [inner, C].
+        let c = AttributeNode(id: NodeID.root.appending(.index(1)), kind: .primitive(.text([])))
+        c.parent = outer
+        c.rect = Rect(x: 20, y: 0, width: 10, height: 5)
+        c.isFocusable = true
+        c._resolvedEnv = outerEnv
+        outer.children.append(c)
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: outer)
+        engine.keyboardFocusID = a.id
+
+        engine.move(.left, root: outer)
+        #expect(engine.keyboardFocusID == c.id,
+                "inner.escapeToParent → bubble; outer.wrap → wrap to last child C; got \(String(describing: engine.keyboardFocusID))")
+    }
+
     // MARK: - Helpers
 
     private func makeFocusableLeaf(
