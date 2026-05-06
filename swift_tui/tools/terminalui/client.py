@@ -479,10 +479,105 @@ class Client:
         one frame for the final page's body to render. Previous versions
         slept 40ms between each press — unnecessary, the runtime drains
         the event queue in a single frame tick and any work done inside
-        a page's body is already deterministic."""
+        a page's body is already deterministic.
+
+        DEPRECATED for new tests — prefer :py:meth:`goto_page` which
+        navigates by name. Hardcoded indices break silently when the
+        page list is reordered (regression seen 2026-05-05 when three
+        primitives were added under .primitives but cases sat at the
+        tail of the enum). Index-based tests cannot detect visual-vs-
+        declaration order divergence by construction. See HYP-323."""
         for _ in range(index):
             self.send_key("down")
         self.wait_for_frame(1, timeout=1.0)
+
+    # Storybook page-title rect. PageDetail.body renders:
+    #   row 0: divider line from Sidebar/PageDetail HStack
+    #   row 1: bold cyan page name (e.g. "VStack")
+    #   row 2: gray summary
+    # Tests inspecting the title use row 1 specifically; row 0 reads
+    # as `─` and would mask the actual title if a wider rect is taken.
+    _STORYBOOK_TITLE_RECT: Sequence[int] = (28, 1, 50, 1)
+    _STORYBOOK_SIDEBAR_RECT: Sequence[int] = (0, 3, 28, 40)
+
+    def storybook_page_title(self) -> str:
+        """Read the bold-cyan page name from the top of the right pane.
+
+        Returns the stripped title text. Empty string when no title is
+        rendered (e.g. before the first frame, or if Storybook is not
+        the current app)."""
+        slice_ = self.cells(rect=self._STORYBOOK_TITLE_RECT)
+        return slice_.rows[0].strip() if slice_.rows else ""
+
+    def storybook_sidebar_rows(self) -> list[str]:
+        """Read the visible sidebar entries (page names) in display order.
+
+        Used by :py:meth:`goto_page` for resilience checks and by the
+        sidebar-order regression test (HYP-323). Skips category headers
+        (which sit at column 0), the gap rows between categories, the
+        scrollbar column at the right edge (▎/█/│/▼/▲ glyphs), and the
+        hint lines below the divider (containing ↑↓/→/─ glyphs).
+
+        Returns clean page names matching the titles emitted by
+        :py:meth:`storybook_page_title`."""
+        slice_ = self.cells(rect=self._STORYBOOK_SIDEBAR_RECT)
+        rows: list[str] = []
+        for row in slice_.rows:
+            # Strip scrollbar/cursor/edge glyphs that bleed in from
+            # the right edge of the sidebar pane: ▎ cursor bar,
+            # █/│ scrollbar track, ▼/▲ scroll edge indicators.
+            text = row.rstrip(" ▎█│▼▲")
+            if not text:
+                continue
+            # Hint lines below the divider (`────...`) and below
+            # them — `↑↓ navigate`, `Tab → preview`, `Esc: quit` —
+            # have ONE leading space. Pages have TWO leading spaces
+            # (`  Name`) or `▸ Name` for the selected row. Filter
+            # using that convention.
+            if text.startswith("──"):
+                continue
+            if not (text.startswith("  ") or text.startswith("▸ ")):
+                # Either a category header (starts at col 0 with a
+                # capital letter: "Layout", "Primitives", ...) or a
+                # hint line (single space + glyph/text). Both are
+                # NOT pages.
+                continue
+            stripped = text.lstrip(" ▸").rstrip()
+            if stripped:
+                rows.append(stripped)
+        return rows
+
+    def goto_page(self, name: str, *, max_steps: int = 80) -> None:
+        """Drive Storybook's sidebar by **page name** (the bold cyan
+        title at the top of the right pane). Presses Down until the
+        title equals ``name``; if already past it, presses Up.
+
+        Resilient against enum reordering — name-based navigation
+        finds the right page regardless of where it sits in the
+        declaration. Replaces hardcoded indices like ``goto_storybook_page(9)``
+        which encode the enum order at test-write time and break
+        silently when the order changes (HYP-323).
+
+        Raises ``RuntimeError`` if the page can't be reached within
+        ``max_steps`` presses in either direction."""
+        if self.storybook_page_title() == name:
+            return
+        for _ in range(max_steps):
+            self.send_key("down")
+            self.wait_for_frame(1, timeout=0.5)
+            if self.storybook_page_title() == name:
+                return
+        # Forward sweep didn't find it — try backward (in case we
+        # started below the target page).
+        for _ in range(max_steps):
+            self.send_key("up")
+            self.wait_for_frame(1, timeout=0.5)
+            if self.storybook_page_title() == name:
+                return
+        raise RuntimeError(
+            f"goto_page({name!r}): could not reach page within {max_steps} steps; "
+            f"current title={self.storybook_page_title()!r}"
+        )
 
     def cells(self,
               rect: Optional[Sequence[int]] = None,

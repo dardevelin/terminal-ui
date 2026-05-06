@@ -111,6 +111,67 @@ def storybook_arrow_navigation(app: Client) -> None:
     )
 
 
+def storybook_sidebar_order_matches_navigation(app: Client) -> None:
+    """Walking Down through every page must visit each visible
+    sidebar row in the same order the sidebar displays them.
+    Regression test for HYP-323 / the Primitives cursor-jump bug
+    (2026-05-05): the enum declaration order silently diverged from
+    sidebar visual order, causing arrow nav to skip three pages.
+    Index-based smoke tests didn't catch it by construction (they
+    encoded the broken navigation).
+
+    Strategy: walk Down through the full page list, collecting the
+    title at each step. Assert:
+      1. No title repeats (sequence has unique entries).
+      2. The first N titles (where N = number of rows visible in the
+         initial sidebar snapshot) match the rendered sidebar exactly.
+
+    The visible-prefix check (#2) is the load-bearing assertion: it
+    catches "cursor jumped past visible rows" — which is exactly the
+    bug class. Pages scrolled below the fold aren't checked here
+    (the visible window scrolls with cursor) but the unique-order
+    assertion catches duplicates from any section."""
+    initial_sidebar = app.storybook_sidebar_rows()
+    assert_true(
+        len(initial_sidebar) >= 5,
+        f"sidebar should expose at least 5 visible pages; got {initial_sidebar!r}",
+    )
+
+    titles: list[str] = [app.storybook_page_title()]
+    # Walk Down up to 60 times (enough for any reasonable page list).
+    # Stop when the title stops changing — that means we've hit the
+    # last page and Down is a no-op.
+    for _ in range(60):
+        app.send_key("down")
+        app.wait_for_frame(1, timeout=0.5)
+        title = app.storybook_page_title()
+        if title == titles[-1]:
+            break
+        titles.append(title)
+
+    # Check 1: sequence has unique entries (no skipping reorders the
+    # list, and the cursor never revisits a page mid-walk).
+    seen: set[str] = set()
+    for t in titles:
+        assert_true(
+            t not in seen,
+            f"page {t!r} appeared twice in navigation walk; titles={titles!r}",
+        )
+        seen.add(t)
+
+    # Check 2: visible-prefix matches rendered sidebar. The walk's
+    # first len(initial_sidebar) titles must equal the sidebar rows
+    # exactly. Mismatch = cursor skipped a visible row (the regression
+    # class).
+    visible_prefix = titles[: len(initial_sidebar)]
+    assert_true(
+        visible_prefix == initial_sidebar,
+        f"navigation order doesn't match sidebar display order:\n"
+        f"  sidebar  : {initial_sidebar!r}\n"
+        f"  navigated: {visible_prefix!r}",
+    )
+
+
 def storybook_tab_crosses_to_preview(app: Client) -> None:
     """Navigate to a page that puts a focusable in the preview (the Button
     page), press Tab, and verify focus crosses from the sidebar into the
@@ -118,9 +179,7 @@ def storybook_tab_crosses_to_preview(app: Client) -> None:
     so crossing took 34 presses. Now the sidebar has exactly one focusable
     (the hint-line handler) and Tab reaches the preview in one press."""
     # Button page is index 9 in declaration order (0=VStack, ..., 9=Button).
-    for _ in range(12):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("Button")
     app.wait_for_frame(1, timeout=0.5)
     initial = app.focus()
     app.send_key("tab")
@@ -139,9 +198,7 @@ def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     for the cross-stack gating bug where arrows on Button were completely
     dead because the gate swallowed in-stack arrows too."""
     # Button is the tenth page in declaration order (index 9).
-    for _ in range(12):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("Button")
     app.wait_for_frame(1, timeout=0.5)
     app.send_key("tab")  # sidebar → preview
     app.wait_for_frame(1, timeout=0.5)
@@ -166,9 +223,7 @@ def storybook_walks_past_promptinput(app: Client) -> None:
     """Navigate through page 13 (PromptInput) without the runtime crashing.
     Regression: Range requires lowerBound <= upperBound used to fire when
     PreviewPane first rendered PromptInput with default state."""
-    for _ in range(17):  # 0 → 13 inclusive
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("PromptInput")
     # If the app crashed the next call will raise RemoteError. Catch it here
     # so the failure message names the scenario rather than "server closed".
     try:
@@ -190,9 +245,7 @@ def storybook_button_click_updates_message(app: Client) -> None:
     updates the page's message text. Regression coverage for the whole
     focus → onKeyPress → @Observable → rerender chain. Covers the same
     path that was broken when arrow policy landed."""
-    for _ in range(12):  # page 9 = Button
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("Button")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Focus should now be on the first Button ("OK").
@@ -217,9 +270,7 @@ def storybook_toggle_alternates_state(app: Client) -> None:
     """Toggle page: Space flips the @TerminalState binding; the display
     text shows 'on' or 'off' accordingly. Three presses should cycle
     off → on → off → on."""
-    for _ in range(15):  # page 12 = toggle
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("Toggle")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     initial_text = app.text()
@@ -246,9 +297,7 @@ def storybook_textinput_validation_colors(app: Client) -> None:
     Scoped to the Preview pane via ``preview_text()`` because the Code
     pane shows the validator source containing the literal "missing @"
     — using ``app.text()`` would always match the snippet."""
-    for _ in range(13):  # page 10 = textInput
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("TextInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.send_text("hello")
@@ -272,7 +321,7 @@ def storybook_promptinput_long_input_soft_wraps(app: Client) -> None:
     two visible content rows in the preview (the Storybook preview pane
     is too short to fit all four wrapped rows, so the exact tail may be
     scrolled out; wrapping is the invariant we actually care about)."""
-    app.goto_storybook_page(16)  # PromptInput
+    app.goto_page("PromptInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.send_text("abcdefghijklmnopqrstuvwxyz0123456789" * 3)
@@ -292,9 +341,7 @@ def storybook_promptinput_submit_clears(app: Client) -> None:
     """PromptInput: type text, press Enter, the field clears and the
     'last submitted' display updates. Covers the whole submit path +
     state reset — the same cycle that crashed in an earlier commit."""
-    for _ in range(16):  # page 13 = promptInput
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("PromptInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.send_text("hello world")
@@ -311,9 +358,7 @@ def storybook_list_selection_advances(app: Client) -> None:
     """List preview shows alpha/beta/gamma/... Down arrow advances the
     selection cursor visibly (▸ glyph moves to next label). Exercises
     List's keyboard nav + selection binding. Page index 14."""
-    for _ in range(17):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("List")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Selection starts at index 0 ("alpha"); cursor is `▸ alpha`.
@@ -341,9 +386,7 @@ def storybook_tabview_cycles_tabs(app: Client) -> None:
     """TabView preview has three tabs: First/Second/Third. When the tab
     bar is focused, ← / → switch tabs, as does pressing a digit 1-9.
     Page index 16."""
-    for _ in range(19):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("TabView")
     app.send_key("tab")  # sidebar → preview (tab bar focused)
     app.wait_for_frame(1, timeout=0.5)
     # Default tab selection is 0 → "first page content".
@@ -372,9 +415,7 @@ def storybook_treeview_expand_collapse(app: Client) -> None:
     VStack.swift} plus Core, and a second Tests root. Right on Sources
     (already expanded by default — roots auto-expand) → no change.
     Left collapses. Page index 17."""
-    for _ in range(20):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("TreeView")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     assert_true(
@@ -419,9 +460,7 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     """TextArea preview is pre-seeded with three lines. Typing appends
     characters at the cursor, with the gutter showing line numbers.
     Page index 11."""
-    for _ in range(14):
-        app.send_key("down")
-        time.sleep(0.05)
+    app.goto_page("TextArea")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     initial = app.text()
@@ -445,7 +484,7 @@ def storybook_textinput_paste_inserts(app: Client) -> None:
     """Bracketed-paste payload reaches a focused TextInput and inserts
     at the cursor. Single-line component → embedded \\n must NOT
     produce visible new rows in the preview pane."""
-    app.goto_storybook_page(13)  # textInput
+    app.goto_page("TextInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.paste("PASTED-TEXT")
@@ -459,7 +498,7 @@ def storybook_textinput_paste_inserts(app: Client) -> None:
 def storybook_textarea_paste_splits_lines(app: Client) -> None:
     """Pasting `alpha\\nbeta\\ngamma` into TextArea must produce three
     distinct logical rows. Visible in the preview pane after gutter."""
-    app.goto_storybook_page(14)  # textArea
+    app.goto_page("TextArea")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.send_key("end")
@@ -485,7 +524,7 @@ def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
       2. PromptInput's default `.pasteMode(.claudeCode)` collapses
          the paste into a `[Pasted text #N +M lines]` marker so the
          viewport doesn't flood with raw paste content."""
-    app.goto_storybook_page(16)  # promptInput
+    app.goto_page("PromptInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # 100-line blob ≈ 3KB. Realistic for clipboard contents.
@@ -516,7 +555,7 @@ def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
     (Claude Code parity). The underlying expanded text remains in the
     binding and gets sent on submit; only the rendered presentation
     is collapsed."""
-    app.goto_storybook_page(16)  # promptInput
+    app.goto_page("PromptInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     app.paste("zenAlpha\nzenBeta\nzenGamma")
@@ -544,7 +583,7 @@ def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
 
 def storybook_vstack_renders_three_rows(app: Client) -> None:
     """VStack preview stacks row 1/2/3 vertically in the preview pane."""
-    app.goto_storybook_page(0)
+    app.goto_page("VStack")
     preview = app.preview_text()
     for label in ("row 1", "row 2", "row 3"):
         assert_true(label in preview, f"VStack preview missing '{label}'")
@@ -552,7 +591,7 @@ def storybook_vstack_renders_three_rows(app: Client) -> None:
 
 def storybook_hstack_renders_horizontal(app: Client) -> None:
     """HStack preview puts A | B | C on a single row, separators between."""
-    app.goto_storybook_page(1)
+    app.goto_page("HStack")
     preview = app.preview_text()
     assert_true("A" in preview and "B" in preview, "HStack missing A/B labels")
     # A, |, B appear on the same row (no newlines between them).
@@ -565,7 +604,7 @@ def storybook_hstack_renders_horizontal(app: Client) -> None:
 def storybook_divider_renders_rule(app: Client) -> None:
     """Divider preview draws a horizontal rule via `─` glyphs between the
     'above' and 'below' text. Catches primitive divider render bugs."""
-    app.goto_storybook_page(4)
+    app.goto_page("Divider")
     assert_true(app.contains("above"), "Divider preview missing 'above'")
     assert_true(app.contains("below"), "Divider preview missing 'below'")
     assert_true(
@@ -577,7 +616,7 @@ def storybook_divider_renders_rule(app: Client) -> None:
 def storybook_table_renders_header_and_rows(app: Client) -> None:
     """Table preview shows Name/Color header columns + data rows for the
     demo items. No interaction — Table has no keyboard selection yet."""
-    app.goto_storybook_page(18)
+    app.goto_page("Table")
     preview = app.preview_text()
     assert_true("Name" in preview, "Table header 'Name' missing")
     assert_true("alpha" in preview, "Table row 'alpha' missing")
@@ -587,7 +626,7 @@ def storybook_table_renders_header_and_rows(app: Client) -> None:
 def storybook_diffview_marks_changes(app: Client) -> None:
     """DiffView preview shows hello + swift world, with diff markers on
     the changed line. Regression net for stale-cell bugs in scrolling diffs."""
-    app.goto_storybook_page(21)
+    app.goto_page("DiffView")
     preview = app.preview_text()
     assert_true("hello" in preview, "DiffView context 'hello' missing")
     assert_true("swift world" in preview, "DiffView modified line missing")
@@ -597,7 +636,7 @@ def storybook_hunkdiffview_navigates_lines(app: Client) -> None:
     """HunkDiffView preview: Tab into the hunk, Down moves selection; file
     header + hunk content remain visible. Keyboard-interactive path that's
     otherwise untested in smoke."""
-    app.goto_storybook_page(22)
+    app.goto_page("HunkDiffView")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
@@ -614,7 +653,7 @@ def storybook_hunkdiffview_navigates_lines(app: Client) -> None:
 def storybook_progressbar_renders_all_values(app: Client) -> None:
     """ProgressBar page shows four bars at different fill levels. Count of
     filled glyphs on successive rows should grow monotonically."""
-    app.goto_storybook_page(23)
+    app.goto_page("ProgressBar")
     preview = app.preview_text()
     for marker in ("25%", "50%", "75%"):
         assert_true(marker in preview, f"ProgressBar preview missing '{marker}'")
@@ -623,7 +662,7 @@ def storybook_progressbar_renders_all_values(app: Client) -> None:
 def storybook_statusbar_sections_render(app: Client) -> None:
     """StatusBar lays out left/center/right sections. READY + tab:1/3 + a
     timing indicator should all appear on a single row."""
-    app.goto_storybook_page(24)
+    app.goto_page("StatusBar")
     preview = app.preview_text()
     # Don't assume the exact text — just that the three conceptual sections
     # landed something visible in the preview.
@@ -633,7 +672,7 @@ def storybook_statusbar_sections_render(app: Client) -> None:
 def storybook_barchart_renders_bars(app: Client) -> None:
     """BarChart preview renders `█` glyphs proportional to value — verify
     at least one filled bar appears and the label characters are present."""
-    app.goto_storybook_page(26)
+    app.goto_page("BarChart")
     full_block_count = app.count_glyph("█")
     assert_true(full_block_count >= 5, f"BarChart filled-cells too sparse: {full_block_count}")
 
@@ -642,7 +681,7 @@ def storybook_zstack_overlays_label(app: Client) -> None:
     """ZStack preview: `OVER` label rendered on top of a ◼ block background.
     Both should be present in the same snapshot — the label overwrites the
     fill cells underneath, not the whole frame."""
-    app.goto_storybook_page(2)
+    app.goto_page("ZStack")
     preview = app.preview_text()
     assert_true("OVER" in preview, "ZStack top-layer label missing")
     assert_true("◼" in preview, "ZStack background fill glyphs missing")
@@ -651,7 +690,7 @@ def storybook_zstack_overlays_label(app: Client) -> None:
 def storybook_spacer_pushes_edges(app: Client) -> None:
     """HStack{Text, Spacer, Text} — [left] + [right] appear on the same
     row, separated by ≥5 blank cells. Catches Spacer flex regressions."""
-    app.goto_storybook_page(3)
+    app.goto_page("Spacer")
     for row in app.preview_text().split("\n"):
         l = row.find("[left]")
         r = row.find("[right]")
@@ -667,7 +706,7 @@ def storybook_spacer_pushes_edges(app: Client) -> None:
 def storybook_scrollview_initial_viewport(app: Client) -> None:
     """ScrollView preview shows early rows; later rows are clipped off the
     initial viewport. Regression net for scroll-offset + frame(height:6)."""
-    app.goto_storybook_page(5)
+    app.goto_page("ScrollView")
     preview = app.preview_text()
     assert_true("row 0" in preview, "ScrollView viewport missing 'row 0'")
     assert_true("row 19" not in preview, "ScrollView viewport shouldn't show 'row 19' initially")
@@ -678,7 +717,7 @@ def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
     `.onBoundaryHit { ... }`. Pressing Right with cursor at end of
     an empty value must dispatch `.rightEdge` to the callback,
     visible as 'boundary: rightEdge' in the preview pane."""
-    app.goto_storybook_page(43)  # .boundaryFeedback page
+    app.goto_page(".boundaryFeedback")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Empty value: cursor at 0, both Left and Right are walls. Press
@@ -706,7 +745,7 @@ def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
     Pins the cursor contract end-to-end through the live
     Storybook TextInput page."""
-    app.goto_storybook_page(13)  # TextInput page
+    app.goto_page("TextInput")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Type "AC", then Left, then 'B'. With a real cursor model, 'B'
@@ -732,7 +771,7 @@ def storybook_disabled_skips_focus(app: Client) -> None:
     back to a sidebar focusable rather than landing on Dead. Pressing
     Enter on Live increments the counter; the counter must NEVER be
     incremented by Tab/Enter cycles that would have hit Dead."""
-    app.goto_storybook_page(42)  # .disabled page
+    app.goto_page(".disabled")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Counter starts at 0 — read the preview pane.
@@ -759,7 +798,7 @@ def storybook_disabled_skips_focus(app: Client) -> None:
 def storybook_scrollview_shows_thumb_scrollbar(app: Client) -> None:
     """ScrollView with overflowing content paints the new thumb-track
     scrollbar — │ track on the right column with █ thumb segment."""
-    app.goto_storybook_page(5)
+    app.goto_page("ScrollView")
     preview = app.preview_text()
     # Track glyphs: at least one │ on the right edge (anywhere in
     # preview is fine — the smoke harness already pins viewport to
@@ -774,7 +813,7 @@ def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
     Reported 2026-04-18: 'pressing tab when cursor is in ScrollView to see
     the preview doesn't work' — Tab cycled back to the sidebar because
     no focusable existed in the preview."""
-    app.goto_storybook_page(5)
+    app.goto_page("ScrollView")
     before = app.focus()
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
@@ -798,7 +837,7 @@ def storybook_geometryreader_reports_size(app: Client) -> None:
     """GeometryReader renders 'proposed: WxH' with the current rect size
     — confirms the lazy rebuild ships the real allocated rect,
     not the terminal default 80×24 stale value."""
-    app.goto_storybook_page(6)
+    app.goto_page("GeometryReader")
     preview = app.preview_text()
     assert_true("proposed:" in preview, "GeometryReader preview missing 'proposed:' label")
     assert_true("×" in preview, "GeometryReader preview missing size separator")
@@ -807,7 +846,7 @@ def storybook_geometryreader_reports_size(app: Client) -> None:
 def storybook_text_styles_render(app: Client) -> None:
     """Text primitive preview: plain / bold / colored / both — all four
     strings present in the rendered preview."""
-    app.goto_storybook_page(7)
+    app.goto_page("Text")
     preview = app.preview_text()
     for label in ("plain", "bold", "colored", "both"):
         assert_true(label in preview, f"Text preview missing '{label}'")
@@ -816,7 +855,7 @@ def storybook_text_styles_render(app: Client) -> None:
 def storybook_forEach_renders_all_items(app: Client) -> None:
     """ForEach preview iterates 5 colour names; each `[name]` should
     render somewhere in the preview pane."""
-    app.goto_storybook_page(8)
+    app.goto_page("ForEach")
     preview = app.preview_text()
     for name in ("red", "yellow", "green", "cyan", "magenta"):
         assert_true(f"[{name}]" in preview, f"ForEach preview missing '[{name}]'")
@@ -825,8 +864,7 @@ def storybook_forEach_renders_all_items(app: Client) -> None:
 def storybook_sparkline_renders_line(app: Client) -> None:
     """Sparkline draws a sine wave using braille dots — expect >20 braille
     cells somewhere in the preview."""
-    app.goto_storybook_page(27)
-    # Braille block is U+2800–U+28FF. Just check some non-space glyph count.
+    app.goto_page("Sparkline")
     preview = app.preview_text()
     non_space = sum(1 for ch in preview if ch not in (" ", "\n"))
     assert_true(non_space > 10, f"Sparkline preview looked empty (non_space={non_space})")
@@ -835,7 +873,7 @@ def storybook_sparkline_renders_line(app: Client) -> None:
 def storybook_heatmap_renders_grid(app: Client) -> None:
     """HeatMap renders a colored 5×20 matrix; expect many shade characters
     (█ / ▒ / ▓ etc.) spanning the preview."""
-    app.goto_storybook_page(28)
+    app.goto_page("HeatMap")
     preview = app.preview_text()
     non_space = sum(1 for ch in preview if ch not in (" ", "\n"))
     assert_true(non_space > 50, f"HeatMap looked empty (non_space={non_space})")
@@ -843,7 +881,7 @@ def storybook_heatmap_renders_grid(app: Client) -> None:
 
 def storybook_braillecanvas_renders_curve(app: Client) -> None:
     """BrailleCanvas helper writes braille dots into the preview text."""
-    app.goto_storybook_page(29)
+    app.goto_page("BrailleCanvas")
     preview = app.preview_text()
     has_braille = any(0x2800 <= ord(ch) <= 0x28FF for ch in preview)
     assert_true(has_braille, "BrailleCanvas didn't render any braille glyphs (U+2800–U+28FF)")
@@ -853,7 +891,7 @@ def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
     """DotMatrixText renders the word HELLO via its internal dot-font.
     Each glyph column is rendered as block characters; the preview should
     have many `█`/`▓`/`▒` cells."""
-    app.goto_storybook_page(30)
+    app.goto_page("DotMatrixText")
     preview = app.preview_text()
     filled = sum(1 for ch in preview if ch in "█▓▒░●")
     assert_true(filled > 20, f"DotMatrixText preview too sparse (filled={filled})")
@@ -862,7 +900,7 @@ def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
 def storybook_morseticker_renders_sos(app: Client) -> None:
     """MorseTicker draws the SOS pattern. Preview should contain braille
     cells (the ticker uses braille for sub-cell resolution)."""
-    app.goto_storybook_page(31)
+    app.goto_page("MorseTicker")
     preview = app.preview_text()
     has_braille = any(0x2800 <= ord(ch) <= 0x28FF for ch in preview)
     assert_true(has_braille, "MorseTicker didn't render any braille ticker glyphs")
@@ -872,7 +910,7 @@ def storybook_foreground_renders_colored_words(app: Client) -> None:
     """`.foreground` modifier page: red/green/blue side by side. Glyph
     text is what we assert; colour-byte verification is out of scope
     until the client exposes per-cell style (future work)."""
-    app.goto_storybook_page(32)
+    app.goto_page(".foreground")
     preview = app.preview_text()
     for word in ("red", "green", "blue"):
         assert_true(word in preview, f".foreground preview missing '{word}'")
@@ -882,7 +920,7 @@ def storybook_bold_distinguishes_styles(app: Client) -> None:
     """`.bold` modifier page: both the plain and bolded label render.
     Style bit verification (bold true on 'is bold' cells) belongs in a
     richer probe API; for now assert both lines land."""
-    app.goto_storybook_page(33)
+    app.goto_page(".bold")
     preview = app.preview_text()
     for label in ("not bold", "is bold"):
         assert_true(label in preview, f".bold preview missing '{label}'")
@@ -891,7 +929,7 @@ def storybook_bold_distinguishes_styles(app: Client) -> None:
 def storybook_border_wraps_text(app: Client) -> None:
     """`.border` page: ' bordered ' text wrapped by a box-drawing frame.
     Verify the border-corner or horizontal glyphs land alongside the text."""
-    app.goto_storybook_page(34)
+    app.goto_page(".border")
     preview = app.preview_text()
     assert_true("bordered" in preview, ".border preview missing label")
     # Rounded border uses ╭ ╮ ╰ ╯ — at least one corner should appear.
@@ -901,7 +939,7 @@ def storybook_border_wraps_text(app: Client) -> None:
 
 def storybook_padding_wraps_text(app: Client) -> None:
     """`.padding` page: 'padded' label sits inside a blank padding frame."""
-    app.goto_storybook_page(35)
+    app.goto_page(".padding")
     preview = app.preview_text()
     assert_true("padded" in preview, ".padding preview missing label")
 
@@ -909,7 +947,7 @@ def storybook_padding_wraps_text(app: Client) -> None:
 def storybook_frame_sizes_bordered_box(app: Client) -> None:
     """`.frame(width:10, height:3).border()` page: 'x' centered in a
     bordered 10-wide, 3-tall box. Corners + 'x' must both show."""
-    app.goto_storybook_page(37)
+    app.goto_page(".frame")
     preview = app.preview_text()
     assert_true("x" in preview, ".frame preview missing 'x' label")
     assert_true(any(ch in preview for ch in "╭╮╰╯"), ".frame preview missing border corners")
@@ -920,7 +958,7 @@ def storybook_flexible_distributes_remainder(app: Client) -> None:
     fixed+flex+weighted, sidebar+content). Smoke pins the rendering
     contract: both demos visible, key labels present, no crash. The
     weighted-distribution math is unit-tested in FlexibleSizingTests."""
-    app.goto_storybook_page(38)
+    app.goto_page(".flexible")
     preview = app.preview_text()
     assert_true("fixed" in preview, ".flexible preview missing 'fixed' label")
     assert_true("flex 1" in preview, ".flexible preview missing 'flex 1' label")
@@ -931,7 +969,7 @@ def storybook_flexible_distributes_remainder(app: Client) -> None:
 def storybook_focusable_joins_tab_order(app: Client) -> None:
     """`.focusable` modifier page has exactly one focusable Text. Tab into
     it — focus should land on it, not bounce back to the sidebar."""
-    app.goto_storybook_page(36)
+    app.goto_page(".focusable")
     before = app.focus()
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
@@ -948,7 +986,7 @@ def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
     → 'left'. The page lays out the row + indicator inside a bordered
     Preview pane; we move the cursor far inside the preview to ensure
     we're hovering the row and not the indicator below it."""
-    app.goto_storybook_page(39)
+    app.goto_page(".onHover")
     initial = app.preview_text()
     assert_true("hover this row" in initial, ".onHover preview missing target row")
     # Find the row's location in the rendered preview to pick a cursor
@@ -987,7 +1025,7 @@ def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     (default policy) + inner (subtree override to .disabled). Smoke proof
     that the page renders + the per-subtree env modifier doesn't crash
     the runtime. Behavioural assertions live in unit tests."""
-    app.goto_storybook_page(40)
+    app.goto_page(".mouseFocusPolicy")
     preview = app.preview_text()
     assert_true("default .clickToLock" in preview,
                 ".mouseFocusPolicy preview missing outer subtree label")
@@ -1000,7 +1038,7 @@ def storybook_bufferview_blits_demo_cells(app: Client) -> None:
     is built in code and blitted into the view's rect. Smoke proof that
     all four rows of the source buffer appear verbatim in the rendered
     preview — the basic BufferView contract."""
-    app.goto_storybook_page(25)
+    app.goto_page("BufferView")
     preview = app.preview_text()
     for needle in ("BufferView demo", "CellBuffer -> blit", "12345 67890"):
         assert_true(needle in preview,
@@ -1013,7 +1051,7 @@ def storybook_layout_stable_under_mouse_hover(app: Client) -> None:
     hovering somewhere. Captures the user-reported regression where
     moving the mouse on the HStack page shrank the Code panel and
     forced wrapping in the snippet."""
-    app.goto_storybook_page(1)  # HStack
+    app.goto_page("HStack")
     text_before = app.text()
     width_before = _code_box_width(text_before)
     app.mouse_move(80, 10)
@@ -1030,7 +1068,7 @@ def storybook_layout_stable_under_arrow_repeat(app: Client) -> None:
     """Bug #3 (sister): repeatedly pressing arrow keys on a focused
     sidebar must not re-flow the Preview/Code geometry. Width stays
     constant across N keystrokes."""
-    app.goto_storybook_page(0)  # VStack
+    app.goto_page("VStack")
     width0 = _code_box_width(app.text())
     for _ in range(5):
         app.send_key("up")
@@ -1059,7 +1097,7 @@ def storybook_treeview_click_expand(app: Client) -> None:
     expanded state. The TreeView preview shows two roots ("Sources"
     and "Tests"); both auto-expand. Clicking on the "Sources" row
     should collapse it (children disappear), clicking again expands."""
-    app.goto_storybook_page(20)  # TreeView
+    app.goto_page("TreeView")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     preview_before = app.preview_text()
@@ -1087,7 +1125,7 @@ def storybook_treeview_keyboard_expand_collapse(app: Client) -> None:
     Sources collapses. Right re-expands. Asserts the visible-child
     name "TerminalUI" goes away when only Tests is showing
     (Tests has TerminalUITests, so we look for the specific child)."""
-    app.goto_storybook_page(20)  # TreeView
+    app.goto_page("TreeView")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
@@ -1121,7 +1159,7 @@ def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
     indicator — it must change from "VStack" to "ZStack" after the
     click. Sidebar list always contains the row label so we cannot
     use full-screen substring matches."""
-    app.goto_storybook_page(0)  # VStack
+    app.goto_page("VStack")
     title_before = app.text().splitlines()[1]
     assert_true(
         "VStack" in title_before,
@@ -1145,7 +1183,7 @@ def storybook_mouse_wheel_scrolls_hovered_scrollview(app: Client) -> None:
     returning .ignored — wheel did nothing visible. Post-fix: routing
     target is read from GraphContext.currentRoutingNodeID, so the
     handler resolves the ScrollView's own scroll-layout."""
-    app.goto_storybook_page(5)  # ScrollView page
+    app.goto_page("ScrollView")
     # Capture preview's first content row before wheel.
     text_before = app.preview_text()
     # Find "row 0" position to hover precisely.
@@ -1187,7 +1225,7 @@ def storybook_mouse_wheel_routes_to_hover_target(app: Client) -> None:
     (or do nothing visible if Preview content is short), NOT advance
     the sidebar selection. Currently scrollUp/scrollDown route to
     keyboard focus → sidebar advances when you wheel anywhere."""
-    app.goto_storybook_page(0)  # VStack
+    app.goto_page("VStack")
     selected_before = "VStack"
     # Sidebar focus, wheel-down over preview area (right half of screen)
     app.mouse_move(100, 20)
@@ -1212,7 +1250,7 @@ def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
 
     Setup: click into the preview, then mouse_move to sidebar area,
     assert the focus didn't drift away from the preview's vicinity."""
-    app.goto_storybook_page(18)  # TextInput — has focusable preview
+    app.goto_page("Table")
     # Tab into preview to give us a stable preview-focus baseline first
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
@@ -1263,7 +1301,7 @@ def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
     fire Ctrl+P, observe the counter increment from 0. Exercises the
     full action graph dispatch path: focus walker → ActionScope lookup
     → bound action perform closure → state mutation → re-render."""
-    app.goto_storybook_page(41)
+    app.goto_page(".actions")
     app.send_key("tab")
     app.wait_for_frame(1, timeout=0.5)
     # Initial counter shows 0 in the page (search full text — preview
@@ -1480,6 +1518,7 @@ def chat_q_in_empty_prompt_quits(app: Client) -> None:
 CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
+    SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
