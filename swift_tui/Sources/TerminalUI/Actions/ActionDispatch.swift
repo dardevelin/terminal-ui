@@ -34,8 +34,26 @@ public enum ActionDispatch {
         frameworkDefaults: ActionScope? = nil
     ) -> Bool {
         let context = node._resolvedEnv?.actionContext ?? ActionContext()
+        #if DEBUG
+        // Diagnostic: record every dispatch attempt with the focused
+        // node id, the binding, the active context, and the outcome.
+        // Lets `swtui enable events` consumers see exactly why a
+        // chord did or didn't fire (HYP-341 + family).
+        var matched: String? = nil
+        defer {
+            DevTracer.shared.traceActionDispatch(
+                fromNode: node.id.description,
+                binding: String(describing: binding),
+                context: context.stack.joined(separator: ">"),
+                matchedActionID: matched
+            )
+        }
+        #endif
         for scope in scopeChain(from: node, frameworkDefaults: frameworkDefaults) {
             if let bound = scope.boundAction(for: binding, context: context) {
+                #if DEBUG
+                matched = bound.action.id.description
+                #endif
                 bound.action.perform()
                 return true
             }

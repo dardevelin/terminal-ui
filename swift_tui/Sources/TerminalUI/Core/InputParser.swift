@@ -144,9 +144,62 @@ private enum UTF8 {
 public enum InputParser {
 
     public static func readEvent() -> TerminalEvent? {
+        #if DEBUG
+        // When DEBUG + events trace are on, wrap the stdin source so we
+        // can record the exact byte sequence that produced each event.
+        // This is what lets us diagnose terminal-key bugs at the byte
+        // level (HYP-337). The wrapper is only constructed in DEBUG —
+        // release builds get the bare StdinByteSource path with zero
+        // recording overhead.
+        var source = RecordingByteSource(StdinByteSource())
+        let event = parseEvent(from: &source)
+        if let event, !source.consumed.isEmpty {
+            DevTracer.shared.traceInputBytes(source.consumed, decoded: describeEvent(event))
+        }
+        return event
+        #else
         var source = StdinByteSource()
         return parseEvent(from: &source)
+        #endif
     }
+
+    #if DEBUG
+    /// Render a TerminalEvent as a one-line diagnostic string for the
+    /// raw-byte trace.
+    private static func describeEvent(_ event: TerminalEvent) -> String {
+        switch event {
+        case .key(let k):
+            var parts: [String] = []
+            if k.modifiers.contains(.ctrl)  { parts.append("ctrl") }
+            if k.modifiers.contains(.alt)   { parts.append("alt") }
+            if k.modifiers.contains(.shift) { parts.append("shift") }
+            switch k.key {
+            case .character(let c): parts.append("char(\(c))")
+            case .enter:     parts.append("enter")
+            case .tab:       parts.append("tab")
+            case .escape:    parts.append("escape")
+            case .backspace: parts.append("backspace")
+            case .delete:    parts.append("delete")
+            case .up:        parts.append("up")
+            case .down:      parts.append("down")
+            case .left:      parts.append("left")
+            case .right:     parts.append("right")
+            case .home:      parts.append("home")
+            case .end:       parts.append("end")
+            case .pageUp:    parts.append("pageUp")
+            case .pageDown:  parts.append("pageDown")
+            case .f(let n):  parts.append("f\(n)")
+            case .activate:  parts.append("activate")
+            case .unknown(let bs): parts.append("unknown(\(bs.count) bytes)")
+            }
+            return parts.joined(separator: "+")
+        case .mouse:    return "mouse"
+        case .resize:   return "resize"
+        case .timer(let n): return "timer(\(n))"
+        case .paste(let s): return "paste(\(s.count) chars)"
+        }
+    }
+    #endif
 
     public static func readKey() -> KeyEvent? {
         guard let event = readEvent() else { return nil }
@@ -177,6 +230,15 @@ public enum InputParser {
         }
 
         let char = parseUtf8Character(firstByte: byte, from: &source)
+        // HYP-336 — reverse-map Apple Terminal's Option-compose Unicode
+        // outputs (`®` for Option+R, `å` for Option+A, etc.) back to
+        // the underlying chord. Bracketed paste is collected at
+        // `collectBracketedPaste` BEFORE this path, so pasted content
+        // never reaches here. See AppleOptionDecode.swift for the
+        // compose-map source and rationale.
+        if let chord = AppleOptionDecode.decode(char) {
+            return .key(KeyEvent(key: chord.key, modifiers: chord.modifiers))
+        }
         return .key(KeyEvent(key: .character(char)))
     }
 

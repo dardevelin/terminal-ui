@@ -46,6 +46,26 @@ final class StorybookState {
     /// `currentMode.current` to render the visible mode indicator and
     /// pushes the value into the env so scoped bindings dispatch.
     var currentMode: ActionContext = ActionContext()
+    /// Left-pane fraction (0.0 .. 1.0) for the .actionContext two-pane
+    /// resize demo. L grows the left pane, H shrinks it. Maps to
+    /// `actionContextSplit.root` ratios so SplitView (which honors
+    /// explicit ratios) drives the visible boundary. (HStack's flex
+    /// doesn't honor `.frame(width:)` — HYP-340 — so this demo uses
+    /// SplitView, the framework's purpose-built resizable container.)
+    var actionContextLeftFraction: Double = 0.5
+
+    /// SplitState driving the .actionContext page's resizable two-pane
+    /// view. Each leaf is a bordered Text so the visible boundary
+    /// move is unambiguous (border edges shift, not just the text
+    /// reflow). Updated via `syncActionContextSplit()` whenever the
+    /// fraction mutates so SplitView re-renders with new ratios.
+    var actionContextSplit: SplitState = SplitState(root: .split(
+        axis: .horizontal,
+        children: [
+            .leaf(Text("left").foreground(.green).border()),
+            .leaf(Text("right").foreground(.cyan).border()),
+        ],
+        ratios: [0.5, 0.5]))
 
     var splitState: SplitState = SplitState(root: .split(
         axis: .horizontal,
@@ -205,13 +225,26 @@ struct StorybookMain: TerminalAppProtocol {
     ]}
 
     static func onEvent(_ event: TerminalEvent) -> Bool {
-        // Global-only binding: Esc quits. Arrow keys are handled by the
-        // sidebar's hint-line `.onKeyPress` when focused (see Sidebar).
-        // Arrow focus navigation is opted in at the root via
-        // `.allowArrowFocusNavigation` below so unhandled arrows in the
-        // preview still fall through to focus navigation rather than being
-        // silently dropped.
+        // Global-only binding: Esc quits — UNLESS a context mode is
+        // active, in which case Esc clears the mode and STAYS in the
+        // app. We can't safely dispatch the page's scoped Esc binding
+        // here (HYP-341: focusable nodes swallow keys), so we
+        // unconditionally clear all active modes when the user presses
+        // Esc and a mode is on the stack. Acts like a master "exit
+        // any sticky mode" affordance until HYP-341 lets the action
+        // graph handle Esc properly.
+        //
+        // Arrow keys are handled by the sidebar's hint-line
+        // `.onKeyPress` when focused (see Sidebar). Arrow focus
+        // navigation is opted in at the root via
+        // `.allowArrowFocusNavigation` below so unhandled arrows in
+        // the preview still fall through to focus navigation rather
+        // than being silently dropped.
         if case .key(let k) = event, k.key == .escape {
+            if state.currentMode.current != nil {
+                state.currentMode.clear()
+                return true
+            }
             return false
         }
         if case .timer(let name) = event, name == "timeline-tick" {

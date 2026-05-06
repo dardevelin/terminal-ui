@@ -128,6 +128,12 @@ public struct EnvironmentValues: Sendable {
     /// at the view level.
     public var actionContext: ActionContext = ActionContext()
 
+    /// How keyboard-chord labels render across the framework. Default
+    /// `.automatic` picks platform-native: macOS → Apple symbols
+    /// (`⌥R`), others → spelled-out names (`Alt+R`). Override per
+    /// subtree with `.modifierLabelStyle(_:)`. HYP-333.
+    public var modifierLabelStyle: ModifierLabelStyle = .automatic
+
     public init() {}
 }
 

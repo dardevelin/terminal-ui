@@ -68,6 +68,30 @@ public struct StdinByteSource: ByteSource {
     }
 }
 
+/// Wraps another `ByteSource` and records every consumed byte. The
+/// runtime hands one of these to `InputParser.parseEvent` when DEBUG +
+/// `events` capture is enabled, then reads `consumed` after the event
+/// to log raw bytes alongside the parsed event. HYP-337 — diagnostic
+/// for terminal-key bugs where the parsed-event log alone doesn't
+/// distinguish "parser bug" from "different bytes than expected."
+///
+/// Generic over the underlying source so it works with both
+/// `StdinByteSource` (runtime) and `ArrayByteSource` (tests).
+public struct RecordingByteSource<Source: ByteSource>: ByteSource {
+    public var inner: Source
+    public var consumed: [UInt8] = []
+
+    public init(_ inner: Source) {
+        self.inner = inner
+    }
+
+    public mutating func readByte() -> UInt8? {
+        guard let byte = inner.readByte() else { return nil }
+        consumed.append(byte)
+        return byte
+    }
+}
+
 /// Test source — yields bytes from a pre-seeded array in order.
 /// Returns nil once exhausted, which the parser treats as "no byte available"
 /// (identical to a stdin timeout in raw mode).

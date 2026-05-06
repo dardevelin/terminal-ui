@@ -311,6 +311,23 @@ class Client:
         payload = f"\x1b[200~{text}\x1b[201~".encode("utf-8")
         os.write(self._master_fd, payload)
 
+    def write_raw(self, data: bytes) -> None:
+        """Write raw bytes to the master PTY exactly as a real terminal
+        would emit them — NO bracketed-paste wrapping, NO escape
+        coalescing. Use this to reproduce terminal byte streams that
+        ``send_key`` (synthetic KeyEvent) and ``paste`` (bracketed-paste
+        wrapper) cannot.
+
+        Concrete use: Apple Terminal sends ``0xC2 0xAE`` (UTF-8 of `®`)
+        for Option+R when "Use Option as Meta" is OFF. To reproduce
+        this in a smoke test, write those exact bytes — anything that
+        wraps or transforms them won't reach the InputParser the way
+        the real terminal does.
+        """
+        if self._master_fd is None:
+            raise RemoteError("write_raw() requires attach_pty(master_fd) — runner hooks this up automatically")
+        os.write(self._master_fd, data)
+
     def mouse_move(self, x: int, y: int, *modifiers: str) -> None:
         """Inject a mouse-move event at (x, y). 0-indexed cell coordinates.
         Updates hover target without changing button state."""

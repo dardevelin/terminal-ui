@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, disabled, boundaryFeedback
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -456,6 +456,22 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         }
                         .bound(to: .keyboard(.character("p"), [.ctrl]))
                     }
+                """)
+        case .keyChord: return PageInfo(id: self, category: .modifiers, name: "KeyChord",
+            summary: "Render keyboard chords using platform conventions: Apple symbols (⌥R, ⌃⇧Tab) on macOS, spelled-out names (Alt+R, Ctrl+Shift+Tab) on Linux. Default reads the platform; override per subtree via .modifierLabelStyle(.named) / .symbolic.",
+            code: """
+                let chord = KeyChord(.character("r"), [.alt])
+
+                // Platform default — symbolic on macOS, named on Linux:
+                Text(chord.formatted())                  // ⌥R or Alt+R
+
+                // Forced styles:
+                Text(chord.formatted(.symbolic))         // ⌥R
+                Text(chord.formatted(.named))            // Alt+R
+
+                // Override per subtree via env:
+                Text(chord.formatted(in: env))
+                  .modifierLabelStyle(.named)            // forces named regardless of OS
                 """)
         case .actionContext: return PageInfo(id: self, category: .modifiers, name: ".actionContext",
             summary: "Stack-based 'mode' system — i3 in spirit, sparse predicate in code. Bindings declared with .bound(to:whenContext:) only fire when the runtime ActionContext stack matches. Lets resize-mode / move-mode hotkeys live alongside default bindings without a global state machine.",

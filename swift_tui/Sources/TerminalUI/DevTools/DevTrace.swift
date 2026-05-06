@@ -52,6 +52,16 @@ public enum TraceEntry: Sendable {
     case layoutPlace(viewType: String, rect: String)
     case bufferDiff(cellsChanged: Int, totalCells: Int)
     case inputEvent(description: String)
+    /// Raw bytes consumed by InputParser to produce ONE TerminalEvent.
+    /// Recorded BEFORE the parser interprets them, so we can see e.g.
+    /// `c2 ae` (UTF-8 ®) → `Alt+r` (after decode) — the diagnostic
+    /// path for terminal-key bugs. HYP-337.
+    case inputBytes(hex: String, decoded: String)
+    /// One ActionDispatch.dispatch attempt. Records the focused node
+    /// id, the binding, the active ActionContext stack, and whether
+    /// any action matched (by id). HYP-341+ — diagnoses why a
+    /// chord didn't fire when the user expected it to.
+    case actionDispatch(fromNode: String, binding: String, context: String, matchedActionID: String?)
     case stateChange(property: String, viewType: String)
     case resize(cols: Int, rows: Int)
 }
@@ -154,6 +164,36 @@ public final class DevTracer: @unchecked Sendable {
         currentFrame.append(.inputEvent(description: describeKey(event)))
     }
 
+    /// Raw input-byte trace. `bytes` is the exact byte sequence the
+    /// parser consumed to produce ONE TerminalEvent; `decoded` is the
+    /// human-readable form of the resulting event.
+    /// HYP-337 — added so terminal-key bugs can be diagnosed at the
+    /// byte level (not just the parsed-event level).
+    public func traceInputBytes(_ bytes: [UInt8], decoded: String) {
+        guard config.enabled, config.captureEvents else { return }
+        let hex = bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
+        currentFrame.append(.inputBytes(hex: hex, decoded: decoded))
+    }
+
+    /// Record one `ActionDispatch.dispatch` attempt. Lets the trace
+    /// show whether a chord was matched and against which action ID,
+    /// or — when matchedActionID is nil — that the dispatch missed.
+    /// Diagnoses HYP-341+ ("why didn't my binding fire?").
+    public func traceActionDispatch(
+        fromNode: String,
+        binding: String,
+        context: String,
+        matchedActionID: String?
+    ) {
+        guard config.enabled, config.captureEvents else { return }
+        currentFrame.append(.actionDispatch(
+            fromNode: fromNode,
+            binding: binding,
+            context: context,
+            matchedActionID: matchedActionID
+        ))
+    }
+
     public func traceResize(cols: Int, rows: Int) {
         guard config.enabled else { return }
         currentFrame.append(.resize(cols: cols, rows: rows))
@@ -212,6 +252,12 @@ public final class DevTracer: @unchecked Sendable {
                 output += "  buffer diff: \(changed)/\(total) cells changed\n"
             case .inputEvent(let desc):
                 output += "  input: \(desc)\n"
+            case .inputBytes(let hex, let decoded):
+                output += "  input bytes: [\(hex)] -> \(decoded)\n"
+            case .actionDispatch(let fromNode, let binding, let context, let matchedActionID):
+                let outcome = matchedActionID.map { "matched \($0)" } ?? "MISSED"
+                let ctxStr = context.isEmpty ? "default" : context
+                output += "  dispatch: \(binding) from \(fromNode) ctx=\(ctxStr) -> \(outcome)\n"
             case .stateChange(let prop, let viewType):
                 output += "  state change: \(viewType).\(prop)\n"
             case .resize(let cols, let rows):

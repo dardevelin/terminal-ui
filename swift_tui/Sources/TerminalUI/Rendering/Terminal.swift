@@ -286,9 +286,22 @@ public enum Terminal {
     }
 
     public static func exitAlternateScreen() {
+        // HYP-342 — disable mouse modes BOTH before AND after the
+        // alt-screen exit. Apple Terminal.app saves/restores per-
+        // screen state on ?1049l: a disable issued only in the alt
+        // screen is reverted when the main screen is restored, so
+        // moving the mouse over the shell prints raw SGR 1006 byte
+        // streams. Re-issuing the disable after ?1049l ensures the
+        // user's main-screen state has mouse tracking off.
+        //
+        // The pre-exit disable still matters: it prevents in-flight
+        // mouse events from being reported during the brief window
+        // between alt-exit and the second disable, which is the
+        // corruption pattern HYP-324 documented.
         disableMouseTracking()
         // cursorVisible on + alternateScreen off
         writeRaw("\u{1B}[?25h\u{1B}[?1049l")
+        disableMouseTracking()
     }
 
     /// Enable SGR 1006 extended mouse protocol — supports click, drag, move, scroll.
@@ -375,7 +388,15 @@ public enum Terminal {
         "\u{1B}[?1000l" +    // mouse basic click tracking off
         "\u{1B}[?2004l" +    // bracketed-paste off
         "\u{1B}[?25h"   +    // cursor visible
-        "\u{1B}[?1049l"      // alt-screen exit (must be last)
+        "\u{1B}[?1049l" +    // alt-screen exit
+        // HYP-342 — re-issue mouse-off in main-screen context. Apple
+        // Terminal.app restores per-screen mouse state on ?1049l, so
+        // the pre-alt-exit disable doesn't stick. Repeat after the
+        // alt-screen exit so the shell-side state is mouse-off too.
+        "\u{1B}[?1006l" +
+        "\u{1B}[?1003l" +
+        "\u{1B}[?1002l" +
+        "\u{1B}[?1000l"
 
     /// Emit the cleanup sequence + restore termios using ONLY async-
     /// signal-safe syscalls (posix_write + tcsetattr per POSIX.1).

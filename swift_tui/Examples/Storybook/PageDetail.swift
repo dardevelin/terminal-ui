@@ -467,34 +467,62 @@ struct PreviewPane: TerminalView {
                 )
                 .bound(to: .keyboard(.character("p"), [.ctrl]))
             }
+        case .keyChord:
+            VStack {
+                Text("Same chord, four styles:").foreground(.gray)
+                Text(" automatic (this OS): \(KeyChord(.character("r"), [.alt]).formatted())")
+                Text(" symbolic (Mac):      \(KeyChord(.character("r"), [.alt]).formatted(.symbolic))")
+                Text(" named (Linux):       \(KeyChord(.character("r"), [.alt]).formatted(.named))")
+                Text(" multiple modifiers:")
+                Text("    symbolic: \(KeyChord(.tab, [.ctrl, .shift]).formatted(.symbolic))")
+                Text("    named:    \(KeyChord(.tab, [.ctrl, .shift]).formatted(.named))")
+                Text(" special keys:")
+                Text("    \(KeyChord(.escape, []).formatted(.symbolic)) / \(KeyChord(.escape, []).formatted(.named))")
+                Text("    \(KeyChord(.enter, []).formatted(.symbolic)) / \(KeyChord(.enter, []).formatted(.named))")
+            }
         case .actionContext:
+            // Two-pane resize demo: a real container whose shared
+            // boundary moves when L / H fire in resize mode. Widths
+            // are computed from the rect GeometryReader hands us, so
+            // the children always fit inside the available preview
+            // pane (no overflow, no escape leak — the previous attempt
+            // overflowed because it used fixed widths that didn't
+            // account for the parent's actual size).
             VStack {
                 Text("Tab here.").foreground(.cyan)
-                Text("Alt+R → enter resize mode  ·  L grows  ·  H shrinks  ·  Esc exits")
+                Text("Option+R → enter resize mode  ·  L grows left  ·  H grows right  ·  Esc exits")
                     .foreground(.gray)
                 Text("mode: \(state.currentMode.current ?? "default")")
                     .foreground(.yellow).bold()
-                Text("width: \(state.actionFired) cells").foreground(.gray)
+                // SplitView is purpose-built for this — it honors
+                // explicit per-child ratios in its layout phase, so
+                // the visible boundary tracks `actionContextLeftFraction`
+                // exactly. (HStack with `.frame(width:)` doesn't honor
+                // proposed widths inside flex distribution — HYP-340.)
+                // Each leaf is bordered so the boundary slide moves
+                // visible rectangle edges, not just text.
+                SplitView(state: state.actionContextSplit)
+                    .frame(height: 5)
             }
             .focusable()
             .environment(\.actionContext, state.currentMode)
             .actions {
                 Action(
                     id: "storybook.context.enter",
-                    title: .literal("Enter Resize Mode"),
+                    title: .literal("Enter / Exit Resize Mode"),
                     perform: { enterResizeMode() }
                 )
                 .bound(to: .keyboard(.character("r"), [.alt]))
                 Action(
                     id: "storybook.context.grow",
-                    title: .literal("Grow Right"),
-                    perform: { fireStorybookAction() }
+                    title: .literal("Grow Left Pane"),
+                    perform: { growLeftPane() }
                 )
                 .bound(to: .keyboard(.character("l"), []), whenContext: "resize")
                 Action(
                     id: "storybook.context.shrink",
-                    title: .literal("Shrink Right"),
-                    perform: { shrinkResize() }
+                    title: .literal("Shrink Left Pane"),
+                    perform: { shrinkLeftPane() }
                 )
                 .bound(to: .keyboard(.character("h"), []), whenContext: "resize")
                 Action(
@@ -552,28 +580,66 @@ private func recordBoundaryHit(_ reason: BoundaryHitReason) {
     }
 }
 
-/// Push "resize" onto the actionContext stack — invoked by Alt+R on the
-/// .actionContext page. The page's `.environment(\.actionContext, ...)`
-/// modifier feeds the new value down to the binding dispatcher so the
-/// resize-scoped bindings start matching.
+/// Toggle "resize" mode on the actionContext stack — invoked by
+/// Option+R on the .actionContext page. If "resize" is currently the
+/// top of the stack, pop it (exit). Otherwise push (enter). Toggling
+/// avoids the "press it twice and now you need 2 pops" bug — Option+R
+/// is a single key the user expects to be self-inverse.
 @Sendable
 private func enterResizeMode() {
     MainActor.assumeIsolated {
-        state.currentMode.push("resize")
+        if state.currentMode.current == "resize" {
+            state.currentMode.pop()
+        } else {
+            state.currentMode.push("resize")
+        }
     }
 }
 
 @Sendable
 private func exitResizeMode() {
     MainActor.assumeIsolated {
-        state.currentMode.pop()
+        // Pop while still in resize mode — guards against accidental
+        // multi-pop if some path push'd more than once.
+        while state.currentMode.current == "resize" {
+            state.currentMode.pop()
+        }
+    }
+}
+
+/// Push the current fraction into the SplitState so SplitView re-
+/// renders with new ratios. SplitView's update path replaces the
+/// subtree on root reassignment, so we build a fresh root each time.
+/// Each leaf is bordered so the visible boundary move is unambiguous
+/// (border edges shift, not just text reflow).
+@MainActor
+private func syncActionContextSplit() {
+    let f = state.actionContextLeftFraction
+    state.actionContextSplit.root = .split(
+        axis: .horizontal,
+        children: [
+            .leaf(Text("left").foreground(.green).border()),
+            .leaf(Text("right").foreground(.cyan).border()),
+        ],
+        ratios: [f, 1.0 - f])
+}
+
+/// L bound when in resize mode — grow the left pane by ~5% of
+/// the available width. The fraction is bounded [0.1, 0.9] so
+/// neither pane collapses to zero.
+@Sendable
+private func growLeftPane() {
+    MainActor.assumeIsolated {
+        state.actionContextLeftFraction = min(0.9, state.actionContextLeftFraction + 0.05)
+        syncActionContextSplit()
     }
 }
 
 @Sendable
-private func shrinkResize() {
+private func shrinkLeftPane() {
     MainActor.assumeIsolated {
-        state.actionFired = max(0, state.actionFired - 1)
+        state.actionContextLeftFraction = max(0.1, state.actionContextLeftFraction - 0.05)
+        syncActionContextSplit()
     }
 }
 
