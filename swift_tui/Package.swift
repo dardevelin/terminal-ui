@@ -137,6 +137,11 @@ let package = Package(
             name: "TerminalUIIOTests",
             dependencies: ["TerminalUIIO", "TerminalUI"],
             path: "Tests/TerminalUIIOTests",
+            // InflateTests resolves these via `#filePath` against the
+            // source tree — not Bundle.module — so they must be excluded
+            // from the target's resource processing. Without this SwiftPM
+            // emits an "unhandled files" warning on every build.
+            exclude: ["Fixtures"],
             swiftSettings: strictSettings
         ),
         .testTarget(
