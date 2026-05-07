@@ -191,6 +191,13 @@ class Client:
         self._rx_buffer = b""
         self._connect_timeout = connect_timeout
         self._read_timeout = read_timeout
+        # Resolved diag dir for the connected app. The runner sets this
+        # after spawning a smoke child so isolation tests can verify the
+        # child wrote to a PID-namespaced path under /tmp instead of the
+        # canonical live dir. Left None when the client is constructed
+        # against an externally-running app (the harness has no way to
+        # know where that app put its dir).
+        self.diag_dir: Optional[str] = None
         # Optional master-PTY file descriptor for raw-byte injection. Set
         # by the runner after spawn so `paste()` can write
         # bracketed-paste sequences directly to the spawned app's stdin

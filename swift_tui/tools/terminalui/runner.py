@@ -21,6 +21,7 @@ from __future__ import annotations
 import fcntl
 import os
 import pty
+import shutil
 import signal
 import struct
 import subprocess
@@ -29,12 +30,71 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator, Optional, Sequence, Tuple
+from typing import Callable, Iterator, Optional, Sequence, Tuple
 
 from .client import Client, RemoteError, default_socket_path
 
 
 DEFAULT_BUILD_DIR = ".build/debug"
+
+# Smoke harness must never share the canonical /tmp/terminalui-{hash}/ dir
+# with a live `swift run Storybook` session — otherwise concurrent runs
+# clobber each other's sockets and leak SGR-mouse mode into the live
+# shell. Each spawned child gets a private dir whose name embeds the
+# `smoke` marker (so `swtui ctl list` can filter it out) plus the runner
+# PID + a monotonic counter so concurrent spawns within one runner don't
+# collide. The path is set via TERMINALUI_DATA_DIR before fork; DiagPaths
+# reads the env on every dataDir() call so the child sees it.
+_SMOKE_COUNTER = 0
+
+
+def _next_smoke_dir() -> str:
+    global _SMOKE_COUNTER
+    _SMOKE_COUNTER += 1
+    return f"/tmp/terminalui-smoke-{os.getpid()}-{_SMOKE_COUNTER}"
+
+# Disable every mouse-tracking mode the framework might have enabled.
+# Per xterm ctlseqs §"Any-event mouse tracking" + ECMA-48 DEC private
+# mode reset, all four codes must be cleared individually — disabling
+# 1006 (SGR encoding) without disabling 1003/1002/1000 (mode selectors)
+# leaves the terminal in legacy-encoding tracking mode and downstream
+# processes still see raw mouse coords.
+_MOUSE_OFF = (
+    b"\x1b[?1006l"
+    b"\x1b[?1003l"
+    b"\x1b[?1002l"
+    b"\x1b[?1000l"
+)
+
+# Optional observer for tests that want to verify what the runner posted
+# to the master PTY before close. Production smoke runs leave this None.
+_pty_cleanup_observer: Optional[Callable[[bytes], None]] = None
+
+
+def set_pty_cleanup_observer(cb: Optional[Callable[[bytes], None]]) -> None:
+    """Install (or clear) a callback invoked with the exact byte string
+    written to the master PTY during cleanup. Tests use this to assert
+    the mouse-disable sequence is posted on abort without intercepting
+    raw fd I/O."""
+    global _pty_cleanup_observer
+    _pty_cleanup_observer = cb
+
+
+def _post_pty_cleanup(master_fd: int) -> None:
+    """Best-effort: write mouse-mode disable bytes to the master PTY so
+    even an aborted smoke child doesn't leak tracking state into the
+    parent terminal. Failure is non-fatal — the FD may already be closed
+    or the child may have died — we still want the test to finish.
+    """
+    try:
+        os.write(master_fd, _MOUSE_OFF)
+    except OSError:
+        pass
+    if _pty_cleanup_observer is not None:
+        try:
+            _pty_cleanup_observer(_MOUSE_OFF)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _repo_root() -> Path:
@@ -94,6 +154,8 @@ def spawn_and_connect(target: str,
     # Set window size before spawn so the initial layout pass uses it.
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
+    smoke_dir = _next_smoke_dir()
+    env_full["TERMINALUI_DATA_DIR"] = smoke_dir
     proc = subprocess.Popen(
         [str(exe)],
         cwd=str(cwd) if cwd is not None else str(root),
@@ -120,7 +182,12 @@ def spawn_and_connect(target: str,
     drain_thread.start()
 
     try:
-        client = _wait_for_client(proc.pid, timeout=connect_timeout)
+        client = _wait_for_client(
+            proc.pid,
+            timeout=connect_timeout,
+            socket_dir=str(Path(smoke_dir) / "remote"),
+        )
+        client.diag_dir = smoke_dir
         # Hand the master FD to the client so `paste()` can write
         # bracketed-paste sequences straight into the app's stdin.
         client.attach_pty(master)
@@ -130,28 +197,45 @@ def spawn_and_connect(target: str,
             client.close()
         except Exception:
             pass
+        # Post mouse-mode disable BEFORE closing the master FD so the
+        # bytes actually reach the kernel buffer. Order matters: close
+        # first and the write is silently dropped — the canonical bug
+        # behind HYP-343's "mouse leak when smoke aborts mid-cleanup."
+        _post_pty_cleanup(master)
         _terminate(proc)
         try:
             os.close(master)
         except OSError:
             pass
+        # Each smoke run gets a unique dir; without explicit cleanup
+        # /tmp accumulates one entry per case across every CI run.
+        # Best-effort: a leaked dir at worst wastes disk, never breaks
+        # subsequent runs (counter monotonic, dirs PID-namespaced).
+        shutil.rmtree(smoke_dir, ignore_errors=True)
 
 
-def _wait_for_client(pid: int, timeout: float) -> Client:
+def _wait_for_client(pid: int,
+                     timeout: float,
+                     socket_dir: Optional[str] = None) -> Client:
     """Poll for the socket file to appear, then try to connect. Separates
     "app hasn't written its socket yet" from "socket exists but app
     crashed" — the second case surfaces a clean RemoteError rather than
-    hanging forever."""
+    hanging forever.
+
+    ``socket_dir`` lets callers pin the search to a specific dir (e.g. the
+    isolated TERMINALUI_DATA_DIR a smoke child was spawned with) so the
+    path resolver doesn't fall through to the canonical glob and pick up
+    a stale live-app socket."""
     deadline = time.monotonic() + timeout
     path: Optional[str] = None
     while time.monotonic() < deadline:
-        path = default_socket_path(pid=pid)
+        path = default_socket_path(pid=pid, socket_dir=socket_dir)
         if Path(path).exists() or Path(path).is_symlink():
             break
         time.sleep(0.05)
     else:
         raise RemoteError(f"socket for pid={pid} never appeared; app may have failed to boot")
-    client = Client(pid=pid)
+    client = Client(pid=pid, socket_dir=socket_dir)
     client.connect()
     return client
 

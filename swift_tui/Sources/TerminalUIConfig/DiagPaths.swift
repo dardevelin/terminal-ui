@@ -56,10 +56,27 @@ public enum DiagPaths {
         return "/tmp/\(tmpPrefix)\(hash)"
     }
 
-    /// The resolved data root — either `/tmp/terminalui-{hash}/` or `.terminalui/`
-    /// depending on config.
+    /// Environment variable that, when set, overrides every `dataDir(useTmp:)`
+    /// resolution at runtime. The smoke harness sets this for each spawned
+    /// child to a path under `/tmp/terminalui-smoke-{runner_pid}-{n}/` so
+    /// concurrent smoke runs never share state with a live storybook session
+    /// — without isolation, both processes wrote to the same
+    /// `/tmp/terminalui-{hash}/` dir and the smoke child's `latest.sock`
+    /// symlink + mouse-mode bytes leaked into the live shell. Production
+    /// (live) processes leave it unset and fall through to the
+    /// config-driven path. The override is read on every call so a parent
+    /// process can launch isolated children in the same address space.
+    public static let dataDirEnvVar = "TERMINALUI_DATA_DIR"
+
+    /// The resolved data root — either the `TERMINALUI_DATA_DIR` env
+    /// override, `/tmp/terminalui-{hash}/`, or `.terminalui/` depending
+    /// on config.
     public static func dataDir(useTmp: Bool) -> String {
-        useTmp ? tmpDataDir : configDir
+        if let override = ProcessInfo.processInfo.environment[dataDirEnvVar],
+           !override.isEmpty {
+            return override
+        }
+        return useTmp ? tmpDataDir : configDir
     }
 
     // MARK: - Output paths
