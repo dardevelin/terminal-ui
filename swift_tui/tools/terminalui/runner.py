@@ -37,21 +37,13 @@ from .client import Client, RemoteError, default_socket_path
 
 DEFAULT_BUILD_DIR = ".build/debug"
 
-# Smoke harness must never share the canonical /tmp/terminalui-{hash}/ dir
-# with a live `swift run Storybook` session — otherwise concurrent runs
-# clobber each other's sockets and leak SGR-mouse mode into the live
-# shell. Each spawned child gets a private dir whose name embeds the
-# `smoke` marker (so `swtui ctl list` can filter it out) plus the runner
-# PID + a monotonic counter so concurrent spawns within one runner don't
-# collide. The path is set via TERMINALUI_DATA_DIR before fork; DiagPaths
-# reads the env on every dataDir() call so the child sees it.
-_SMOKE_COUNTER = 0
-
-
-def _next_smoke_dir() -> str:
-    global _SMOKE_COUNTER
-    _SMOKE_COUNTER += 1
-    return f"/tmp/terminalui-smoke-{os.getpid()}-{_SMOKE_COUNTER}"
+# Per-process diag-dir isolation is the framework's default — every
+# TerminalUI process writes to /tmp/terminalui-{cwd-hash}-{pid}/. The
+# smoke harness used to force its own path via TERMINALUI_DATA_DIR
+# because the canonical dir was shared across instances; that's no
+# longer needed. The env var stays as a documented test-only escape
+# hatch (test_isolation can pin a specific path when it needs to
+# assert exact filenames) but is no longer set by spawn_and_connect.
 
 # Disable every mouse-tracking mode the framework might have enabled.
 # Per xterm ctlseqs §"Any-event mouse tracking" + ECMA-48 DEC private
@@ -154,8 +146,6 @@ def spawn_and_connect(target: str,
     # Set window size before spawn so the initial layout pass uses it.
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
-    smoke_dir = _next_smoke_dir()
-    env_full["TERMINALUI_DATA_DIR"] = smoke_dir
     proc = subprocess.Popen(
         [str(exe)],
         cwd=str(cwd) if cwd is not None else str(root),
@@ -181,13 +171,19 @@ def spawn_and_connect(target: str,
     drain_thread = threading.Thread(target=_drain, args=(master,), daemon=True)
     drain_thread.start()
 
+    diag_dir: Optional[str] = None
     try:
+        # Resolve the child's PID-isolated diag dir by globbing the
+        # framework-default shape. The cwd-hash component is stable
+        # but FNV-1a-encoded; cheaper to glob `terminalui-*-{pid}`
+        # than reimplement the hash in Python.
+        diag_dir = _wait_for_diag_dir(proc.pid, timeout=connect_timeout)
         client = _wait_for_client(
             proc.pid,
             timeout=connect_timeout,
-            socket_dir=str(Path(smoke_dir) / "remote"),
+            socket_dir=str(Path(diag_dir) / "remote"),
         )
-        client.diag_dir = smoke_dir
+        client.diag_dir = diag_dir
         # Hand the master FD to the client so `paste()` can write
         # bracketed-paste sequences straight into the app's stdin.
         client.attach_pty(master)
@@ -199,19 +195,42 @@ def spawn_and_connect(target: str,
             pass
         # Post mouse-mode disable BEFORE closing the master FD so the
         # bytes actually reach the kernel buffer. Order matters: close
-        # first and the write is silently dropped — the canonical bug
-        # behind HYP-343's "mouse leak when smoke aborts mid-cleanup."
+        # first and the write is silently dropped.
         _post_pty_cleanup(master)
         _terminate(proc)
         try:
             os.close(master)
         except OSError:
             pass
-        # Each smoke run gets a unique dir; without explicit cleanup
-        # /tmp accumulates one entry per case across every CI run.
-        # Best-effort: a leaked dir at worst wastes disk, never breaks
-        # subsequent runs (counter monotonic, dirs PID-namespaced).
-        shutil.rmtree(smoke_dir, ignore_errors=True)
+        # Best-effort: remove the child's PID-isolated dir so /tmp
+        # doesn't accumulate one entry per smoke case. SIGTERM doesn't
+        # run Swift defer blocks, so the framework's atexit hook
+        # doesn't fire — the parent owns this cleanup. `swtui ctl
+        # reap` is the safety net for crashes that bypass even this.
+        if diag_dir is not None:
+            shutil.rmtree(diag_dir, ignore_errors=True)
+
+
+def _wait_for_diag_dir(pid: int, timeout: float) -> str:
+    """Resolve the spawned child's per-process diag dir by globbing
+    `/tmp/terminalui-*-{pid}` until it appears. The framework creates
+    the dir during boot before writing its socket, so we can race the
+    socket-wait by polling for the parent dir first.
+
+    Returns the absolute path. Raises `RemoteError` if the dir never
+    appears (child failed to boot)."""
+    deadline = time.monotonic() + timeout
+    pattern = f"/tmp/terminalui-*-{pid}"
+    while time.monotonic() < deadline:
+        matches = list(Path("/tmp").glob(f"terminalui-*-{pid}"))
+        for match in matches:
+            if match.is_dir():
+                return str(match)
+        time.sleep(0.05)
+    raise RemoteError(
+        f"diag dir matching {pattern} never appeared; child pid={pid} "
+        "may have failed to boot or did not honor PID-isolated paths"
+    )
 
 
 def _wait_for_client(pid: int,
