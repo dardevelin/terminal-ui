@@ -819,6 +819,47 @@ public final class FocusEngine: @unchecked Sendable {
         }
         return nil
     }
+
+    // MARK: - Hovered-ScrollView Wheel Fallback
+
+    /// Walk the tree deepest-first looking for the deepest scroll
+    /// layout node whose rect contains (x, y). Used by the runtime
+    /// when `wheelTargetID` returns nil — i.e. the cursor is over a
+    /// bare `ScrollView` that has no `.scrollable()` (no enclosing
+    /// focusable). Mirrors SwiftUI's wheel-on-scroll-region contract:
+    /// the wheel is owned by the deepest scroll region under the
+    /// cursor, regardless of focus reachability.
+    public func findScrollNodeAt(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
+        for child in root.children.reversed() {
+            if let hit = findScrollNodeAt(x: x, y: y, root: child) {
+                return hit
+            }
+        }
+        if case .layout(let info) = root.kind, case .scroll = info.kind {
+            let r = root.rect
+            if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height {
+                return root
+            }
+        }
+        return nil
+    }
+
+    /// Dispatch a synthetic wheel event (arrow key) directly to the
+    /// given scroll layout node, mutating its `scrollOffset` per the
+    /// node's axis. Skips the focusable / `routeKeyEvent` chain — this
+    /// path is the wheel-on-bare-ScrollView fallback used when no
+    /// focusable lives under the cursor.
+    ///
+    /// Mirrors `ScrollableModifier.handleScrollKey` but resolves the
+    /// scroll node directly instead of walking up from a focused
+    /// owner. Mutation logic lives in `_ScrollMath.mutateOffset` so
+    /// both paths share the same axis / page-step / max-offset rules.
+    public func dispatchWheelToScrollNode(_ node: AttributeNode, event: KeyEvent) {
+        guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind else {
+            return
+        }
+        _ = _ScrollMath.mutateOffset(event: event, axis: axis, node: node)
+    }
 }
 
 // MARK: - Focus Direction

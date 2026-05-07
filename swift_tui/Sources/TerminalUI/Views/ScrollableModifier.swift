@@ -63,7 +63,7 @@ private func handleScrollKey(_ event: KeyEvent, axis: ScrollAxis) -> KeyEventRes
           let root = engine.lastIndexedRoot,
           let owner = engine.findNode(id: ownerID, in: root),
           let scrollNode = findEnclosedScrollNode(owner) else { return .ignored }
-    return mutateScroll(event: event, axis: axis, node: scrollNode)
+    return _ScrollMath.mutateOffset(event: event, axis: axis, node: scrollNode)
 }
 
 private func findEnclosedScrollNode(_ node: AttributeNode) -> AttributeNode? {
@@ -74,35 +74,43 @@ private func findEnclosedScrollNode(_ node: AttributeNode) -> AttributeNode? {
     return nil
 }
 
-private func mutateScroll(event: KeyEvent, axis: ScrollAxis, node: AttributeNode) -> KeyEventResult {
-    guard let content = node.children.first else { return .ignored }
-    let viewport = node.rect
-    let contentExtent: Int
-    let viewportExtent: Int
-    switch axis {
-    case .vertical:
-        contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
-        viewportExtent = viewport.height
-    case .horizontal:
-        contentExtent = GraphMeasurer.measureWidth(content)
-        viewportExtent = viewport.width
-    }
-    let maxOffset = max(0, contentExtent - viewportExtent)
-    let pageStep = max(1, viewportExtent - 1)
+/// Scroll-offset math shared by `.scrollable()` (focusable + onKeyPress
+/// path) and the runtime's wheel-on-bare-ScrollView fallback
+/// (`FocusEngine.dispatchWheelToScrollNode`). Both paths must agree on
+/// axis-respecting step sizes, page extents, and max-offset clamping
+/// so wheel feel is identical regardless of routing.
+public enum _ScrollMath {
+    @discardableResult
+    public static func mutateOffset(event: KeyEvent, axis: ScrollAxis, node: AttributeNode) -> KeyEventResult {
+        guard let content = node.children.first else { return .ignored }
+        let viewport = node.rect
+        let contentExtent: Int
+        let viewportExtent: Int
+        switch axis {
+        case .vertical:
+            contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
+            viewportExtent = viewport.height
+        case .horizontal:
+            contentExtent = GraphMeasurer.measureWidth(content)
+            viewportExtent = viewport.width
+        }
+        let maxOffset = max(0, contentExtent - viewportExtent)
+        let pageStep = max(1, viewportExtent - 1)
 
-    let delta: Int?
-    switch (axis, event.key) {
-    case (.vertical, .up), (.horizontal, .left): delta = -1
-    case (.vertical, .down), (.horizontal, .right): delta = 1
-    case (_, .pageUp): delta = -pageStep
-    case (_, .pageDown): delta = pageStep
-    case (_, .home): node.scrollOffset = 0; return .handled
-    case (_, .end): node.scrollOffset = maxOffset; return .handled
-    default: return .ignored
+        let delta: Int?
+        switch (axis, event.key) {
+        case (.vertical, .up), (.horizontal, .left): delta = -1
+        case (.vertical, .down), (.horizontal, .right): delta = 1
+        case (_, .pageUp): delta = -pageStep
+        case (_, .pageDown): delta = pageStep
+        case (_, .home): node.scrollOffset = 0; return .handled
+        case (_, .end): node.scrollOffset = maxOffset; return .handled
+        default: return .ignored
+        }
+        if let delta {
+            node.scrollOffset = max(0, min(maxOffset, node.scrollOffset + delta))
+            return .handled
+        }
+        return .ignored
     }
-    if let delta {
-        node.scrollOffset = max(0, min(maxOffset, node.scrollOffset + delta))
-        return .handled
-    }
-    return .ignored
 }

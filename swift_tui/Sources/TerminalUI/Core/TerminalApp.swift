@@ -535,10 +535,24 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// fixing.
     private func routeWheelEvent(_ event: KeyEvent, mouseEvent: MouseEvent, policy: MouseFocusPolicy) -> Bool {
         guard let root = graph.root else { return false }
-        guard let targetID = focusEngine.wheelTargetID(x: mouseEvent.x, y: mouseEvent.y, root: root, policy: policy) else {
-            return false
+        if let targetID = focusEngine.wheelTargetID(x: mouseEvent.x, y: mouseEvent.y, root: root, policy: policy) {
+            return focusEngine.routeKeyEvent(event, root: root, startingFrom: targetID)
         }
-        return focusEngine.routeKeyEvent(event, root: root, startingFrom: targetID)
+        // Hovered-ScrollView fallback: no focusable under the cursor,
+        // but the user might still be hovering a bare `ScrollView`
+        // (e.g. a sidebar that uses `.scrollPosition(id:)` for
+        // selection-driven scrolling but never opted into
+        // `.scrollable()`). SwiftUI's contract: wheel is owned by the
+        // deepest scroll region under the cursor. Skipped under
+        // `.disabled` because that policy explicitly drops auto-routed
+        // wheel events.
+        if policy != .disabled,
+           let scrollNode = focusEngine.findScrollNodeAt(x: mouseEvent.x, y: mouseEvent.y, root: root)
+        {
+            focusEngine.dispatchWheelToScrollNode(scrollNode, event: event)
+            return true
+        }
+        return false
     }
 
     // MARK: - Paste Event Handling

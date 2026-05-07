@@ -1242,6 +1242,41 @@ def storybook_mouse_wheel_routes_to_hover_target(app: Client) -> None:
     )
 
 
+def storybook_mouse_wheel_scrolls_hovered_sidebar(app: Client) -> None:
+    """User-reported: wheel-scroll over the Storybook sidebar must
+    advance the sidebar's viewport even when keyboard focus is on
+    the preview pane. The sidebar is a bare `ScrollView` (no
+    `.scrollable()`) — the framework's `wheelTargetID` finds no
+    focusable under the cursor and previously dropped the wheel.
+    The hovered-ScrollView fallback in the runtime now mutates the
+    deepest scroll-layout's offset directly so visual sliding
+    matches user intent. Verbatim user report (2026-05-06):
+    *\"scroll doesn't work with mouse when storybook sidebar is in
+    mouse focus.\"*"""
+    # Drive sidebar to the top so we have downward room.
+    app.goto_page("Text")  # First page in the alphabet — sidebar at top.
+    app.wait_for_frame(1, timeout=0.5)
+    rows_before = app.storybook_sidebar_rows()
+    assert_true(
+        len(rows_before) > 0,
+        "sidebar must show at least one row before scroll",
+    )
+    # Hover over a sidebar row well below any divider line.
+    app.mouse_move(10, 10)
+    app.wait_for_frame(1, timeout=0.3)
+    # Send wheel-down at the same coordinate. The runtime's
+    # findScrollNodeAt fallback should locate the sidebar's scroll
+    # layout and advance its offset by 3 rows.
+    app.mouse_wheel("down", 10, 10)
+    app.wait_for_frame(2, timeout=0.5)
+    rows_after = app.storybook_sidebar_rows()
+    assert_true(
+        rows_before != rows_after,
+        f"wheel-down on hovered sidebar must change visible rows; "
+        f"before={rows_before[:3]} after={rows_after[:3]}",
+    )
+
+
 def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
     """Bug #1 (sister): once the user clicks somewhere, hover-only
     motion should not steal focus or routing — until the next click
@@ -1579,6 +1614,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.mouse_click_on_sidebar_navigates", "Storybook", storybook_mouse_click_on_sidebar_navigates),
     SmokeCase("storybook.mouse_wheel_routes_to_hover_target", "Storybook", storybook_mouse_wheel_routes_to_hover_target),
     SmokeCase("storybook.mouse_wheel_scrolls_hovered_scrollview", "Storybook", storybook_mouse_wheel_scrolls_hovered_scrollview),
+    SmokeCase("storybook.mouse_wheel_scrolls_hovered_sidebar", "Storybook", storybook_mouse_wheel_scrolls_hovered_sidebar),
     SmokeCase("storybook.mouse_click_locks_until_next_click", "Storybook", storybook_mouse_click_locks_until_next_click),
     SmokeCase("storybook.actions_modifier_fires_via_chord", "Storybook", storybook_actions_modifier_fires_via_chord),
     SmokeCase("storybook.list_actions_returns_quit_default", "Storybook", storybook_list_actions_returns_quit_default),
