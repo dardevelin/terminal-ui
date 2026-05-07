@@ -1,20 +1,32 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 
 /// Resolves filesystem paths for diagnostic output.
 ///
 /// Layout:
 /// ```
-/// .terminalui/                        project-local config
-///   terminalui.toml                   config file
-///   data -> /tmp/terminalui-{hash}/   symlink to ephemeral output
+/// .terminalui/                              project-local config
+///   terminalui.toml                         config file
+///   data -> /tmp/terminalui-{hash}-{pid}/   symlink to most-recent ephemeral output
 ///
-/// /tmp/terminalui-{hash}/             ephemeral output (hash of cwd)
+/// /tmp/terminalui-{hash}-{pid}/             ephemeral output, one dir per process
 ///   captures/
 ///   screenshots/
 ///   traces/
 ///   debug.sock
 ///   debug.jsonl
 /// ```
+///
+/// `{hash}` is FNV-1a of the cwd — same for every instance launched
+/// from this checkout. `{pid}` is the process's own PID — unique per
+/// instance. Two processes from the same checkout never collide on
+/// any path. The project-local `.terminalui/data` symlink points at
+/// the most-recently booted instance's dir as a convenience for
+/// `swtui ctl` no-arg invocations.
 ///
 /// When `useTmp = false`, output goes directly under `.terminalui/` with no symlink.
 public enum DiagPaths {
@@ -48,29 +60,33 @@ public enum DiagPaths {
         (configDir as NSString).appendingPathComponent(symlinkName)
     }
 
-    /// The ephemeral output directory in `/tmp/`.
-    /// Hash is FNV-1a of the current working directory for per-project isolation.
+    /// The ephemeral output directory in `/tmp/` for the calling process.
+    /// `{hash}` is FNV-1a of the cwd (same across instances from this
+    /// checkout); `{pid}` is the calling process's own PID — unique per
+    /// instance. Concurrent runs from the same checkout never share a
+    /// path, which is why `swtui ctl kill --pid <N>` is the only way to
+    /// affect another instance.
     public static var tmpDataDir: String {
         let cwd = FileManager.default.currentDirectoryPath
         let hash = fnv1a(cwd)
-        return "/tmp/\(tmpPrefix)\(hash)"
+        return "/tmp/\(tmpPrefix)\(hash)-\(getpid())"
     }
 
-    /// Environment variable that, when set, overrides every `dataDir(useTmp:)`
-    /// resolution at runtime. The smoke harness sets this for each spawned
-    /// child to a path under `/tmp/terminalui-smoke-{runner_pid}-{n}/` so
-    /// concurrent smoke runs never share state with a live storybook session
-    /// — without isolation, both processes wrote to the same
-    /// `/tmp/terminalui-{hash}/` dir and the smoke child's `latest.sock`
-    /// symlink + mouse-mode bytes leaked into the live shell. Production
-    /// (live) processes leave it unset and fall through to the
-    /// config-driven path. The override is read on every call so a parent
-    /// process can launch isolated children in the same address space.
+    /// FNV-1a hash of the current cwd, exposed so callers can enumerate
+    /// every per-process dir for THIS checkout regardless of PID.
+    public static var cwdHash: String {
+        fnv1a(FileManager.default.currentDirectoryPath)
+    }
+
+    /// Environment variable that, when set, overrides `dataDir(useTmp:)`
+    /// to a caller-supplied path. Test-only escape hatch — the framework
+    /// itself never sets this. Production processes leave it unset and
+    /// fall through to the per-process `tmpDataDir`.
     public static let dataDirEnvVar = "TERMINALUI_DATA_DIR"
 
     /// The resolved data root — either the `TERMINALUI_DATA_DIR` env
-    /// override, `/tmp/terminalui-{hash}/`, or `.terminalui/` depending
-    /// on config.
+    /// override, `/tmp/terminalui-{hash}-{pid}/`, or `.terminalui/`
+    /// depending on config.
     public static func dataDir(useTmp: Bool) -> String {
         if let override = ProcessInfo.processInfo.environment[dataDirEnvVar],
            !override.isEmpty {
@@ -133,23 +149,32 @@ public enum DiagPaths {
             try? fm.createDirectory(atPath: path, withIntermediateDirectories: true)
         }
 
-        // Set up symlink when using /tmp/
+        // Atomically point .terminalui/data at this process's per-PID
+        // dir when using /tmp. Race-free: link/rename can't be observed
+        // partially even when concurrent boots collide.
         if config.useTmp {
-            let link = symlinkPath
-            // Remove stale symlink or file at the link path
-            if fm.fileExists(atPath: link) || (try? fm.destinationOfSymbolicLink(atPath: link)) != nil {
-                try? fm.removeItem(atPath: link)
-            }
-            try? fm.createSymbolicLink(atPath: link, withDestinationPath: root)
+            try? updateDataSymlink()
         }
     }
 
-    /// Remove all ephemeral output for this project.
+    /// Remove every ephemeral output dir for this project — all
+    /// `/tmp/terminalui-{cwd-hash}-*/` directories regardless of PID.
+    /// Used by `swtui clean` for an explicit project-wide nuke.
+    /// Does NOT distinguish live vs dead processes; for safe automated
+    /// cleanup of stale-only state use `swtui ctl reap` instead.
     public static func clean() {
         let fm = FileManager.default
 
-        // Remove /tmp/ data
-        try? fm.removeItem(atPath: tmpDataDir)
+        // Remove every per-PID dir for this cwd. The prefix is stable
+        // across instances; siblings are distinguished only by PID
+        // suffix.
+        let parent = "/tmp"
+        let pidPrefix = "\(tmpPrefix)\(cwdHash)-"
+        if let entries = try? fm.contentsOfDirectory(atPath: parent) {
+            for entry in entries where entry.hasPrefix(pidPrefix) {
+                try? fm.removeItem(atPath: (parent as NSString).appendingPathComponent(entry))
+            }
+        }
 
         // Remove symlink
         let link = symlinkPath
@@ -162,6 +187,64 @@ public enum DiagPaths {
             let path = (configDir as NSString).appendingPathComponent(subdir)
             try? fm.removeItem(atPath: path)
         }
+    }
+
+    /// Remove the calling process's own `tmpDataDir` and unlink the
+    /// project-local `.terminalui/data` symlink **if** it points at
+    /// our dir. Called from the runtime's atexit hook so a clean exit
+    /// doesn't leak per-PID state. Crashes leave the dir for the next
+    /// `swtui ctl reap` to handle — orphan dirs are recoverable; live
+    /// ones are not, so this method intentionally never touches a dir
+    /// it doesn't own.
+    public static func cleanupOwnDir() {
+        let fm = FileManager.default
+        let own = tmpDataDir
+        try? fm.removeItem(atPath: own)
+        // Only unlink the symlink if it still points at our dir — a
+        // newer instance may have repointed it.
+        let link = symlinkPath
+        if let dest = try? fm.destinationOfSymbolicLink(atPath: link), dest == own {
+            try? fm.removeItem(atPath: link)
+        }
+    }
+
+    /// Atomically point `.terminalui/data` at this process's
+    /// `tmpDataDir`. Race-free across concurrent boots: writes a
+    /// uniquely-named temporary symlink, then `rename(2)`s it over
+    /// the canonical path. Per POSIX `rename(2)`, the swap is atomic
+    /// — at no point does a reader see a missing or partially-updated
+    /// link. Idempotent: repeated calls converge on the same target.
+    public static func updateDataSymlink() throws {
+        let fm = FileManager.default
+        let target = tmpDataDir
+        // Ensure the parent (.terminalui/) exists; `swtui status` may
+        // call this before `ensureDirectories` has run.
+        try? fm.createDirectory(atPath: configDir, withIntermediateDirectories: true)
+
+        let link = symlinkPath
+        // Build a temp link name in the same dir so `rename(2)` is on
+        // the same filesystem (cross-fs rename returns EXDEV).
+        let tmpLink = "\(link).tmp.\(getpid()).\(arc4random())"
+        // Best-effort cleanup of any prior tmp link from a crashed run.
+        try? fm.removeItem(atPath: tmpLink)
+        try fm.createSymbolicLink(atPath: tmpLink, withDestinationPath: target)
+
+        // POSIX rename(2): atomic replace if dst exists. Wraps the
+        // remove+create-with-the-name-already-taken race seen on the
+        // old `removeItem + createSymbolicLink` path.
+        let result = rename(tmpLink, link)
+        if result != 0 {
+            // Best-effort tmp cleanup before surfacing the error.
+            try? fm.removeItem(atPath: tmpLink)
+            throw SymlinkUpdateError.renameFailed(errno: errno)
+        }
+    }
+
+    /// Errors thrown by `updateDataSymlink`. Currently only the
+    /// rename(2) failure path; create(2) failures bubble out as
+    /// `Foundation.CocoaError`.
+    public enum SymlinkUpdateError: Error, Equatable {
+        case renameFailed(errno: Int32)
     }
 
     // MARK: - Config file I/O

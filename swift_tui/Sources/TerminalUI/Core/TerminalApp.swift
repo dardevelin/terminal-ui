@@ -286,6 +286,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             remoteControl = nil
             let latest = "\(DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp))/latest.sock"
             _ = unlink(latest)
+            // Remove this process's per-PID tmpDataDir on graceful exit.
+            // Crashes leave the dir for the next `swtui ctl reap` to
+            // handle — orphan dirs are recoverable, live ones are not,
+            // so cleanupOwnDir intentionally only touches the dir whose
+            // PID matches the calling process.
+            DiagPaths.cleanupOwnDir()
             #endif
         }
 
