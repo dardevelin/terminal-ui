@@ -330,12 +330,14 @@ func ctlCommand(args: [String]) {
     // token is the subcommand; the rest become positional args.
     var socketDir = DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp)
     var socketPath = "\(socketDir)/latest.sock"
+    var explicitPID: Int32? = nil
     var nonFlags: [String] = []
     var i = 0
     while i < args.count {
         let arg = args[i]
         if arg == "--pid", i + 1 < args.count {
             socketPath = "\(socketDir)/\(args[i + 1]).sock"
+            explicitPID = Int32(args[i + 1])
             i += 2
         } else if arg == "--socket", i + 1 < args.count {
             socketPath = args[i + 1]
@@ -442,14 +444,24 @@ func ctlCommand(args: [String]) {
     case "quit":
         payload = ["id": 1, "cmd": "quit"]
     case "list":
-        // Enumerate running debug apps by reading the socket directory.
-        // No socket round-trip needed — it's a filesystem query.
+        // Read-only enumeration of running debug apps. No filesystem
+        // mutation: dead sockets are reported as dead but NOT unlinked.
+        // Use `swtui ctl reap` to clean those up.
         ctlList(socketDir: socketDir)
         return
+    case "reap":
+        // Unlink stale sockets whose owning PID is dead. Never sends
+        // `quit`. Live processes are always preserved. This is the
+        // verb automation calls; humans use `kill --pid <N>` when
+        // they know exactly what they're killing.
+        ctlReap(socketDir: socketDir)
+        return
     case "kill":
-        // Send `quit` to every app (or a targeted one). Useful from CI /
-        // smoke runners that don't want to rely on pkill.
-        ctlKill(socketDir: socketDir, positional: positional, defaultPath: socketPath)
+        // Send `quit` to a single explicit PID. The legacy `kill all`
+        // dragnet is gone — too easy to send `quit` to the user's
+        // live session by accident. Bare `kill` (no --pid) is a
+        // usage error that exits non-zero.
+        ctlKill(socketDir: socketDir, explicitPID: explicitPID, positional: positional)
         return
     default:
         log.error("unknown ctl subcommand: \(subcommand)")
@@ -522,6 +534,11 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
 /// Walk the socket directory and print each running app's PID + socket
 /// path. Skips `latest.sock` (a symlink) so the output is one row per
 /// live binary.
+/// Read-only enumeration of running debug apps. Probes each socket's
+/// owning PID with `kill(pid, 0)` to label it alive or dead, but
+/// **never mutates filesystem state**. Stale sockets are reported but
+/// not unlinked — that's `swtui ctl reap`'s job. Splitting display
+/// from cleanup means automation can `list` without fearing accidents.
 private func ctlList(socketDir: String) {
     let fm = FileManager.default
     guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else {
@@ -529,95 +546,125 @@ private func ctlList(socketDir: String) {
         print("(no sockets — socket dir missing)")
         return
     }
-    var found = 0
+    var aliveCount = 0
+    var deadCount = 0
     for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
         let path = "\(socketDir)/\(name)"
         let pid = name.replacingOccurrences(of: ".sock", with: "")
-        // Verify the app is alive. Stale sockets accumulate when an app
-        // is killed hard; auto-reap them so subsequent runs have a clean
-        // directory. (The runtime's defer cleans up on graceful exit.)
         let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
-        if !alive {
-            _ = unlink(path)
-            continue
-        }
         // Machine-readable list — keep plain so `swtui ctl list | awk`
         // works without stripping ANSI.
-        print("pid=\(pid) status=alive socket=\(path)")
-        found += 1
+        let status = alive ? "alive" : "dead"
+        print("pid=\(pid) status=\(status) socket=\(path)")
+        if alive { aliveCount += 1 } else { deadCount += 1 }
     }
-    if found == 0 {
-        print("(no running debug apps)")
+    if aliveCount == 0 && deadCount == 0 {
+        print("(no debug apps)")
+    } else if deadCount > 0 {
+        // Hint at the reap path — but only when there's something to reap.
+        print("# \(deadCount) dead socket\(deadCount == 1 ? "" : "s") — run `swtui ctl reap` to clean")
     }
 }
 
-/// Graceful shutdown helper. Without args, sends `quit` to every .sock
-/// file in the socket dir + unlinks stale ones. With a positional "all"
-/// the behavior is the same — kept for explicit tests. With a PID,
-/// targets that single app.
-private func ctlKill(socketDir: String, positional: [String], defaultPath: String) {
+/// Unlink stale sockets whose owning PID is dead. Never sends `quit`.
+/// Live processes are always preserved. The verb automation should
+/// call from CI / Stop hooks / cron — replaces the legacy `kill all`
+/// dragnet which sent `quit` indiscriminately.
+private func ctlReap(socketDir: String) {
     let fm = FileManager.default
-    let target = positional.first
-    let paths: [String]
-    if let target, target != "all" {
-        paths = ["\(socketDir)/\(target).sock"]
-    } else {
-        // Collect every .sock (excluding the latest symlink).
-        let entries = (try? fm.contentsOfDirectory(atPath: socketDir)) ?? []
-        paths = entries
-            .filter { $0.hasSuffix(".sock") && $0 != "latest.sock" }
-            .map { "\(socketDir)/\($0)" }
-    }
-    if paths.isEmpty {
-        print("(nothing to kill)")
+    guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else {
+        print("(no sockets — socket dir missing)")
         return
     }
-    for path in paths {
-        let pid = (path as NSString).lastPathComponent
-            .replacingOccurrences(of: ".sock", with: "")
-        // Try clean shutdown first via the socket's quit command. If the
-        // app is already dead the connect fails, in which case just unlink
-        // the stale socket so the next boot doesn't collide.
-        let payload: [String: Any] = ["id": 1, "cmd": "quit"]
-        guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
-            print("pid=\(pid) status=encode-failed")
-            continue
+    var reaped = 0
+    for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
+        let path = "\(socketDir)/\(name)"
+        let pid = name.replacingOccurrences(of: ".sock", with: "")
+        let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
+        if alive { continue }
+        if unlink(path) == 0 {
+            print("reaped pid=\(pid) socket=\(path)")
+            reaped += 1
         }
-        #if canImport(Glibc)
-        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-        #else
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        #endif
-        if fd < 0 {
-            print("pid=\(pid) status=socket-failed")
-            continue
-        }
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            _ = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
-                strncpy(buf, path, 103)
-            }
-        }
-        let connectResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        if connectResult != 0 {
-            close(fd)
-            _ = unlink(path)  // stale socket → clean up
-            print("pid=\(pid) status=stale-unlinked")
-            continue
-        }
-        var bytes = payloadData
-        bytes.append(0x0A)
-        _ = bytes.withUnsafeBytes { buf in
-            write(fd, buf.baseAddress!, buf.count)
-        }
-        close(fd)
-        print("pid=\(pid) status=quit-sent")
     }
+    print("# \(reaped) socket\(reaped == 1 ? "" : "s") reaped")
+}
+
+/// Graceful shutdown helper for a single explicit PID. Connects to
+/// `<socketDir>/<pid>.sock`, sends `quit`. If the connect fails (the
+/// process is already dead), the stale socket file is unlinked so it
+/// doesn't accumulate.
+///
+/// **Bare `kill` (no `--pid`) is a usage error.** The legacy "kill
+/// every socket in this dir" dragnet was a footgun — it could send
+/// `quit` to a user's live `swift run Storybook` session that
+/// happened to share a directory with whatever the caller was trying
+/// to clean up. Identity must be explicit.
+private func ctlKill(socketDir: String, explicitPID: Int32?, positional: [String]) {
+    // Refuse the legacy "all" alias and bare-kill invocations both —
+    // surface a usage error so automation that relied on the old
+    // semantics fails loudly instead of silently doing the wrong
+    // thing.
+    if positional.contains("all") {
+        FileHandle.standardError.write(Data(
+            "swtui ctl kill: `kill all` is removed (footgun — could quit your live session). Use `swtui ctl reap` to clean dead sockets, or `swtui ctl kill --pid <N>` to target one process.\n".utf8))
+        exit(2)
+    }
+    guard let pid = explicitPID else {
+        FileHandle.standardError.write(Data(
+            "swtui ctl kill: --pid <N> is required. Use `swtui ctl list` to see running apps, or `swtui ctl reap` to clean stale sockets.\n".utf8))
+        exit(2)
+    }
+    // Reject extra positional args — the verb takes nothing else.
+    if !positional.isEmpty {
+        FileHandle.standardError.write(Data(
+            "swtui ctl kill: unexpected positional argument(s) \(positional). Usage: `swtui ctl kill --pid <N>`\n".utf8))
+        exit(2)
+    }
+
+    let path = "\(socketDir)/\(pid).sock"
+    let payload: [String: Any] = ["id": 1, "cmd": "quit"]
+    guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
+        print("pid=\(pid) status=encode-failed")
+        exit(1)
+    }
+    #if canImport(Glibc)
+    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+    #else
+    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
+    #endif
+    if fd < 0 {
+        print("pid=\(pid) status=socket-failed")
+        exit(1)
+    }
+    var addr = sockaddr_un()
+    addr.sun_family = sa_family_t(AF_UNIX)
+    withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
+        _ = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
+            strncpy(buf, path, 103)
+        }
+    }
+    let connectResult = withUnsafePointer(to: &addr) { ptr in
+        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
+            connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+        }
+    }
+    if connectResult != 0 {
+        close(fd)
+        // Stale socket → clean up the file so it doesn't accumulate.
+        // This preserves the existing graceful-shutdown semantics for
+        // the explicit-PID path (caller asked for this PID by name).
+        _ = unlink(path)
+        print("pid=\(pid) status=stale-unlinked")
+        return
+    }
+    var bytes = payloadData
+    bytes.append(0x0A)
+    _ = bytes.withUnsafeBytes { buf in
+        write(fd, buf.baseAddress!, buf.count)
+    }
+    close(fd)
+    print("pid=\(pid) status=quit-sent")
 }
 
 private func printCtlUsage() {
@@ -638,8 +685,9 @@ private func printCtlUsage() {
         ("frame",                      "current frame number"),
         ("screenshot",                 "ask the runtime to capture the next frame to disk"),
         ("quit",                       "ask the app to exit cleanly (Ctrl+C via socket)"),
-        ("list",                       "list all running debug apps (pid, status, socket)"),
-        ("kill [pid|all]",             "send quit to one pid (or all); cleans up stale sockets"),
+        ("list",                       "list debug apps + their socket status (read-only)"),
+        ("reap",                       "unlink stale sockets whose owning PID is dead"),
+        ("kill --pid <N>",             "send quit to one explicit PID (no dragnet)"),
     ]
     for (cmd, desc) in subs {
         let cell = cmd.padding(toLength: 30, withPad: " ", startingAt: 0)
