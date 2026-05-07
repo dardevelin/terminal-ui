@@ -476,11 +476,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .actionContext: return PageInfo(id: self, category: .modifiers, name: ".actionContext",
             summary: "Stack-based 'mode' system — i3 in spirit, sparse predicate in code. Bindings declared with .bound(to:whenContext:) only fire when the runtime ActionContext stack matches. Lets resize-mode / move-mode hotkeys live alongside default bindings without a global state machine.",
             code: """
-                // bindings in scope:
+                // bindings in scope. Ctrl, not Option: Apple Terminal /
+                // iTerm2 default to Option-as-compose, so Option+R
+                // emits ® instead of the modifier+key pair the binding
+                // expects. Ctrl is universally passed through.
                 Action(id: "enter.resize", title: .literal("Resize Mode")) {
                     env.actionContext.push("resize")
                 }
-                .bound(to: .keyboard(.character("r"), [.alt]))
+                .bound(to: .keyboard(.character("r"), [.ctrl]))
 
                 Action(id: "resize.right", title: .literal("Grow Right")) {
                     state.width += 1

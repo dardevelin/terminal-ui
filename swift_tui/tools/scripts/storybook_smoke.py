@@ -795,6 +795,39 @@ def storybook_disabled_skips_focus(app: Client) -> None:
     )
 
 
+def storybook_actioncontext_ctrl_r_enters_resize_mode(app: Client) -> None:
+    """`.actionContext` page: pressing Ctrl+R must push the "resize"
+    context, visible in the preview as `mode: resize`. Default mode
+    label is `mode: default`. Coverage that the demo's mode-toggle
+    binding fires through the universal Ctrl path — Option/Alt is
+    eaten by Apple Terminal as a compose key, so the demo deliberately
+    uses Ctrl. Pressing Ctrl+R again pops the context (toggle), and the
+    label returns to `mode: default`."""
+    app.goto_page(".actionContext")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    pre = app.preview_text()
+    assert_true(
+        "mode: default" in pre,
+        f".actionContext preview should show 'mode: default' before any chord — got {pre[:300]!r}",
+    )
+    app.chord("ctrl+r")
+    app.wait_for_frame(1, timeout=0.5)
+    after_enter = app.preview_text()
+    assert_true(
+        "mode: resize" in after_enter,
+        f"Ctrl+R should push 'resize' context — preview: {after_enter[:300]!r}",
+    )
+    # Toggle: second Ctrl+R returns to default.
+    app.chord("ctrl+r")
+    app.wait_for_frame(1, timeout=0.5)
+    after_exit = app.preview_text()
+    assert_true(
+        "mode: default" in after_exit,
+        f"Second Ctrl+R should pop back to default — preview: {after_exit[:300]!r}",
+    )
+
+
 def storybook_scrollview_shows_thumb_scrollbar(app: Client) -> None:
     """ScrollView with overflowing content paints the new thumb-track
     scrollbar — │ track on the right column with █ thumb segment."""
@@ -1584,6 +1617,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
     SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
     SmokeCase("storybook.disabled_skips_focus", "Storybook", storybook_disabled_skips_focus),
+    SmokeCase("storybook.actioncontext_ctrl_r_enters_resize_mode", "Storybook", storybook_actioncontext_ctrl_r_enters_resize_mode),
     SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
     SmokeCase("storybook.textinput_boundary_emits_under_modal", "Storybook", storybook_textinput_boundary_emits_under_modal),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),

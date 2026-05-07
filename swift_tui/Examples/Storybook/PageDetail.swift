@@ -490,7 +490,7 @@ struct PreviewPane: TerminalView {
             // account for the parent's actual size).
             VStack {
                 Text("Tab here.").foreground(.cyan)
-                Text("Option+R → enter resize mode  ·  L grows left  ·  H grows right  ·  Esc exits")
+                Text("\(KeyChord(.character("r"), [.ctrl]).formatted()) → enter resize mode  ·  L grows left  ·  H grows right  ·  Esc exits")
                     .foreground(.gray)
                 Text("mode: \(state.currentMode.current ?? "default")")
                     .foreground(.yellow).bold()
@@ -498,11 +498,20 @@ struct PreviewPane: TerminalView {
                 // explicit per-child ratios in its layout phase, so
                 // the visible boundary tracks `actionContextLeftFraction`
                 // exactly. (HStack with `.frame(width:)` doesn't honor
-                // proposed widths inside flex distribution — HYP-340.)
+                // proposed widths inside flex distribution — see the
+                // separate framework-correctness ticket for that bug.)
                 // Each leaf is bordered so the boundary slide moves
                 // visible rectangle edges, not just text.
                 SplitView(state: state.actionContextSplit)
                     .frame(height: 5)
+                // Discoverability banner. Apple Terminal.app and iTerm2
+                // default to using Option as a compose key, so demos
+                // built around Option-modified bindings silently break
+                // out of the box. We chose Ctrl above to sidestep that;
+                // this row teaches users how to enable Option-as-Meta
+                // if they want their own apps to use ⌥-chords.
+                Text("Note: ⌥ chords need Option-as-Meta — Terminal.app: Settings → Profiles → Keyboard → Use Option as Meta key. iTerm2: Settings → Profiles → Keys → Left/Right Option = Esc+. Kitty: on by default.")
+                    .foreground(.gray)
             }
             .focusable()
             .environment(\.actionContext, state.currentMode)
@@ -512,7 +521,7 @@ struct PreviewPane: TerminalView {
                     title: .literal("Enter / Exit Resize Mode"),
                     perform: { enterResizeMode() }
                 )
-                .bound(to: .keyboard(.character("r"), [.alt]))
+                .bound(to: .keyboard(.character("r"), [.ctrl]))
                 Action(
                     id: "storybook.context.grow",
                     title: .literal("Grow Left Pane"),
@@ -581,9 +590,9 @@ private func recordBoundaryHit(_ reason: BoundaryHitReason) {
 }
 
 /// Toggle "resize" mode on the actionContext stack — invoked by
-/// Option+R on the .actionContext page. If "resize" is currently the
+/// Ctrl+R on the .actionContext page. If "resize" is currently the
 /// top of the stack, pop it (exit). Otherwise push (enter). Toggling
-/// avoids the "press it twice and now you need 2 pops" bug — Option+R
+/// avoids the "press it twice and now you need 2 pops" bug — Ctrl+R
 /// is a single key the user expects to be self-inverse.
 @Sendable
 private func enterResizeMode() {
