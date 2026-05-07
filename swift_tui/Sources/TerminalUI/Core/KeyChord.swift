@@ -1,5 +1,3 @@
-// HYP-333 — Mac-native modifier symbol rendering.
-//
 // `KeyChord` pairs a `Key` with a `KeyModifiers` set and renders both
 // in either Apple's symbol convention (`⌥R`, `⌃⇧⇥`) or the Linux/Windows
 // spelled-out style (`Alt+R`, `Ctrl+Shift+Tab`). Default behaviour is
@@ -11,7 +9,7 @@
 // regardless of platform.
 //
 // Compile-time platform branch (`#if os(macOS)`) per the framework's
-// "no runtime platform checks" rule (memory: feedback_conditional_compilation.md).
+// "no runtime platform checks" rule.
 
 /// User-visible representation of a keyboard chord — the key plus any
 /// modifiers held with it. Used by every place the framework needs to
@@ -147,7 +145,7 @@ public enum ModifierLabelStyle: Sendable, Equatable {
 extension TerminalView {
     /// Override the modifier-label style for this subtree. Descendants
     /// rendering chord labels via `KeyChord.formatted(in:)` will read
-    /// the new value from the environment. HYP-333.
+    /// the new value from the environment.
     public func modifierLabelStyle(_ style: ModifierLabelStyle)
         -> ModifiedView<Self, EnvironmentModifier<ModifierLabelStyle>> {
         environment(\.modifierLabelStyle, style)

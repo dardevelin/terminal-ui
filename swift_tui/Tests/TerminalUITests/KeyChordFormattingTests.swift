@@ -2,13 +2,11 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-333 Slice A — Mac-native modifier symbol rendering.
-//
-// KeyChord pairs a Key + KeyModifiers and renders user-visible strings
-// in Apple's symbol convention (`⌥ ⌃ ⇧`) on macOS or Linux/Windows-style
-// names (`Alt Ctrl Shift`) elsewhere. Cross-cutting framework concern;
-// every chord display in storybook code snippets, future help overlay,
-// and command palette consults this helper.
+// KeyChord renders user-visible strings in Apple's symbol convention
+// (`⌥ ⌃ ⇧`) on macOS or Linux/Windows-style names (`Alt Ctrl Shift`)
+// elsewhere. Cross-cutting framework concern: every chord display in
+// storybook code snippets, future help overlay, and command palette
+// consults this helper.
 
 @Suite("KeyChord — modifier rendering for Mac and Linux conventions")
 struct KeyChordFormattingTests {
@@ -101,5 +99,46 @@ struct KeyChordFormattingTests {
         env.modifierLabelStyle = .symbolic
         #expect(chord.formatted(in: env) == "⌥R",
                 "explicit .symbolic in env must override platform default")
+    }
+
+    // Spec acceptance #8 — the .modifierLabelStyle(_:) view modifier
+    // must propagate through the env so descendants render with the
+    // overridden style even on a platform whose default disagrees.
+    // We exercise the same EnvironmentModifier.apply call the graph
+    // renderer makes during view tree traversal: this is the contract
+    // every consumer of `formatted(in:)` relies on.
+    @Test("modifier override propagates style through environment")
+    func envOverridePerSubtree() {
+        let chord = KeyChord(.character("r"), [.alt])
+
+        // Start from defaults — `.automatic` resolves to the platform default.
+        var env = EnvironmentValues()
+        let defaultRender = chord.formatted(in: env)
+        #if os(macOS)
+        #expect(defaultRender == "⌥R", "macOS default must be symbolic; got \(defaultRender)")
+        #else
+        #expect(defaultRender == "Alt+R", "non-macOS default must be named; got \(defaultRender)")
+        #endif
+
+        // Apply the same modifier .modifierLabelStyle(.named) emits.
+        let namedModifier = EnvironmentModifier(
+            keyPath: \EnvironmentValues.modifierLabelStyle,
+            value: ModifierLabelStyle.named
+        )
+        namedModifier.apply(to: &env)
+        #expect(env.modifierLabelStyle == .named,
+                "modifier must mutate env to .named for descendants")
+        #expect(chord.formatted(in: env) == "Alt+R",
+                "descendants on any platform must render named after override")
+
+        // And the symbolic override on a hypothetically-Linux subtree.
+        let symbolicModifier = EnvironmentModifier(
+            keyPath: \EnvironmentValues.modifierLabelStyle,
+            value: ModifierLabelStyle.symbolic
+        )
+        symbolicModifier.apply(to: &env)
+        #expect(env.modifierLabelStyle == .symbolic)
+        #expect(chord.formatted(in: env) == "⌥R",
+                "symbolic override must apply on every platform")
     }
 }

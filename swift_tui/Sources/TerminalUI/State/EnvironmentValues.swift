@@ -131,7 +131,7 @@ public struct EnvironmentValues: Sendable {
     /// How keyboard-chord labels render across the framework. Default
     /// `.automatic` picks platform-native: macOS → Apple symbols
     /// (`⌥R`), others → spelled-out names (`Alt+R`). Override per
-    /// subtree with `.modifierLabelStyle(_:)`. HYP-333.
+    /// subtree with `.modifierLabelStyle(_:)`.
     public var modifierLabelStyle: ModifierLabelStyle = .automatic
 
     public init() {}
