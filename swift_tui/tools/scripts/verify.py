@@ -48,33 +48,42 @@ def dirty_relevant_sources() -> bool:
     return False
 
 
-def kill_strays() -> None:
-    """Ask every running debug app to exit cleanly via the remote-control
-    socket, then clean up the socket directory. Uses `swtui ctl kill` so the
-    teardown happens through the same channel the tests themselves use —
-    no more pkill hunts for binaries behaving incorrectly."""
+def reap_dead_sockets() -> None:
+    """Unlink stale socket files left by debug apps that crashed without
+    cleanup. Calls `swtui ctl reap` which probes every socket's owning
+    PID with `kill(pid, 0)` and only unlinks the dead ones. Live
+    processes are NEVER touched.
+
+    Replaces the legacy `kill_strays()` whose `swtui ctl kill all`
+    dragnet would `quit` the user's live `swift run Storybook` when
+    running from this Stop hook mid-keystroke. PID-isolated diag dirs
+    plus the explicit-PID `kill` verb make that impossible by
+    construction; this function uses the safe verb.
+    """
     swtui = REPO_ROOT / ".build" / "debug" / "swtui"
-    if swtui.exists():
+    if not swtui.exists():
+        return
+    # Reap every dir matching /tmp/terminalui-*/remote — each
+    # PID-isolated dir has its own subdir. The verb is read-only with
+    # respect to live state; running it across all dirs is safe.
+    remote_dirs = sorted(Path("/tmp").glob("terminalui-*/remote"))
+    for remote_dir in remote_dirs:
+        if not remote_dir.is_dir():
+            continue
         subprocess.run(
-            [str(swtui), "ctl", "kill", "all"],
+            [str(swtui), "ctl", "--dir", str(remote_dir), "reap"],
             cwd=str(REPO_ROOT), check=False,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-    # Belt-and-suspenders: also reap stale socket files from /tmp that the
-    # ctl listing couldn't see (e.g. apps that died before writing their
-    # socket). The glob covers both the project-local and /tmp directories
-    # the config might point at.
-    for remote_dir in (
-        REPO_ROOT / ".terminalui" / "data" / "remote",
-        *Path("/tmp").glob("terminalui-*/remote"),
-    ):
-        if not remote_dir.is_dir():
-            continue
-        for entry in remote_dir.iterdir():
-            try:
-                entry.unlink()
-            except OSError:
-                pass
+    # Also reap the project-local fallback dir if it exists (config
+    # with `useTmp = false` writes here).
+    local_remote = REPO_ROOT / ".terminalui" / "data" / "remote"
+    if local_remote.is_dir():
+        subprocess.run(
+            [str(swtui), "ctl", "--dir", str(local_remote), "reap"],
+            cwd=str(REPO_ROOT), check=False,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
 
 
 def step(name: str, cmd: list[str], timeout: int) -> tuple[int, str]:
@@ -117,7 +126,7 @@ def main() -> int:
     if not dirty_relevant_sources():
         return 0
 
-    kill_strays()
+    reap_dead_sockets()
 
     rc, out = step("swift build", ["swift", "build"], BUILD_TIMEOUT_SECONDS)
     if rc != 0:
