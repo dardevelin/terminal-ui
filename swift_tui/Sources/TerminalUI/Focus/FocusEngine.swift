@@ -65,6 +65,14 @@ public final class FocusEngine: @unchecked Sendable {
     /// and `rebuildIndex` already visits every node once per frame.
     private var deepestContainmentDepth: Int = 0
 
+    /// Whether a modal presentation is currently containing focus.
+    ///
+    /// Apps consult this before acting on a global Escape binding: a dialog
+    /// is up, so Escape belongs to the dialog and quitting out from under it
+    /// would discard the user's context. The runtime enforces the same rule
+    /// for its own default quit path.
+    public var isContainingFocus: Bool { deepestContainmentDepth > 0 }
+
     /// Focusables Tab may currently reach, in traversal order. Cached
     /// alongside `focusableList` so the per-keypress path is a stored-array
     /// read rather than a fresh filter allocation.

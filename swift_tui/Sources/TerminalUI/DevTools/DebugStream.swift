@@ -72,6 +72,16 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// mid-session — so this cannot be caught at compile time.
     /// Shrink the content, or gate presentation on available size.
     case modalDoesNotFit
+    /// An alert declared more than one `.default` action. Return activates
+    /// the focused button, so a second default is unreachable by the key
+    /// users expect to trigger it — and which of the two takes initial
+    /// focus becomes declaration-order trivia. Give the secondary actions
+    /// `.cancel` or `.destructive`.
+    case alertMultipleDefaultActions
+    /// An alert was presented with no actions. Nothing would be focusable
+    /// inside it, so Tab and Return have no target; the framework renders a
+    /// lone dismiss button rather than leave an inescapable box on screen.
+    case alertHasNoActions
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -610,6 +620,8 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case bindingProjectedWithoutNode
     case componentOverflow
     case modalDoesNotFit
+    case alertMultipleDefaultActions
+    case alertHasNoActions
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()

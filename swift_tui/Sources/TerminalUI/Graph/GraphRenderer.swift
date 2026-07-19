@@ -1322,14 +1322,17 @@ public enum GraphRenderer {
             // Skip inside scroll containers: the scroll viewport's clipping
             // fights with indicator cells drawn outside the content area.
             if skipInScroll, scrollAncestorRect(of: node) != nil { return }
-            // Same reasoning inside a presented modal, which is likewise a
-            // bounded region: the cell left of the dialog's first column is
-            // its border, so an outside-the-rect bar would punch a hole in
-            // the frame. Fall back to `.bar`, which stays inside the rect
-            // and is the style that already exists for exactly this
-            // constraint — rather than dropping the indicator entirely and
-            // leaving the focused control unmarked.
-            if node.containmentDepth > 0 {
+            // A presented modal is a bounded region too, but only its edge
+            // cells are at risk: writing left of a control flush against the
+            // dialog frame would punch a hole in the border. One cell in from
+            // that — ordinary padding — is free, and using it preserves the
+            // control's own first column. That matters because `.bar` draws
+            // *inside* the rect, so a focused `Button` (`[ label ]`) would
+            // otherwise render as `▎ label ]` with its opening bracket gone.
+            // Fall back to `.bar` only when the adjacent cell is not blank,
+            // rather than dropping the indicator and leaving the control
+            // unmarked.
+            if node.containmentDepth > 0, !isBlankCellLeftOf(node, in: buffer) {
                 drawIndicator(node: node, style: .bar, glyph: glyph,
                               cellStyle: cellStyle, into: &buffer,
                               skipInScroll: skipInScroll)
@@ -1360,6 +1363,25 @@ public enum GraphRenderer {
                 buffer[r.x, y] = Cell(character: glyph, style: cellStyle)
             }
         }
+    }
+
+    /// Whether every cell immediately left of `node`'s rect is blank, i.e. the
+    /// indicator can be drawn there without overwriting a border, a sibling,
+    /// or a parent's chrome. Checked against what has already been composited
+    /// rather than inferred from the tree — the neighbouring cell may belong
+    /// to any ancestor, and the rendered buffer is the only place that is
+    /// known for certain.
+    private static func isBlankCellLeftOf(_ node: AttributeNode, in buffer: CellBuffer) -> Bool {
+        let r = node.rect
+        let x = r.x - 1
+        guard x >= 0, x < buffer.width else { return false }
+        let startY = max(0, min(r.y, buffer.height))
+        let endY = max(startY, min(r.y + r.height, buffer.height))
+        guard startY < endY else { return false }
+        for y in startY..<endY where buffer[x, y].character != " " {
+            return false
+        }
+        return true
     }
 
     /// Find the nearest scroll ancestor's viewport rect for clipping focus indicators.

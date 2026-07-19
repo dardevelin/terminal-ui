@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -525,6 +525,28 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         Text("[ Delete ]").focusable()
                     }
                 }
+                """)
+        case .alert: return PageInfo(id: self, category: .modifiers, name: ".alert",
+            summary: "Presents an alert with role-tagged actions. Esc always dismisses and fires the .cancel action; Return fires the .default one, which also takes initial focus. A .destructive action renders in the theme's error colour and is never focused first.",
+            code: """
+                Text("trigger").focusable()
+                    .alert("Delete file?",
+                           isPresented: $showAlert,
+                           message: "This cannot be undone.") {
+                        AlertAction("Delete", role: .destructive) { delete() }
+                        AlertAction("Cancel", role: .cancel) { }
+                    }
+                """)
+        case .confirmationDialog: return PageInfo(id: self, category: .modifiers, name: ".confirmationDialog",
+            summary: "Same vocabulary as .alert, stacked vertically — SwiftUI's action-sheet shape. Use it when the actions are choices rather than a confirm/cancel pair.",
+            code: """
+                Text("trigger").focusable()
+                    .confirmationDialog("Discard changes?",
+                                        isPresented: $showConfirm) {
+                        AlertAction("Discard", role: .destructive) { discard() }
+                        AlertAction("Save draft") { save() }
+                        AlertAction("Cancel", role: .cancel) { }
+                    }
                 """)
         }
     }

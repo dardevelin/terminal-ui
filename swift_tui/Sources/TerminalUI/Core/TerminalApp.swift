@@ -371,7 +371,19 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 // in `ActionScope.frameworkDefaults`. The runtime polls
                 // `pendingQuitSignal` after each event to see if the
                 // action fired during dispatch and tears down cleanly.
-                let shouldContinue = onEvent(event)
+                // A presented modal owns Escape. Apps commonly bind Escape to
+                // quit at the top level; honouring that while a dialog is up
+                // would tear the process down instead of closing the dialog,
+                // which is the worst failure mode in a terminal — there is no
+                // window chrome to fall back on. The dialog's own binding
+                // runs below in `handleKeyEvent`.
+                var shouldContinue = onEvent(event)
+                if !shouldContinue,
+                   case .key(let k) = event,
+                   k.key == .escape,
+                   focusEngine.isContainingFocus {
+                    shouldContinue = true
+                }
 
                 switch event {
                 case .key(let keyEvent):

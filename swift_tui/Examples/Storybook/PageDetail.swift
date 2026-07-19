@@ -605,6 +605,56 @@ struct PreviewPane: TerminalView {
                 }
                 .border(.rounded)
             }
+        case .alert:
+            VStack {
+                Text("Enter presents; Esc cancels, Return confirms").foreground(.gray)
+                Text("  [ delete file ]  ")
+                    .focusable()
+                    .onKeyPress { key in
+                        switch key.key {
+                        case .enter, .activate:
+                            state.alertPresented = true
+                            return .handled
+                        default:
+                            return .ignored
+                        }
+                    }
+                Text("chose: \(state.alertResult)").foreground(.gray)
+            }
+            .alert(
+                "Delete file?",
+                isPresented: Binding(get: { state.alertPresented },
+                                     set: { state.alertPresented = $0 }),
+                message: "This cannot be undone."
+            ) {
+                AlertAction("Delete", role: .destructive) { recordAlertChoice("Delete") }
+                AlertAction("Cancel", role: .cancel) { recordAlertChoice("Cancel") }
+            }
+        case .confirmationDialog:
+            VStack {
+                Text("Actions stack vertically — the action-sheet shape").foreground(.gray)
+                Text("  [ close editor ]  ")
+                    .focusable()
+                    .onKeyPress { key in
+                        switch key.key {
+                        case .enter, .activate:
+                            state.confirmPresented = true
+                            return .handled
+                        default:
+                            return .ignored
+                        }
+                    }
+                Text("chose: \(state.confirmResult)").foreground(.gray)
+            }
+            .confirmationDialog(
+                "Discard changes?",
+                isPresented: Binding(get: { state.confirmPresented },
+                                     set: { state.confirmPresented = $0 })
+            ) {
+                AlertAction("Discard", role: .destructive) { recordConfirmChoice("Discard") }
+                AlertAction("Save draft") { recordConfirmChoice("Save draft") }
+                AlertAction("Cancel", role: .cancel) { recordConfirmChoice("Cancel") }
+            }
         }
     }
 }
@@ -630,6 +680,23 @@ private func fireStorybookAction() {
 private func recordBoundaryHit(_ reason: BoundaryHitReason) {
     MainActor.assumeIsolated {
         state.boundaryHitMessage = "boundary: \(reason)"
+    }
+}
+
+/// Record which alert action the user chose. The dialog is already gone by
+/// the time this is read, so the page reports the choice inline — same
+/// trampoline pattern as the callbacks above.
+@Sendable
+private func recordAlertChoice(_ choice: String) {
+    MainActor.assumeIsolated {
+        state.alertResult = choice
+    }
+}
+
+@Sendable
+private func recordConfirmChoice(_ choice: String) {
+    MainActor.assumeIsolated {
+        state.confirmResult = choice
     }
 }
 

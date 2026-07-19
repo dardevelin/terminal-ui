@@ -37,6 +37,13 @@ final class StorybookState {
     // confines Tab to the dialog, so the page doubles as the live check
     // that focus containment holds.
     var modalPresented: Bool = false
+    // Alert demos. Separate flags so each page's dialog is independent, and
+    // a result line per page so the fired action is visible after dismissal
+    // — the dialog is gone by then, so the page itself has to report it.
+    var alertPresented: Bool = false
+    var alertResult: String = "(no choice yet)"
+    var confirmPresented: Bool = false
+    var confirmResult: String = "(no choice yet)"
     // Timeline-page demo: app advances `timelineFrame` via TerminalTimer
     // so the rendered braille-spinner cycles. The page reads
     // `timelineFrame % 8` to pick the displayed glyph; if no timer is

@@ -615,4 +615,41 @@ struct ModalFocusIndicatorTests {
         #expect(leftOfControl != "▎",
                 "indicator overwrote the dialog's border cell at x=\(target.x - 1)")
     }
+
+    @Test("a focused Button inside a modal keeps its opening bracket")
+    func indicatorDoesNotEatButtonBracket() {
+        // The complement of the border case: when the cell left of the
+        // control is interior padding rather than the frame, the indicator
+        // belongs there. Drawing inside the rect instead would land on
+        // `Button`'s own `[`, rendering the focused action as `▎ Cancel ]`
+        // — which affected every Button placed in any modal, not just alerts.
+        let graph = AttributeGraph()
+        graph.update(from: Text("background").focusable()
+            .modal(isPresented: true) {
+                VStack {
+                    Text("Delete this file?")
+                    Button("Cancel") {}
+                }
+                .padding()
+                .border()
+            })
+
+        let width = 40, height = 12
+        var buffer = CellBuffer(width: width, height: height)
+        let rect = Rect(x: 0, y: 0, width: width, height: height)
+        Layout.measureAndPlace(graph: graph.root!, in: rect)
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+        let contained = engine.collectFocusables(graph.root!).filter { $0.containmentDepth > 0 }
+        #expect(!contained.isEmpty, "modal must contain a focusable")
+        engine.keyboardFocusID = contained.first?.id
+        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root!)
+
+        let target = contained.first!.rect
+        guard target.y < height, target.x < width else { return }
+        #expect(buffer[target.x, target.y].character == "[",
+                "indicator overwrote the Button's opening bracket")
+    }
 }
