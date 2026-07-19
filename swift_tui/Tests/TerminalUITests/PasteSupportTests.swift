@@ -134,9 +134,12 @@ struct TextInputPasteTests {
                               boundaryMode: .bounce,
                               onBoundaryHit: nil)
 
-        // Each \n and \r becomes a space; CRLF becomes two spaces — that
-        // matches the per-character map. The single-line guarantee is
-        // what matters; whitespace shape is incidental.
+        // Every line terminator scalar becomes a space, so CRLF yields two.
+        // Replacement runs over unicode scalars rather than Characters:
+        // "\r\n" is one grapheme cluster equal to neither "\n" nor "\r",
+        // so a per-Character map would leave it intact and a literal newline
+        // would survive into a single-line field. The single-line guarantee
+        // is what matters; whitespace shape is incidental.
         #expect(!value.contains("\n"))
         #expect(!value.contains("\r"))
         #expect(value.count == cursorState)
@@ -315,5 +318,49 @@ struct PromptInputPasteTests {
                                 wrapWidth: 80)
 
         #expect(st.historyIndex == -1, "any text mutation drops the user out of history-recall mode")
+    }
+}
+
+// "\r\n" is a SINGLE grapheme cluster in Swift, equal to neither "\n" nor
+// "\r". A per-Character replacement therefore skips it entirely and a literal
+// newline reaches a single-line field. This passed on macOS and failed on
+// Linux purely by how the rest of the payload clustered — the invariant was
+// broken on both.
+
+@Suite("TextInput paste — line terminators are neutralised at scalar level")
+@MainActor
+struct PasteLineTerminatorTests {
+
+    private func pasted(_ payload: String) -> String {
+        var value = ""
+        var cursorState = 0
+        let textBinding = Binding(get: { value }, set: { value = $0 })
+        let cursorBinding = Binding(get: { cursorState }, set: { cursorState = $0 })
+        TextInput.handlePaste(payload,
+                              text: textBinding,
+                              cursor: cursorBinding,
+                              maxLength: nil,
+                              boundaryMode: .bounce,
+                              onBoundaryHit: nil)
+        return value
+    }
+
+    @Test("CRLF does not survive as a grapheme cluster")
+    func crlfNeutralised() {
+        let value = pasted("a\r\nb")
+        #expect(!value.contains("\n"), "literal LF survived CRLF: \(value.debugDescription)")
+        #expect(!value.contains("\r"), "literal CR survived CRLF: \(value.debugDescription)")
+        #expect(value == "a  b", "CRLF is two scalars → two spaces; got \(value.debugDescription)")
+    }
+
+    @Test("non-ASCII line terminators are neutralised too")
+    func unicodeSeparatorsNeutralised() {
+        // NEL, LINE SEPARATOR, PARAGRAPH SEPARATOR — a terminal renders each
+        // as a break, so a single-line field must not carry them.
+        for scalar in ["\u{0085}", "\u{2028}", "\u{2029}", "\u{000B}", "\u{000C}"] {
+            let value = pasted("a\(scalar)b")
+            #expect(value == "a b",
+                    "scalar U+\(String(format: "%04X", scalar.unicodeScalars.first!.value)) not neutralised: \(value.debugDescription)")
+        }
     }
 }

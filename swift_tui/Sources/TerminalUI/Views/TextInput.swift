@@ -352,6 +352,19 @@ public struct TextInput: TerminalView {
         }
     }
 
+    /// Scalars a terminal renders as a line break. Unicode Annex #14 (Line
+    /// Breaking Algorithm) class BK plus CR/LF: a single-line field must
+    /// neutralise all of them, not just the ASCII pair.
+    private static let lineTerminators: Set<Unicode.Scalar> = [
+        "\u{000A}",  // LF
+        "\u{000B}",  // VT
+        "\u{000C}",  // FF
+        "\u{000D}",  // CR
+        "\u{0085}",  // NEL
+        "\u{2028}",  // LINE SEPARATOR
+        "\u{2029}",  // PARAGRAPH SEPARATOR
+    ]
+
     /// Handle a bracketed-paste payload. TextInput is single-line, so
     /// embedded `\n` and `\r` are stripped (replaced with spaces) — the
     /// alternative would silently truncate the paste at the first
@@ -366,8 +379,17 @@ public struct TextInput: TerminalView {
                             onBoundaryHit: BoundaryHitCallback?) {
         guard !payload.isEmpty else { return }
 
-        let cleaned = payload.map { ($0 == "\n" || $0 == "\r") ? " " : $0 }
-        var insertion = String(cleaned)
+        // Map over unicode scalars, not Characters: "\r\n" is a SINGLE
+        // grapheme cluster in Swift, equal to neither "\n" nor "\r", so a
+        // per-Character map leaves CRLF untouched and a literal newline
+        // survives into a single-line field. Scalar-level replacement also
+        // covers the other line terminators a paste can carry — U+0085
+        // NEL, U+2028 LINE SEPARATOR, U+2029 PARAGRAPH SEPARATOR (Unicode
+        // Annex #14) — which a terminal will otherwise render as line
+        // breaks inside the field.
+        var insertion = String(String.UnicodeScalarView(payload.unicodeScalars.map {
+            Self.lineTerminators.contains($0) ? " " : $0
+        }))
         let value = text.get()
         let pos = resolveCursor(cursor.get(), valueCount: value.count)
 
