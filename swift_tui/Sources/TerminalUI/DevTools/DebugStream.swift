@@ -315,7 +315,12 @@ public final class DebugStream: @unchecked Sendable {
         // Ensure file exists, then append.
         let fm = FileManager.default
         if !fm.fileExists(atPath: url.path) {
-            fm.createFile(atPath: url.path, contents: nil)
+            // Explicitly discarded, matching the `try?` posture of the rest
+            // of this function: a diagnostics write must never disturb the
+            // app it is observing. The `FileHandle` guard below turns a
+            // failed creation into a silent no-op. Linux diagnoses the
+            // unused result, which the warnings-as-errors gate rejects.
+            _ = fm.createFile(atPath: url.path, contents: nil)
         }
         guard let handle = try? FileHandle(forWritingTo: url) else { return }
         defer { try? handle.close() }

@@ -83,7 +83,14 @@ public final class FileSink: LogSink, @unchecked Sendable {
         // Create the file if it doesn't exist; otherwise open for append.
         let fm = FileManager.default
         if !fm.fileExists(atPath: url.path) {
-            fm.createFile(atPath: url.path, contents: nil)
+            // Discarding the result would surface a creation failure as an
+            // opaque FileHandle error on the next line instead of naming the
+            // path that could not be created. On Linux the unused result is
+            // additionally a diagnostic, which the warnings-as-errors gate
+            // treats as a build failure.
+            guard fm.createFile(atPath: url.path, contents: nil) else {
+                throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
+            }
         }
         self.handle = try FileHandle(forWritingTo: url)
         // Append mode — seek to end so concurrent process restarts
