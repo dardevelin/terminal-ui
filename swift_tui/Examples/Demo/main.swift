@@ -802,6 +802,8 @@ struct ScopedRow: TerminalView {
 // MARK: - Help Overlay
 
 struct HelpOverlay: TerminalView {
+    let state: AppState
+
     static let content = [
         "  Keyboard Shortcuts     ",
         "─────────────────────────",
@@ -816,10 +818,23 @@ struct HelpOverlay: TerminalView {
     ].joined(separator: "\n")
 
     var body: some TerminalView {
-        Text(Self.content)
-            .padding(1)
-            .border(.double)
-            .foreground(.cyan)
+        VStack {
+            Text(Self.content)
+            Text("  [ Close ]  ")
+                .focusable()
+                .onKeyPress { key in
+                    switch key.key {
+                    case .enter, .activate:
+                        state.showHelp = false
+                        return .handled
+                    default:
+                        return .ignored
+                    }
+                }
+        }
+        .padding(1)
+        .border(.double)
+        .foreground(.cyan)
     }
 }
 
@@ -945,7 +960,7 @@ struct App: TerminalView {
     static func content() -> some TerminalView {
         App(state: state)
             .modal(isPresented: state.showHelp) {
-                HelpOverlay()
+                HelpOverlay(state: state)
             }
     }
 }

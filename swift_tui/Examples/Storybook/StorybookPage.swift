@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback
+    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -511,6 +511,20 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     .onBoundaryHit { reason in
                         message = "boundary: \\(reason)"
                     }
+                """)
+        case .modal: return PageInfo(id: self, category: .modifiers, name: ".modal",
+            summary: "Presents a floating panel over the screen and confines keyboard focus to it — Tab cycles inside the dialog and cannot reach the dimmed content behind it.",
+            code: """
+                VStack {
+                    Text("background").focusable()
+                }
+                .modal(isPresented: showDialog) {
+                    VStack {
+                        Text("Delete this file?")
+                        Text("[ Cancel ]").focusable()
+                        Text("[ Delete ]").focusable()
+                    }
+                }
                 """)
         }
     }

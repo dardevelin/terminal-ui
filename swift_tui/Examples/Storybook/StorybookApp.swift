@@ -33,6 +33,10 @@ final class StorybookState {
     // captures the most recent boundary reason for visual confirmation.
     var boundaryHitValue: String = ""
     var boundaryHitMessage: String = "(no boundary hit yet)"
+    // Modal demo: toggled by the page's own focusable trigger. Presenting
+    // confines Tab to the dialog, so the page doubles as the live check
+    // that focus containment holds.
+    var modalPresented: Bool = false
     // Timeline-page demo: app advances `timelineFrame` via TerminalTimer
     // so the rendered braille-spinner cycles. The page reads
     // `timelineFrame % 8` to pick the displayed glyph; if no timer is

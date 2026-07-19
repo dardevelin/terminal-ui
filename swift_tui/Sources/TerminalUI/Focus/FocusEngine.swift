@@ -54,6 +54,22 @@ public final class FocusEngine: @unchecked Sendable {
     /// Pre-computed ordered list of focusable nodes (depth-first, pre-order).
     private var focusableList: [AttributeNode] = []
 
+    /// The node focused immediately before a modal took containment, so
+    /// dismissal can return the user to where they left off rather than to
+    /// the top of the page. Cleared once restored.
+    private var focusBeforeContainment: NodeID?
+
+    /// Depth of the innermost presented modal in the current tree, or 0 when
+    /// none is presented. Folded into `buildIndexRecursive` rather than
+    /// re-derived per access: Tab, Shift-Tab and every mouse click ask for it,
+    /// and `rebuildIndex` already visits every node once per frame.
+    private var deepestContainmentDepth: Int = 0
+
+    /// Focusables Tab may currently reach, in traversal order. Cached
+    /// alongside `focusableList` so the per-keypress path is a stored-array
+    /// read rather than a fresh filter allocation.
+    private var traversableList: [AttributeNode] = []
+
     /// The root against which `rebuildIndex` last ran. Exposed so tooling
     /// built on top of FocusEngine (`.scrollable()` modifier's key handler,
     /// inspector probes, remote-control tree queries) can walk subtrees
@@ -80,10 +96,58 @@ public final class FocusEngine: @unchecked Sendable {
     public func rebuildIndex(root: AttributeNode) {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
+        deepestContainmentDepth = 0
         lastIndexedRoot = root
         buildIndexRecursive(root)
+        traversableList = deepestContainmentDepth == 0
+            ? focusableList
+            : focusableList.filter { $0.containmentDepth == deepestContainmentDepth }
         if let focused = keyboardFocusID, nodeIndex[focused] == nil {
             keyboardFocusID = nil
+        }
+        adoptActiveContainment()
+    }
+
+    /// Pull focus into a newly presented modal, and release it when that
+    /// modal is dismissed.
+    ///
+    /// Presenting is the moment containment starts, but nothing in the
+    /// runtime moves focus on its own: the auto-focus path in the app loop
+    /// only fires when nothing is focused at all, so focus would otherwise
+    /// sit on the background node it happened to be on and the user would
+    /// have to press Tab before the dialog responded.
+    ///
+    /// Dismissal is the mirror case — focus left inside a subtree that is
+    /// no longer presented would leave key events routing to a node the
+    /// user can no longer see.
+    private func adoptActiveContainment() {
+        let candidates = traversableFocusables
+        guard !candidates.isEmpty else { return }
+
+        // Focus already sits somewhere legal — nothing to adopt.
+        if let focused = keyboardFocusID,
+           candidates.contains(where: { $0.id == focused }) {
+            return
+        }
+
+        if candidates.contains(where: { $0.containmentDepth > 0 }) {
+            // A modal is presented and focus is outside it. Remember what
+            // the dialog interrupted so dismissing can put the user back
+            // where they were — losing the caret's place on dismiss is what
+            // makes dialogs feel broken.
+            focusBeforeContainment = keyboardFocusID
+            keyboardFocusID = candidates.first?.id
+            return
+        }
+
+        // No containment active. Only restore a remembered node — a plain
+        // rebuild with nothing focused must fall through to the runtime's
+        // own auto-focus path, which owns the "first focusable" policy.
+        if let restored = focusBeforeContainment {
+            focusBeforeContainment = nil
+            if candidates.contains(where: { $0.id == restored }) {
+                keyboardFocusID = restored
+            }
         }
     }
 
@@ -95,6 +159,7 @@ public final class FocusEngine: @unchecked Sendable {
         // node drops out of the Tab order entirely — SwiftUI parity.
         if node.isFocusable && (node._resolvedEnv?.isEnabled ?? true) {
             focusableList.append(node)
+            deepestContainmentDepth = max(deepestContainmentDepth, node.containmentDepth)
         }
         for child in node.children {
             buildIndexRecursive(child)
@@ -103,32 +168,56 @@ public final class FocusEngine: @unchecked Sendable {
 
     // MARK: - Keyboard Focus Traversal
 
+    /// The focusables Tab may currently reach.
+    ///
+    /// When a modal is presented, that set is exactly its contents: modality
+    /// "prevents interaction with the parent view" (Apple HIG, Patterns →
+    /// Modality), and a panel Tab can walk out of is not modal. With modals
+    /// nested, the deepest presentation owns focus — the graph already encodes
+    /// the nesting via `containmentDepth`, so the engine holds no stack of
+    /// its own and cannot drift out of sync with the tree.
+    ///
+    /// A presented modal with nothing focusable inside contributes no level
+    /// and traversal falls back to the outer set, so an empty dialog cannot
+    /// deadlock Tab.
+    private var traversableFocusables: [AttributeNode] { traversableList }
+
     /// Move keyboard focus to the next focusable node (Tab order).
     /// Tab order = depth-first pre-order of the view tree, matching visual reading order.
     /// Wraps around: last node → first node.
     public func focusNext() {
-        guard !focusableList.isEmpty else { return }
+        let candidates = traversableFocusables
+        guard !candidates.isEmpty else { return }
 
         if let current = keyboardFocusID,
-           let idx = focusableList.firstIndex(where: { $0.id == current }) {
-            let next = (idx + 1) % focusableList.count
-            keyboardFocusID = focusableList[next].id
+           let idx = candidates.firstIndex(where: { $0.id == current }) {
+            let next = (idx + 1) % candidates.count
+            keyboardFocusID = candidates[next].id
         } else {
-            keyboardFocusID = focusableList.first?.id
+            // Includes the case where focus sits outside an active
+            // containment: presenting a modal pulls focus into it.
+            keyboardFocusID = candidates.first?.id
         }
     }
 
     /// Move keyboard focus to the previous focusable node (Shift+Tab).
     public func focusPrevious() {
-        guard !focusableList.isEmpty else { return }
+        let candidates = traversableFocusables
+        guard !candidates.isEmpty else { return }
 
         if let current = keyboardFocusID,
-           let idx = focusableList.firstIndex(where: { $0.id == current }) {
-            let prev = idx == 0 ? focusableList.count - 1 : idx - 1
-            keyboardFocusID = focusableList[prev].id
+           let idx = candidates.firstIndex(where: { $0.id == current }) {
+            let prev = idx == 0 ? candidates.count - 1 : idx - 1
+            keyboardFocusID = candidates[prev].id
         } else {
-            keyboardFocusID = focusableList.last?.id
+            keyboardFocusID = candidates.last?.id
         }
+    }
+
+    /// True when `node` may take focus under the active containment. Nodes
+    /// outside a presented modal are unreachable by both Tab and click.
+    private func isReachableUnderActiveContainment(_ node: AttributeNode) -> Bool {
+        deepestContainmentDepth == 0 || node.containmentDepth == deepestContainmentDepth
     }
 
     /// Directional focus movement — arrow keys respect layout axis.
@@ -496,6 +585,11 @@ public final class FocusEngine: @unchecked Sendable {
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
         guard let root else { return }
         if let target = findFocusableAt(x: x, y: y, in: root) {
+            // The same containment rule Tab obeys: while a modal is
+            // presented, clicking the content it dims must not pull focus
+            // out of the dialog. The click is swallowed rather than
+            // redirected — dismissal is the modal's own explicit action.
+            guard isReachableUnderActiveContainment(target) else { return }
             keyboardFocusID = target.id
             if let handler = findClickHandler(for: target, root: root) {
                 let relX = x - target.rect.x

@@ -561,6 +561,50 @@ struct PreviewPane: TerminalView {
                     }
                 Text("→ \(state.boundaryHitMessage)").foreground(.gray)
             }
+        case .modal:
+            VStack {
+                Text("Enter on the trigger presents; Tab stays inside").foreground(.gray)
+                Text(state.modalPresented ? "  [ reopen ]  " : "  [ open dialog ]  ")
+                    .focusable()
+                    .onKeyPress { key in
+                        switch key.key {
+                        case .enter, .activate:
+                            state.modalPresented = true
+                            return .handled
+                        default:
+                            return .ignored
+                        }
+                    }
+                Text("background — unreachable while presented").foreground(.gray)
+            }
+            .modal(isPresented: state.modalPresented) {
+                VStack {
+                    Text(" Delete this file? ")
+                    Text("  [ Cancel ]  ")
+                        .focusable()
+                        .onKeyPress { key in
+                            switch key.key {
+                            case .enter, .activate, .escape:
+                                state.modalPresented = false
+                                return .handled
+                            default:
+                                return .ignored
+                            }
+                        }
+                    Text("  [ Delete ]  ")
+                        .focusable()
+                        .onKeyPress { key in
+                            switch key.key {
+                            case .enter, .activate:
+                                state.modalPresented = false
+                                return .handled
+                            default:
+                                return .ignored
+                            }
+                        }
+                }
+                .border(.rounded)
+            }
         }
     }
 }

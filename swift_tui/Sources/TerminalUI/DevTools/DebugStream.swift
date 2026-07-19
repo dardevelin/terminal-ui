@@ -64,6 +64,14 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// Suppress per-subtree with `.overflowOK()` when the escape is
     /// intentional (shadows, popovers, edge-to-edge banners).
     case componentOverflow
+    /// A presented modal's content does not fit the terminal and was
+    /// clipped. Dangerous rather than merely ugly: controls scrolled out
+    /// of the visible area remain focusable, so Tab reaches buttons the
+    /// user cannot see. Terminal size is a runtime value — the same
+    /// dialog fits one window and not another, and the user can resize
+    /// mid-session — so this cannot be caught at compile time.
+    /// Shrink the content, or gate presentation on available size.
+    case modalDoesNotFit
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -588,8 +596,15 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
 // Release stubs — everything compiles away
 
 public enum DebugEvent: Sendable {}
+// Cases mirror the DEBUG enum exactly. Warnings never fire in release, but
+// `suppressWarning(_:)` call sites must still compile there — a consumer who
+// silences a warning during development would otherwise break their release
+// build on a name that no longer exists.
 public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case onHoverWithHoverFollows
+    case bindingProjectedWithoutNode
+    case componentOverflow
+    case modalDoesNotFit
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()

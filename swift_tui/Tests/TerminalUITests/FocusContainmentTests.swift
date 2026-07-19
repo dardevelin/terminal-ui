@@ -1,0 +1,446 @@
+import Testing
+@testable import TerminalUI
+
+// Modality per Apple HIG: a modal presentation "prevents interaction with
+// the parent view and requires an explicit action to dismiss". Keyboard
+// containment is the terminal expression of that rule — Tab must not walk
+// out of a presented modal into the content it dims.
+//
+// Distinct from `.focusScope(id)`, which GROUPS focusables so arrows stay
+// local while Tab deliberately crosses scopes (SwiftUI's FocusScope
+// convention). Grouping and containment are separate concepts and compose.
+
+@MainActor
+private func focusables(_ engine: FocusEngine, _ root: AttributeNode) -> [AttributeNode] {
+    engine.collectFocusables(root)
+}
+
+@Suite("Focus containment — graph stamping")
+@MainActor
+struct FocusContainmentStampingTests {
+
+    @Test("presented modal stamps containment depth on its content focusables")
+    func stampsWhenPresented() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("bg").focusable()
+        }.modal(isPresented: true) {
+            Text("ok").focusable()
+        })
+
+        let engine = FocusEngine()
+        let all = focusables(engine, graph.root!)
+        #expect(all.count == 2)
+        #expect(all.filter { $0.containmentDepth > 0 }.count == 1)
+    }
+
+    @Test("dismissed modal stamps nothing")
+    func noStampWhenDismissed() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("bg").focusable()
+        }.modal(isPresented: false) {
+            Text("ok").focusable()
+        })
+
+        let engine = FocusEngine()
+        #expect(focusables(engine, graph.root!).allSatisfy { $0.containmentDepth == 0 })
+    }
+
+    @Test("containment and focusScope compose — a scope inside a modal keeps both")
+    func composesWithScope() {
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                HStack {
+                    Text("a").focusable()
+                    Text("b").focusable()
+                }.focusScope("row")
+            })
+
+        let engine = FocusEngine()
+        let scoped = focusables(engine, graph.root!).filter { $0.scopeID == "row" }
+        #expect(scoped.count == 2)
+        #expect(scoped.allSatisfy { $0.containmentDepth > 0 })
+    }
+}
+
+@Suite("Focus containment — Tab traversal")
+@MainActor
+struct FocusContainmentTraversalTests {
+
+    /// VStack { bg1, bg2 }.modal(presented) { ok, cancel }
+    /// Returns (engine, background ids, modal ids).
+    private func presentedModal() -> (FocusEngine, [NodeID], [NodeID]) {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("bg1").focusable()
+            Text("bg2").focusable()
+        }.modal(isPresented: true) {
+            VStack {
+                Text("ok").focusable()
+                Text("cancel").focusable()
+            }
+        })
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+        let all = focusables(engine, graph.root!)
+        let contained = all.filter { $0.containmentDepth > 0 }.map { $0.id }
+        let background = all.filter { $0.containmentDepth == 0 }.map { $0.id }
+        return (engine, background, contained)
+    }
+
+    @Test("tab within an active containment wraps inside it")
+    func tabWrapsInsideContainment() {
+        let (engine, _, modal) = presentedModal()
+        engine.keyboardFocusID = modal[0]
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == modal[1])
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == modal[0], "must wrap to first contained node")
+    }
+
+    @Test("shift-tab within an active containment wraps backward inside it")
+    func shiftTabWrapsInsideContainment() {
+        let (engine, _, modal) = presentedModal()
+        engine.keyboardFocusID = modal[0]
+        engine.focusPrevious()
+        #expect(engine.keyboardFocusID == modal[1], "must wrap to last contained node")
+        engine.focusPrevious()
+        #expect(engine.keyboardFocusID == modal[0])
+    }
+
+    @Test("background nodes are unreachable while a containment is active")
+    func backgroundUnreachable() {
+        let (engine, background, modal) = presentedModal()
+        engine.keyboardFocusID = modal[0]
+        for _ in 0..<12 {
+            engine.focusNext()
+            #expect(!background.contains(engine.keyboardFocusID!), "Tab escaped into the dimmed background")
+        }
+    }
+
+    @Test("focus starting outside an active containment is pulled into it")
+    func focusPulledIntoContainment() {
+        let (engine, background, modal) = presentedModal()
+        engine.keyboardFocusID = background[0]
+        engine.focusNext()
+        #expect(modal.contains(engine.keyboardFocusID!), "presenting must capture focus")
+    }
+
+    @Test("no containment leaves global Tab order intact")
+    func noContainmentGlobalOrder() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("a").focusable()
+            Text("b").focusable()
+            Text("c").focusable()
+        })
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+        let all = focusables(engine, graph.root!)
+        engine.keyboardFocusID = all[0].id
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == all[1].id)
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == all[2].id)
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == all[0].id, "global order still wraps")
+    }
+
+    @Test("empty containment does not trap focus")
+    func emptyContainmentDoesNotDeadlock() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("a").focusable()
+            Text("b").focusable()
+        }.modal(isPresented: true) {
+            Text("no focusables here")
+        })
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+        let all = focusables(engine, graph.root!)
+        engine.keyboardFocusID = all[0].id
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == all[1].id, "a modal with nothing focusable must not freeze Tab")
+    }
+
+    @Test("disabled nodes inside a containment are still skipped")
+    func disabledSkippedInsideContainment() {
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                VStack {
+                    Text("ok").focusable()
+                    Text("nope").focusable().disabled(true)
+                    Text("cancel").focusable()
+                }
+            })
+
+        // `.disabled()` resolves into `_resolvedEnv` during render, and
+        // `rebuildIndex` reads it from there — so the containment filter has
+        // to be exercised after a render pass, not straight off update().
+        var buffer = CellBuffer(width: 40, height: 10)
+        GraphRenderer.render(
+            graph.root!,
+            into: &buffer,
+            context: RenderContext(rect: Rect(x: 0, y: 0, width: 40, height: 10))
+        )
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+
+        let reachable = engine.collectFocusables(graph.root!)
+            .filter { $0.containmentDepth > 0 && ($0._resolvedEnv?.isEnabled ?? true) }
+        #expect(reachable.count == 2, "disabled node must stay out of the Tab cycle")
+    }
+}
+
+// Presenting and dismissing are the moments containment starts and ends.
+// The runtime's auto-focus only fires when nothing is focused at all, so
+// without adoption a dialog would appear un-focused and the user would have
+// to press Tab before it responded. Found by driving the live Demo app —
+// the graph-level traversal tests all passed while this was broken.
+@Suite("Focus containment — adoption on present/dismiss")
+@MainActor
+struct FocusContainmentAdoptionTests {
+
+    @Test("presenting pulls focus into the dialog")
+    func presentingAdoptsFocus() {
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+
+        graph.update(from: VStack {
+            Text("bg1").focusable()
+            Text("bg2").focusable()
+        }.modal(isPresented: false) {
+            Text("ok").focusable()
+        })
+        engine.rebuildIndex(root: graph.root!)
+        engine.focusNext()
+        let background = engine.keyboardFocusID
+        #expect(background != nil)
+
+        graph.update(from: VStack {
+            Text("bg1").focusable()
+            Text("bg2").focusable()
+        }.modal(isPresented: true) {
+            Text("ok").focusable()
+        })
+        engine.rebuildIndex(root: graph.root!)
+
+        let contained = engine.collectFocusables(graph.root!)
+            .filter { $0.containmentDepth > 0 }
+            .map { $0.id }
+        #expect(contained.contains(engine.keyboardFocusID!),
+                "presenting must move focus into the dialog")
+    }
+
+    @Test("dismissing restores focus to the node the dialog interrupted")
+    func dismissRestoresPreviousFocus() {
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+
+        func build(_ presented: Bool) -> some TerminalView {
+            VStack {
+                Text("bg1").focusable()
+                Text("bg2").focusable()
+            }.modal(isPresented: presented) {
+                Text("ok").focusable()
+            }
+        }
+
+        graph.update(from: build(false))
+        engine.rebuildIndex(root: graph.root!)
+        // Park focus on the SECOND background node, not the first, so
+        // restoring to "the previous node" is distinguishable from
+        // restoring to "the top of the page".
+        let all = engine.collectFocusables(graph.root!).map { $0.id }
+        engine.keyboardFocusID = all[1]
+        let parked = engine.keyboardFocusID
+
+        graph.update(from: build(true))
+        engine.rebuildIndex(root: graph.root!)
+        #expect(engine.keyboardFocusID != parked, "dialog should hold focus")
+
+        graph.update(from: build(false))
+        engine.rebuildIndex(root: graph.root!)
+        #expect(engine.keyboardFocusID == parked,
+                "dismissal must restore the interrupted node, not jump to the first")
+    }
+}
+
+@Suite("Focus containment — nesting")
+@MainActor
+struct FocusContainmentNestingTests {
+
+    @Test("innermost containment wins when modals nest")
+    func innermostWins() {
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                Text("outer").focusable()
+                    .modal(isPresented: true) {
+                        Text("inner").focusable()
+                    }
+            })
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+
+        let all = focusables(engine, graph.root!)
+        let outer = all.first { $0.containmentDepth > 0 && $0.containmentDepth == 1 }
+        let inner = all.first { $0.containmentDepth == 2 }
+        #expect(outer != nil)
+        #expect(inner != nil)
+
+        // Tab anywhere must land on the innermost modal's single focusable.
+        engine.keyboardFocusID = all[0].id
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == inner!.id, "the topmost containment owns focus")
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == inner!.id, "single contained node re-selects itself")
+    }
+
+    @Test("dismissing the inner modal returns traversal to the outer one")
+    func poppingRestoresOuter() {
+        // Inner dismissed → outer becomes topmost.
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                VStack {
+                    Text("outerA").focusable()
+                    Text("outerB").focusable()
+                }
+                .modal(isPresented: false) {
+                    Text("inner").focusable()
+                }
+            })
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+
+        let all = focusables(engine, graph.root!)
+        let outerIDs = all.filter { $0.containmentDepth == 1 }.map { $0.id }
+        #expect(outerIDs.count == 2)
+
+        engine.keyboardFocusID = outerIDs[0]
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == outerIDs[1])
+        engine.focusNext()
+        #expect(engine.keyboardFocusID == outerIDs[0], "traversal confined to the outer modal")
+    }
+}
+
+@Suite("Focus containment — mouse")
+@MainActor
+struct FocusContainmentMouseTests {
+
+    @Test("click outside an active containment does not steal focus")
+    func clickOutsideDoesNotStealFocus() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack {
+            Text("bg1").focusable()
+            Text("bg2").focusable()
+        }.modal(isPresented: true) {
+            Text("ok").focusable()
+        })
+        let root = graph.root!
+        let engine = FocusEngine()
+        let all = focusables(engine, root)
+        let modalNode = all.first { $0.containmentDepth > 0 }!
+        let backgroundNode = all.first { $0.containmentDepth == 0 }!
+
+        // Disjoint rects — the click lands squarely on the background node.
+        backgroundNode.rect = Rect(x: 0, y: 0, width: 5, height: 1)
+        modalNode.rect = Rect(x: 0, y: 5, width: 5, height: 1)
+        engine.rebuildIndex(root: root)
+
+        engine.keyboardFocusID = modalNode.id
+        let r = backgroundNode.rect
+        engine.handleMouseClick(x: r.x, y: r.y, root: root)
+        #expect(engine.keyboardFocusID == modalNode.id, "clicking the dimmed background must not move focus")
+    }
+}
+
+// A modal that does not fit is clipped by `min(mh, buffer.height - 2)` in
+// the renderer. Silent truncation is dangerous rather than merely ugly:
+// controls scrolled out of view stay focusable, so Tab reaches buttons the
+// user cannot see. Terminal size is a runtime value — the same dialog fits
+// one window and not another — so this cannot be a compile-time error, and
+// the framework's runtime-warning channel is the correct reporting path.
+
+private final class ContainmentWarningSink: DebugSink, @unchecked Sendable {
+    nonisolated(unsafe) var events: [DebugEvent] = []
+    func receive(_ event: DebugEvent) {
+        events.append(event)
+    }
+}
+
+@Suite("Focus containment — oversized modal reporting")
+@MainActor
+struct ModalDoesNotFitWarningTests {
+
+    private func emittedWarnings(_ sink: ContainmentWarningSink) -> [FrameworkWarningInfo] {
+        sink.events.compactMap { event in
+            if case .frameworkWarning(let info) = event { return info }
+            return nil
+        }
+    }
+
+    @Test("a modal taller than the terminal reports .modalDoesNotFit")
+    func oversizedModalWarns() {
+        DebugStream.shared.resetWarningDedup()
+        DebugStream.shared.removeAllSinks()
+        let sink = ContainmentWarningSink()
+        DebugStream.shared.addSink(sink)
+        defer {
+            DebugStream.shared.removeAllSinks()
+            DebugStream.shared.resetWarningDedup()
+        }
+
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                Text(Array(repeating: "row", count: 40).joined(separator: "\n"))
+            })
+
+        var buffer = CellBuffer(width: 20, height: 6)
+        GraphRenderer.render(
+            graph.root!,
+            into: &buffer,
+            context: RenderContext(rect: Rect(x: 0, y: 0, width: 20, height: 6))
+        )
+
+        let codes = emittedWarnings(sink).map { $0.code }
+        #expect(codes.contains(.modalDoesNotFit),
+                "a 40-row dialog in a 6-row terminal must report the clip; got \(codes)")
+    }
+
+    @Test("a modal that fits reports nothing")
+    func fittingModalStaysQuiet() {
+        DebugStream.shared.resetWarningDedup()
+        DebugStream.shared.removeAllSinks()
+        let sink = ContainmentWarningSink()
+        DebugStream.shared.addSink(sink)
+        defer {
+            DebugStream.shared.removeAllSinks()
+            DebugStream.shared.resetWarningDedup()
+        }
+
+        let graph = AttributeGraph()
+        graph.update(from: Text("bg").focusable()
+            .modal(isPresented: true) {
+                Text("ok")
+            })
+
+        var buffer = CellBuffer(width: 40, height: 20)
+        GraphRenderer.render(
+            graph.root!,
+            into: &buffer,
+            context: RenderContext(rect: Rect(x: 0, y: 0, width: 40, height: 20))
+        )
+
+        let codes = emittedWarnings(sink).map { $0.code }
+        #expect(!codes.contains(.modalDoesNotFit),
+                "a dialog with room to render must not warn; got \(codes)")
+    }
+}

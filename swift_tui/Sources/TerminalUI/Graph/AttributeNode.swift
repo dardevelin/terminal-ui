@@ -45,6 +45,23 @@ public class AttributeNode: @unchecked Sendable {
     /// navigation: arrows stay within a scope, Tab still crosses scopes.
     public var scopeID: String?
 
+    /// How many presented modals enclose this node: 0 outside any modal,
+    /// 1 inside one, 2 inside a modal presented from within a modal.
+    ///
+    /// Distinct from `scopeID`: a scope GROUPS focusables so arrows stay
+    /// local while Tab deliberately crosses it, whereas containment TRAPS
+    /// Tab entirely. This is the terminal expression of the platform
+    /// modality rule — a modal presentation "prevents interaction with the
+    /// parent view and requires an explicit action to dismiss" (Apple HIG,
+    /// Patterns → Modality). A panel that dims the background but lets Tab
+    /// walk behind it is not modal.
+    ///
+    /// Traversal selects the greatest depth present, so the topmost
+    /// presentation owns focus without the engine holding its own stack —
+    /// the graph already encodes the nesting, and a separate stack could
+    /// drift out of sync with it.
+    public var containmentDepth: Int = 0
+
     /// Whether onAppear has already fired for this node.
     public var didAppear: Bool = false
 

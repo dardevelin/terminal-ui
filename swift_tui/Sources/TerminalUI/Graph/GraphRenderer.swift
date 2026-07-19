@@ -1121,6 +1121,24 @@ public enum GraphRenderer {
                 let contentWidth = min(mw, buffer.width - 2)
                 let contentHeight = min(mh, buffer.height - 2)
 
+                #if DEBUG
+                // Clipping a modal hides controls that stay focusable, so
+                // Tab can reach buttons that were never drawn. Report it
+                // rather than letting the dialog quietly lose its footer.
+                if mw > contentWidth || mh > contentHeight {
+                    DebugStream.shared.emitWarning(
+                        .modalDoesNotFit,
+                        message: """
+                            modal content \(mw)x\(mh) exceeds the \
+                            \(buffer.width)x\(buffer.height) terminal and was \
+                            clipped to \(contentWidth)x\(contentHeight); \
+                            off-screen controls remain focusable
+                            """,
+                        nodeID: String(describing: modalNode.id)
+                    )
+                }
+                #endif
+
                 // Center on screen
                 let mx = max(0, (buffer.width - contentWidth) / 2)
                 let my = max(0, (buffer.height - contentHeight) / 2)
