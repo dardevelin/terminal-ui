@@ -12,7 +12,44 @@ public struct RenderContext {
 /// Switches on NodeKind enum — no Any, no as?, no protocol conformance checks.
 public enum GraphRenderer {
 
+    /// Presented modals collected during a render walk, composited against
+    /// the screen buffer once the tree is drawn.
+    ///
+    /// A modal is a *screen-level* presentation: it dims everything and
+    /// centres on the terminal. But `ScrollView` renders its content into a
+    /// local buffer that is later blitted (see `renderLayout`'s scroll
+    /// cases), so a modal declared inside one would otherwise centre on that
+    /// sub-buffer and be clipped by the blit — the dialog lands inside the
+    /// scrolled pane instead of over the app. Deferring detaches presentation
+    /// from wherever it happens to be declared, which is the same reason
+    /// SwiftUI's sheets don't inherit the declaring view's geometry.
+    ///
+    /// `nonisolated(unsafe)` matches the existing render-path statics: the
+    /// runtime invariant is that rendering happens on the MainActor.
+    nonisolated(unsafe) private static var deferredPresentations: [AttributeNode] = []
+
+    /// Render `node`, then composite any presentations it declared against
+    /// the full buffer. Nested calls (ScrollView content, the modal's own
+    /// subtree) go through `render(_:into:context:)` and do NOT drain, so
+    /// the deferral survives until the outermost walk finishes.
     public static func render(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
+        let isOutermost = !isRendering
+        if isOutermost {
+            isRendering = true
+            deferredPresentations.removeAll(keepingCapacity: true)
+        }
+        renderNode(node, into: &buffer, context: context)
+        if isOutermost {
+            isRendering = false
+            drainPresentations(into: &buffer)
+        }
+    }
+
+    /// True while a render walk is in flight, so nested `render` calls know
+    /// they are not the outermost one and must not drain.
+    nonisolated(unsafe) private static var isRendering = false
+
+    static func renderNode(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
         // Record resolved rect on every node — used for hit testing
         node.rect = context.rect
 
@@ -1112,67 +1149,89 @@ public enum GraphRenderer {
             // Always render base app
             render(child, into: &buffer, context: ctx)
 
+            // Defer the panel itself. It is a screen-level presentation, so
+            // it must composite against the terminal buffer — not whatever
+            // local buffer this subtree happens to be drawing into (a
+            // ScrollView's content buffer, or another modal's layer).
             if isPresented, node.children.count > 1 {
-                let modalNode = node.children[1]
-
-                // Measure modal content
-                let mw = measureWidth(modalNode)
-                let mh = measureHeight(modalNode, proposedWidth: mw)
-                let contentWidth = min(mw, buffer.width - 2)
-                let contentHeight = min(mh, buffer.height - 2)
-
-                #if DEBUG
-                // Clipping a modal hides controls that stay focusable, so
-                // Tab can reach buttons that were never drawn. Report it
-                // rather than letting the dialog quietly lose its footer.
-                if mw > contentWidth || mh > contentHeight {
-                    DebugStream.shared.emitWarning(
-                        .modalDoesNotFit,
-                        message: """
-                            modal content \(mw)x\(mh) exceeds the \
-                            \(buffer.width)x\(buffer.height) terminal and was \
-                            clipped to \(contentWidth)x\(contentHeight); \
-                            off-screen controls remain focusable
-                            """,
-                        nodeID: String(describing: modalNode.id)
-                    )
-                }
-                #endif
-
-                // Center on screen
-                let mx = max(0, (buffer.width - contentWidth) / 2)
-                let my = max(0, (buffer.height - contentHeight) / 2)
-
-                // Use compositor: dim layer + modal layer
-                let dimLayer = Layer(
-                    width: buffer.width, height: buffer.height,
-                    x: 0, y: 0,
-                    style: .dim(.ansi256(239))
-                )
-
-                // Render modal into its own isolated buffer
-                var modalLayer = Layer(
-                    width: contentWidth, height: contentHeight,
-                    x: mx, y: my,
-                    // Style comes from the effect, not chosen here, so the
-                    // renderer cannot drift from the presentation's contract.
-                    style: effect.compositingStyle
-                )
-                let modalRect = Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
-                let modalContext = RenderContext(style: .plain, rect: modalRect)
-                // Re-stamp the modal subtree's Layer-2 rects from
-                // (0, 0); offsetRects(...) below translates to screen
-                // coords after the modal layer is composited.
-                Layout.measureAndPlace(graph: modalNode, in: modalRect)
-                render(modalNode, into: &modalLayer.buffer, context: modalContext)
-
-                // Offset resolved rects so hit testing works in screen coordinates
-                offsetRects(of: modalNode, dx: mx, dy: my)
-
-                // Composite: dim first, then modal on top
-                Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
+                deferredPresentations.append(node)
             }
         }
+    }
+
+    /// Composite every presentation collected during the walk against the
+    /// full-screen buffer, in declaration order so a modal presented from
+    /// within a modal lands on top of it.
+    private static func drainPresentations(into buffer: inout CellBuffer) {
+        guard !deferredPresentations.isEmpty else { return }
+        let pending = deferredPresentations
+        deferredPresentations.removeAll(keepingCapacity: true)
+
+        for node in pending {
+            guard case .modifier(let effect) = node.kind,
+                  case .modal = effect,
+                  node.children.count > 1 else { continue }
+            compositePresentation(node.children[1], effect: effect, into: &buffer)
+        }
+    }
+
+    private static func compositePresentation(
+        _ modalNode: AttributeNode,
+        effect: ModifierEffect,
+        into buffer: inout CellBuffer
+    ) {
+        let mw = measureWidth(modalNode)
+        let mh = measureHeight(modalNode, proposedWidth: mw)
+        let contentWidth = min(mw, buffer.width - 2)
+        let contentHeight = min(mh, buffer.height - 2)
+        guard contentWidth > 0, contentHeight > 0 else { return }
+
+        #if DEBUG
+        // Clipping a modal hides controls that stay focusable, so Tab can
+        // reach buttons that were never drawn. Report it rather than letting
+        // the dialog quietly lose its footer.
+        if mw > contentWidth || mh > contentHeight {
+            DebugStream.shared.emitWarning(
+                .modalDoesNotFit,
+                message: """
+                    modal content \(mw)x\(mh) exceeds the \
+                    \(buffer.width)x\(buffer.height) terminal and was \
+                    clipped to \(contentWidth)x\(contentHeight); \
+                    off-screen controls remain focusable
+                    """,
+                nodeID: String(describing: modalNode.id)
+            )
+        }
+        #endif
+
+        let mx = max(0, (buffer.width - contentWidth) / 2)
+        let my = max(0, (buffer.height - contentHeight) / 2)
+
+        let dimLayer = Layer(
+            width: buffer.width, height: buffer.height,
+            x: 0, y: 0,
+            style: .dim(.ansi256(239))
+        )
+
+        var modalLayer = Layer(
+            width: contentWidth, height: contentHeight,
+            x: mx, y: my,
+            // Style comes from the effect, not chosen here, so the renderer
+            // cannot drift from the presentation's contract.
+            style: effect.compositingStyle
+        )
+        let modalRect = Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
+        let modalContext = RenderContext(style: .plain, rect: modalRect)
+        // Re-stamp the modal subtree's Layer-2 rects from (0, 0);
+        // offsetRects(...) below translates to screen coords after the modal
+        // layer is composited.
+        Layout.measureAndPlace(graph: modalNode, in: modalRect)
+        renderNode(modalNode, into: &modalLayer.buffer, context: modalContext)
+
+        // Offset resolved rects so hit testing works in screen coordinates
+        offsetRects(of: modalNode, dx: mx, dy: my)
+
+        Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
     }
 
     static func renderBorder(_ style: BorderStyle, into buffer: inout CellBuffer, context: RenderContext) {

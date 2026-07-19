@@ -499,3 +499,75 @@ struct ModalOcclusionTests {
                 "background bled into the dialog's padding: \(row.debugDescription)")
     }
 }
+
+// A modal is a screen-level presentation: it dims everything and centres on
+// the terminal. `ScrollView` renders its content into a local buffer that is
+// blitted into the viewport, so a modal declared inside one used to centre on
+// that sub-buffer and get clipped by the blit — the dialog landed inside the
+// scrolled pane instead of over the app, with its lower rows cut off while
+// still focusable.
+
+@Suite("Modal presentation is screen-level, not subtree-level")
+@MainActor
+struct ModalPresentationScopeTests {
+
+    private func screen(width: Int, height: Int, _ view: some TerminalView) -> [String] {
+        let graph = AttributeGraph()
+        graph.update(from: view)
+        var buffer = CellBuffer(width: width, height: height)
+        let rect = Rect(x: 0, y: 0, width: width, height: height)
+        Layout.measureAndPlace(graph: graph.root!, in: rect)
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+        return (0..<height).map { y in
+            var row = ""
+            for x in 0..<width { row.append(buffer[x, y].character) }
+            return row
+        }
+    }
+
+    @Test("a modal declared inside a ScrollView still centres on the screen")
+    func modalInsideScrollViewReachesScreen() {
+        let rows = screen(width: 40, height: 20,
+            ScrollView(.vertical) {
+                VStack {
+                    Text("row a")
+                    Text("row b")
+                }
+                .modal(isPresented: true) {
+                    Text("DIALOG")
+                }
+            }
+            .frame(height: 4)
+        )
+
+        let hit = rows.enumerated().first { $0.element.contains("DIALOG") }
+        #expect(hit != nil, "dialog must be drawn: \(rows.joined(separator: "|"))")
+        guard let hit else { return }
+        // Centred on a 20-row screen, not trapped in the 4-row scroll pane.
+        #expect(hit.offset > 4,
+                "dialog landed at row \(hit.offset), inside the scroll viewport rather than centred on screen")
+    }
+
+    @Test("a modal's full content survives — no rows lost to a sub-buffer clip")
+    func modalContentNotClippedBySubBuffer() {
+        let rows = screen(width: 40, height: 20,
+            ScrollView(.vertical) {
+                Text("bg")
+                    .modal(isPresented: true) {
+                        VStack {
+                            Text("Delete this file?")
+                            Text("[ Cancel ]")
+                            Text("[ Delete ]")
+                        }
+                    }
+            }
+            .frame(height: 3)
+        )
+        let joined = rows.joined(separator: "\n")
+        #expect(joined.contains("Delete this file?"), "title missing:\n\(joined)")
+        #expect(joined.contains("[ Cancel ]"), "Cancel missing:\n\(joined)")
+        #expect(joined.contains("[ Delete ]"),
+                "Delete was clipped away while remaining focusable:\n\(joined)")
+    }
+}
+
