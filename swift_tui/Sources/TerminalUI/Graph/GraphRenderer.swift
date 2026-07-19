@@ -1322,6 +1322,19 @@ public enum GraphRenderer {
             // Skip inside scroll containers: the scroll viewport's clipping
             // fights with indicator cells drawn outside the content area.
             if skipInScroll, scrollAncestorRect(of: node) != nil { return }
+            // Same reasoning inside a presented modal, which is likewise a
+            // bounded region: the cell left of the dialog's first column is
+            // its border, so an outside-the-rect bar would punch a hole in
+            // the frame. Fall back to `.bar`, which stays inside the rect
+            // and is the style that already exists for exactly this
+            // constraint — rather than dropping the indicator entirely and
+            // leaving the focused control unmarked.
+            if node.containmentDepth > 0 {
+                drawIndicator(node: node, style: .bar, glyph: glyph,
+                              cellStyle: cellStyle, into: &buffer,
+                              skipInScroll: skipInScroll)
+                return
+            }
             let r = node.rect
             let drawX = r.x - 1
             guard drawX > 0 else { return }

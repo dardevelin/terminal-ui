@@ -571,3 +571,48 @@ struct ModalPresentationScopeTests {
     }
 }
 
+
+// The `.overlay` focus indicator draws at `rect.x - 1` — deliberately OUTSIDE
+// the focused view, where a parent's padding usually sits. Inside a modal that
+// cell is the dialog's own border, so the bar punches a hole in the frame.
+// `.overlay` already declines to draw inside scroll viewports for the same
+// reason; a presented modal is the same kind of bounded region.
+
+@Suite("Focus indicator respects a modal's frame")
+@MainActor
+struct ModalFocusIndicatorTests {
+
+    @Test("indicator stays inside the dialog instead of overwriting its border")
+    func indicatorDoesNotPunchBorder() {
+        let graph = AttributeGraph()
+        graph.update(from: Text("background").focusable()
+            .modal(isPresented: true) {
+                VStack {
+                    Text("Delete this file?")
+                    Text("[ Cancel ]").focusable()
+                }
+                .border()
+            })
+
+        let width = 40, height = 12
+        var buffer = CellBuffer(width: width, height: height)
+        let rect = Rect(x: 0, y: 0, width: width, height: height)
+        Layout.measureAndPlace(graph: graph.root!, in: rect)
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+
+        let engine = FocusEngine()
+        engine.rebuildIndex(root: graph.root!)
+        // Focus the contained control, as presenting would.
+        let contained = engine.collectFocusables(graph.root!).filter { $0.containmentDepth > 0 }
+        #expect(!contained.isEmpty, "modal must contain a focusable")
+        engine.keyboardFocusID = contained.first?.id
+        GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root!)
+
+        let target = contained.first!.rect
+        // The cell left of the focused control belongs to the dialog frame.
+        guard target.x - 1 >= 0, target.y < height else { return }
+        let leftOfControl = buffer[target.x - 1, target.y].character
+        #expect(leftOfControl != "▎",
+                "indicator overwrote the dialog's border cell at x=\(target.x - 1)")
+    }
+}
