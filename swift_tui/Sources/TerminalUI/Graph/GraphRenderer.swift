@@ -1154,7 +1154,9 @@ public enum GraphRenderer {
                 var modalLayer = Layer(
                     width: contentWidth, height: contentHeight,
                     x: mx, y: my,
-                    style: .transparent  // only overwrite cells that have content
+                    // Style comes from the effect, not chosen here, so the
+                    // renderer cannot drift from the presentation's contract.
+                    style: effect.compositingStyle
                 )
                 let modalRect = Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
                 let modalContext = RenderContext(style: .plain, rect: modalRect)

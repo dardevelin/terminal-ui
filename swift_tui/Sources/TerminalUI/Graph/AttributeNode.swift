@@ -381,6 +381,39 @@ public enum ModifierEffect {
     /// (the keypath/value pair is type-erased at construction time).
     case environment((inout EnvironmentValues) -> Void)
 }
+extension ModifierEffect {
+    /// How a detached layer merges with the content it covers.
+    ///
+    /// Stated once, next to the effect it belongs to, so the renderer reads
+    /// the decision instead of making it. The switch is exhaustive over the
+    /// layering effects, so adding one forces an answer here rather than
+    /// letting a call site copy whichever neighbour it was written beside.
+    ///
+    /// The distinction is not cosmetic: `.transparent` skips empty cells, so
+    /// a *presentation's* own padding and inter-glyph gaps would let the
+    /// background bleed through it, while *decoration* genuinely wants the
+    /// content beneath to remain visible.
+    var compositingStyle: Layer.LayerStyle {
+        switch self {
+        // Presentation — must occlude. Padding and inter-glyph gaps belong
+        // to the panel, not to whatever it covers.
+        case .modal: .opaque
+        // Decoration — the content beneath is meant to stay visible.
+        case .overlay, .backgroundView: .transparent
+        // Every other effect is not a detached layer and never reaches the
+        // compositor. Listed explicitly rather than via `default:` so adding
+        // a layering effect is a compile error here instead of silently
+        // inheriting whichever style happened to be the fallback.
+        case .foreground, .background, .bold, .italic, .underline,
+             .padding, .border, .frame, .flexible, .explicitID,
+             .focusable, .focusScope, .onKeyPress, .onAppear, .onChange,
+             .onDisappear, .onClick, .onHover, .onPaste, .actions,
+             .environment:
+            .opaque
+        }
+    }
+}
+
 
 // MARK: - View Body
 

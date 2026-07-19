@@ -444,3 +444,58 @@ struct ModalDoesNotFitWarningTests {
                 "a dialog with room to render must not warn; got \(codes)")
     }
 }
+
+// A modal must OCCLUDE what it covers. "Prevents interaction with the parent
+// view" (Apple HIG, Patterns → Modality) has a visual half: background text
+// showing through the dialog's padding and between its glyphs makes the panel
+// unreadable and makes it ambiguous which control a row belongs to.
+//
+// `.transparent` compositing skips empty cells, so a dialog's spaces let the
+// content behind bleed through — correct for `.overlay` decoration, wrong for
+// a presentation that must cover.
+
+@Suite("Modal rendering — the panel occludes its background")
+@MainActor
+struct ModalOcclusionTests {
+
+    /// Render a full-screen background of 'X', then the same tree with a
+    /// presented modal over it, and return the row the dialog's body lands on.
+    /// The dialog carries padding — that interior whitespace is where a
+    /// `.transparent` layer lets the background through.
+    private func rowUnderModal(width: Int, height: Int) -> String {
+        let graph = AttributeGraph()
+        let background = Array(repeating: String(repeating: "X", count: width),
+                               count: height).joined(separator: "\n")
+        graph.update(from: Text(background)
+            .modal(isPresented: true) {
+                Text("ok").padding()
+            })
+        var buffer = CellBuffer(width: width, height: height)
+        GraphRenderer.render(
+            graph.root!,
+            into: &buffer,
+            context: RenderContext(rect: Rect(x: 0, y: 0, width: width, height: height))
+        )
+        let midY = height / 2
+        var row = ""
+        for x in 0..<width {
+            row.append(buffer[x, midY].character)
+        }
+        return row
+    }
+
+    @Test("background does not bleed through the dialog's padding")
+    func backgroundDoesNotBleedThrough() {
+        let row = rowUnderModal(width: 24, height: 9)
+        #expect(row.contains("ok"), "dialog content must be drawn; got \(row.debugDescription)")
+        guard let r = row.range(of: "ok") else { return }
+        let idx = row.distance(from: row.startIndex, to: r.lowerBound)
+        // The padded cells flanking "ok" belong to the dialog and must not
+        // show the background beneath.
+        let left = row[row.index(row.startIndex, offsetBy: max(0, idx - 1))]
+        let rightIdx = min(24 - 1, idx + 2)
+        let right = row[row.index(row.startIndex, offsetBy: rightIdx)]
+        #expect(left != "X" && right != "X",
+                "background bled into the dialog's padding: \(row.debugDescription)")
+    }
+}
