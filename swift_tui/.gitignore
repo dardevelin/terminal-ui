@@ -1,4 +1,7 @@
 .build/
+# Linux-in-Docker scratch path — kept separate from .build/ so ELF and Mach-O
+# binaries never overwrite each other (see tools/scripts/linux_harness.sh).
+.build-linux/
 .terminalui/
 .swiftpm/
 *.xcodeproj/

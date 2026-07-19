@@ -50,9 +50,11 @@ class SmokeCase:
     app: str  # binary under .build/debug/
     run: Callable[[Client], None]
 
-    def execute(self, cols: int = 140, rows: int = 40) -> CaseResult:
+    def execute(self, cols: int = 140, rows: int = 40,
+                build_dir: Optional[str] = None) -> CaseResult:
         try:
-            with spawn_and_connect(self.app, cols=cols, rows=rows) as (_, client):
+            with spawn_and_connect(self.app, build_dir=build_dir,
+                                   cols=cols, rows=rows) as (_, client):
                 client.wait_for_frame(1, timeout=1.0)
                 self.run(client)
             return CaseResult(self.name, True, "ok")
@@ -137,29 +139,13 @@ def storybook_sidebar_order_matches_navigation(app: Client) -> None:
         f"sidebar should expose at least 5 visible pages; got {initial_sidebar!r}",
     )
 
-    titles: list[str] = [app.storybook_page_title()]
-    # Walk Down up to 60 times (enough for any reasonable page list).
-    # Stop when the title stops changing — that means we've hit the
-    # last page and Down is a no-op.
-    for _ in range(60):
-        app.send_key("down")
-        app.wait_for_frame(1, timeout=0.5)
-        title = app.storybook_page_title()
-        if title == titles[-1]:
-            break
-        titles.append(title)
+    # Enumeration lives on the client so this case and storybook_walk.py
+    # share one definition of the catalog. It already rejects a repeated
+    # title, which is the "cursor revisits a page mid-walk" check this case
+    # used to perform inline.
+    titles = app.storybook_pages()
 
-    # Check 1: sequence has unique entries (no skipping reorders the
-    # list, and the cursor never revisits a page mid-walk).
-    seen: set[str] = set()
-    for t in titles:
-        assert_true(
-            t not in seen,
-            f"page {t!r} appeared twice in navigation walk; titles={titles!r}",
-        )
-        seen.add(t)
-
-    # Check 2: visible-prefix matches rendered sidebar. The walk's
+    # Visible-prefix matches rendered sidebar. The walk's
     # first len(initial_sidebar) titles must equal the sidebar rows
     # exactly. Mismatch = cursor skipped a visible row (the regression
     # class).
@@ -1667,11 +1653,15 @@ CASES: list[SmokeCase] = [
 ]
 
 
-def main() -> int:
+def main(argv: list[str]) -> int:
+    # Optional build dir so the same suite can drive a Linux build from a
+    # separate scratch path (tools/scripts/linux_harness.sh).
+    build_dir = argv[0] if argv else None
+
     results = []
     for case in CASES:
         print(f"→ {case.name}", flush=True)
-        results.append(case.execute())
+        results.append(case.execute(build_dir=build_dir))
 
     print()
     failed = [r for r in results if not r.ok]
@@ -1685,4 +1675,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

@@ -571,6 +571,58 @@ class Client:
                 rows.append(stripped)
         return rows
 
+    def storybook_pages(self, *, max_pages: int = 200) -> list[str]:
+        """Enumerate every page title in navigation order, starting from
+        the current position.
+
+        Presses Down until the title stops advancing. That terminal
+        condition is what keeps callers self-updating as pages are added —
+        a hardcoded list silently stops covering the catalog the moment
+        someone appends a case (it had drifted to 34 entries against 48
+        real pages).
+
+        Raises ``RuntimeError`` rather than returning a short list when
+        navigation stalls with sidebar entries still unvisited. "Title
+        stopped changing" conflates *end of catalog* with *this page
+        swallowed the Down key* — and a page eating arrow keys is exactly
+        the focus regression a walk exists to catch, so it must fail
+        loudly instead of silently under-reporting.
+        """
+        titles = [self.storybook_page_title()]
+        seen = {titles[0]}
+        for _ in range(max_pages):
+            self.send_key("down")
+            self.wait_for_frame(1, timeout=0.5)
+            title = self.storybook_page_title()
+            if title == titles[-1]:
+                self._assert_catalog_exhausted(titles)
+                return titles
+            if title in seen:
+                raise RuntimeError(
+                    f"navigation revisited page {title!r} — sidebar order is "
+                    f"cyclic or a title is duplicated; walked: {titles!r}"
+                )
+            seen.add(title)
+            titles.append(title)
+        raise RuntimeError(
+            f"page enumeration did not terminate within {max_pages} presses "
+            f"(last title {titles[-1]!r}) — raise max_pages or check for a "
+            f"navigation loop"
+        )
+
+    def _assert_catalog_exhausted(self, titles: Sequence[str]) -> None:
+        """Fail when navigation stopped early with pages still listed in the
+        sidebar. The sidebar renders a scrolled window onto the catalog, so
+        it can only prove pages were *missed*, never that all were seen —
+        which is the direction that matters here."""
+        missed = [row for row in self.storybook_sidebar_rows() if row not in titles]
+        if missed:
+            raise RuntimeError(
+                f"navigation stalled on {titles[-1]!r} but the sidebar still "
+                f"lists unvisited pages {missed!r} — a page is likely "
+                f"swallowing the Down key"
+            )
+
     def goto_page(self, name: str, *, max_steps: int = 80) -> None:
         """Drive Storybook's sidebar by **page name** (the bold cyan
         title at the top of the right pane). Presses Down until the

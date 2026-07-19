@@ -189,5 +189,15 @@ swift package clean && swift build   # full clean rebuild (must pass 0err/0warn)
 ```bash
 docker run --rm -v $(pwd):/app -w /app swift:6.2 swift build
 docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test
+
+# PTY-driven visual harness against a Linux build — same coverage as macOS
+tools/scripts/linux_harness.sh                      # walk all Storybook pages
+tools/scripts/linux_harness.sh storybook_smoke.py   # full behavioural suite
 ```
 Note: image tag must be `swift:6.2` (Package.swift requires Swift 6.2). Older `swift:6.0` will reject the manifest.
+
+The harness script builds into `.build-linux/` rather than `.build/`: a shared
+build dir leaves Linux ELF binaries where a later macOS run expects Mach-O, and
+every case dies with `Exec format error`. Both harness scripts take an optional
+build dir argument for this. The `swift:6.2` image ships no Python, which is the
+only reason the harness could not run in a container — PTYs work fine there.
