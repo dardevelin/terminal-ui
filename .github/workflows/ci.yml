@@ -1,0 +1,104 @@
+name: CI
+
+# The Swift package lives in swift_tui/, not at the repo root, so every job
+# sets working-directory. If the manifest ever moves up, these paths and the
+# cache keys below are what change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push to the same branch makes an in-flight run obsolete. Never
+  # cancel main — its runs are the record of what actually shipped.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+defaults:
+  run:
+    working-directory: swift_tui
+
+jobs:
+  linux:
+    name: Linux (Swift 6.2)
+    runs-on: ubuntu-latest
+    # Package.swift requires swift-tools-version 6.2; swift:6.0 rejects the
+    # manifest outright.
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: swift_tui/.build
+          key: linux-spm-${{ hashFiles('swift_tui/Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            linux-spm-${{ hashFiles('swift_tui/Package.swift') }}-
+            linux-spm-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      # Strict gate. -warnings-as-errors is deliberately NOT in Package.swift's
+      # default settings — that would propagate the policy to downstream
+      # consumers, which the Swift Package Index forbids for libraries. The env
+      # var is the opt-in this repo's CI uses.
+      - name: Build with warnings as errors
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build
+
+      - name: Build release
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build -c release
+
+      # The visual harness drives real apps through a PTY. It needs a Python
+      # interpreter, which the swift image does not ship — that missing
+      # interpreter, not any TTY limitation, is why this had never run in a
+      # container. pty.fork() allocates its own terminal, so the runner having
+      # no TTY on stdin is fine.
+      - name: Install Python for the PTY harness
+        run: apt-get update -qq && apt-get install -y -qq python3
+
+      - name: Walk every Storybook page
+        run: python3 tools/scripts/storybook_walk.py
+
+      - name: Behavioural smoke suite
+        run: python3 tools/scripts/storybook_smoke.py
+
+  macos:
+    name: macOS (Swift 6.2)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: swift_tui/.build
+          key: macos-spm-${{ hashFiles('swift_tui/Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            macos-spm-${{ hashFiles('swift_tui/Package.swift') }}-
+            macos-spm-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+      - name: Build with warnings as errors
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build
+
+      - name: Build release
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build -c release
+
+      # macOS runners ship Python 3, so no install step is needed here.
+      - name: Walk every Storybook page
+        run: python3 tools/scripts/storybook_walk.py
+
+      - name: Behavioural smoke suite
+        run: python3 tools/scripts/storybook_smoke.py
