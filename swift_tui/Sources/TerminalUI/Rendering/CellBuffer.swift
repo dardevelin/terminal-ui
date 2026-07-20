@@ -63,7 +63,9 @@ extension Color: Equatable {
 public struct CellBuffer: Sendable {
     public var width: Int
     public var height: Int
-    public var cells: [Cell]
+    /// Readable for compositing and diffing; writes go through the subscript so
+    /// they cannot skip clip enforcement or control-character refusal.
+    public private(set) var cells: [Cell]
 
     /// Optional clip rectangle — when set, writes to cells outside this rect are
     /// dropped silently. Renderer pushes the current component's assigned rect
@@ -139,6 +141,14 @@ public struct CellBuffer: Sendable {
         }
         set {
             guard x >= 0, x < width, y >= 0, y < height else { return }
+            // A cell holds a rendered glyph. `OutputBuffer.writeCharacter`
+            // copies cell bytes verbatim to the file descriptor, so a stored
+            // control character is executed by the terminal rather than drawn
+            // — any string the program does not control (a filename, a chat
+            // message, a branch name) could move the cursor or clear the
+            // screen. Refused here, at the same choke point that enforces
+            // clipping, so no writer can forget to filter.
+            guard !newValue.character.isTerminalControl else { return }
             if let clip = clipRect {
                 guard x >= clip.x, x < clip.x + clip.width,
                       y >= clip.y, y < clip.y + clip.height else {
@@ -188,6 +198,11 @@ public struct CellBuffer: Sendable {
         var col = x
         for char in text {
             guard col < width else { break }
+            // Skipped before the zero-width branch below: that branch exists to
+            // compose combining marks onto their base glyph, which is right for
+            // U+0301 and wrong for U+001B — merging a control would both store
+            // it and destroy the character it merged onto.
+            if char.isTerminalControl { continue }
             let w = char.displayWidth
             if w == 0 {
                 if col > x {

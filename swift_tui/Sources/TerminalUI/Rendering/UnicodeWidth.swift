@@ -30,15 +30,37 @@ import Darwin
 #endif
 
 extension Character {
+    /// Whether this is a control character a terminal would act on rather
+    /// than draw.
+    ///
+    /// C0 (U+0000–U+001F) and DEL per ECMA-48 §5.2, plus C1 (U+0080–U+009F),
+    /// whose members are single-scalar equivalents of ESC-prefixed sequences
+    /// and are executed directly by a terminal in an 8-bit mode.
+    ///
+    /// `CellBuffer` refuses these rather than storing them: cell bytes are
+    /// copied verbatim to the file descriptor, so a stored control would be
+    /// executed instead of rendered.
+    /// Tests every scalar rather than only single-scalar clusters: `"\r\n"` is
+    /// **one** grapheme cluster of two scalars under UAX #29 rule GB3, so a
+    /// single-scalar check would pass CR and LF straight through — and CRLF is
+    /// ordinary input from a Windows file, an HTTP header, or a CRLF checkout.
+    /// Composed glyphs are unaffected: no combining mark, ZWJ sequence, or
+    /// regional-indicator pair contains a control scalar.
+    var isTerminalControl: Bool {
+        unicodeScalars.contains {
+            $0.value < 0x20 || $0.value == 0x7F || (0x80...0x9F).contains($0.value)
+        }
+    }
+
     /// Number of terminal cells this grapheme cluster occupies.
     ///
     /// 0 = combining mark / zero-width (rendered onto the previous cell)
     /// 1 = ASCII / Latin / most BMP scripts
     /// 2 = CJK ideographs, fullwidth forms, most emoji
     public var displayWidth: Int {
-        // Fast path: pure ASCII (excluding C0/C1 control characters which
-        // are 0-width when written but the framework writes them as cells
-        // anyway — caller responsibility to filter beforehand).
+        // Fast path: pure ASCII. C0 and DEL report 0 here; `CellBuffer`
+        // refuses them outright via `isTerminalControl`, so the width is
+        // academic for anything that reaches a cell.
         if let scalar = unicodeScalars.first,
            unicodeScalars.count == 1,
            scalar.value < 0x80 {
