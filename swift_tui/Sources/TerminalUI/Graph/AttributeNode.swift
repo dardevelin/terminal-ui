@@ -112,6 +112,16 @@ public class AttributeNode: @unchecked Sendable {
     /// value cannot survive an env-modifier change.
     public var _resolvedEnv: EnvironmentValues?
 
+    /// Focus granularity in force where this node was built, or nil when the
+    /// author expressed no preference and the container's own shape decides.
+    ///
+    /// Captured at construction rather than read from `_resolvedEnv`, which is
+    /// only written during render: the runtime rebuilds the focus index and
+    /// auto-focuses *before* the first frame is drawn, so a render-time read
+    /// would silently ignore the author's choice on the frame that picks the
+    /// initially focused node.
+    public var focusGranularity: FocusGranularity?
+
     /// Scroll offset for scroll layout nodes — persisted across frames.
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
@@ -162,6 +172,10 @@ public class AttributeNode: @unchecked Sendable {
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind
+        // The env-modifier walk binds `currentEnvironment` around the
+        // construction of a modifier's children, so this reads the author's
+        // preference for the subtree this node is being built into.
+        self.focusGranularity = GraphContext.currentEnvironment?.focusGranularity
     }
 
     /// Mark this node and its layout ancestors as needing re-evaluation.

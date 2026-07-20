@@ -98,6 +98,33 @@ extension TerminalView {
         ModifiedView(content: self, modifier: FocusScopeModifier(id: id))
     }
 
+    /// Choose whether this subtree's panes are focusable as units when they
+    /// hold nothing focusable of their own.
+    ///
+    /// `.container` makes each pane a focus target — i3's "container without
+    /// leaf widget" rule, and the SwiftUI convention that a list row is a
+    /// focusable unit regardless of its content. `.leaf` restricts focus to
+    /// descendants explicitly marked `.focusable()`.
+    ///
+    /// Unset, the container decides: `SplitView` panes are units, ordinary
+    /// stacks are not.
+    public func focusGranularity(
+        _ granularity: FocusGranularity
+    ) -> ModifiedView<Self, EnvironmentModifier<FocusGranularity?>> {
+        environment(\.focusGranularity, granularity)
+    }
+
+    /// Choose what arrow navigation does at a container's edge when there is
+    /// no neighbour in the requested direction.
+    ///
+    /// Unset, the container decides: a split escapes to its parent so an i3
+    /// tree can be traversed edge to edge, while a stack holds focus.
+    public func focusBoundaryPolicy(
+        _ policy: FocusBoundaryPolicy
+    ) -> ModifiedView<Self, EnvironmentModifier<FocusBoundaryPolicy?>> {
+        environment(\.focusBoundaryPolicy, policy)
+    }
+
     /// Receive bracketed-paste payloads delivered to the focused view.
     /// The handler fires with the full payload as a single string —
     /// embedded newlines preserved, payload bytes uninterpreted (that's

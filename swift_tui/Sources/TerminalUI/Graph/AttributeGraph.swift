@@ -1140,9 +1140,12 @@ public final class AttributeGraph: @unchecked Sendable {
                                  on: [node.children[1]])
                 continue
             }
-            if node.isFocusable {
-                node.containmentDepth = depth
-            }
+            // Stamped on every node, not only the explicitly focusable ones:
+            // a container that is focusable as a *unit* — a split pane holding
+            // nothing focusable — is decided later, at focus-collection time,
+            // and would otherwise be left at depth 0 and filtered out of a
+            // presented modal's traversal.
+            node.containmentDepth = depth
             stampContainment(depth: depth, on: node.children)
         }
     }

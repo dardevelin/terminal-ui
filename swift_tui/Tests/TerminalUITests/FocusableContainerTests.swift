@@ -53,8 +53,8 @@ struct FocusableContainerTests {
         let env = EnvironmentValues()
         #expect(env.focusBoundaryPolicy == nil,
                 "no explicit preference: the container's geometry decides")
-        #expect(env.focusGranularity == .container,
-                "SwiftUI list-row default: container is focusable as a unit")
+        #expect(env.focusGranularity == nil,
+                "no explicit preference: the container decides whether its children are panes")
     }
 
     @Test("an unset boundary policy resolves from the container's geometry")
@@ -89,7 +89,7 @@ struct FocusableContainerTests {
     @Test("focusGranularity modifier sets env value through the chain")
     func granularityModifierApplies() {
         var env = EnvironmentValues()
-        let mod = EnvironmentModifier<FocusGranularity>(
+        let mod = EnvironmentModifier<FocusGranularity?>(
             keyPath: \EnvironmentValues.focusGranularity,
             value: .leaf
         )

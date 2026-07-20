@@ -165,7 +165,7 @@ public final class FocusEngine: @unchecked Sendable {
         // the persisted env on every node in the subtree (set during
         // graph construction by the env-modifier traversal). A disabled
         // node drops out of the Tab order entirely — SwiftUI parity.
-        if node.isFocusable && (node._resolvedEnv?.isEnabled ?? true) {
+        if node.participatesInFocus {
             focusableList.append(node)
             deepestContainmentDepth = max(deepestContainmentDepth, node.containmentDepth)
         }
@@ -746,7 +746,7 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     private func collectFocusablesRecursive(_ node: AttributeNode, into result: inout [AttributeNode]) {
-        if node.isFocusable {
+        if node.participatesInFocus {
             result.append(node)
         }
         for child in node.children {

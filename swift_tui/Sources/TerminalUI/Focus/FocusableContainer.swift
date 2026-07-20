@@ -35,6 +35,18 @@ public protocol FocusableContainer {
     /// or should bubble up. `.both` means the container accepts all
     /// four directions (e.g. floating layout, ZStack-shaped overlays).
     var traversalGeometry: TraversalGeometry { get }
+
+    /// Whether this container's children are *panes* — addressable regions
+    /// the user navigates between — rather than incidental content.
+    ///
+    /// Panes are focusable as units even when they hold nothing focusable, so
+    /// a tiling layout works without asking the author to wrap every pane in
+    /// `.focusable()`. Ordinary stacks are the opposite case: making their
+    /// children units would turn every decorative label into a Tab stop.
+    ///
+    /// This is the container's own default. A `.focusGranularity(_:)` in the
+    /// environment overrides it.
+    var childrenAreFocusUnits: Bool { get }
 }
 
 /// Per-container traversal geometry: which axis the container lays children
@@ -152,7 +164,18 @@ extension AttributeNode: FocusableContainer {
         guard case .layout(let info) = kind else { return [] }
         switch info.kind {
         case .split:
-            return children
+            // A pane is a destination when it leads somewhere focusable — via
+            // its content, or as a unit in its own right when it holds nothing
+            // and granularity says panes are units. Under `.leaf` only the
+            // first applies, so empty panes drop out of the walk.
+            //
+            // Ordered so each pane's subtree is walked once: a pane with
+            // content short-circuits before the unit check repeats the walk.
+            let unitsAllowed = panesAreFocusUnits
+            return children.filter { child in
+                if child.isFocusable { return true }
+                return child.containsFocusable() || unitsAllowed
+            }
         case .vstack, .hstack:
             // Structural stacks are compiler-introduced grouping, not layout
             // the user wrote; staying transparent keeps them out of the walk.
@@ -186,6 +209,13 @@ extension AttributeNode: FocusableContainer {
         }
     }
 
+    public var childrenAreFocusUnits: Bool {
+        guard case .layout(let info) = kind, case .split = info.kind else {
+            return false
+        }
+        return true
+    }
+
     /// Whether this node or anything beneath it can take keyboard focus.
     ///
     /// `scope` narrows the question to a single `.focusScope` — a child that
@@ -194,5 +224,45 @@ extension AttributeNode: FocusableContainer {
     func containsFocusable(inScope scope: String? = nil) -> Bool {
         if isFocusable, scope == nil || scopeID == scope { return true }
         return children.contains { $0.containsFocusable(inScope: scope) }
+    }
+
+    /// Whether a child of this container is a focus target when it holds
+    /// nothing focusable of its own.
+    ///
+    /// The author's `.focusGranularity(_:)` wins; absent one, the container's
+    /// own shape decides. Resolved on the container because the answer is the
+    /// same for every sibling.
+    var panesAreFocusUnits: Bool {
+        let granularity = focusGranularity
+            ?? (childrenAreFocusUnits ? .container : .leaf)
+        return granularity == .container
+    }
+
+    /// Whether the user can focus this node as a whole.
+    ///
+    /// True for anything explicitly `.focusable()`, and additionally for a
+    /// pane that holds nothing focusable when its container says panes are
+    /// units. The empty-subtree condition is what prevents a pane and its
+    /// content both stopping Tab in the same region.
+    ///
+    /// The empty-subtree half is derived rather than stamped during graph
+    /// construction: "holds nothing focusable" is not a construction-time
+    /// fact, since a descendant can become focusable later when state flips a
+    /// branch.
+    var isFocusableUnit: Bool {
+        if isFocusable { return true }
+        guard parent?.panesAreFocusUnits == true else { return false }
+        return !containsFocusable()
+    }
+
+    /// Whether this node takes part in focus traversal right now — a focus
+    /// unit that a `.disabled()` ancestor has not switched off.
+    ///
+    /// The single predicate behind both the Tab index and focusable
+    /// collection. Two spellings would let one of them report an order the
+    /// user never gets; `.disabled()` dropping out of Tab order is SwiftUI
+    /// parity and applies to every consumer equally.
+    var participatesInFocus: Bool {
+        isFocusableUnit && (_resolvedEnv?.isEnabled ?? true)
     }
 }

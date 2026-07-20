@@ -118,11 +118,17 @@ public struct EnvironmentValues: Sendable {
     /// Override via `.focusBoundaryPolicy(_:)`.
     public var focusBoundaryPolicy: FocusBoundaryPolicy?
 
-    /// How thoroughly a container's panes participate in focus when
-    /// they have no focusable descendants. Default `.container` —
-    /// SwiftUI list-row pattern (rows focusable as units).
+    /// How thoroughly a container's panes participate in focus when they have
+    /// no focusable descendants.
+    ///
+    /// `nil` means the user has expressed no preference, in which case the
+    /// container decides: pane-bearing containers treat each pane as a focus
+    /// unit, ordinary stacks do not. Optional for the same reason as
+    /// `focusBoundaryPolicy` above — a concrete default would be
+    /// indistinguishable from someone explicitly asking for it, and the two
+    /// need different answers per container.
     /// Override via `.focusGranularity(_:)`.
-    public var focusGranularity: FocusGranularity = .container
+    public var focusGranularity: FocusGranularity?
 
     /// Currently-active mode stack for context-scoped key bindings.
     /// Bindings carrying a `whenContext:` / `whenContextContains:`
