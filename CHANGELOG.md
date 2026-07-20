@@ -6,8 +6,69 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
-Work in progress toward v1.0.0 — the first public FOSS release. No API changes
-planned; all work is documentation, discoverability, and packaging polish.
+## [1.0.0] — 2026-07-20 — First public release
+
+The package now lives at the repository root, so the documented
+`.package(url:)` install resolves, and it is named `TerminalUI` rather than
+after the directory it used to sit in.
+
+### Added
+
+- **`TerminalInk`** — zero-dependency styled output: colour model, capability
+  detection, ANSI SGR, `StyledString`. Usable for tooling that wants styled
+  stdout without a render runtime.
+- **`TerminalLog`** — structured logging on top of Ink: levelled coloured
+  prefixes, console and file sinks, ANSI stripping for non-TTY targets.
+- **`TerminalUIIO`** — opt-in image and media: `ImageBuffer`, decoder seam,
+  half-block renderer, sub-cell glyph atlas, and a pure-Swift RFC 1951 inflate.
+- **Action graph** — `Action`, `ActionScope`, `.actions { }`, and input
+  bindings dispatched by walking the focus chain. Ctrl+C and Escape are
+  framework defaults an app can shadow. Exposed over the remote-control socket
+  so external tools can enumerate and invoke actions.
+- **`ActionContext`** — a mode stack for scoped key bindings, i3-shaped.
+- **`SplitView`** — split-pane primitive whose tree is the state, plus the
+  `FocusableContainer` protocol that drives directional focus for every
+  container kind. Panes are focusable units, so a pane holding nothing
+  focusable is still somewhere the user can go.
+- **`.alert` / `.confirmationDialog`** — SwiftUI-shaped dialogs with role-tagged
+  actions. Escape dismisses and fires the cancel action; Return activates the
+  default, which also takes initial focus; a destructive action is never
+  focused first.
+- **Modal focus containment** — Tab cannot leave a presented dialog.
+- **Boundary feedback** — `.onBoundaryHit` fires at a component's edges, with
+  `TextInput`, `TextArea` and `PromptInput` emitting.
+- **`PromptInput`** — Claude Code-shaped prompt with soft wrap, paste markers,
+  and buffer references.
+- **`Timeline`** — animation primitive: frame stepper and eased progress.
+- Views and modifiers: `.disabled()` with visual dimming, `.flexible()`,
+  `.scrollPosition(id:)`, `.onPaste`, `.onHover`, `.focusGranularity(_:)`,
+  `.focusBoundaryPolicy(_:)`, scrollbars, syntax highlighting, TextArea
+  undo/redo.
+- **Diagnostics** — per-process data directories, the `swtui ctl` remote-control
+  protocol, and a PTY-driven harness that drives the real apps.
+- **CI** — build, test, the warnings-as-errors gate, release build, and the
+  visual harness on macOS and Linux.
+
+### Fixed
+
+- **Control characters in user-supplied text reached the terminal.** Cell bytes
+  are copied verbatim to the file descriptor, so an escape sequence in any
+  string the program did not control — a filename, a chat message, a branch
+  name — was executed rather than drawn. Cells now refuse C0, DEL and C1.
+- Terminal escape state no longer leaks to the parent shell on signal or abort,
+  and mouse tracking no longer survives exit.
+- Arrow navigation had two parallel implementations, only one of them reachable;
+  they are now one path dispatched through `FocusableContainer`.
+- Paste neutralises line terminators per scalar, so a CRLF pair can no longer
+  smuggle a newline into a single-line field.
+- Wrapping and truncation measure display cells rather than grapheme count.
+
+### Changed
+
+- `GraphContext` moved from `nonisolated(unsafe)` statics to `@TaskLocal`.
+- Layout is its own phase: it owns `GeometryReader` rebuilds, and render is
+  pure.
+- **885 tests across 182 suites**, on macOS and Linux.
 
 ## [0.8.0] — 2026-04-17 — Hardened core
 
@@ -91,7 +152,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.8.0
 [0.7.2]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.7.2
 [0.7.1]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.7.1
