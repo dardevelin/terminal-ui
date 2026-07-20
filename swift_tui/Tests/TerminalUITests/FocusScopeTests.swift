@@ -80,7 +80,7 @@ struct FocusScopeNavigationTests {
     @Test("right arrow moves within scope")
     func rightWithinScope() {
         let (graph, engine, focusables) = makeScopedLayout()
-        engine.focusInDirection(.right, root: graph.root)
+        engine.move(.right, root: graph.root!)
         #expect(engine.keyboardFocusID == focusables[1].id)
     }
 
@@ -88,7 +88,7 @@ struct FocusScopeNavigationTests {
     func rightStopsAtScopeEdge() {
         let (graph, engine, focusables) = makeScopedLayout()
         engine.keyboardFocusID = focusables[1].id  // B, last in "top"
-        engine.focusInDirection(.right, root: graph.root)
+        engine.move(.right, root: graph.root!)
         // Stays on B — does not jump to C or D in "bot"
         #expect(engine.keyboardFocusID == focusables[1].id)
     }
@@ -97,7 +97,7 @@ struct FocusScopeNavigationTests {
     func leftStopsAtScopeStart() {
         let (graph, engine, focusables) = makeScopedLayout()
         // Already on A (first in "top")
-        engine.focusInDirection(.left, root: graph.root)
+        engine.move(.left, root: graph.root!)
         #expect(engine.keyboardFocusID == focusables[0].id)
     }
 
@@ -106,7 +106,7 @@ struct FocusScopeNavigationTests {
         let (graph, engine, focusables) = makeScopedLayout()
         // In HStack, 'down' is wrong axis. Pre-would focusNext → leak to C.
         // With scopes, it should be a no-op.
-        engine.focusInDirection(.down, root: graph.root)
+        engine.move(.down, root: graph.root!)
         #expect(engine.keyboardFocusID == focusables[0].id)
     }
 

@@ -228,178 +228,111 @@ public final class FocusEngine: @unchecked Sendable {
         deepestContainmentDepth == 0 || node.containmentDepth == deepestContainmentDepth
     }
 
-    /// Directional focus movement — arrow keys respect layout axis.
-    ///
-    /// Finds the focused node's nearest layout parent (VStack or HStack) and
-    /// checks if the arrow direction matches the layout axis:
-    ///
-    ///   VStack + up/down       → move to sibling above/below (always)
-    ///   HStack + left/right    → move to sibling left/right  (always)
-    ///   Axis mismatch or no stack → fall back to Tab order, but ONLY when
-    ///                            `crossStack` is true (gate consumed by
-    ///                            TerminalApp from `EnvironmentValues.
-    ///                            allowArrowFocusNavigation`).
-    ///
-    /// User directive 2026-04-18: "arrow down on an element that has the
-    /// focus shouldn't move focus out of it, tab is the focus changer,
-    /// unless marked as allow". In-stack sibling navigation DOES count as
-    /// "inside" the element's container — pressing right on Button "OK"
-    /// moving to "Cancel" next to it is an expected UX, not a Tab-style
-    /// escape. Cross-stack escape is the only behavior the gate controls.
-    public func focusInDirection(_ direction: FocusDirection, root: AttributeNode?, crossStack: Bool = false) {
-        guard let root else { return }
-        guard let current = keyboardFocusID else {
-            focusNext()
-            return
-        }
 
-        guard let currentNode = findNode(id: current, in: root) else { return }
-
-        let axisKind: LayoutKind
-        switch direction {
-        case .up, .down: axisKind = .vstack
-        case .left, .right: axisKind = .hstack
-        }
-
-        // Walk up to find the innermost non-structural layout parent. If it
-        // matches the arrow axis but holds only the current focusable (which
-        // happens when a composite view's body introduces its own wrapping
-        // VStack — TextInput, Button, etc.), keep climbing through
-        // axis-matching layouts until we find one with a sibling. Stop as
-        // soon as we hit a MISMATCHED axis layout: arrows must not tunnel
-        // past a perpendicular stack (that's how the scope tests survive —
-        // pressing down inside an HStack shouldn't jump to a VStack above).
-        var search: AttributeNode? = currentNode.parent
-        while let candidate = search {
-            if case .layout(let info) = candidate.kind, !info.isStructural {
-                if info.kind != axisKind {
-                    // Hit a perpendicular-axis layout. `focusable` at the
-                    // edge of its scope/stack should stay put. Do not
-                    // continue upward — jumping past a perpendicular layout
-                    // is exactly the "leaks out" behavior the policy
-                    // forbids. Fall through to the Tab-order fallback,
-                    // which is itself gated by `crossStack` + scopeID.
-                    break
-                }
-                let allSiblings = collectFocusables(candidate)
-                let siblings: [AttributeNode]
-                if let scope = currentNode.scopeID {
-                    siblings = allSiblings.filter { $0.scopeID == scope }
-                } else {
-                    siblings = allSiblings
-                }
-                if let idx = siblings.firstIndex(where: { $0.id == current }),
-                   siblings.count > 1 {
-                    switch direction {
-                    case .down, .right:
-                        if idx + 1 < siblings.count {
-                            keyboardFocusID = siblings[idx + 1].id
-                            return
-                        }
-                    case .up, .left:
-                        if idx > 0 {
-                            keyboardFocusID = siblings[idx - 1].id
-                            return
-                        }
-                    }
-                    // At the edge of this layout — "stay inside" per rule.
-                    return
-                }
-                // Same-axis layout but no sibling at this level: keep
-                // climbing so composite views whose bodies introduce a
-                // same-axis VStack don't kill arrow nav.
-            }
-            search = candidate.parent
-        }
-
-        // No axis match anywhere, OR axis was perpendicular at some level.
-        // Fall back to Tab order only when the host app opted in; arrows
-        // inside a scope always no-op so they can't leak out.
-        if currentNode.scopeID != nil { return }
-        guard crossStack else { return }
-        switch direction {
-        case .up, .left: focusPrevious()
-        case .down, .right: focusNext()
-        }
-    }
-
-    // MARK: - FocusableContainer-driven directional move (HYP-326)
+    // MARK: - Directional focus navigation
 
     /// Move focus by a 4-way direction, dispatching through the
-    /// `FocusableContainer` protocol. Walks up the focused node's
-    /// ancestor chain looking for a container whose
-    /// `traversalGeometry.axis` accepts `direction`. When one is
-    /// found, asks for `focusableChildren()` and picks the next
-    /// sibling along the axis. Falls back per `focusBoundaryPolicy`
-    /// when no neighbor exists.
+    /// `FocusableContainer` protocol.
     ///
-    /// Co-exists with the legacy `focusInDirection(_:root:crossStack:)`
-    /// path that handles VStack/HStack arrow nav. The legacy path
-    /// stays in place until every container kind (Tab, Stack,
-    /// Floating) conforms to FocusableContainer; new container kinds
-    /// (split today, Tab/Stack/Floating later) route exclusively
-    /// through this method.
+    /// Walks up the focused node's ancestor chain looking for a container
+    /// whose `traversalGeometry` accepts the direction, then picks the
+    /// neighbouring child along that axis. When the container has no
+    /// neighbour, `focusBoundaryPolicy` decides — falling back to the
+    /// container's own `isPermeable` when the user set no preference.
     ///
-    /// HYP-326. Designed for SplitView (HYP-328) and the rest of the
-    /// i3 family.
-    public func move(_ direction: FocusDirection, root: AttributeNode) {
+    /// Returns whether focus moved, was deliberately held, or whether no
+    /// container claimed the direction at all. Only the last case makes a
+    /// Tab-order fallback legitimate; see `FocusMoveResult`.
+    @discardableResult
+    public func move(_ direction: FocusDirection, root: AttributeNode) -> FocusMoveResult {
         guard let current = keyboardFocusID,
               let currentNode = findNode(id: current, in: root) else {
             // Nothing focused yet — Tab order falls back to "first focusable."
+            // `focusNext` no-ops when the tree holds nothing focusable at all,
+            // so report what actually happened rather than assuming a move.
+            let before = keyboardFocusID
             focusNext()
-            return
+            return keyboardFocusID == before ? .unhandled : .moved
         }
 
         let requestedAxis: TraversalGeometry.Axis = (direction == .up || direction == .down)
             ? .vertical
             : .horizontal
+        let scope = currentNode.scopeID
 
-        // Walk up looking for the nearest FocusableContainer that handles
-        // the requested axis AND reports `currentNode` as a descendant of
-        // one of its children. The match has to be on a CONTAINER node,
-        // not just any ancestor — the protocol's existential conformance
-        // returns [] for non-split nodes today, which is how we filter.
         var ancestor: AttributeNode? = currentNode.parent
         var descendantFromAncestor: AttributeNode = currentNode
 
         while let candidate = ancestor {
-            let geom = candidate.traversalGeometry
-            let axisMatches = geom.axis == requestedAxis || geom.axis == .both
-            let children = candidate.focusableChildren()
-
-            if axisMatches, !children.isEmpty,
-               let idx = children.firstIndex(where: { $0.id == descendantFromAncestor.id })
-                       ?? children.firstIndex(where: { subtreeContains(node: $0, id: currentNode.id) }) {
-                let target = nextChild(in: children, from: idx, direction: direction)
-                if let target {
-                    keyboardFocusID = leafFocusID(in: target) ?? target.id
-                    return
-                }
-                // No neighbor in this container — apply boundary policy.
-                let policy = candidate._resolvedEnv?.focusBoundaryPolicy
-                    ?? currentNode._resolvedEnv?.focusBoundaryPolicy
-                    ?? .escapeToParent
-                switch policy {
-                case .wrap:
-                    let wrapped = wrapTarget(in: children, from: idx, direction: direction)
-                    if let wrapped {
-                        keyboardFocusID = leafFocusID(in: wrapped) ?? wrapped.id
-                    }
-                    return
-                case .stay:
-                    return
-                case .escapeToParent:
-                    // Continue walking up — try the next container.
-                    break
-                }
+            defer {
+                descendantFromAncestor = candidate
+                ancestor = candidate.parent
             }
 
-            descendantFromAncestor = candidate
-            ancestor = candidate.parent
+            let geom = candidate.traversalGeometry
+            // A scope clamps arrows to itself, so a child leading only to
+            // out-of-scope focusables is not a candidate. Tab still crosses
+            // scopes — that is the SwiftUI convention, and it routes through
+            // `focusNext`, not here.
+            let children = candidate.focusableChildren()
+                .filter { scope == nil || $0.containsFocusable(inScope: scope) }
+            guard !children.isEmpty else { continue }
+
+            guard geom.axis == requestedAxis || geom.axis == .both else {
+                // A perpendicular container. Impermeable ones stop the walk so
+                // arrows cannot tunnel past a stack into whatever sits beyond
+                // it; splits let the search continue, which is how a `.down`
+                // inside a horizontal split reaches the split above.
+                if !geom.isPermeable { return .blocked }
+                continue
+            }
+
+            // A single candidate means this container holds only the focused
+            // subtree — the wrapping stack a composite view like Button or
+            // TextInput introduces around its own body. Keep climbing, or
+            // every such view becomes an arrow-navigation dead end.
+            guard children.count > 1,
+                  let idx = children.firstIndex(where: { $0.id == descendantFromAncestor.id })
+                      // Fallback for a child that was reshaped or filtered:
+                      // find the one whose subtree still holds the focus.
+                      ?? children.firstIndex(where: { subtreeContains(node: $0, id: currentNode.id) })
+            else { continue }
+
+            if let target = nextChild(in: children, from: idx, direction: direction) {
+                keyboardFocusID = leafFocusID(in: target) ?? target.id
+                return .moved
+            }
+
+            switch boundaryPolicy(for: candidate, focused: currentNode, geometry: geom) {
+            case .wrap:
+                guard let wrapped = wrapTarget(in: children, from: idx, direction: direction) else {
+                    return .blocked
+                }
+                keyboardFocusID = leafFocusID(in: wrapped) ?? wrapped.id
+                return .moved
+            case .stay:
+                return .blocked
+            case .escapeToParent:
+                continue  // Try the next container up.
+            }
         }
 
-        // No container handled the move; do nothing (legacy
-        // focusInDirection covers the VStack/HStack case for now).
+        // Nothing claimed the direction. A scope still forbids leaking out of
+        // it, so report that as a deliberate hold rather than an opening for
+        // the caller's Tab fallback.
+        return scope == nil ? .unhandled : .blocked
+    }
+
+    /// Resolve the boundary policy for a container: the nearest explicit
+    /// preference, else the container's intrinsic behaviour.
+    private func boundaryPolicy(
+        for container: AttributeNode,
+        focused: AttributeNode,
+        geometry: TraversalGeometry
+    ) -> FocusBoundaryPolicy {
+        if let explicit = container._resolvedEnv?.focusBoundaryPolicy { return explicit }
+        if let explicit = focused._resolvedEnv?.focusBoundaryPolicy { return explicit }
+        return geometry.isPermeable ? .escapeToParent : .stay
     }
 
     private func nextChild(
@@ -905,19 +838,6 @@ public final class FocusEngine: @unchecked Sendable {
         if node.id == id { return node }
         for child in node.children {
             if let found = findNodeRecursive(id: id, in: child) { return found }
-        }
-        return nil
-    }
-
-    /// Find the nearest non-structural layout parent.
-    /// Skips ForEach/TupleView layout nodes (structural — transparent to navigation).
-    private func findLayoutParent(of node: AttributeNode) -> AttributeNode? {
-        var current = node.parent
-        while let p = current {
-            if case .layout = p.kind, !GraphRenderer.isStructuralLayout(p) {
-                return p
-            }
-            current = p.parent
         }
         return nil
     }

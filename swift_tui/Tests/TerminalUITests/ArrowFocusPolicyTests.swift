@@ -8,7 +8,7 @@ import Testing
 // Validates the policy encoded at TerminalApp.swift: only when the
 // `allowArrowFocusNavigation` environment value is `.true` should arrow
 // presses unhandled by the focused view fall through to
-// `FocusEngine.focusInDirection`.
+// `FocusEngine.move`.
 
 @Suite("Arrow focus policy — default off, opt-in via env")
 @MainActor
@@ -21,7 +21,7 @@ struct ArrowFocusPolicyTests {
 
     @Test("arrow direction fires focus change when called directly (engine-level behavior unchanged)")
     func engineStillRespondsWhenCalled() {
-        // Safety check: FocusEngine's own `focusInDirection` still works as
+        // Safety check: FocusEngine's own `move` still works as
         // before — the policy gate lives at the event-loop level, not in
         // the engine. Apps that want to arrow-navigate inside a custom
         // input handler can still invoke it explicitly.
@@ -35,7 +35,7 @@ struct ArrowFocusPolicyTests {
         let engine = FocusEngine()
         engine.rebuildIndex(root: root)
         engine.keyboardFocusID = root.children[0].id
-        engine.focusInDirection(.down, root: root)
+        engine.move(.down, root: root)
         #expect(engine.keyboardFocusID == root.children[1].id)
     }
 

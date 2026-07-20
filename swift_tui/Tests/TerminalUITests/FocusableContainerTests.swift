@@ -2,13 +2,11 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-326 Slice 0a — FocusableContainer protocol + directional FocusEngine.move(_:)
-//
-// Engine-level focus primitives that the i3 family depends on. Container types
-// expose their focusable children + a traversal-axis hint; FocusEngine consults
-// the protocol via the AttributeNode existential — no `as?` casts to concrete
-// container types. Two env values customize behaviour: focusBoundaryPolicy
-// (escapeToParent / wrap / stay) and focusGranularity (container / leaf).
+// Engine-level focus primitives. Container types expose their focusable
+// children plus a traversal-axis hint; FocusEngine consults the protocol via
+// the AttributeNode existential — no `as?` casts to concrete container types.
+// Two env values customize behaviour: focusBoundaryPolicy (escapeToParent /
+// wrap / stay) and focusGranularity (container / leaf).
 
 @Suite("FocusableContainer — engine-level directional navigation primitives")
 @MainActor
@@ -53,16 +51,34 @@ struct FocusableContainerTests {
     @Test("EnvironmentValues defaults match i3 conventions")
     func envDefaults() {
         let env = EnvironmentValues()
-        #expect(env.focusBoundaryPolicy == .escapeToParent,
-                "i3 default: arrow at scope edge bubbles up")
+        #expect(env.focusBoundaryPolicy == nil,
+                "no explicit preference: the container's geometry decides")
         #expect(env.focusGranularity == .container,
                 "SwiftUI list-row default: container is focusable as a unit")
+    }
+
+    @Test("an unset boundary policy resolves from the container's geometry")
+    func boundaryPolicyFallsBackToGeometry() {
+        // The i3 convention still holds where it belongs — splits bubble at
+        // their edges — but a stack holds focus instead, per the directive
+        // that arrows stay inside the element that owns them.
+        let split = AttributeNode(
+            id: NodeID.root.appending(.index(0)),
+            kind: .layout(LayoutInfo(kind: .split(.horizontal)))
+        )
+        #expect(split.traversalGeometry.isPermeable)
+
+        let stack = AttributeNode(
+            id: NodeID.root.appending(.index(1)),
+            kind: .layout(LayoutInfo(kind: .hstack))
+        )
+        #expect(!stack.traversalGeometry.isPermeable)
     }
 
     @Test("focusBoundaryPolicy modifier sets env value through the chain")
     func boundaryPolicyModifierApplies() {
         var env = EnvironmentValues()
-        let mod = EnvironmentModifier<FocusBoundaryPolicy>(
+        let mod = EnvironmentModifier<FocusBoundaryPolicy?>(
             keyPath: \EnvironmentValues.focusBoundaryPolicy,
             value: .wrap
         )

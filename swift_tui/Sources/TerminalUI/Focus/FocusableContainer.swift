@@ -1,18 +1,18 @@
-// HYP-326 Slice 0a — engine-level focus protocol for the i3 family.
+// Engine-level focus protocol for directional navigation.
 //
-// Container types (split, tab, stack, floating) declare themselves
-// focus-eligible by conforming to FocusableContainer. The FocusEngine
-// dispatches arrow-key directional navigation through this protocol —
+// Container types (stack, split, and later tab / floating) declare
+// themselves focus-eligible by conforming to FocusableContainer. The
+// FocusEngine dispatches arrow-key navigation through this protocol —
 // never `as?`-casting to concrete container types — so adding a new
 // container kind doesn't require engine changes.
 //
-// Why a separate protocol instead of extending the existing layout
-// machinery: the engine's prior arrow path keys off LayoutKind ==
-// .vstack / .hstack hard-coded. That works for the legacy stacks but
-// each new i3 primitive (split, stacked, tabbed, floating) would need
-// its own engine arm, and arrow handling for nested splits is not
-// expressible as "match LayoutKind." Protocol-based dispatch keeps the
-// engine generic and gives every i3 child a single integration point.
+// Why a protocol instead of extending the existing layout machinery: the
+// engine's earlier arrow path matched on LayoutKind == .vstack / .hstack
+// directly. That worked for the two stacks, but each new i3 primitive
+// (split, stacked, tabbed, floating) would have needed its own engine
+// arm, and arrow handling for nested splits is not expressible as "match
+// LayoutKind" at all. Protocol dispatch keeps the engine generic and
+// gives every container a single integration point.
 
 /// Container types that participate in directional focus navigation.
 ///
@@ -37,13 +37,8 @@ public protocol FocusableContainer {
     var traversalGeometry: TraversalGeometry { get }
 }
 
-/// Per-container traversal geometry: which axis the container lays
-/// children along, plus whether the container's own edges wrap.
-///
-/// `wrapsAtEdge` is a hint — the runtime-level `focusBoundaryPolicy`
-/// env value still wins. The geometry's wrap flag is what conformers
-/// declare when their layout is *intrinsically* wrap-friendly (a
-/// circular pager, for example), not a user preference.
+/// Per-container traversal geometry: which axis the container lays children
+/// along, and whether arrows may leave it.
 public struct TraversalGeometry: Sendable, Equatable {
     /// Direction(s) the container handles. Arrow events whose axis
     /// doesn't match are bubbled to the parent container.
@@ -54,12 +49,56 @@ public struct TraversalGeometry: Sendable, Equatable {
     }
 
     public var axis: Axis
-    public var wrapsAtEdge: Bool
 
-    public init(axis: Axis, wrapsAtEdge: Bool = false) {
+    /// Whether arrow navigation may leave this container — both across its
+    /// edges and past its axis. One question, because containment has no
+    /// axis: a container that held focus at its last child but let arrows
+    /// tunnel out sideways would be incoherent.
+    ///
+    /// Splits are permeable: an i3 tree is meant to be traversed edge to
+    /// edge, and a `.down` inside a horizontal split has to reach the split
+    /// above it. Stacks are not, per the 2026-04-18 directive that arrows
+    /// stay inside the element that owns them and Tab is the focus changer.
+    ///
+    /// Declared by the conformer because it describes the container's own
+    /// shape. A user's `.focusBoundaryPolicy(_:)` still overrides it — this
+    /// is the default that applies when they have expressed no preference.
+    public var isPermeable: Bool
+
+    public init(axis: Axis, isPermeable: Bool) {
         self.axis = axis
-        self.wrapsAtEdge = wrapsAtEdge
+        self.isPermeable = isPermeable
     }
+}
+
+extension Key {
+    /// The navigation direction this key requests, or nil when it is not an
+    /// arrow. Keeps the runtime's key handling free of a four-way branch.
+    var focusDirection: FocusDirection? {
+        switch self {
+        case .up: return .up
+        case .down: return .down
+        case .left: return .left
+        case .right: return .right
+        default: return nil
+        }
+    }
+}
+
+/// Outcome of a directional focus move.
+///
+/// Three cases rather than a `Bool` because "focus did not move" has two
+/// meanings that must produce different caller behaviour: a container claimed
+/// the direction and deliberately held focus (`blocked`), versus no container
+/// claimed it at all (`unhandled`), which is the only case where falling back
+/// to Tab order is legitimate.
+public enum FocusMoveResult: Sendable, Equatable {
+    /// Focus moved to a new node.
+    case moved
+    /// A container handled the direction and kept focus where it was.
+    case blocked
+    /// No container claimed the direction.
+    case unhandled
 }
 
 /// What the engine does when arrow navigation hits a container's
@@ -100,27 +139,60 @@ public enum FocusGranularity: Sendable, Equatable {
 
 // MARK: - AttributeNode conformance
 
-// AttributeNode acts as the runtime existential for FocusableContainer.
-// Today only `LayoutKind.split` reports children + axis; other layouts
-// continue to route through the legacy axis-matching path in
-// `FocusEngine.focusInDirection`. Future slices migrate VStack / HStack
-// / Tab / Stack / Floating one at a time, eliminating the LayoutKind
-// hard-coding from the engine.
+// AttributeNode is the runtime existential for FocusableContainer. Splits and
+// the two stacks report children and an axis; other layout kinds stay
+// transparent so arrows pass through them to a container that can act.
+//
+// ZStack is deliberately excluded: it has no traversal axis, and reporting
+// `.both` would make it claim every direction and swallow arrows for its
+// whole subtree. Scroll wraps a single child, so there is nothing to
+// traverse. Tab and floating containers join when those layout kinds exist.
 extension AttributeNode: FocusableContainer {
     public func focusableChildren() -> [AttributeNode] {
-        guard case .layout(let info) = kind, case .split = info.kind else {
+        guard case .layout(let info) = kind else { return [] }
+        switch info.kind {
+        case .split:
+            return children
+        case .vstack, .hstack:
+            // Structural stacks are compiler-introduced grouping, not layout
+            // the user wrote; staying transparent keeps them out of the walk.
+            guard !info.isStructural else { return [] }
+            // Children that can actually receive focus somewhere beneath
+            // them. Returning every child would let navigation select a
+            // decorative sibling that holds no focusable and strand focus on
+            // a node that cannot take it.
+            return children.filter { $0.containsFocusable() }
+        default:
             return []
         }
-        return children
     }
 
     public var traversalGeometry: TraversalGeometry {
-        guard case .layout(let info) = kind, case .split(let axis) = info.kind else {
-            return TraversalGeometry(axis: .both, wrapsAtEdge: false)
+        guard case .layout(let info) = kind else {
+            return TraversalGeometry(axis: .both, isPermeable: true)
         }
-        return TraversalGeometry(
-            axis: axis == .horizontal ? .horizontal : .vertical,
-            wrapsAtEdge: false
-        )
+        switch info.kind {
+        case .split(let axis):
+            return TraversalGeometry(
+                axis: axis == .horizontal ? .horizontal : .vertical,
+                isPermeable: true
+            )
+        case .vstack:
+            return TraversalGeometry(axis: .vertical, isPermeable: false)
+        case .hstack:
+            return TraversalGeometry(axis: .horizontal, isPermeable: false)
+        default:
+            return TraversalGeometry(axis: .both, isPermeable: true)
+        }
+    }
+
+    /// Whether this node or anything beneath it can take keyboard focus.
+    ///
+    /// `scope` narrows the question to a single `.focusScope` — a child that
+    /// leads only to focusables outside the scope is not a navigation
+    /// candidate, because arrows stay within their scope.
+    func containsFocusable(inScope scope: String? = nil) -> Bool {
+        if isFocusable, scope == nil || scopeID == scope { return true }
+        return children.contains { $0.containsFocusable(inScope: scope) }
     }
 }

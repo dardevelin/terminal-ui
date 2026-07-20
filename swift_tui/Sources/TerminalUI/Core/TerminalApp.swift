@@ -657,18 +657,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
         if !handledByView {
             // Focus navigation — Tab/Shift+Tab always navigate.
             //
-            // Arrows always attempt in-stack sibling navigation (HStack L/R,
-            // VStack U/D): a focused Button pressed with → moves to the
-            // next Button next to it, which is "inside" the container per
-            // the user's 2026-04-18 rule. Cross-stack fallback (arrow
-            // escaping its layout into global Tab order) still requires
-            // `allowArrowFocusNavigation=true` since that's the behavior
-            // the rule forbids by default.
+            // Arrows traverse whichever container owns the focused node,
+            // dispatched through `FocusableContainer` so every container kind
+            // behaves consistently. Containers hold focus at their own edges
+            // per the user's 2026-04-18 rule; only when no container claims
+            // the direction at all may arrows fall through to global Tab
+            // order, and that still requires `allowArrowFocusNavigation`.
             if keyEvent.key == .tab && keyEvent.modifiers.contains(.shift) {
                 focusEngine.focusPrevious()
             } else if keyEvent.key == .tab {
                 focusEngine.focusNext()
-            } else {
+            } else if let direction = keyEvent.key.focusDirection, let root = graph.root {
                 // Resolve `allowArrowFocusNavigation` from the focused
                 // node's stamped `_resolvedEnv`, NOT from a global
                 // `GraphContext.currentEnvironment`. The TaskLocal
@@ -678,14 +677,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 // every render (see `GraphRenderer.render`) and persists.
                 let focused = focusEngine.focusedNode(in: graph.root)
                 let crossStack = focused?._resolvedEnv?.allowArrowFocusNavigation == true
-                if keyEvent.key == .up {
-                    focusEngine.focusInDirection(.up, root: graph.root, crossStack: crossStack)
-                } else if keyEvent.key == .down {
-                    focusEngine.focusInDirection(.down, root: graph.root, crossStack: crossStack)
-                } else if keyEvent.key == .left {
-                    focusEngine.focusInDirection(.left, root: graph.root, crossStack: crossStack)
-                } else if keyEvent.key == .right {
-                    focusEngine.focusInDirection(.right, root: graph.root, crossStack: crossStack)
+                if focusEngine.move(direction, root: root) == .unhandled, crossStack {
+                    switch direction {
+                    case .up, .left: focusEngine.focusPrevious()
+                    case .down, .right: focusEngine.focusNext()
+                    }
                 }
             }
 

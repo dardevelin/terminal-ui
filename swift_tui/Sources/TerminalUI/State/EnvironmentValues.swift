@@ -107,16 +107,21 @@ public struct EnvironmentValues: Sendable {
     /// see `DisabledModifier.apply`.
     public var isEnabled: Bool = true
 
-    /// What the directional focus engine does when arrow navigation
-    /// hits a container's edge with no neighbor on the requested
-    /// axis. Default `.escapeToParent` — i3 convention.
-    /// HYP-326. Override via `.focusBoundaryPolicy(_:)`.
-    public var focusBoundaryPolicy: FocusBoundaryPolicy = .escapeToParent
+    /// What the directional focus engine does when arrow navigation hits a
+    /// container's edge with no neighbour on the requested axis.
+    ///
+    /// `nil` means the user has expressed no preference, in which case the
+    /// container's own `traversalGeometry` decides: splits escape to the
+    /// parent, stacks hold focus. Optional rather than a concrete default so
+    /// those two intrinsic behaviours stay distinguishable from someone
+    /// explicitly asking for `.escapeToParent` everywhere.
+    /// Override via `.focusBoundaryPolicy(_:)`.
+    public var focusBoundaryPolicy: FocusBoundaryPolicy?
 
     /// How thoroughly a container's panes participate in focus when
     /// they have no focusable descendants. Default `.container` —
     /// SwiftUI list-row pattern (rows focusable as units).
-    /// HYP-326. Override via `.focusGranularity(_:)`.
+    /// Override via `.focusGranularity(_:)`.
     public var focusGranularity: FocusGranularity = .container
 
     /// Currently-active mode stack for context-scoped key bindings.

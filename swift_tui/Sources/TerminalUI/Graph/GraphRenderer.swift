@@ -340,12 +340,11 @@ public enum GraphRenderer {
     /// `VStack`/`HStack`/`ZStack` are NOT structural.
     ///
     /// Previously this used a heuristic based on parent-node kind, which mis-
-    /// classified user-written VStacks nested inside composite-view bodies
-    /// as structural — that broke Button-page arrow navigation because the
-    /// outer VStack holding the sibling Buttons was treated as transparent
-    /// and `findLayoutParent` walked past it. Now we read the explicit
-    /// `isStructural` flag set at graph construction, so the distinction is
-    /// reliable.
+    /// classified user-written VStacks nested inside composite-view bodies as
+    /// structural — that broke Button-page arrow navigation, because the outer
+    /// VStack holding the sibling Buttons was treated as transparent and the
+    /// focus walk stepped past it. Now we read the explicit `isStructural`
+    /// flag set at graph construction, so the distinction is reliable.
     static func isStructuralLayout(_ node: AttributeNode) -> Bool {
         if case .layout(let info) = node.kind, info.isStructural { return true }
         return false
