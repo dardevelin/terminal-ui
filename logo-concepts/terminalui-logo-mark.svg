@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .mark { fill: #E8E8E8; }
+      .accent { fill: #E8E8E8; opacity: 0.4; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="512" height="512" rx="64"/>
+
+  <!-- Terminal prompt chevron — sharp geometric > -->
+  <polygon class="mark" points="128,144 272,256 128,368 128,320 224,256 128,192"/>
+
+  <!-- Cursor block — the blinking underscore/block -->
+  <rect class="mark" x="288" y="296" width="112" height="24" rx="2"/>
+
+</svg>

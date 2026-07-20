@@ -1,0 +1,29 @@
+.DS_Store
+
+# Swift / SPM
+**/.build/
+**/.swiftpm/
+**/Package.resolved
+**/DerivedData/
+**/*.xcodeproj/
+**/xcuserdata/
+
+# Linux-in-Docker scratch path — kept separate from .build/ so ELF and Mach-O
+# binaries never overwrite each other (see tools/scripts/linux_harness.sh).
+**/.build-linux/
+
+# TerminalUI diagnostic output (ephemeral)
+**/.terminalui/
+
+# DocC generated docs (built by CI, not checked in)
+/docs/
+
+# Studied prior art — separately-cloned repositories (ratatui, SwiftTUI,
+# asciinema, vhs), kept locally for reference and not part of this project.
+/reference/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*~

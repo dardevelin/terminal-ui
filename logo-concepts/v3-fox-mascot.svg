@@ -1,0 +1,113 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <!--
+    TerminalUI mascot — seated forward-facing fox, geometric flat.
+    Design rule: every shape must be a primitive polygon/ellipse so it can
+    transliterate back to terminal cells (▲ █ ● ▀ ▄ ▟ ▙ ▗ ▘ ▝ ▖).
+    Palette mirrors what color 208/130/255/232/217/214 produce in terminals.
+  -->
+  <defs>
+    <style>
+      .bg      { fill: #0A0A0A; }
+      .orange  { fill: #F2994A; }   /* body main — color 208 */
+      .rust    { fill: #A56A2E; }   /* ear-backs, tail mid — 130 */
+      .pink    { fill: #F9C6B8; }   /* inner-ear fur — 217 */
+      .white   { fill: #F4F4F4; }   /* chest, muzzle, tail tip — 255 */
+      .amber   { fill: #E8A55A; }   /* eye iris — 214 (fox-natural) */
+      .pupil   { fill: #1A0F06; }   /* eye pupil — deep brown */
+      .nose    { fill: #3A2118; }   /* warm-dark, not pure black — 94 */
+      .paw     { fill: #1A0F06; }   /* paw socks */
+    </style>
+  </defs>
+
+  <rect class="bg" width="400" height="400" rx="24"/>
+
+  <!-- ========= EARS (sit behind the head in z-order) ========= -->
+  <!-- Left ear — outer rust triangle -->
+  <polygon class="rust"   points="112,56  156,148  88,148"/>
+  <!-- Left ear — inner pink -->
+  <polygon class="pink"   points="122,88  146,148  106,148"/>
+
+  <!-- Right ear — outer rust triangle -->
+  <polygon class="rust"   points="288,56  312,148  244,148"/>
+  <!-- Right ear — inner pink -->
+  <polygon class="pink"   points="278,88  294,148  254,148"/>
+
+  <!-- ========= HEAD (puffy cheek shape) ========= -->
+  <!-- Orange cranium: a rounded trapezoid, wider than tall -->
+  <path class="orange" d="
+    M 88 148
+    Q 80 180 92 220
+    Q 108 260 160 272
+    L 240 272
+    Q 292 260 308 220
+    Q 320 180 312 148
+    Z
+  "/>
+
+  <!-- White cheek pads + muzzle (the signature fur occlusion) -->
+  <path class="white" d="
+    M 140 228
+    Q 132 248 148 268
+    L 200 280
+    L 252 268
+    Q 268 248 260 228
+    Q 244 240 200 242
+    Q 156 240 140 228
+    Z
+  "/>
+
+  <!-- ========= EYES ========= -->
+  <!-- Left eye — amber almond tilted inward -->
+  <ellipse class="amber" cx="164" cy="196" rx="14" ry="10" transform="rotate(-8 164 196)"/>
+  <circle  class="pupil" cx="166" cy="197" r="5"/>
+  <!-- Right eye -->
+  <ellipse class="amber" cx="236" cy="196" rx="14" ry="10" transform="rotate(8 236 196)"/>
+  <circle  class="pupil" cx="234" cy="197" r="5"/>
+
+  <!-- ========= NOSE (small heart-shape, warm dark brown) ========= -->
+  <path class="nose" d="
+    M 200 252
+    Q 190 244 192 254
+    Q 200 262 208 254
+    Q 210 244 200 252
+    Z
+  "/>
+
+  <!-- ========= BODY (seated, narrower than head — neck taper implicit) ========= -->
+  <!-- Orange chest shoulders -->
+  <path class="orange" d="
+    M 120 272
+    Q 108 320 124 360
+    L 276 360
+    Q 292 320 280 272
+    Z
+  "/>
+
+  <!-- White chest blaze down the middle — occludes body, separates head -->
+  <path class="white" d="
+    M 180 272
+    Q 172 320 180 360
+    L 220 360
+    Q 228 320 220 272
+    Z
+  "/>
+
+  <!-- ========= TAIL (curls from behind body to the right) ========= -->
+  <!-- Rust bushy tail base -->
+  <path class="rust" d="
+    M 276 280
+    Q 330 290 344 330
+    Q 356 366 332 372
+    Q 308 372 296 352
+    Q 288 328 276 310
+    Z
+  "/>
+  <!-- White tail tip -->
+  <ellipse class="white" cx="340" cy="364" rx="14" ry="10"/>
+
+  <!-- ========= FRONT PAWS (2 visible — NO middle leg) ========= -->
+  <!-- Left paw -->
+  <rect class="paw" x="140" y="354" width="32" height="14" rx="6"/>
+  <!-- Right paw -->
+  <rect class="paw" x="228" y="354" width="32" height="14" rx="6"/>
+</svg>

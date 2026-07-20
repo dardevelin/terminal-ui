@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .pri { fill: #E8E8E8; }
+      .ghost { fill: #E8E8E8; opacity: 0.18; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="512" height="512" rx="64"/>
+
+  <!--
+    Concept: Interlocking angle brackets forming a monogram
+    Left bracket  <  =  the "input" / terminal
+    Right bracket >  =  the "output" / UI
+    Together they frame a central void — the interface layer
+  -->
+
+  <!-- Left bracket < -->
+  <polygon class="pri" points="224,144 112,256 224,368 224,328 152,256 224,184"/>
+
+  <!-- Right bracket > -->
+  <polygon class="pri" points="288,144 400,256 288,368 288,328 360,256 288,184"/>
+
+  <!-- Central dot — the cursor / focal point -->
+  <circle class="pri" cx="256" cy="256" r="10"/>
+
+  <!-- Subtle scan line accents -->
+  <rect class="ghost" x="96" y="248" width="320" height="1"/>
+  <rect class="ghost" x="96" y="264" width="320" height="1"/>
+
+</svg>

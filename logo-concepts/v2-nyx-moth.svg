@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #08080A; }
+      .pri { fill: #D4D4D8; }
+      .dim { fill: #D4D4D8; opacity: 0.15; }
+      .glow { fill: #A1F0C4; }
+      .glow-dim { fill: #A1F0C4; opacity: 0.25; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="512" height="512" rx="56"/>
+
+  <!--
+    NYX — geometric moth
+    Drawn to the terminal glow. Wings of precise geometry.
+    Night creature. The interface between dark and light.
+  -->
+
+  <!-- Upper wings — large angular swept shapes -->
+  <polygon class="pri" points="256,160 112,216 136,320 224,280"/>
+  <polygon class="pri" points="256,160 400,216 376,320 288,280"/>
+
+  <!-- Wing detail lines — geometric patterns -->
+  <line x1="180" y1="208" x2="176" y2="280" stroke="#08080A" stroke-width="2"/>
+  <line x1="332" y1="208" x2="336" y2="280" stroke="#08080A" stroke-width="2"/>
+  <line x1="200" y1="232" x2="160" y2="296" stroke="#08080A" stroke-width="1.5" opacity="0.5"/>
+  <line x1="312" y1="232" x2="352" y2="296" stroke="#08080A" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Wing eye spots — geometric circles, terminal green -->
+  <circle class="glow" cx="184" cy="248" r="12"/>
+  <circle class="bg" cx="184" cy="248" r="6"/>
+  <circle class="glow" cx="328" cy="248" r="12"/>
+  <circle class="bg" cx="328" cy="248" r="6"/>
+
+  <!-- Lower wings — smaller, angular -->
+  <polygon class="pri" points="224,280 148,356 200,380 256,320"/>
+  <polygon class="pri" points="288,280 364,356 312,380 256,320"/>
+
+  <!-- Body — slender central form -->
+  <rect class="pri" x="248" y="152" width="16" height="200" rx="8"/>
+
+  <!-- Head -->
+  <circle class="pri" cx="256" cy="144" r="16"/>
+
+  <!-- Antennae — elegant curves -->
+  <line x1="248" y1="132" x2="208" y2="96" stroke="#D4D4D8" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="264" y1="132" x2="304" y2="96" stroke="#D4D4D8" stroke-width="2.5" stroke-linecap="round"/>
+  <circle class="glow-dim" cx="208" cy="96" r="4"/>
+  <circle class="glow-dim" cx="304" cy="96" r="4"/>
+
+  <!-- Terminal cursor at base — the glow it's drawn to -->
+  <rect class="glow" x="240" y="392" width="32" height="6" rx="1" opacity="0.6"/>
+
+  <!-- Subtle radial glow lines from cursor -->
+  <line x1="240" y1="396" x2="176" y2="420" stroke="#A1F0C4" stroke-width="0.5" opacity="0.15"/>
+  <line x1="272" y1="396" x2="336" y2="420" stroke="#A1F0C4" stroke-width="0.5" opacity="0.15"/>
+  <line x1="256" y1="398" x2="256" y2="440" stroke="#A1F0C4" stroke-width="0.5" opacity="0.15"/>
+
+</svg>

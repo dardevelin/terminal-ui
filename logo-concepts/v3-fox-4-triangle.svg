@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .fg { fill: #F2994A; }
+      .nose { fill: #E8E8E8; }
+    </style>
+  </defs>
+  <rect class="bg" width="240" height="240" rx="16"/>
+  <!-- Two ear triangles and a face triangle with nose dot -->
+  <g transform="translate(60,48)">
+    <polygon class="fg" points="0,80 40,0 80,80"/>     <!-- left ear -->
+    <polygon class="fg" points="40,80 80,0 120,80"/>   <!-- right ear (overlap) -->
+    <polygon class="fg" points="0,80 120,80 60,144"/>  <!-- face -->
+    <circle class="nose" cx="60" cy="108" r="6"/>
+  </g>
+</svg>

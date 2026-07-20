@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .stroke { fill: none; stroke: #F2994A; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; }
+      .eye { fill: #0A0A0A; }
+      .nose { fill: #E8E8E8; }
+      .outline { fill: none; stroke: #F2994A; stroke-width: 5; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <rect class="bg" width="320" height="240" rx="16"/>
+  <!-- Stylized outlined fox face: diamond head + two ears + eyes + muzzle -->
+  <g transform="translate(70,50)">
+    <!-- Head: rounded trapezoid -->
+    <path class="outline" d="M 20 30 L 80 30 Q 100 30 100 50 L 100 80 Q 90 110 60 130 L 60 130 Q 30 110 20 80 L 20 50 Q 20 30 20 30 Z
+                             M 100 30 L 100 50 L 120 30 Z
+                             M 20 30 L 20 50 L 0 30 Z
+                             M 100 50 L 120 30 L 140 50 L 120 70 Z
+                             M 20 50 L 0 30 L -20 50 L 0 70 Z" />
+    <!-- simpler: two triangle ears + trapezoid face -->
+  </g>
+  <!-- cleaner version: -->
+  <g transform="translate(100,50)">
+    <polygon class="stroke" points="0,40 20,0 40,40"/>       <!-- left ear -->
+    <polygon class="stroke" points="80,40 100,0 120,40"/>    <!-- right ear -->
+    <path class="stroke" d="M 0 40 L 120 40 L 100 100 L 60 130 L 20 100 Z"/>  <!-- face -->
+    <circle class="eye"  cx="35" cy="65" r="6"/>
+    <circle class="eye"  cx="85" cy="65" r="6"/>
+    <circle class="nose" cx="60" cy="100" r="5"/>
+  </g>
+</svg>

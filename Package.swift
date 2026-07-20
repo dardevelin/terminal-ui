@@ -26,7 +26,7 @@ let strictSettings: [SwiftSetting] = [
 ] + warningsAsErrors
 
 let package = Package(
-    name: "swift_tui",
+    name: "TerminalUI",
     platforms: [.macOS(.v15)],
     products: [
         .library(name: "TerminalUI", targets: ["TerminalUI"]),

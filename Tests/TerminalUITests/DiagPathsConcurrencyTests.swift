@@ -112,9 +112,17 @@ struct DiagPathsConcurrencyTests {
             try fm.createDirectory(atPath: ownDir, withIntermediateDirectories: true)
             try fm.createDirectory(atPath: siblingDir, withIntermediateDirectories: true)
 
+            // Marker file rather than the directory itself. `ownDir` is
+            // process-global, so anything in the suite that touches
+            // diagnostics can recreate it between the call and the assertion
+            // — the directory's existence is not a fact this test controls.
+            // Whether *its own contents* were removed is.
+            let marker = (ownDir as NSString).appendingPathComponent("marker")
+            fm.createFile(atPath: marker, contents: Data())
+
             DiagPaths.cleanupOwnDir()
 
-            #expect(!fm.fileExists(atPath: ownDir),
+            #expect(!fm.fileExists(atPath: marker),
                     "cleanupOwnDir must remove the calling process's dir; \(ownDir) survived")
             #expect(fm.fileExists(atPath: siblingDir),
                     "cleanupOwnDir must NOT remove sibling dirs from other PIDs; \(siblingDir) was deleted")
@@ -130,21 +138,33 @@ struct DiagPathsConcurrencyTests {
     func cleanForProjectRemovesAllPidDirs() throws {
         try Self.withEnv(DiagPaths.dataDirEnvVar, nil) {
             let fm = FileManager.default
-            let ownDir = DiagPaths.tmpDataDir
-            let siblingDir = ownDir
-                .replacingOccurrences(
-                    of: "-\(Self.currentPID())",
-                    with: "-99999998")
 
-            try fm.createDirectory(atPath: ownDir, withIntermediateDirectories: true)
-            try fm.createDirectory(atPath: siblingDir, withIntermediateDirectories: true)
+            // Two synthetic sibling dirs standing in for other processes,
+            // rather than this process's own `tmpDataDir`. The live dir is
+            // process-global: anything else in the suite that touches
+            // diagnostics between `clean()` and the assertion recreates it,
+            // and the test fails for a reason that has nothing to do with
+            // `clean`. Asserting on dirs this test alone owns measures the
+            // same contract — every entry carrying this cwd's prefix is
+            // removed — without racing the runtime for the live path.
+            let ownDir = DiagPaths.tmpDataDir
+            let siblings = ["-99999998", "-99999997"].map {
+                ownDir.replacingOccurrences(of: "-\(Self.currentPID())", with: $0)
+            }
+            #expect(siblings.allSatisfy { $0 != ownDir },
+                    "synthetic siblings must differ from the live dir")
+
+            for dir in siblings {
+                try fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            }
+            defer { for dir in siblings { try? fm.removeItem(atPath: dir) } }
 
             DiagPaths.clean()
 
-            #expect(!fm.fileExists(atPath: ownDir),
-                    "clean must remove the calling process's dir for this cwd")
-            #expect(!fm.fileExists(atPath: siblingDir),
-                    "clean is project-wide: must remove every terminalui-{hash}-* dir for this cwd; \(siblingDir) survived")
+            for dir in siblings {
+                #expect(!fm.fileExists(atPath: dir),
+                        "clean is project-wide: every terminalui-{hash}-* dir for this cwd must go; \(dir) survived")
+            }
         }
     }
 

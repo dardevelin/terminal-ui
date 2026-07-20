@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #08080A; }
+      .pri { fill: #D4D4D8; }
+      .dim { fill: #D4D4D8; opacity: 0.12; }
+      .glow { fill: #A1F0C4; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="512" height="512" rx="56"/>
+
+  <!--
+    GLYPH — geometric praying mantis
+    Precision predator. Patient. Angular by nature.
+    The terminal is its hunting ground.
+    Mantises already look like they were designed by an engineer.
+  -->
+
+  <!-- Head — triangular, tilted -->
+  <polygon class="pri" points="256,100 228,148 284,148"/>
+
+  <!-- Eyes — large compound, terminal green -->
+  <circle class="glow" cx="240" cy="124" r="10"/>
+  <circle class="glow" cx="272" cy="124" r="10"/>
+  <circle class="bg" cx="240" cy="124" r="5"/>
+  <circle class="bg" cx="272" cy="124" r="5"/>
+
+  <!-- Antennae -->
+  <line x1="244" y1="104" x2="200" y2="68" stroke="#D4D4D8" stroke-width="2" stroke-linecap="round"/>
+  <line x1="268" y1="104" x2="312" y2="68" stroke="#D4D4D8" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Neck — long, thin -->
+  <rect class="pri" x="248" y="148" width="16" height="48" rx="2"/>
+
+  <!-- Thorax -->
+  <ellipse class="pri" cx="256" cy="212" rx="28" ry="20"/>
+
+  <!-- Raptorial forelegs — the signature mantis prayer pose -->
+  <!-- Left foreleg -->
+  <line x1="232" y1="208" x2="168" y2="172" stroke="#D4D4D8" stroke-width="4" stroke-linecap="round"/>
+  <line x1="168" y1="172" x2="148" y2="116" stroke="#D4D4D8" stroke-width="3" stroke-linecap="round"/>
+  <!-- Claw spines -->
+  <line x1="156" y1="144" x2="144" y2="136" stroke="#D4D4D8" stroke-width="1.5" opacity="0.5"/>
+  <line x1="160" y1="156" x2="148" y2="152" stroke="#D4D4D8" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Right foreleg -->
+  <line x1="280" y1="208" x2="344" y2="172" stroke="#D4D4D8" stroke-width="4" stroke-linecap="round"/>
+  <line x1="344" y1="172" x2="364" y2="116" stroke="#D4D4D8" stroke-width="3" stroke-linecap="round"/>
+  <!-- Claw spines -->
+  <line x1="356" y1="144" x2="368" y2="136" stroke="#D4D4D8" stroke-width="1.5" opacity="0.5"/>
+  <line x1="352" y1="156" x2="364" y2="152" stroke="#D4D4D8" stroke-width="1.5" opacity="0.5"/>
+
+  <!-- Abdomen — elongated segmented form -->
+  <polygon class="pri" points="232,228 280,228 288,268 284,316 276,360 268,396 256,420 244,396 236,360 228,316 224,268"/>
+
+  <!-- Segment lines -->
+  <line x1="228" y1="260" x2="284" y2="260" stroke="#08080A" stroke-width="1.5"/>
+  <line x1="228" y1="292" x2="280" y2="292" stroke="#08080A" stroke-width="1.5"/>
+  <line x1="232" y1="324" x2="276" y2="324" stroke="#08080A" stroke-width="1.5"/>
+  <line x1="236" y1="356" x2="268" y2="356" stroke="#08080A" stroke-width="1.5"/>
+  <line x1="244" y1="388" x2="260" y2="388" stroke="#08080A" stroke-width="1.5"/>
+
+  <!-- Hind legs — angular, geometric -->
+  <line x1="240" y1="248" x2="168" y2="304" stroke="#D4D4D8" stroke-width="2.5"/>
+  <line x1="168" y1="304" x2="136" y2="384" stroke="#D4D4D8" stroke-width="2"/>
+  <line x1="136" y1="384" x2="148" y2="432" stroke="#D4D4D8" stroke-width="1.5"/>
+
+  <line x1="272" y1="248" x2="344" y2="304" stroke="#D4D4D8" stroke-width="2.5"/>
+  <line x1="344" y1="304" x2="376" y2="384" stroke="#D4D4D8" stroke-width="2"/>
+  <line x1="376" y1="384" x2="364" y2="432" stroke="#D4D4D8" stroke-width="1.5"/>
+
+  <!-- Mid legs -->
+  <line x1="244" y1="276" x2="184" y2="340" stroke="#D4D4D8" stroke-width="2"/>
+  <line x1="184" y1="340" x2="168" y2="408" stroke="#D4D4D8" stroke-width="1.5"/>
+
+  <line x1="268" y1="276" x2="328" y2="340" stroke="#D4D4D8" stroke-width="2"/>
+  <line x1="328" y1="340" x2="344" y2="408" stroke="#D4D4D8" stroke-width="1.5"/>
+
+  <!-- Ground cursor line -->
+  <rect class="glow" x="128" y="440" width="256" height="3" rx="1" opacity="0.2"/>
+
+</svg>

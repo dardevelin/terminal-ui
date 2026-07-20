@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #08080A; }
+      .pri { fill: #D4D4D8; }
+      .dim { fill: #D4D4D8; opacity: 0.12; }
+      .glow { fill: #A1F0C4; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="512" height="512" rx="56"/>
+
+  <!--
+    STRIX — geometric owl
+    Nocturnal. Sees in the dark. Terminal creature.
+    Constructed from sharp angles and minimal geometry.
+  -->
+
+  <!-- Owl head — two angular ear tufts -->
+  <polygon class="pri" points="176,120 208,200 144,200"/>
+  <polygon class="pri" points="336,120 368,200 304,200"/>
+
+  <!-- Face plate — angular shield shape -->
+  <polygon class="pri" points="160,200 256,180 352,200 352,296 308,340 256,356 204,340 160,296"/>
+
+  <!-- Eye sockets — cut out as dark voids -->
+  <circle class="bg" cx="212" cy="252" r="28"/>
+  <circle class="bg" cx="300" cy="252" r="28"/>
+
+  <!-- Iris rings — the terminal glow -->
+  <circle class="glow" cx="212" cy="252" r="20" fill="none" stroke="#A1F0C4" stroke-width="3"/>
+  <circle class="glow" cx="300" cy="252" r="20" fill="none" stroke="#A1F0C4" stroke-width="3"/>
+
+  <!-- Pupils — small bright dots -->
+  <circle class="glow" cx="212" cy="252" r="6"/>
+  <circle class="glow" cx="300" cy="252" r="6"/>
+
+  <!-- Beak — minimal chevron -->
+  <polygon class="bg" points="244,284 256,308 268,284"/>
+
+  <!-- Body — tapered trapezoid -->
+  <polygon class="pri" points="192,340 320,340 344,432 168,432"/>
+
+  <!-- Subtle wing lines -->
+  <line x1="192" y1="340" x2="136" y2="408" stroke="#D4D4D8" stroke-width="2" opacity="0.3"/>
+  <line x1="320" y1="340" x2="376" y2="408" stroke="#D4D4D8" stroke-width="2" opacity="0.3"/>
+
+  <!-- Feet — two small blocks like cursor blocks -->
+  <rect class="pri" x="204" y="432" width="32" height="8" rx="1"/>
+  <rect class="pri" x="276" y="432" width="32" height="8" rx="1"/>
+
+  <!-- Subtle scan lines across body -->
+  <rect class="dim" x="168" y="370" width="176" height="1"/>
+  <rect class="dim" x="168" y="386" width="176" height="1"/>
+  <rect class="dim" x="168" y="402" width="176" height="1"/>
+  <rect class="dim" x="168" y="418" width="176" height="1"/>
+
+</svg>

@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .fg { fill: #F2994A; }
+      .dark { fill: #B66A2A; }
+      .eye { fill: #0A0A0A; }
+      .nose { fill: #E8E8E8; }
+    </style>
+  </defs>
+  <rect class="bg" width="320" height="240" rx="16"/>
+  <!-- 7x5 pixel grid, each cell 28px, offset (56,40) — mirrors v3-fox-1-pixel.ans -->
+  <g transform="translate(56,40)">
+    <!-- Row 0: ears — ▄ at cols 0,2,4,6 (lower half of top row) -->
+    <rect class="fg" x="0"   y="14" width="28" height="14"/>
+    <rect class="fg" x="56"  y="14" width="28" height="14"/>
+    <rect class="fg" x="112" y="14" width="28" height="14"/>
+    <rect class="fg" x="168" y="14" width="28" height="14"/>
+    <!-- Row 1: solid orange band -->
+    <rect class="fg" x="0"   y="28" width="196" height="28"/>
+    <!-- Row 2: eyes row — black eye at col 1 and col 5, orange elsewhere -->
+    <rect class="fg"  x="0"   y="56" width="28" height="28"/>
+    <rect class="eye" x="28"  y="56" width="28" height="28"/>
+    <rect class="fg"  x="56"  y="56" width="28" height="28"/>
+    <rect class="fg"  x="84"  y="56" width="28" height="28"/>
+    <rect class="fg"  x="112" y="56" width="28" height="28"/>
+    <rect class="eye" x="140" y="56" width="28" height="28"/>
+    <rect class="fg"  x="168" y="56" width="28" height="28"/>
+    <!-- Row 3: nose row — ▀▲▀▼▲▀▲ with white nose triangle in middle -->
+    <rect class="fg" x="0"   y="84" width="28" height="14"/>
+    <rect class="fg" x="28"  y="84" width="28" height="28"/>
+    <rect class="fg" x="56"  y="84" width="28" height="28"/>
+    <polygon class="nose" points="98,84 126,84 112,112"/>
+    <rect class="fg" x="112" y="84" width="28" height="28"/>
+    <rect class="fg" x="140" y="84" width="28" height="28"/>
+    <rect class="fg" x="168" y="84" width="28" height="14"/>
+    <!-- Row 4: chin — dark orange ▀ at cols 1..5 (upper half) -->
+    <rect class="dark" x="28"  y="112" width="140" height="14"/>
+  </g>
+</svg>

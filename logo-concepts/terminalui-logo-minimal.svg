@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .pri { fill: #E8E8E8; }
+      .dim { fill: #E8E8E8; opacity: 0.3; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect class="bg" width="512" height="512" rx="64"/>
+
+  <!--
+    Concept: Ultra-minimal — just a prompt and cursor
+    Reduced to absolute essence like the X or xAI marks
+    A single chevron stroke + block cursor
+  -->
+
+  <!-- Prompt chevron — single clean stroke -->
+  <path d="M144,176 L256,256 L144,336" fill="none" stroke="#E8E8E8" stroke-width="32" stroke-linecap="square" stroke-linejoin="miter"/>
+
+  <!-- Block cursor -->
+  <rect class="pri" x="296" y="232" width="48" height="56" rx="2"/>
+
+</svg>

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" width="320" height="200">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .dot { fill: #F2994A; }
+      .nose { fill: #E8E8E8; }
+    </style>
+  </defs>
+  <rect class="bg" width="320" height="200" rx="16"/>
+  <!--
+    Braille variant: 3 cells wide × 2 cells tall, each braille cell = 2×4 dot grid.
+    Total = 6 dots wide × 8 dots tall. Dot radius 9, spacing 20.
+    Matches the ⡆⠶⢰ / ⠉⠉⠉ pattern: ear silhouette + face horizon + muzzle.
+  -->
+  <g transform="translate(100,40)" fill-rule="evenodd">
+    <!-- Row 0 (⡆⠶⢰): ears + face border, columns 0-5, rows 0-3 -->
+    <circle class="dot" cx="0"   cy="0"  r="9"/>
+    <circle class="dot" cx="0"   cy="20" r="9"/>
+    <circle class="dot" cx="0"   cy="40" r="9"/>
+    <circle class="dot" cx="20"  cy="40" r="9"/>
+    <circle class="dot" cx="0"   cy="60" r="9"/>
+    <circle class="dot" cx="20"  cy="60" r="9"/>
+    <circle class="dot" cx="40"  cy="0"  r="9"/>
+    <circle class="dot" cx="60"  cy="0"  r="9"/>
+    <circle class="dot" cx="40"  cy="40" r="9"/>
+    <circle class="dot" cx="60"  cy="40" r="9"/>
+    <circle class="dot" cx="80"  cy="40" r="9"/>
+    <circle class="dot" cx="100" cy="0"  r="9"/>
+    <circle class="dot" cx="100" cy="20" r="9"/>
+    <circle class="dot" cx="100" cy="40" r="9"/>
+    <circle class="dot" cx="80"  cy="60" r="9"/>
+    <circle class="dot" cx="100" cy="60" r="9"/>
+    <!-- Row 1 (⠉⠉⠉): muzzle horizon -->
+    <circle class="dot" cx="0"   cy="100" r="9"/>
+    <circle class="dot" cx="20"  cy="100" r="9"/>
+    <circle class="nose" cx="40"  cy="100" r="11"/>
+    <circle class="nose" cx="60"  cy="100" r="11"/>
+    <circle class="dot" cx="80"  cy="100" r="9"/>
+    <circle class="dot" cx="100" cy="100" r="9"/>
+  </g>
+</svg>

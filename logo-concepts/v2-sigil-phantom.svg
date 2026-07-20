@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      .bg { fill: #08080A; }
+      .pri { fill: #D4D4D8; }
+      .dim { fill: #D4D4D8; opacity: 0.08; }
+      .mid { fill: #D4D4D8; opacity: 0.4; }
+      .glow { fill: #A1F0C4; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="512" height="512" rx="56"/>
+
+  <!--
+    SIGIL — abstract phantom/spirit
+    The ghost in the terminal. An interface entity.
+    Not quite an animal, not quite a symbol. Something in between.
+    Constructed from layered geometric transparency.
+  -->
+
+  <!-- Outer cloak — draped angular form -->
+  <path class="mid" d="
+    M256,96
+    C192,96 144,144 136,208
+    L128,320
+    C128,380 176,420 200,432
+    L224,440
+    L256,448
+    L288,440
+    L312,432
+    C336,420 384,380 384,320
+    L376,208
+    C368,144 320,96 256,96Z
+  "/>
+
+  <!-- Inner form — brighter core -->
+  <path class="pri" d="
+    M256,128
+    C208,128 176,168 172,216
+    L168,304
+    C168,348 196,376 216,388
+    L240,400
+    L256,404
+    L272,400
+    L296,388
+    C316,376 344,348 344,304
+    L340,216
+    C336,168 304,128 256,128Z
+  "/>
+
+  <!-- Face void — dark interior -->
+  <path class="bg" d="
+    M256,160
+    C224,160 200,184 196,216
+    L196,280
+    C196,308 216,328 240,336
+    L256,340
+    L272,336
+    C296,328 316,308 316,280
+    L316,216
+    C312,184 288,160 256,160Z
+  "/>
+
+  <!-- Eyes — two horizontal slits, terminal green -->
+  <rect class="glow" x="212" y="232" width="32" height="6" rx="3"/>
+  <rect class="glow" x="268" y="232" width="32" height="6" rx="3"/>
+
+  <!-- Faint vertical line — like a cursor in the face -->
+  <rect class="glow" x="254" y="264" width="4" height="20" rx="2" opacity="0.3"/>
+
+  <!-- Base dissolve — the phantom fades at the bottom -->
+  <rect class="dim" x="200" y="432" width="112" height="2"/>
+  <rect class="dim" x="212" y="438" width="88" height="2"/>
+  <rect class="dim" x="224" y="444" width="64" height="2"/>
+  <rect class="dim" x="236" y="450" width="40" height="1"/>
+  <rect class="dim" x="244" y="454" width="24" height="1"/>
+
+</svg>

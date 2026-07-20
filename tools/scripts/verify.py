@@ -4,7 +4,7 @@
 Replaces the old bash verify.sh with a Python driver so we exercise the
 same bridge our smoke tests use. Steps:
 
-1. Skip unless this turn touched ``.swift`` or ``.py`` under ``swift_tui/``.
+1. Skip unless this turn touched a ``.swift`` or ``.py`` file.
 2. Tear down any leftover debug apps + stale sockets.
 3. ``swift build`` — compile check (release build is deferred to CI).
 4. ``swift test`` — unit + component suites.
@@ -20,15 +20,18 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path("/Users/dbrasdasilva/workspace/swift-workspace/swift_tui")
+# Derived from this file's location (tools/scripts/verify.py) rather than
+# hardcoded: an absolute path silently stops matching when the package moves
+# or the checkout lives elsewhere, and the hook would then skip every turn.
+REPO_ROOT = Path(__file__).resolve().parents[2]
 SMOKE_TIMEOUT_SECONDS = 240
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
 
 
 def dirty_relevant_sources() -> bool:
-    """Return True if this turn left uncommitted .swift / .py under
-    swift_tui/. Skips verification for memory / docs / settings edits."""
+    """Return True if this turn left uncommitted .swift / .py files.
+    Skips verification for memory / docs / settings edits."""
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],

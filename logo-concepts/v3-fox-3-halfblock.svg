@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 240" width="320" height="240">
+  <defs>
+    <style>
+      .bg { fill: #0A0A0A; }
+      .fg { fill: #F2994A; }
+      .eye { fill: #0A0A0A; }
+      .nose { fill: #E8E8E8; }
+    </style>
+  </defs>
+  <rect class="bg" width="320" height="240" rx="16"/>
+  <!-- Half-block variant at 2× vertical sub-pixel density; 5 cols × 3 rows × 2 sub -->
+  <g transform="translate(80,48)">
+    <!-- Row 0: ears — only lower half (▟▙) at col 0 and 2 -->
+    <polygon class="fg" points="0,24 48,24 48,48 0,48"/>
+    <polygon class="fg" points="96,24 144,24 144,48 96,48"/>
+    <!-- Row 1: eye band — 5 full cells with 2 eye slots -->
+    <rect class="fg"  x="0"   y="48" width="48" height="48"/>
+    <rect class="eye" x="48"  y="48" width="24" height="24"/>
+    <rect class="fg"  x="48"  y="72" width="24" height="24"/>
+    <rect class="fg"  x="72"  y="48" width="24" height="24"/>
+    <rect class="fg"  x="72"  y="72" width="24" height="24"/>
+    <rect class="eye" x="96"  y="48" width="24" height="24"/>
+    <rect class="fg"  x="96"  y="72" width="24" height="24"/>
+    <rect class="fg"  x="120" y="48" width="48" height="48"/>
+    <!-- Row 2: muzzle + nose (upper-half blocks) -->
+    <rect class="fg"   x="24"  y="96"  width="24" height="24"/>
+    <rect class="nose" x="72"  y="96"  width="24" height="24"/>
+    <rect class="fg"   x="120" y="96"  width="24" height="24"/>
+  </g>
+</svg>

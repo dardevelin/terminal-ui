@@ -1,9 +1,5 @@
 name: CI
 
-# The Swift package lives in swift_tui/, not at the repo root, so every job
-# sets working-directory. If the manifest ever moves up, these paths and the
-# cache keys below are what change.
-
 on:
   push:
     branches: [main]
@@ -15,10 +11,6 @@ concurrency:
   # cancel main — its runs are the record of what actually shipped.
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
-defaults:
-  run:
-    working-directory: swift_tui
 
 jobs:
   linux:
@@ -33,10 +25,10 @@ jobs:
       - name: Cache build
         uses: actions/cache@v4
         with:
-          path: swift_tui/.build
-          key: linux-spm-${{ hashFiles('swift_tui/Package.swift') }}-${{ github.sha }}
+          path: .build
+          key: linux-spm-${{ hashFiles('Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            linux-spm-${{ hashFiles('swift_tui/Package.swift') }}-
+            linux-spm-${{ hashFiles('Package.swift') }}-
             linux-spm-
 
       - name: Build
@@ -78,10 +70,10 @@ jobs:
       - name: Cache build
         uses: actions/cache@v4
         with:
-          path: swift_tui/.build
-          key: macos-spm-${{ hashFiles('swift_tui/Package.swift') }}-${{ github.sha }}
+          path: .build
+          key: macos-spm-${{ hashFiles('Package.swift') }}-${{ github.sha }}
           restore-keys: |
-            macos-spm-${{ hashFiles('swift_tui/Package.swift') }}-
+            macos-spm-${{ hashFiles('Package.swift') }}-
             macos-spm-
 
       - name: Build
