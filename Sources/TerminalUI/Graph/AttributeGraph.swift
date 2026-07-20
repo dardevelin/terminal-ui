@@ -958,7 +958,9 @@ public final class AttributeGraph: @unchecked Sendable {
 
     private func constructSplitNode(_ tree: SplitNode, id: NodeID) -> AttributeNode {
         switch tree {
-        case .leaf(let view):
+        case .leaf(let view, _):
+            // The marker is for serialisation only; the graph identifies nodes
+            // by their NodeID path.
             return constructAnyView(view, id: id)
 
         case .split(let axis, let children, let ratios):

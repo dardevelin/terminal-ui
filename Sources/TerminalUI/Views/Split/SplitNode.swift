@@ -1,12 +1,10 @@
 import Foundation
 
-// HYP-277 (i3 epic Slice 1) — tree-as-state model for resizable
-// split layouts. Recursive enum mirrors i3's Con tree (data.h:643)
-// adapted to a SwiftUI-shaped value type.
+// Tree-as-state model for resizable split layouts. The recursive enum mirrors
+// i3's Con tree (data.h:643) adapted to a SwiftUI-shaped value type.
 //
-// Slice 1 ships fixed ratios at construction time. Slice 2 adds
-// the mutation API (append/remove/splitNode); Slice 4 adds the
-// .onDrag-driven divider resize that mutates ratios at runtime.
+// Ratios are fixed at construction today. A runtime mutation API
+// (append/remove/splitNode) and drag-driven divider resize land later.
 
 /// Recursive tree of either a single view (leaf) or a sibling list
 /// laid out along an axis with explicit per-child ratios.
@@ -17,7 +15,16 @@ import Foundation
 /// live on the main thread by convention — same rule as the rest
 /// of the graph layer.
 public indirect enum SplitNode {
-    case leaf(any TerminalView)
+    /// A pane holding one view, optionally tagged with a marker.
+    ///
+    /// The marker is what makes a tree serialisable: JSON describes *slots*,
+    /// and a reader resolves each marker back to a view through a registry —
+    /// the same arrangement as i3's swallows criteria. A view cannot be
+    /// serialised directly (`any TerminalView` is not `Codable`, and a body is
+    /// arbitrary Swift), so a leaf without a marker is simply not encodable.
+    /// It stays legal for trees nobody serialises: demos, tests, throwaway
+    /// layouts.
+    case leaf(any TerminalView, id: String? = nil)
     case split(axis: SplitAxis, children: [SplitNode], ratios: [Double])
 }
 
