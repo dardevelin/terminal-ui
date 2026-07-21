@@ -145,6 +145,11 @@ public struct EnvironmentValues: Sendable {
     /// subtree with `.modifierLabelStyle(_:)`.
     public var modifierLabelStyle: ModifierLabelStyle = .automatic
 
+    /// How `Picker` presents its options. Default `.inline` is the style that
+    /// needs neither an overlay nor a width budget, so it renders correctly in
+    /// any container. Override per subtree with `.pickerStyle(_:)`.
+    public var pickerStyle: PickerStyle = .inline
+
     public init() {}
 }
 

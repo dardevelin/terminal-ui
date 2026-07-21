@@ -4,6 +4,14 @@ import TerminalUI
 
 // MARK: - State
 
+/// Option type for the Picker page. `Identifiable` so `ForEach` can drive the
+/// option list the way a real app would.
+enum StorybookTheme: String, CaseIterable, Hashable, Identifiable {
+    case light, dark, auto
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+
 @Observable
 final class StorybookState {
     var selectedIndex: Int = 0
@@ -13,6 +21,7 @@ final class StorybookState {
     var buttonMessage: String = "(nothing yet)"
     var textInputValue: String = ""
     var toggleValue: Bool = false
+    var pickerTheme: StorybookTheme = .dark
     var listSelection: Int? = 0
     var listScroll: Int = 0
     var tabSelection: Int = 0

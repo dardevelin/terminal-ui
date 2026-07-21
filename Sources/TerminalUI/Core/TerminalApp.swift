@@ -204,7 +204,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         Terminal.enableMouseTracking()
         Terminal.enableBracketedPaste()
 
-        // HYP-324: install signal handlers + atexit hook so terminal
+        // Install signal handlers + atexit hook so terminal
         // escape state never leaks to the parent on SIGINT/SIGTERM/
         // SIGHUP/exit(). Without this, a Ctrl+C exit leaves the
         // terminal stuck in SGR 1006 mouse-tracking mode (mouse
@@ -520,6 +520,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     }
                     // Block until an event arrives — zero CPU when idle
                     while running && !eventQueue.hasEvents {
+                        #if DEBUG
+                        // The socket must be serviced here too, not only at
+                        // the top of the outer loop. An idle `.onDemand` app
+                        // never reaches that point again, so a remote client's
+                        // commands are the only thing that could wake it — and
+                        // they arrive on the socket this loop would otherwise
+                        // stop reading. `pump()` never blocks, and this is
+                        // already a poll, so idle cost is unchanged.
+                        remoteControl?.pump()
+                        #endif
                         try? await Task.sleep(for: .milliseconds(1))
                     }
                 }

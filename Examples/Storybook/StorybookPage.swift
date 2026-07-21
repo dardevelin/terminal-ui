@@ -40,7 +40,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Primitives
     case text, forEach, subCell, timeline, capabilities
     // Input
-    case button, textInput, textArea, toggle, promptInput
+    case button, textInput, textArea, toggle, picker, promptInput
     // Display
     case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView
     // Charts
@@ -246,6 +246,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Toggle("enabled", isOn: $flag)
                     Text("→ \\(flag ? "on" : "off")").foreground(.gray)
                 }
+                """)
+        case .picker: return PageInfo(id: self, category: .input, name: "Picker",
+            summary: "Pick one of several options. `.pickerStyle` chooses inline, segmented, or dropdown; options are tagged content, so ForEach works.",
+            code: """
+                Picker("Theme", selection: $theme) {
+                    ForEach(Theme.allCases) { theme in
+                        Text(theme.title).tag(theme)
+                    }
+                }
+                .pickerStyle(.segmented)
                 """)
         case .promptInput: return PageInfo(id: self, category: .input, name: "PromptInput",
             summary: "Chat-style input. Enter submits; Option/Shift+Enter = newline.",

@@ -288,6 +288,15 @@ struct PreviewPane: TerminalView {
                                       set: { state.toggleValue = $0 }))
                 Text("→ \(state.toggleValue ? "on" : "off")").foreground(.gray)
             }
+        case .picker:
+            Picker("Theme",
+                   selection: Binding(get: { state.pickerTheme },
+                                       set: { state.pickerTheme = $0 })) {
+                ForEach(StorybookTheme.allCases) { theme in
+                    Text(theme.title).tag(theme)
+                }
+            }
+            .pickerStyle(.segmented)
         case .promptInput:
             VStack {
                 PromptInput(

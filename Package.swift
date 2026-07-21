@@ -116,6 +116,12 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .executableTarget(
+            name: "Settings",
+            dependencies: ["TerminalUI"],
+            path: "Examples/Settings",
+            swiftSettings: strictSettings
+        ),
+        .executableTarget(
             name: "GitClient",
             dependencies: ["TerminalUI"],
             path: "Examples/GitClient",

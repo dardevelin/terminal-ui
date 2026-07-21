@@ -91,6 +91,12 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// `DebugStream.shared.suppressWarning(.optionAsMetaUnconfirmed)` once the
     /// app has explained the requirement its own way.
     case optionAsMetaUnconfirmed
+    /// A `Picker` declared the same tag on more than one option. The first
+    /// declaration wins, which leaves the later rows unreachable: selecting
+    /// them would commit a value already owned by an earlier row. Silently
+    /// rendering both would show a list where two rows appear identical to
+    /// the selection logic but distinct to the user.
+    case pickerDuplicateTags
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -632,6 +638,7 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case alertMultipleDefaultActions
     case alertHasNoActions
     case optionAsMetaUnconfirmed
+    case pickerDuplicateTags
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()
