@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in /Users/dbrasdasilva/workspace/swift-workspace/swift_tui/*.swift) cd /Users/dbrasdasilva/workspace/swift-workspace/swift_tui && out=$(swift build 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo 'swift build failed:'; echo \"$out\" | tail -30; fi ;; esac",
+            "command": "f=$(jq -r '.tool_input.file_path // empty'); case \"$f\" in /Users/dbrasdasilva/workspace/swift-workspace/*.swift) cd /Users/dbrasdasilva/workspace/swift-workspace && out=$(swift build 2>&1); rc=$?; if [ $rc -ne 0 ]; then echo 'swift build failed:'; echo \"$out\" | tail -30; fi ;; esac",
             "timeout": 60,
             "statusMessage": "swift build"
           }
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 /Users/dbrasdasilva/workspace/swift-workspace/swift_tui/tools/scripts/verify.py",
+            "command": "python3 /Users/dbrasdasilva/workspace/swift-workspace/tools/scripts/verify.py",
             "timeout": 180,
             "statusMessage": "verify (test + smoke)"
           }
