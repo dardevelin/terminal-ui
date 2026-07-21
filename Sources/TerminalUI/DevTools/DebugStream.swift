@@ -82,6 +82,15 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// inside it, so Tab and Return have no target; the framework renders a
     /// lone dismiss button rather than leave an inescapable box on screen.
     case alertHasNoActions
+    /// An Option/Alt-modified binding was registered on a terminal that does
+    /// not report whether Option arrives as a Meta prefix. On stock Apple
+    /// Terminal it does not — Option+R composes to `®` and the binding can
+    /// never fire — and the setting is not exposed to any escape query, so the
+    /// framework cannot tell a configured terminal from an unconfigured one.
+    /// Suppress with
+    /// `DebugStream.shared.suppressWarning(.optionAsMetaUnconfirmed)` once the
+    /// app has explained the requirement its own way.
+    case optionAsMetaUnconfirmed
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -622,6 +631,7 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case modalDoesNotFit
     case alertMultipleDefaultActions
     case alertHasNoActions
+    case optionAsMetaUnconfirmed
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()

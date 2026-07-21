@@ -19,11 +19,12 @@
 // path. So a user pasting `®` from the clipboard does NOT trigger
 // the decoder.
 //
-// Why we do this even though `.auto` should require capability
-// detection: HYP-335 (`Runtime.capabilities.optionAsMetaConfigured`)
-// hasn't shipped yet. Today the framework can't distinguish
-// "stock Apple Terminal" from "iTerm2 with Esc+ on" at runtime. The
-// safe default is "decode" because:
+// Why we decode unconditionally rather than gating on capability
+// detection: `Runtime.capabilities.optionAsMetaConfigured` reports
+// `.unknown` for both stock Apple Terminal and iTerm2, because neither
+// exports its Option setting to the environment and no escape query
+// returns it. Detection can confirm kitty, not distinguish those two.
+// The safe default is "decode" because:
 //   - Stock Apple Terminal is the dominant macOS environment.
 //   - iTerm2 with Esc+ on sends `ESC r` (no UTF-8 compose char), so
 //     the decoder never fires for those bytes — the UTF-8 path isn't

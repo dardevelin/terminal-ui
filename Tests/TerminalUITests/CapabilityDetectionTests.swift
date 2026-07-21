@@ -77,3 +77,78 @@ struct CapabilityDetectionTests {
         #expect([.kitty, .iterm2, .sixel, .halfBlock, .asciiArt].contains(graphics))
     }
 }
+
+// Whether the terminal delivers Option (macOS) / Alt as a Meta prefix rather
+// than composing it into a character. On stock Apple Terminal, Option+R
+// produces "®" and no binding can see it; the user has to enable "Use Option
+// as Meta key" first. Nothing in the environment reports that checkbox, so
+// the honest answer there is `.unknown` — and a framework warning is worth
+// more than a confident guess.
+
+@Suite("Option-as-Meta detection")
+@MainActor
+struct OptionAsMetaDetectionTests {
+
+    @Test("kitty reports modifiers directly, on any platform")
+    func kittyIsConfirmed() {
+        // The kitty keyboard protocol encodes the modifier bitmask in the
+        // escape sequence, so Option never composes.
+        let caps = TerminalCapabilities.detect(
+            environment: ["TERM": "xterm-kitty"], optionMetaIsAmbiguous: true
+        )
+        #expect(caps.optionAsMetaConfigured == .confirmed)
+    }
+
+    @Test("platforms without the Option compose behaviour are confirmed")
+    func nonAmbiguousPlatformIsConfirmed() {
+        // X11, Wayland and the Linux console send Alt as an ESC prefix by
+        // default — there is no equivalent setting to get wrong.
+        let caps = TerminalCapabilities.detect(
+            environment: ["TERM": "xterm-256color"], optionMetaIsAmbiguous: false
+        )
+        #expect(caps.optionAsMetaConfigured == .confirmed)
+    }
+
+    @Test("Apple Terminal cannot be determined from the environment")
+    func appleTerminalIsUnknown() {
+        let caps = TerminalCapabilities.detect(
+            environment: ["TERM": "xterm-256color", "TERM_PROGRAM": "Apple_Terminal"],
+            optionMetaIsAmbiguous: true
+        )
+        #expect(caps.optionAsMetaConfigured == .unknown)
+    }
+
+    @Test("iTerm2 cannot be determined either")
+    func itermIsUnknown() {
+        // iTerm2's Esc+ preference is per-profile and is not exported to the
+        // environment. A kitty-protocol reply would prove the protocol is
+        // active, which is a different question from how Option is mapped.
+        let caps = TerminalCapabilities.detect(
+            environment: ["TERM": "xterm-256color", "TERM_PROGRAM": "iTerm.app"],
+            optionMetaIsAmbiguous: true
+        )
+        #expect(caps.optionAsMetaConfigured == .unknown)
+    }
+
+    @Test("an unrecognised terminal is unknown")
+    func unknownTerminalIsUnknown() {
+        let caps = TerminalCapabilities.detect(
+            environment: [:], optionMetaIsAmbiguous: true
+        )
+        #expect(caps.optionAsMetaConfigured == .unknown)
+    }
+
+    @Test("the probe is logged even when graphics detection exits early")
+    func probeIsLoggedDespiteEarlyGraphicsReturn() {
+        // `NO_COLOR` short-circuits graphics classification. Appending the
+        // option-meta probe afterwards would drop it from the log for exactly
+        // the users most likely to be reading the log.
+        let caps = TerminalCapabilities.detect(
+            environment: ["NO_COLOR": "1", "TERM_PROGRAM": "Apple_Terminal"],
+            optionMetaIsAmbiguous: true
+        )
+        #expect(caps.graphics == .asciiArt)
+        #expect(caps.detectionLog.contains { $0.probe.contains("option") },
+                "detection log: \(caps.detectionLog.map(\.probe))")
+    }
+}

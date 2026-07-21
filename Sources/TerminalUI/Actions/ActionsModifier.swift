@@ -16,7 +16,59 @@ extension ActionsModifier: _LifecycleModifier {
     /// dispatcher pointing at the latest closures.
     func onConstructOrUpdate(node: AttributeNode) {
         node._actionScope = scope
+        #if DEBUG
+        warnIfOptionMetaUnconfirmed(node: node)
+        #endif
     }
+
+    #if DEBUG
+    /// Warn once per session when a binding needs Option-as-Meta on a terminal
+    /// that has not confirmed it delivers that.
+    ///
+    /// Fires from a hook that runs on every update, so the one-shot behaviour
+    /// comes from `emitWarning`'s dedupe of (code, nodeID, message) — and both
+    /// of those must be stable. The node ID deliberately is **not** passed:
+    /// this reports a property of the terminal, not of a node, and keying on
+    /// the path would emit a fresh copy for every row a growing `ForEach`
+    /// introduces.
+    private func warnIfOptionMetaUnconfirmed(node: AttributeNode) {
+        guard let message = Self.optionMetaWarning(
+            for: scope, state: Runtime.capabilities.optionAsMetaConfigured
+        ) else { return }
+        DebugStream.shared.emitWarning(.optionAsMetaUnconfirmed, message: message)
+    }
+
+    /// The warning text for this scope, or nil when no warning is warranted.
+    ///
+    /// Takes the state rather than reading the global so the whole decision —
+    /// both the chord search and the capability gate — is testable.
+    static func optionMetaWarning(
+        for scope: ActionScope,
+        state: OptionAsMetaState
+    ) -> String? {
+        guard state == .unknown else { return nil }
+        guard let chord = optionBearingChord(in: scope) else { return nil }
+        return """
+            Binding \(chord.formatted()) needs Option to arrive as a Meta prefix, \
+            which this terminal does not report. Terminal.app: Settings → Profiles \
+            → Keyboard → "Use Option as Meta key". iTerm2: Settings → Profiles → \
+            Keys → Left/Right Option = "Esc+". Kitty needs no setting. Suppress with \
+            DebugStream.shared.suppressWarning(.optionAsMetaUnconfirmed).
+            """
+    }
+
+    /// The first keyboard binding in `scope` that carries the Option/Alt
+    /// modifier. One warning per scope, not one per binding.
+    static func optionBearingChord(in scope: ActionScope) -> KeyChord? {
+        for bound in scope.boundActions {
+            if case .keyboard(let key, let modifiers) = bound.binding,
+               modifiers.contains(.alt) {
+                return KeyChord(key, modifiers)
+            }
+        }
+        return nil
+    }
+    #endif
 }
 
 extension TerminalView {
