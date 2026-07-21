@@ -40,7 +40,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Primitives
     case text, forEach, subCell, timeline, capabilities
     // Input
-    case button, textInput, textArea, toggle, picker, promptInput
+    case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, promptInput
     // Display
     case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView
     // Charts
@@ -256,6 +256,42 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     }
                 }
                 .pickerStyle(.segmented)
+                """)
+        case .slider: return PageInfo(id: self, category: .input, name: "Slider",
+            summary: "Choose a value from a continuous range. Left/Right adjust by step (1% of the range when nil); Home/End jump to the bounds; clicking the track jumps the thumb. Dragging awaits an .onDrag primitive.",
+            code: """
+                Slider(value: $volume, in: 0...100, step: 5, label: "Volume")
+                """)
+        case .stepper: return PageInfo(id: self, category: .input, name: "Stepper",
+            summary: "Adjust a value in discrete steps. Left/Right or -/+ adjust; the affordance at a bound dims so the limit is visible before you press into it.",
+            code: """
+                Stepper("Tab width", value: $tabWidth, in: 1...16)
+                """)
+        case .gauge: return PageInfo(id: self, category: .input, name: "Gauge",
+            summary: "Read-only value within a range. Distinct from ProgressBar: a ProgressBar means \"task completing\", a Gauge means \"value within a range\" — disk, battery, memory. Not focusable.",
+            code: """
+                Gauge(value: 0.62, label: "Disk")
+                """)
+        case .form: return PageInfo(id: self, category: .input, name: "Form",
+            summary: "Settings-screen layout. Every row's control starts at one column, computed from the widest label in the form — that alignment is the feature. Sections group rows with an uppercase header and a divider between them.",
+            code: """
+                Form {
+                    Section("Appearance") {
+                        Picker("Theme", selection: $theme) {
+                            ForEach(Theme.allCases) { Text($0.title).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        Toggle("Dark mode", isOn: $dark)
+                    }
+                    Section("Editor") {
+                        Stepper("Tab width", value: $tabWidth, in: 1...16)
+                        Slider(value: $fontScale, in: 0.5...2.0, step: 0.1, label: "Font scale")
+                    }
+                    Section("About") {
+                        LabeledContent("Version", value: "1.0.0")
+                        Gauge(value: 0.62, label: "Disk")
+                    }
+                }
                 """)
         case .promptInput: return PageInfo(id: self, category: .input, name: "PromptInput",
             summary: "Chat-style input. Enter submits; Option/Shift+Enter = newline.",

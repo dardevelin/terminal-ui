@@ -150,6 +150,23 @@ public struct EnvironmentValues: Sendable {
     /// any container. Override per subtree with `.pickerStyle(_:)`.
     public var pickerStyle: PickerStyle = .inline
 
+    /// Width of the shared label column, published by an enclosing `Form`.
+    /// `nil` means "not inside a Form" — controls render their label unpadded,
+    /// which is both the pre-Form behaviour and the right one for a control
+    /// sitting in a plain stack.
+    public var formLabelWidth: Int? = nil
+
+    /// True when a form row should stack its label above its control because
+    /// the terminal is too narrow to place them side by side.
+    public var formStacksRows: Bool = false
+
+    /// Whether a rendered section already precedes this one. Sibling sections
+    /// cannot otherwise tell which of them is first, so the enclosing `Form`
+    /// stamps this and `_SectionSeparator` reads it to suppress the leading
+    /// rule. A boolean rather than an ordinal because that is all the decision
+    /// needs, and it stays correct for sections nested in a `ForEach`.
+    public var formSectionIsPreceded: Bool = false
+
     public init() {}
 }
 

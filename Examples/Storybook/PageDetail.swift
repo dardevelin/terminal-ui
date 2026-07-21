@@ -297,6 +297,45 @@ struct PreviewPane: TerminalView {
                 }
             }
             .pickerStyle(.segmented)
+        case .slider:
+            Slider(value: Binding(get: { state.sliderVolume },
+                                   set: { state.sliderVolume = $0 }),
+                   in: 0...100, step: 5, label: "Volume")
+        case .stepper:
+            Stepper("Tab width",
+                    value: Binding(get: { state.stepperTabWidth },
+                                    set: { state.stepperTabWidth = $0 }),
+                    in: 1...16)
+        case .gauge:
+            Gauge(value: 0.62, label: "Disk")
+        case .form:
+            Form {
+                Section("Appearance") {
+                    Picker("Theme",
+                           selection: Binding(get: { state.pickerTheme },
+                                               set: { state.pickerTheme = $0 })) {
+                        ForEach(StorybookTheme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Dark mode", isOn: Binding(get: { state.formDark },
+                                                       set: { state.formDark = $0 }))
+                }
+                Section("Editor") {
+                    Stepper("Tab width",
+                            value: Binding(get: { state.stepperTabWidth },
+                                            set: { state.stepperTabWidth = $0 }),
+                            in: 1...16)
+                    Slider(value: Binding(get: { state.formFontScale },
+                                           set: { state.formFontScale = $0 }),
+                           in: 0.5...2.0, step: 0.1, label: "Font scale")
+                }
+                Section("About") {
+                    LabeledContent("Version", value: "1.0.0")
+                    Gauge(value: 0.62, label: "Disk")
+                }
+            }
         case .promptInput:
             VStack {
                 PromptInput(

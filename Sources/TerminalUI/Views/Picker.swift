@@ -132,6 +132,10 @@ public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalV
     }
 }
 
+extension Picker: _FormRowLabel {
+    var formLabelText: String { label }
+}
+
 /// Cursor arithmetic, kept out of the view so movement rules are stated once
 /// and shared by all three styles rather than re-derived per style.
 struct PickerCursor {
@@ -199,7 +203,7 @@ struct PickerBody: TerminalView {
     /// half-drawn control.
     private var emptyBody: some TerminalView {
         HStack {
-            Text("\(label) ")
+            FormLabel(text: label)
             _EmptyPlaceholder(PickerGlyph.emptyPlaceholder)
         }
     }
@@ -264,7 +268,7 @@ struct PickerBody: TerminalView {
         let commit = self.commit
 
         return VStack {
-            Text(label)
+            FormLabel(text: label)
             optionRows(showsSelectionMarker: true)
         }
         .focusable()
@@ -298,9 +302,11 @@ struct PickerBody: TerminalView {
         return VStack {
             if fitsSegmented {
                 HStack {
-                    Text("\(label) ")
+                    FormLabel(text: label)
                     ForEachWithID(Array(titles.enumerated()), id: \.offset) { entry in
-                        Text(Self.segmentLabel(entry.element, isLast: entry.offset == titles.count - 1))
+                        Text(Self.segmentLabel(entry.element,
+                                               isFirst: entry.offset == 0,
+                                               isLast: entry.offset == titles.count - 1))
                             .background(entry.offset == selected ? .blue : .default)
                     }
                 }
@@ -338,14 +344,23 @@ struct PickerBody: TerminalView {
     }
 
     /// `[ A | B | C ]` — separators between segments, none after the last.
-    private static func segmentLabel(_ title: String, isLast: Bool) -> String {
-        isLast ? " \(title) " : " \(title) |"
+    /// `Light | Dark | Auto` — a separator between segments, and padding only
+    /// on the inside.
+    ///
+    /// The first segment carries no leading space: inside a `Form` that space
+    /// would push the control one cell past the shared label column, breaking
+    /// the alignment for every other row.
+    private static func segmentLabel(_ title: String, isFirst: Bool, isLast: Bool) -> String {
+        let leading = isFirst ? "" : " "
+        return isLast ? "\(leading)\(title) " : "\(leading)\(title) |"
     }
 
     /// Width the segmented row needs: the label, then each segment with its
     /// surrounding spaces and trailing separator.
     static func segmentedWidth(of titles: [String], label: String) -> Int {
-        label.count + 1 + titles.reduce(0) { $0 + $1.count + 3 }
+        // Each segment costs its title plus a trailing space and separator;
+        // the first carries no leading space, hence the -1.
+        label.count + 1 + titles.reduce(0) { $0 + $1.count + 3 } - 1
     }
 
     // MARK: - Dropdown
@@ -360,7 +375,7 @@ struct PickerBody: TerminalView {
 
         return VStack {
             HStack {
-                Text("\(label) ")
+                FormLabel(text: label)
                 Text(selected.map { titles[$0] } ?? rawSelection)
                     .foreground(selected == nil ? .gray : .default)
                 Text(" \(PickerGlyph.collapsed)")

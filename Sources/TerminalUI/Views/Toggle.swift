@@ -19,28 +19,49 @@ public struct Toggle: TerminalView {
         self.isOn = isOn
     }
 
-    public var body: some TerminalView {
-        HStack {
-            Text(isOn.get() ? "[x]" : "[ ]")
-            Text(" \(label)")
-        }
-        .foreground(isEnabled ? .default : .gray)
-        .focusable()
-        .onKeyPress { [isOn] event in
-            // `.activate` mirrors Enter/Space for click-to-fire — see
-            // Button.swift for the rationale. Without this, clicking
-            // a focused Toggle synthesised `.enter` and toggled — but
-            // adjacent TextArea clicks would have inserted newlines.
-            // The framework now synthesises `.activate` on click;
-            // Toggle accepts it.
-            if event.key == .enter
-                || event.key == .character(" ")
-                || event.key == .activate
-            {
-                isOn.set(!isOn.get())
-                return .handled
+    /// Inside a `Form` the label moves to the shared column, so the checkbox
+    /// lines up with every other control. Outside one, `formLabelWidth` is nil
+    /// and this renders exactly as it always has: `[x] label`.
+    @TerminalEnvironment(\.formLabelWidth) private var formLabelWidth
+
+    /// `[x] label` on its own; `label   [x]` inside a `Form`, where the label
+    /// belongs to the shared column instead.
+    @TerminalViewBuilder private var labelledBody: some TerminalView {
+        if formLabelWidth == nil {
+            HStack {
+                Text(isOn.get() ? "[x]" : "[ ]")
+                Text(" \(label)")
             }
-            return .ignored
+        } else {
+            FormRow(label: label) {
+                Text(isOn.get() ? "[x]" : "[ ]")
+            }
         }
     }
+
+    public var body: some TerminalView {
+        labelledBody
+            .foreground(isEnabled ? .default : .gray)
+            .focusable()
+            .onKeyPress { [isOn] event in
+                // `.activate` mirrors Enter/Space for click-to-fire — see
+                // Button.swift for the rationale. Without this, clicking
+                // a focused Toggle synthesised `.enter` and toggled — but
+                // adjacent TextArea clicks would have inserted newlines.
+                // The framework now synthesises `.activate` on click;
+                // Toggle accepts it.
+                if event.key == .enter
+                    || event.key == .character(" ")
+                    || event.key == .activate
+                {
+                    isOn.set(!isOn.get())
+                    return .handled
+                }
+                return .ignored
+            }
+    }
+}
+
+extension Toggle: _FormRowLabel {
+    var formLabelText: String { label }
 }

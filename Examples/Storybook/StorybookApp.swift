@@ -22,6 +22,10 @@ final class StorybookState {
     var textInputValue: String = ""
     var toggleValue: Bool = false
     var pickerTheme: StorybookTheme = .dark
+    var sliderVolume: Double = 40
+    var stepperTabWidth: Int = 4
+    var formDark: Bool = true
+    var formFontScale: Double = 1.0
     var listSelection: Int? = 0
     var listScroll: Int = 0
     var tabSelection: Int = 0

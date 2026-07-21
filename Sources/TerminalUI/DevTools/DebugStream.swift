@@ -97,6 +97,12 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// rendering both would show a list where two rows appear identical to
     /// the selection logic but distinct to the user.
     case pickerDuplicateTags
+    /// A bounded-value control (`Slider`, `Stepper`, `Gauge`) was given an
+    /// upper bound below its lower bound. That is a programmer error rather
+    /// than user input, so the control renders disabled instead of guessing
+    /// which end was intended — silently swapping them would show a range the
+    /// caller never asked for.
+    case boundedValueInvertedBounds
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -639,6 +645,7 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case alertHasNoActions
     case optionAsMetaUnconfirmed
     case pickerDuplicateTags
+    case boundedValueInvertedBounds
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()
