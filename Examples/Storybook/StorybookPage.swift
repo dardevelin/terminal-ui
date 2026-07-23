@@ -40,7 +40,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Primitives
     case text, forEach, subCell, timeline, capabilities
     // Input
-    case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, promptInput
+    case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
     case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView
     // Charts
@@ -291,6 +291,22 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         LabeledContent("Version", value: "1.0.0")
                         Gauge(value: 0.62, label: "Disk")
                     }
+                }
+                """)
+        case .navigationStack: return PageInfo(id: self, category: .input, name: "NavigationStack",
+            summary: "Drill through screens with a path binding. A NavigationLink pushes; Esc pops; focus is confined to the pushed screen and restored to the row you came from. Destinations register by value type.",
+            code: """
+                NavigationStack(path: $path) {
+                    VStack {
+                        ForEach(items) { item in
+                            NavigationLink(value: item) { Text(item.name) }
+                        }
+                    }
+                    .navigationTitle("Items")
+                }
+                .navigationDestination(for: Item.self) { item in
+                    Text("Detail of \\(item.name)")
+                        .navigationTitle(item.name)
                 }
                 """)
         case .promptInput: return PageInfo(id: self, category: .input, name: "PromptInput",

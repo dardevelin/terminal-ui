@@ -129,7 +129,7 @@ public class AttributeNode: @unchecked Sendable {
     /// Per-child ratios for SplitView (LayoutKind.split). Populated
     /// at graph construction; consumed by Layout.measureAndPlace to
     /// distribute width/height across siblings.
-    /// Empty for any non-split layout. HYP-277.
+    /// Empty for any non-split layout.
     public var splitRatios: [Double] = []
 
     /// `ActionScope` attached to this node by the `.actions { ... }`
@@ -139,6 +139,21 @@ public class AttributeNode: @unchecked Sendable {
     /// Cleared and re-stamped during the modifier's lifecycle hook so
     /// reconciliation refreshes the bindings cleanly.
     public var _actionScope: ActionScope?
+
+    /// Input handlers stamped by the `.onKeyPress` / `.onClick` / `.onPaste` /
+    /// `.onHover` modifiers, kept on the node rather than only in the
+    /// `FocusEngine`'s tables.
+    ///
+    /// The live run loop clears the engine's handler tables every frame and
+    /// re-registers during graph update. A *cached* composite subtree is
+    /// skipped by `evaluateBody`, so its handlers would never be re-registered
+    /// and the control would go dead. Because the node object persists across a
+    /// cached update, storing the handler here lets `FocusEngine.rebuildIndex`
+    /// — which walks every node unconditionally — re-register it regardless of
+    /// whether the body re-ran. Registration is thus a function of tree shape,
+    /// the same principle containment stamping uses.
+    public var _keyHandler: ((KeyEvent) -> KeyEventResult)?
+    public var _clickHandler: ((Int, Int) -> Void)?
 
     /// Memoised: true iff this node OR any descendant has `.viewBody`
     /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`
@@ -335,7 +350,6 @@ public enum LayoutKind: Equatable {
     /// (`.vertical`) with one cell of divider between siblings.
     /// Per-child ratios live on the AttributeNode itself
     /// (`splitRatios`); read by Layout to distribute width/height.
-    /// HYP-277.
     case split(SplitAxis)
 }
 

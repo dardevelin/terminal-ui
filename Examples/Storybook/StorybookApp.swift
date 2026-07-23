@@ -12,6 +12,15 @@ enum StorybookTheme: String, CaseIterable, Hashable, Identifiable {
     var title: String { rawValue.capitalized }
 }
 
+/// A node in the NavigationStack demo's drill-down: a section, then one of its
+/// items, then that item's detail — three levels the page can descend.
+struct NavItem: Hashable, Identifiable {
+    let id: Int
+    let name: String
+    let kind: Kind
+    enum Kind: Hashable { case section, item, detail }
+}
+
 @Observable
 final class StorybookState {
     var selectedIndex: Int = 0
@@ -26,6 +35,7 @@ final class StorybookState {
     var stepperTabWidth: Int = 4
     var formDark: Bool = true
     var formFontScale: Double = 1.0
+    var navPath: [NavItem] = []
     var listSelection: Int? = 0
     var listScroll: Int = 0
     var tabSelection: Int = 0

@@ -336,6 +336,46 @@ struct PreviewPane: TerminalView {
                     Gauge(value: 0.62, label: "Disk")
                 }
             }
+        case .navigationStack:
+            NavigationStack(path: Binding(get: { state.navPath },
+                                           set: { state.navPath = $0 })) {
+                VStack {
+                    Text("Pick a section").foreground(.gray)
+                    NavigationLink(value: NavItem(id: 1, name: "Fruits", kind: .section)) {
+                        Text("Fruits")
+                    }
+                    NavigationLink(value: NavItem(id: 2, name: "Veg", kind: .section)) {
+                        Text("Vegetables")
+                    }
+                }
+                .navigationTitle("Sections")
+            }
+            .navigationDestination(for: NavItem.self) { item in
+                switch item.kind {
+                case .section:
+                    VStack {
+                        Text("Items in \(item.name)").foreground(.gray)
+                        NavigationLink(value: NavItem(id: item.id * 10, name: "\(item.name) A", kind: .item)) {
+                            Text("\(item.name) A")
+                        }
+                        NavigationLink(value: NavItem(id: item.id * 10 + 1, name: "\(item.name) B", kind: .item)) {
+                            Text("\(item.name) B")
+                        }
+                    }
+                    .navigationTitle(item.name)
+                case .item:
+                    VStack {
+                        Text("Detail of \(item.name)").bold()
+                        NavigationLink(value: NavItem(id: item.id * 10, name: "\(item.name) note", kind: .detail)) {
+                            Text("More")
+                        }
+                    }
+                    .navigationTitle(item.name)
+                case .detail:
+                    Text("\(item.name) — Esc to go back")
+                        .navigationTitle(item.name)
+                }
+            }
         case .promptInput:
             VStack {
                 PromptInput(

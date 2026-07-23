@@ -59,28 +59,32 @@ struct DisabledHandlerGatingTests {
     func onKeyPressGatedOut() {
         let engine = FocusEngine()
         let nodeID = NodeID(path: [.index(42)])
+        let node = AttributeNode(id: nodeID, kind: .modifier(.onKeyPress))
         var env = EnvironmentValues()
         env.isEnabled = false
         let modifier = OnKeyPressModifier(handler: { _ in .handled })
         GraphContext.$currentFocusEngine.withValue(engine) {
             GraphContext.$currentEnvironment.withValue(env) {
-                FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: nodeID)
+                FocusGraphIntegration.registerIfNeeded(modifier: modifier, node: node)
             }
         }
         #expect(engine.keyHandlers[nodeID] == nil,
                 "disabled subtree must not register key handler — found one in keyHandlers map")
+        #expect(node._keyHandler == nil,
+                "disabled subtree must not stamp the handler on the node either")
     }
 
     @Test("onClick handler is NOT registered when env.isEnabled == false")
     func onClickGatedOut() {
         let engine = FocusEngine()
         let nodeID = NodeID(path: [.index(42)])
+        let node = AttributeNode(id: nodeID, kind: .modifier(.onClick))
         var env = EnvironmentValues()
         env.isEnabled = false
         let modifier = OnClickModifier(handler: { _, _ in })
         GraphContext.$currentFocusEngine.withValue(engine) {
             GraphContext.$currentEnvironment.withValue(env) {
-                FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: nodeID)
+                FocusGraphIntegration.registerIfNeeded(modifier: modifier, node: node)
             }
         }
         #expect(engine.clickHandlers[nodeID] == nil,
@@ -91,12 +95,13 @@ struct DisabledHandlerGatingTests {
     func enabledStillRegisters() {
         let engine = FocusEngine()
         let nodeID = NodeID(path: [.index(42)])
+        let node = AttributeNode(id: nodeID, kind: .modifier(.onKeyPress))
         var env = EnvironmentValues()
         env.isEnabled = true
         let modifier = OnKeyPressModifier(handler: { _ in .handled })
         GraphContext.$currentFocusEngine.withValue(engine) {
             GraphContext.$currentEnvironment.withValue(env) {
-                FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: nodeID)
+                FocusGraphIntegration.registerIfNeeded(modifier: modifier, node: node)
             }
         }
         #expect(engine.keyHandlers[nodeID] != nil,

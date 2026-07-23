@@ -167,6 +167,16 @@ public struct EnvironmentValues: Sendable {
     /// needs, and it stays correct for sections nested in a `ForEach`.
     public var formSectionIsPreceded: Bool = false
 
+    /// How a `NavigationLink` pushes its value. Installed by the enclosing
+    /// `NavigationStack`; nil when a link is used with no stack in scope, so
+    /// activating it is a no-op rather than a crash.
+    public var navigationPush: NavigationPushAction? = nil
+
+    /// Screens a `NavigationStack` can push, keyed by value type. Published by
+    /// `.navigationDestination(for:)` and read by the enclosing stack, so a
+    /// registration written on the stack itself reaches it.
+    public var navigationDestinations = NavigationDestinations()
+
     public init() {}
 }
 

@@ -165,15 +165,17 @@ extension ModifiedView: _GraphModified {
 
     func constructChildNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         let node = graph.constructNode(for: content, id: id)
-        // Register focus-related modifiers (onKeyPress, etc.)
-        FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: id)
+        // Register focus-related modifiers (onKeyPress, etc.). The handler is
+        // stamped on the node too, so a cached update that skips this path
+        // still has it for `rebuildIndex` to re-register.
+        FocusGraphIntegration.registerIfNeeded(modifier: modifier, node: node)
         return node
     }
 
     func updateChild(_ child: AttributeNode, graph: AttributeGraph) {
         graph.updateNode(child, from: content)
         // Re-register on every update since handlers are cleared each frame
-        FocusGraphIntegration.registerIfNeeded(modifier: modifier, nodeID: child.id)
+        FocusGraphIntegration.registerIfNeeded(modifier: modifier, node: child)
     }
 
     func fireLifecycle(on node: AttributeNode) {

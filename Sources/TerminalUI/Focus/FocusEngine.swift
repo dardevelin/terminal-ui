@@ -96,8 +96,8 @@ public final class FocusEngine: @unchecked Sendable {
     /// view, or the previously-focused node was removed), the ID is
     /// cleared to nil. The runtime's auto-focus path then picks the
     /// first focusable in the new tree, instead of routing arrow
-    /// events to a dangling NodeID. HYP-215 — sidebar mouse click
-    /// triggered a `state.selectedIndex` change → graph rebuild from
+    /// events to a dangling NodeID. Regression seen once: a sidebar mouse
+    /// click triggered a `state.selectedIndex` change → graph rebuild from
     /// the new page → old NodeID became stale, arrow handlers
     /// stopped firing because routeKeyEvent walked a node not in
     /// the new tree.
@@ -161,6 +161,21 @@ public final class FocusEngine: @unchecked Sendable {
 
     private func buildIndexRecursive(_ node: AttributeNode) {
         nodeIndex[node.id] = node
+        // Re-register handlers a cached update did not touch. The live loop
+        // clears the handler tables each frame and relies on the graph update
+        // to refill them, but a cached composite subtree is skipped by
+        // `evaluateBody`, so its `.onKeyPress` / `.onClick` never re-register
+        // and the control goes dead. The handler persists on the node across a
+        // cached update, and this walk runs unconditionally, so restoring it
+        // here makes registration a function of tree shape rather than of body
+        // evaluation. A live update that DID re-fire the modifier has already
+        // set the same handler; assigning it again is idempotent.
+        if let keyHandler = node._keyHandler, keyHandlers[node.id] == nil {
+            keyHandlers[node.id] = keyHandler
+        }
+        if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
+            clickHandlers[node.id] = clickHandler
+        }
         // `.disabled()` writes `EnvironmentValues.isEnabled = false` into
         // the persisted env on every node in the subtree (set during
         // graph construction by the env-modifier traversal). A disabled

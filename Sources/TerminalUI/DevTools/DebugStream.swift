@@ -103,6 +103,11 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// which end was intended — silently swapping them would show a range the
     /// caller never asked for.
     case boundedValueInvertedBounds
+    /// A `NavigationStack` was handed a value whose type has no matching
+    /// `.navigationDestination(for:)`. The screen cannot be built, so the
+    /// framework shows a placeholder rather than a blank screen the user would
+    /// read as a crash. Register a destination for that type.
+    case navigationNoDestination
 }
 
 public struct FrameworkWarningInfo: Sendable, Codable {
@@ -646,6 +651,7 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case optionAsMetaUnconfirmed
     case pickerDuplicateTags
     case boundedValueInvertedBounds
+    case navigationNoDestination
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()

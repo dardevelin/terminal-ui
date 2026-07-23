@@ -116,6 +116,12 @@ let package = Package(
             swiftSettings: strictSettings
         ),
         .executableTarget(
+            name: "Navigation",
+            dependencies: ["TerminalUI"],
+            path: "Examples/Navigation",
+            swiftSettings: strictSettings
+        ),
+        .executableTarget(
             name: "Settings",
             dependencies: ["TerminalUI"],
             path: "Examples/Settings",

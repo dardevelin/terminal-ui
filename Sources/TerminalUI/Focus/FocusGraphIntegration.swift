@@ -1,30 +1,38 @@
 /// Protocol for modifiers that need to register with the FocusEngine
 /// during graph construction.
+///
+/// Registration stamps the handler onto the **node** as well as the engine's
+/// table. The engine's table is cleared and rebuilt every frame; the node
+/// persists across a cached update where the modifier's lifecycle does not
+/// re-fire, so the stamped copy is what `FocusEngine.rebuildIndex` re-registers
+/// to keep a cached control alive.
 protocol _FocusGraphModifier {
-    func registerWithFocusEngine(nodeID: NodeID)
+    func registerWithFocusEngine(node: AttributeNode)
 }
 
 extension OnKeyPressModifier: _FocusGraphModifier {
-    func registerWithFocusEngine(nodeID: NodeID) {
-        GraphContext.currentFocusEngine?.registerKeyHandler(for: nodeID, handler: handler)
+    func registerWithFocusEngine(node: AttributeNode) {
+        node._keyHandler = handler
+        GraphContext.currentFocusEngine?.registerKeyHandler(for: node.id, handler: handler)
     }
 }
 
 extension OnClickModifier: _FocusGraphModifier {
-    func registerWithFocusEngine(nodeID: NodeID) {
-        GraphContext.currentFocusEngine?.registerClickHandler(for: nodeID, handler: handler)
+    func registerWithFocusEngine(node: AttributeNode) {
+        node._clickHandler = handler
+        GraphContext.currentFocusEngine?.registerClickHandler(for: node.id, handler: handler)
     }
 }
 
 extension OnPasteModifier: _FocusGraphModifier {
-    func registerWithFocusEngine(nodeID: NodeID) {
-        GraphContext.currentFocusEngine?.registerPasteHandler(for: nodeID, handler: handler)
+    func registerWithFocusEngine(node: AttributeNode) {
+        GraphContext.currentFocusEngine?.registerPasteHandler(for: node.id, handler: handler)
     }
 }
 
 extension OnHoverModifier: _FocusGraphModifier {
-    func registerWithFocusEngine(nodeID: NodeID) {
-        GraphContext.currentFocusEngine?.registerHoverHandler(for: nodeID, handler: handler)
+    func registerWithFocusEngine(node: AttributeNode) {
+        GraphContext.currentFocusEngine?.registerHoverHandler(for: node.id, handler: handler)
         #if DEBUG
         // Surface a stable-coded framework warning for the only
         // suspicious policy + .onHover pairing. .clickToLock /
@@ -44,7 +52,7 @@ extension OnHoverModifier: _FocusGraphModifier {
                 behaviours, suppress with \
                 DebugStream.shared.suppressWarning(.onHoverWithHoverFollows).
                 """,
-                nodeID: nodeID.path.map { "\($0)" }.joined(separator: ".")
+                nodeID: node.id.path.map { "\($0)" }.joined(separator: ".")
             )
         }
         #endif
@@ -98,11 +106,11 @@ enum FocusGraphIntegration {
     /// drops the handler from the engine entirely — there is no later
     /// "should I fire?" check on dispatch, the handler simply isn't there.
     /// Matches SwiftUI's `\.isEnabled` semantics.
-    static func registerIfNeeded(modifier: any ViewModifier, nodeID: NodeID) {
+    static func registerIfNeeded(modifier: any ViewModifier, node: AttributeNode) {
         if let focusMod = modifier as? any _FocusGraphModifier {
             let env = GraphContext.currentEnvironment ?? EnvironmentValues()
             guard env.isEnabled else { return }
-            focusMod.registerWithFocusEngine(nodeID: nodeID)
+            focusMod.registerWithFocusEngine(node: node)
         }
     }
 
