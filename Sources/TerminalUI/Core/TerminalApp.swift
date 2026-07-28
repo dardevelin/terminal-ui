@@ -132,7 +132,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Overwrites the previous one; only the last-dispatched
         // signal matters because the loop polls every iteration.
         self.pendingQuitSignal = signal
-        return makeFrameworkDefaultsScope(signal: signal)
+        return makeFrameworkDefaultsScope(
+            signal: signal,
+            isPresenting: focusEngine.isContainingFocus
+        )
     }
 
     private var pendingQuitSignal: QuitSignal?
@@ -1083,7 +1086,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     public func remoteFrameworkDefaultsScope() -> ActionScope {
         let signal = QuitSignal()
         self.pendingQuitSignal = signal
-        return makeFrameworkDefaultsScope(signal: signal)
+        return makeFrameworkDefaultsScope(
+            signal: signal,
+            isPresenting: focusEngine.isContainingFocus
+        )
     }
 
     /// Expose the last rendered buffer for `query_cells`. The runtime keeps
@@ -1144,12 +1150,21 @@ final class QuitSignal: @unchecked Sendable {
 /// generics. The @Sendable closure captures only `signal`, which is
 /// a concrete reference type — no metatype involvement, so the
 /// strict-sendability gate accepts this.
+///
+/// `isPresenting` gates the Esc default: a presented screen owns
+/// Escape even when its own handlers ignored the key. Quitting out
+/// from under a presentation is the worst failure mode in a
+/// terminal — there is no window chrome to recover from — so the
+/// dismiss-or-quit default only quits when nothing is presented.
+/// A plain Bool suffices: the scope is built fresh per dispatch, so
+/// the value is current for exactly the event being dispatched.
 @MainActor
-func makeFrameworkDefaultsScope(signal: QuitSignal) -> ActionScope {
-    let handler: @Sendable () -> Void = { signal.fire() }
+func makeFrameworkDefaultsScope(signal: QuitSignal, isPresenting: Bool) -> ActionScope {
+    let quit: @Sendable () -> Void = { signal.fire() }
+    let ownedByPresentation: @Sendable () -> Void = {}
     return ActionScope.frameworkDefaults(
-        quit: handler,
-        dismissOrQuit: handler  // today: same as quit; modal logic later
+        quit: quit,
+        dismissOrQuit: isPresenting ? ownedByPresentation : quit
     )
 }
 

@@ -109,3 +109,55 @@ private final class TestCounter: @unchecked Sendable {
     func bump() { lock.lock(); _value += 1; lock.unlock() }
     var value: Int { lock.lock(); defer { lock.unlock() }; return _value }
 }
+
+// The Esc default is "dismiss or quit": quitting is only legitimate when no
+// presentation is containing focus. A presented screen owns Escape even when
+// its own handlers ignored the key — falling through to quit would tear the
+// app down under the user, which a terminal cannot recover from.
+@Suite("Default actions — Esc gated by presentation")
+@MainActor
+struct DismissOrQuitGatingTests {
+
+    @Test("Esc default does not quit while a presentation contains focus")
+    func escDefaultGatedWhilePresented() {
+        let signal = QuitSignal()
+        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: true)
+        let graph = AttributeGraph()
+        graph.update(from: Text("covered"))
+        let fired = ActionDispatch.dispatch(
+            binding: .keyboard(.escape, []),
+            from: graph.root!,
+            frameworkDefaults: scope
+        )
+        #expect(fired)
+        #expect(!signal.fired)
+    }
+
+    @Test("Esc default quits when nothing is presented")
+    func escDefaultQuitsWhenNotPresented() {
+        let signal = QuitSignal()
+        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: false)
+        let graph = AttributeGraph()
+        graph.update(from: Text("root"))
+        _ = ActionDispatch.dispatch(
+            binding: .keyboard(.escape, []),
+            from: graph.root!,
+            frameworkDefaults: scope
+        )
+        #expect(signal.fired)
+    }
+
+    @Test("Ctrl+C quits unconditionally, presented or not")
+    func ctrlCQuitsEvenWhilePresented() {
+        let signal = QuitSignal()
+        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: true)
+        let graph = AttributeGraph()
+        graph.update(from: Text("covered"))
+        _ = ActionDispatch.dispatch(
+            binding: .keyboard(.character("c"), [.ctrl]),
+            from: graph.root!,
+            frameworkDefaults: scope
+        )
+        #expect(signal.fired)
+    }
+}

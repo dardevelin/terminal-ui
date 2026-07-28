@@ -148,8 +148,16 @@ struct FocusContainmentTraversalTests {
         #expect(engine.keyboardFocusID == all[0].id, "global order still wraps")
     }
 
-    @Test("empty containment does not trap focus")
-    func emptyContainmentDoesNotDeadlock() {
+    // Earlier behaviour let Tab fall back to the covered base so an empty
+    // dialog could not "freeze" Tab — but that reaches controls the user
+    // cannot see, and it left `isContainingFocus` false, so the Esc quit
+    // default fired under a presented screen. Modality "prevents interaction
+    // with the parent view" (Apple HIG, Patterns → Modality): the
+    // presentation owns the keyboard even when nothing inside it is
+    // focusable. The user is never stranded — keys route to the presented
+    // subtree's own handlers, and Ctrl+C stays unconditional.
+    @Test("a presentation with no focusables owns the keyboard, not the base")
+    func emptyContainmentOwnsKeyboard() {
         let graph = AttributeGraph()
         graph.update(from: VStack {
             Text("a").focusable()
@@ -160,9 +168,16 @@ struct FocusContainmentTraversalTests {
         let engine = FocusEngine()
         engine.rebuildIndex(root: graph.root!)
         let all = focusables(engine, graph.root!)
-        engine.keyboardFocusID = all[0].id
+
+        #expect(engine.isContainingFocus, "presented is a tree fact, not a focusables fact")
+        #expect(engine.keyboardFocusID != nil, "adoption moves focus into the presentation")
+        #expect(!all.contains { $0.id == engine.keyboardFocusID })
+
         engine.focusNext()
-        #expect(engine.keyboardFocusID == all[1].id, "a modal with nothing focusable must not freeze Tab")
+        #expect(
+            !all.contains { $0.id == engine.keyboardFocusID },
+            "Tab must not reach controls under the modal"
+        )
     }
 
     @Test("disabled nodes inside a containment are still skipped")

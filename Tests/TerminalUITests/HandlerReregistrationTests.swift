@@ -23,7 +23,7 @@ import Testing
 /// field — a closure would compare unequal every frame and force a rebuild,
 /// which is exactly the caching this test needs to defeat.
 final class FireCount: @unchecked Sendable { var value = 0 }
-nonisolated(unsafe) private let fireBox = FireCount()
+private let fireBox = FireCount()
 
 private struct CachedButton: TerminalView {
     // Only value-typed, equal-across-frames fields, so the composite caches and

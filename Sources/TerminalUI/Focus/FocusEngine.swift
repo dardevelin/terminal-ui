@@ -65,6 +65,14 @@ public final class FocusEngine: @unchecked Sendable {
     /// and `rebuildIndex` already visits every node once per frame.
     private var deepestContainmentDepth: Int = 0
 
+    /// Root of the innermost presented subtree, or nil when none is
+    /// presented. When a presentation has no focusable descendants,
+    /// keyboard focus adopts this node instead — so `routeKeyEvent`'s
+    /// ancestor walk starts inside the presentation and reaches its
+    /// handlers (a pushed screen's Esc-pop, a dialog's shortcuts) rather
+    /// than routing from stale outside focus that falls back to root.
+    private var deepestPresentationRootID: NodeID?
+
     /// Whether a modal presentation is currently containing focus.
     ///
     /// Apps consult this before acting on a global Escape binding: a dialog
@@ -105,15 +113,22 @@ public final class FocusEngine: @unchecked Sendable {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
         deepestContainmentDepth = 0
+        deepestPresentationRootID = nil
         lastIndexedRoot = root
         buildIndexRecursive(root)
         traversableList = deepestContainmentDepth == 0
             ? focusableList
             : focusableList.filter { $0.containmentDepth == deepestContainmentDepth }
+        // A presentation that replaces its base (a pushed screen blanking
+        // the root) removes the focused node from the tree, so the stale
+        // clear below would erase the very ID dismissal should restore.
+        // Capture it first; the ID stays unroutable either way, and the
+        // restore path only applies IDs present in the rebuilt tree.
+        let focusBeforeReindex = keyboardFocusID
         if let focused = keyboardFocusID, nodeIndex[focused] == nil {
             keyboardFocusID = nil
         }
-        adoptActiveContainment()
+        adoptActiveContainment(interrupted: focusBeforeReindex)
     }
 
     /// Pull focus into a newly presented modal, and release it when that
@@ -128,23 +143,43 @@ public final class FocusEngine: @unchecked Sendable {
     /// Dismissal is the mirror case — focus left inside a subtree that is
     /// no longer presented would leave key events routing to a node the
     /// user can no longer see.
-    private func adoptActiveContainment() {
+    private func adoptActiveContainment(interrupted: NodeID?) {
         let candidates = traversableFocusables
+
+        if deepestContainmentDepth > 0 {
+            // Focus already sits somewhere legal inside the presentation —
+            // nothing to adopt.
+            if let focused = keyboardFocusID,
+               focused == deepestPresentationRootID
+                || candidates.contains(where: { $0.id == focused }) {
+                return
+            }
+            // A modal is presented and focus is outside it. Remember what
+            // the dialog interrupted so dismissing can put the user back
+            // where they were — losing the caret's place on dismiss is what
+            // makes dialogs feel broken. Single-shot for the whole
+            // containment session: a deeper push must not overwrite the
+            // remembered node with one inside the outer presentation, or
+            // the full unwind lands somewhere the user never was.
+            //
+            // A presentation with no focusable descendants still owns the
+            // keyboard: focus falls to the presented subtree's root so key
+            // routing starts inside it. Tab then has nowhere to go, which
+            // is correct — modality "prevents interaction with the parent
+            // view" (Apple HIG, Patterns → Modality), and the covered
+            // content must stay unreachable.
+            if focusBeforeContainment == nil {
+                focusBeforeContainment = interrupted
+            }
+            keyboardFocusID = candidates.first?.id ?? deepestPresentationRootID
+            return
+        }
+
         guard !candidates.isEmpty else { return }
 
         // Focus already sits somewhere legal — nothing to adopt.
         if let focused = keyboardFocusID,
            candidates.contains(where: { $0.id == focused }) {
-            return
-        }
-
-        if candidates.contains(where: { $0.containmentDepth > 0 }) {
-            // A modal is presented and focus is outside it. Remember what
-            // the dialog interrupted so dismissing can put the user back
-            // where they were — losing the caret's place on dismiss is what
-            // makes dialogs feel broken.
-            focusBeforeContainment = keyboardFocusID
-            keyboardFocusID = candidates.first?.id
             return
         }
 
@@ -182,7 +217,15 @@ public final class FocusEngine: @unchecked Sendable {
         // node drops out of the Tab order entirely — SwiftUI parity.
         if node.participatesInFocus {
             focusableList.append(node)
-            deepestContainmentDepth = max(deepestContainmentDepth, node.containmentDepth)
+        }
+        // Containment is a fact about the tree, not about what Tab can
+        // reach: a presented screen made only of Text still owns Escape.
+        // Pre-order means the first node seen at a new maximum depth is
+        // the presented subtree's root — the node key routing falls back
+        // to when the presentation has no focusable descendants.
+        if node.containmentDepth > deepestContainmentDepth {
+            deepestContainmentDepth = node.containmentDepth
+            deepestPresentationRootID = node.id
         }
         for child in node.children {
             buildIndexRecursive(child)
@@ -200,9 +243,12 @@ public final class FocusEngine: @unchecked Sendable {
     /// the nesting via `containmentDepth`, so the engine holds no stack of
     /// its own and cannot drift out of sync with the tree.
     ///
-    /// A presented modal with nothing focusable inside contributes no level
-    /// and traversal falls back to the outer set, so an empty dialog cannot
-    /// deadlock Tab.
+    /// A presented modal with nothing focusable inside still owns the level:
+    /// Tab has nothing to reach — correct, since the covered content must
+    /// stay unreachable — and the keyboard routes to the presentation root
+    /// instead. The user is never stranded: the presentation's own handlers
+    /// (Esc-pop, dialog shortcuts) get the keys, and Ctrl+C stays
+    /// unconditional.
     private var traversableFocusables: [AttributeNode] { traversableList }
 
     /// Move keyboard focus to the next focusable node (Tab order).

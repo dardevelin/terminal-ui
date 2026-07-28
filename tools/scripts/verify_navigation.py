@@ -71,11 +71,11 @@ def verify(app: Client) -> list[str]:
         )
 
     # Compose with the settings work: the Settings screen is reachable through
-    # navigation, and its Form still aligns its label column there.
-    for _ in range(2):
-        app.tab()
-        app.wait_for_frame(1, timeout=1.0)
-    app.send_key("enter")  # third link is Settings
+    # navigation, and its Form still aligns its label column there. Focus was
+    # just restored to Network (the second link), so Settings is one Tab away.
+    app.tab()
+    app.wait_for_frame(1, timeout=1.0)
+    app.send_key("enter")
     app.wait_for_frame(2, timeout=1.5)
     if "APPEARANCE" not in app.text():
         failures.append("Settings screen not reachable through navigation")

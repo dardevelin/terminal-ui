@@ -255,3 +255,109 @@ struct NavigationStackTitleTests {
         #expect(frame(engine, graph, view).contains("Detail Item 1"))
     }
 }
+
+// The live Navigation demo's `.section` screens are plain Text rows — zero
+// focusable descendants. "A screen is presented" is a fact about the tree, not
+// about whether Tab can reach something inside it: containment, Esc ownership,
+// and key routing must all hold for an inert screen, or Esc falls through to
+// the framework's quit default and tears the app down — the worst failure mode
+// in a terminal, where there is no window chrome to recover from.
+@MainActor
+private func textOnlyDrillView(_ path: Path) -> some TerminalView {
+    NavigationStack(path: path.binding) {
+        VStack {
+            NavigationLink(value: Item(id: 1)) { Text("Row 1") }
+            NavigationLink(value: Item(id: 2)) { Text("Row 2") }
+        }
+    }
+    .navigationDestination(for: Item.self) { item in
+        VStack {
+            Text("Inside \(item.name)")
+            Text("Esc goes back")
+        }
+    }
+}
+
+@Suite("NavigationStack — screens with no focusable content")
+@MainActor
+struct NavigationStackNoFocusableContentTests {
+
+    @Test("a pushed screen with no focusables still contains focus")
+    func pushedTextOnlyScreenContainsFocus() {
+        let path = Path()
+        path.elements = [Item(id: 1)]
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, textOnlyDrillView(path))
+        #expect(engine.isContainingFocus)
+    }
+
+    @Test("Esc pops a screen with no focusables")
+    func escPopsTextOnlyScreen() {
+        let path = Path()
+        path.elements = [Item(id: 1)]
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, textOnlyDrillView(path))
+
+        let handled = engine.routeKeyEvent(KeyEvent(key: .escape), root: graph.root!)
+        #expect(handled)
+        #expect(path.elements.isEmpty)
+    }
+
+    @Test("popping the last screen releases containment")
+    func popReleasesContainment() {
+        let path = Path()
+        path.elements = [Item(id: 1)]
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, textOnlyDrillView(path))
+        _ = engine.routeKeyEvent(KeyEvent(key: .escape), root: graph.root!)
+        _ = frame(engine, graph, textOnlyDrillView(path))
+        #expect(!engine.isContainingFocus)
+    }
+
+    @Test("the live drill shape round-trips: Enter pushes, Esc returns")
+    func liveShapedRoundTrip() {
+        let path = Path()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, textOnlyDrillView(path))
+
+        engine.focusNext()
+        _ = engine.routeKeyEvent(KeyEvent(key: .enter), root: graph.root!)
+        #expect(path.elements == [Item(id: 1)])
+        #expect(frame(engine, graph, textOnlyDrillView(path)).contains("Inside Item 1"))
+
+        _ = engine.routeKeyEvent(KeyEvent(key: .escape), root: graph.root!)
+        #expect(path.elements.isEmpty)
+        #expect(frame(engine, graph, textOnlyDrillView(path)).contains("Row 1"))
+    }
+}
+
+extension NavigationStackNoFocusableContentTests {
+
+    // The pop must land on the row that pushed, not the top of the list —
+    // losing your place on every pop is what makes TUI navigation feel
+    // broken. The base is blanked while a screen is up, so the link node
+    // leaves the tree entirely; the engine must remember it across that
+    // absence, not just across a covered-but-present base.
+    @Test("popping restores focus to the link that pushed")
+    func popRestoresOriginatingLink() {
+        let path = Path()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, textOnlyDrillView(path))
+
+        engine.focusNext()
+        engine.focusNext()
+        let originatingLink = engine.keyboardFocusID
+        _ = engine.routeKeyEvent(KeyEvent(key: .enter), root: graph.root!)
+        #expect(path.elements == [Item(id: 2)])
+        _ = frame(engine, graph, textOnlyDrillView(path))
+
+        _ = engine.routeKeyEvent(KeyEvent(key: .escape), root: graph.root!)
+        _ = frame(engine, graph, textOnlyDrillView(path))
+        #expect(engine.keyboardFocusID == originatingLink)
+    }
+}
