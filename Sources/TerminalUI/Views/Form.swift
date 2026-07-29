@@ -88,9 +88,18 @@ public struct Form<Content: TerminalView>: TerminalView {
         let column = labelColumn
         let stacks = terminalSize.cols < column + Self.minimumControlWidth
 
-        return _FormBody(content: content)
-            .environment(\.formLabelWidth, column)
-            .environment(\.formStacksRows, stacks)
+        // A settings screen scrolls. Unconditionally, not on overflow: the
+        // shipped `ScrollView` already suppresses its scrollbar and its ▲/▼
+        // glyphs when the content fits, so gating the composition on a
+        // measured overflow would answer the same question twice — and would
+        // have to answer it during `body`, where the viewport height is not
+        // yet known. Clipping instead would leave the rows below the fold
+        // focusable but invisible.
+        return ScrollView(.vertical) {
+            _FormBody(content: content)
+                .environment(\.formLabelWidth, column)
+                .environment(\.formStacksRows, stacks)
+        }
     }
 }
 

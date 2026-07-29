@@ -6,6 +6,18 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **`Form` scrolls when its content outgrows the space it is given.** An
+  overflowing form was clipped while its off-screen rows stayed focusable, so
+  Tab landed on controls the user could not see. `Form` now composes the
+  shipped `ScrollView`; the label column is still measured across every row,
+  on screen or not, so it does not shift as rows scroll past.
+- **A `ScrollView` inside a container that sizes itself to its content —
+  `.border()`, `.padding()` — no longer collapses to an empty box.** It now
+  reports the size of its content and accepts less, while a stack still hands
+  it whatever its siblings leave.
+
 ## [1.0.0] — 2026-07-20 — First public release
 
 The package now lives at the repository root, so the documented

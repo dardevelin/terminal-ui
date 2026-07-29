@@ -471,6 +471,33 @@ class Client:
     def preview_text(self) -> str:
         return self.preview_cells().text()
 
+    def boxed_rows(self, after: str) -> tuple[int, list[str]]:
+        """The rows inside the first ``╭…╰`` box that follows the line
+        containing ``after``, and the screen row its first content row
+        sits on.
+
+        ``PREVIEW_RECT`` above is a constant, so it holds only while every
+        page's summary and code block stay the length they were when it
+        was written; a page that grows either one slides its preview out
+        of that rect and the assertions silently read the wrong region.
+        Finding the box by its own corners costs one extra scan and
+        survives that drift."""
+        lines = self.text().splitlines()
+        start = next((i for i, line in enumerate(lines) if after in line), None)
+        if start is None:
+            return 0, []
+        rows: list[str] = []
+        top = 0
+        for offset, line in enumerate(lines[start + 1:], start=start + 1):
+            if "╭" in line:
+                top = offset + 1
+                continue
+            if "╰" in line:
+                break
+            if top:
+                rows.append(line)
+        return top, rows
+
     def contains(self, needle: str, rect: Optional[Sequence[int]] = None) -> bool:
         """Substring check over the rendered cells. Replaces the
         ubiquitous ``needle in app.text()`` pattern with a form that's

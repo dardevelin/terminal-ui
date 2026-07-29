@@ -68,10 +68,58 @@ private func buildWithEngine(
     }
 }
 
+/// One frame of the real run loop: update, adjust scroll for focus, lay out,
+/// render, reindex — in that order. A form that scrolls cannot be verified by
+/// `render` alone, because the offset that keeps the focused row visible is
+/// computed between update and render.
+@MainActor
+private func frame(
+    _ engine: FocusEngine,
+    _ graph: AttributeGraph,
+    _ view: some TerminalView,
+    width: Int = 40,
+    height: Int = 10
+) -> CellBuffer {
+    var buffer = CellBuffer(width: width, height: height)
+    var env = EnvironmentValues()
+    env.terminalSize = TerminalSize(cols: width, rows: height)
+    GraphContext.$currentFocusEngine.withValue(engine) {
+        GraphContext.$currentEnvironment.withValue(env) {
+            GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
+                graph.update(from: view)
+                GraphRenderer.adjustScrollForFocus(
+                    root: graph.root, focusedID: engine.keyboardFocusID,
+                    viewportWidth: width, viewportHeight: height
+                )
+                guard let root = graph.root else { return }
+                let rect = Rect(x: 0, y: 0, width: width, height: height)
+                Layout.measureAndPlace(graph: root, in: rect)
+                GraphRenderer.render(root, into: &buffer, context: RenderContext(rect: rect))
+                engine.rebuildIndex(root: root)
+            }
+        }
+    }
+    return buffer
+}
+
 /// Column at which a row's control starts — the first character after the
 /// label's padded column.
 private func controlColumn(in line: String, marker: Character) -> Int? {
     line.firstIndex(of: marker).map { line.distance(from: line.startIndex, to: $0) }
+}
+
+/// A settings screen with more rows than any terminal this test runs at.
+private struct TallForm: TerminalView {
+    let isOn: Binding<Bool>
+    let rows: Int
+
+    var body: some TerminalView {
+        Form {
+            ForEachWithID(Array(0..<rows), id: \.self) { index in
+                Toggle("Row \(index)", isOn: isOn)
+            }
+        }
+    }
 }
 
 // MARK: - Label column
@@ -349,6 +397,91 @@ struct LabeledContentTests {
         let toggleCol = toggleRow.flatMap { controlColumn(in: $0, marker: "[") }
         #expect(idCol != nil)
         #expect(idCol == toggleCol)
+    }
+}
+
+// MARK: - Scrolling
+
+// Apple HIG, Settings: a settings screen is a scrolling list. A form taller
+// than the terminal that merely clips is worse than one that scrolls — the
+// rows below the fold stay focusable, so Tab lands on controls the user cannot
+// see and cannot tell have changed.
+//
+// `Form` composes the shipped `ScrollView`. Always, not on overflow: the
+// scrollbar and the ▲/▼ glyphs already suppress themselves when content fits,
+// so "only when it overflows" would be a second overflow test answering a
+// question the renderer already answers.
+
+@Suite("Form — scrolling")
+@MainActor
+struct FormScrollingTests {
+
+    // One Tab past the fold, two facts: the row arrives, and the one it
+    // replaced leaves. A form that grew instead of scrolling would satisfy the
+    // first and fail the second.
+    @Test("Tab to a row below the fold scrolls it into view")
+    func tabBelowFoldScrollsIntoView() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = TallForm(isOn: model.toggleBinding, rows: 20)
+
+        let top = renderedText(frame(engine, graph, view))
+        #expect(top.contains("Row 0"))
+
+        for _ in 0..<20 { engine.focusNext() }
+        let bottom = renderedText(frame(engine, graph, view))
+
+        #expect(bottom.contains("Row 19"),
+                "the focused row must be on screen, not below the fold")
+        #expect(!bottom.contains("Row 0"),
+                "the viewport moved, so the first row is no longer drawn")
+    }
+
+    // The column is measured from every row, including the ones off screen —
+    // scrolling must not re-measure it against whatever happens to be visible,
+    // or the controls would shift sideways as the user scrolls.
+    @Test("the label column stays aligned after scrolling")
+    func labelColumnSurvivesScrolling() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        // "Row 10" is a cell wider than "Row 0": the column is only stable if
+        // it was measured across the whole form.
+        let view = TallForm(isOn: model.toggleBinding, rows: 20)
+
+        _ = frame(engine, graph, view)
+        for _ in 0..<20 { engine.focusNext() }
+
+        let rendered = lines(renderedText(frame(engine, graph, view)))
+        let columns = Set(rendered.filter { $0.contains("Row ") }
+            .compactMap { controlColumn(in: $0, marker: "[") })
+        #expect(columns.count == 1, "every visible control shares one column")
+    }
+
+    // A short form is the common case; an affordance that draws when there is
+    // nothing to scroll to is noise.
+    @Test("a form that fits draws no scrollbar")
+    func shortFormDrawsNoScrollbar() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = TallForm(isOn: model.toggleBinding, rows: 3)
+
+        let text = renderedText(frame(engine, graph, view))
+        #expect(!text.contains("█"))
+        #expect(!text.contains("▼"))
+    }
+
+    @Test("a form taller than the viewport shows the overflow affordance")
+    func tallFormShowsScrollbar() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = TallForm(isOn: model.toggleBinding, rows: 20)
+
+        let text = renderedText(frame(engine, graph, view))
+        #expect(text.contains("▼"), "there is more content below the fold")
     }
 }
 

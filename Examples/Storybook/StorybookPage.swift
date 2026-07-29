@@ -273,7 +273,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 Gauge(value: 0.62, label: "Disk")
                 """)
         case .form: return PageInfo(id: self, category: .input, name: "Form",
-            summary: "Settings-screen layout. Every row's control starts at one column, computed from the widest label in the form — that alignment is the feature. Sections group rows with an uppercase header and a divider between them.",
+            summary: "Settings-screen layout. Every row's control starts at one column, computed from the widest label in the form — that alignment is the feature. Sections group rows with an uppercase header and a divider between them. A form taller than its window scrolls, and Tab past the fold brings the next row into view.",
             code: """
                 Form {
                     Section("Appearance") {
@@ -286,6 +286,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Section("Editor") {
                         Stepper("Tab width", value: $tabWidth, in: 1...16)
                         Slider(value: $fontScale, in: 0.5...2.0, step: 0.1, label: "Font scale")
+                    }
+                    Section("Privacy") {
+                        Toggle("Telemetry", isOn: $telemetry)
+                        Toggle("Crash reports", isOn: $crashReports)
+                    }
+                    Section("Advanced") {
+                        Toggle("Autosave", isOn: $autosave)
+                        Stepper("History depth", value: $historyDepth, in: 5...100, step: 5)
                     }
                     Section("About") {
                         LabeledContent("Version", value: "1.0.0")

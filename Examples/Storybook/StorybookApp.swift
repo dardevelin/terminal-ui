@@ -35,6 +35,12 @@ final class StorybookState {
     var stepperTabWidth: Int = 4
     var formDark: Bool = true
     var formFontScale: Double = 1.0
+    // Rows below the fold of the Form page's preview window — the ones that
+    // only a scrolling Form can reach.
+    var formTelemetry: Bool = false
+    var formCrashReports: Bool = true
+    var formAutosave: Bool = true
+    var formHistoryDepth: Int = 20
     var navPath: [NavItem] = []
     var listSelection: Int? = 0
     var listScroll: Int = 0

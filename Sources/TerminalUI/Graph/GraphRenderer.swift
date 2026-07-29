@@ -468,36 +468,50 @@ public enum GraphRenderer {
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
         if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
-        // Transparent modifiers (env, lifecycle, focus hooks, paint
-        // effects) don't impose a height of their own — peel through
-        // to detect a flex descendant. Without this, wrapping a
-        // ScrollView in `.environment(...)` (e.g. `.scrollPosition(id:)`)
-        // collapses it to its intrinsic 1-row size in a VStack.
-        if case .modifier(let effect) = node.kind, isTransparentModifier(effect),
-           let child = node.children.first {
-            return isVFlexChild(child)
-        }
+        if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
         return false
     }
 
-    /// A modifier is "transparent" for flex/sizing purposes when it
-    /// doesn't impose its own size on the child. Painting effects
-    /// (foreground/bold/etc), lifecycle hooks, focus modifiers,
-    /// click/hover/key dispatch, environment passthrough — none of
-    /// these change layout. Frames, padding, borders, .flexible, and
-    /// the modal/overlay shapes DO change layout and are NOT
-    /// transparent.
-    private static func isTransparentModifier(_ effect: ModifierEffect) -> Bool {
-        switch effect {
-        case .foreground, .background, .bold, .italic, .underline,
-             .focusable, .focusScope,
-             .onKeyPress, .onAppear, .onChange, .onDisappear,
-             .onClick, .onHover, .onPaste,
-             .actions, .environment, .explicitID:
-            return true
-        case .padding, .border, .frame, .flexible,
-             .overlay, .backgroundView, .modal:
-            return false
+    /// The child whose flexibility this node inherits, or nil when the node
+    /// decides its own size.
+    ///
+    /// Flexibility is a property of what a subtree *is*, not of the node that
+    /// happens to sit on top of it. Reading it off one node's kind stopped at
+    /// the first wrapper: a scroll view behind `.environment(...)` collapsed to
+    /// one row, a scroll view behind `.border()` took its full natural height
+    /// and painted over its siblings, and a composite view whose `body` is a
+    /// scroll view — every `Form` — did the same. Three shapes, one missing
+    /// rule.
+    ///
+    /// A `.frame` with an explicit dimension does decide, which is why it is
+    /// absent here and why `.frame(height:)` remains the way to bound a
+    /// scroll view against a greedy one.
+    private static func flexBearingChild(of node: AttributeNode) -> AttributeNode? {
+        switch node.kind {
+        // A composite view is its body.
+        case .viewBody:
+            return node.children.first
+        case .modifier(let effect):
+            switch effect {
+            // Painting, lifecycle, focus and dispatch impose no size at all;
+            // insets add their own cells around whatever they are given
+            // without choosing how much that is.
+            case .foreground, .background, .bold, .italic, .underline,
+                 .focusable, .focusScope,
+                 .onKeyPress, .onAppear, .onChange, .onDisappear,
+                 .onClick, .onHover, .onPaste,
+                 .actions, .environment, .explicitID,
+                 .padding, .border:
+                return node.children.first
+            // A frame and `.flexible` state a size on their own behalf; the
+            // presentation shapes carry a second subtree whose flexibility is
+            // not the base view's to inherit. Listed rather than defaulted so
+            // a new effect has to answer this question.
+            case .frame, .flexible, .overlay, .backgroundView, .modal:
+                return nil
+            }
+        default:
+            return nil
         }
     }
 
@@ -578,6 +592,7 @@ public enum GraphRenderer {
         if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }
         if case .modifier(.frame(_, _, _, let maxW, _, _)) = node.kind, maxW == .infinity { return true }
+        if let child = flexBearingChild(of: node) { return isFlexChild(child) }
         return false
     }
 

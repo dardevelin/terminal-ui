@@ -331,11 +331,31 @@ struct PreviewPane: TerminalView {
                                            set: { state.formFontScale = $0 }),
                            in: 0.5...2.0, step: 0.1, label: "Font scale")
                 }
+                Section("Privacy") {
+                    Toggle("Telemetry", isOn: Binding(get: { state.formTelemetry },
+                                                        set: { state.formTelemetry = $0 }))
+                    Toggle("Crash reports", isOn: Binding(get: { state.formCrashReports },
+                                                            set: { state.formCrashReports = $0 }))
+                }
+                Section("Advanced") {
+                    Toggle("Autosave", isOn: Binding(get: { state.formAutosave },
+                                                       set: { state.formAutosave = $0 }))
+                    Stepper("History depth",
+                            value: Binding(get: { state.formHistoryDepth },
+                                            set: { state.formHistoryDepth = $0 }),
+                            in: 5...100, step: 5)
+                }
                 Section("About") {
                     LabeledContent("Version", value: "1.0.0")
                     Gauge(value: 0.62, label: "Disk")
                 }
             }
+            // A settings screen is taller than its window — that is this
+            // page's subject. Left to itself the form would split the detail
+            // column's leftover rows with the trailing spacer and land on a
+            // window too short to read; a fixed one keeps the demo legible.
+            // An app gives its Form the screen instead.
+            .frame(height: 10)
         case .navigationStack:
             NavigationStack(path: Binding(get: { state.navPath },
                                            set: { state.navPath = $0 })) {

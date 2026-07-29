@@ -137,18 +137,17 @@ public enum GraphMeasurer {
                     total += measureWidth(child)
                 }
                 return total
-            case .scroll(let axis):
-                // Horizontal scroll: report viewport width (0 = flexible, parent decides).
-                // Vertical scroll: report content width (same as vstack).
-                switch axis {
-                case .horizontal: return 0
-                case .vertical:
-                    var maxW = 0
-                    for child in children {
-                        maxW = max(maxW, measureWidth(child))
-                    }
-                    return maxW
-                }
+            case .scroll:
+                // Both axes report the size of the content, measured through
+                // the same single child `renderScroll` draws. A flex parent
+                // never asks — it skips measurement for flex children and
+                // hands the scroll view the space its siblings left — so
+                // answering "0, you decide" only ever reached the parents that
+                // size themselves to their content (`.border()`, `.padding()`),
+                // which then allocated a viewport of nothing and drew an empty
+                // box. Wanting all of the content and accepting less is the
+                // contract SwiftUI's ScrollView states.
+                return node.children.first.map { measureWidth($0) } ?? 0
             case .split(let axis):
                 // SplitView: horizontal axis sums child widths + dividers;
                 // vertical axis takes max child width. Mirrors hstack/vstack
@@ -180,11 +179,14 @@ public enum GraphMeasurer {
                     measureWidth(child)
                 }
             }
+            // An explicit width answers on its own — see the height twin for
+            // why measuring the child first and discarding it is not free.
+            if case .frame(let width, _, _, _, _, _) = effect, let width { return width }
+
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(let w, _, let minW, let maxW, _, _) = effect {
-                if let w { return w }
+            if case .frame(_, _, let minW, let maxW, _, _) = effect {
                 // .infinity contributes nothing to intrinsic measurement —
                 // the renderer expands the rect during stack flex
                 // distribution, not during measurement.
@@ -237,18 +239,15 @@ public enum GraphMeasurer {
                     maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
                 }
                 return maxH
-            case .scroll(let axis):
-                // Horizontal scroll: report content height (same as hstack).
-                // Vertical scroll: report 0 (flexible, parent decides viewport height).
-                switch axis {
-                case .horizontal:
-                    var maxH = 0
-                    for child in children {
-                        maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
-                    }
-                    return maxH
-                case .vertical: return 0
+            case .scroll:
+                // Content height on both axes — see the width measurement for
+                // why "0, parent decides" was only ever right for the parents
+                // that never ask.
+                var maxH = 0
+                for child in children {
+                    maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
                 }
+                return maxH
             case .split(let axis):
                 // Mirror of width measurement: vertical sums + 1 row per
                 // sibling boundary; horizontal takes max child height.
@@ -282,11 +281,17 @@ public enum GraphMeasurer {
                     measureHeight(child, proposedWidth: proposedWidth)
                 }
             }
+            // An explicit height is the answer on its own. Measuring the child
+            // first and discarding the result was free while a scroll view
+            // reported 0; now it walks — and evaluates the body of — every row
+            // of a `Form` behind a `.frame(height:)`, once per frame, for a
+            // number nothing reads.
+            if case .frame(_, let height, _, _, _, _) = effect, let height { return height }
+
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(_, let h, _, _, let minH, let maxH) = effect {
-                if let h { return h }
+            if case .frame(_, _, _, _, let minH, let maxH) = effect {
                 if let maxH = maxH?.fixedValue { base = min(base, maxH) }
                 if let minH = minH?.fixedValue { base = max(base, minH) }
             }
