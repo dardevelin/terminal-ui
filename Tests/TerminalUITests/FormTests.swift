@@ -514,3 +514,81 @@ struct FormFocusTests {
         #expect(Set(visited).count == 2)
     }
 }
+
+// MARK: - Arrow navigation
+
+// Apple HIG, Settings: a settings screen is a list, and Down walks it. Two
+// separate things stopped that walk short.
+//
+// A result builder groups the rows a `Section` was written with into one
+// structural stack. Structural stacks stay out of the focus walk, which is
+// right — but their children were dropped along with them rather than spliced
+// into the parent, so a section holding two rows presented one child and
+// arrows stepped over the second.
+//
+// And a stack refuses to let arrows past its last child, which is right for a
+// stack sitting next to unrelated content and wrong inside a form: the rows
+// of the next section are the continuation of this list, not somewhere else.
+
+@Suite("Form — arrow navigation")
+@MainActor
+struct FormArrowNavigationTests {
+
+    private func sectionedForm(_ model: Model) -> some TerminalView {
+        Form {
+            Section("Appearance") {
+                Toggle("Dark mode", isOn: model.toggleBinding)
+                Stepper("Tab width", value: model.countBinding, in: 1...16)
+            }
+            Section("Editor") {
+                Toggle("Autosave", isOn: model.toggleBinding)
+                Stepper("History depth", value: model.countBinding, in: 1...16)
+            }
+        }
+    }
+
+    /// Every row the form draws, in the order Down should visit them.
+    private func walkDown(_ engine: FocusEngine, _ graph: AttributeGraph, steps: Int) -> [NodeID] {
+        var visited: [NodeID] = []
+        for _ in 0..<steps {
+            engine.move(.down, root: graph.root!)
+            if let id = engine.keyboardFocusID { visited.append(id) }
+        }
+        return visited
+    }
+
+    @Test("Down visits both rows of a section, not just the first")
+    func downVisitsEveryRowInASection() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, sectionedForm(model), width: 40, height: 20)
+
+        engine.focusNext()
+        let first = engine.keyboardFocusID
+        // Tab order is the reference: the row after the first is the second
+        // row of the same section.
+        engine.focusNext()
+        let second = engine.keyboardFocusID
+        engine.keyboardFocusID = first
+
+        engine.move(.down, root: graph.root!)
+        #expect(engine.keyboardFocusID == second,
+                "Down goes to the very next row, not past it to the next section")
+    }
+
+    @Test("Down reaches every control in the form")
+    func downReachesEveryControl() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, sectionedForm(model), width: 40, height: 20)
+
+        engine.focusNext()
+        var visited: Set<NodeID> = [engine.keyboardFocusID].compactMap { $0 }.reduce(into: []) { $0.insert($1) }
+        for id in walkDown(engine, graph, steps: 6) { visited.insert(id) }
+
+        #expect(visited.count == 4,
+                "four controls across two sections, all reachable by Down alone")
+    }
+}

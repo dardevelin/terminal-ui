@@ -99,6 +99,11 @@ public struct Form<Content: TerminalView>: TerminalView {
             _FormBody(content: content)
                 .environment(\.formLabelWidth, column)
                 .environment(\.formStacksRows, stacks)
+                // A form is one list and its sections are grouping, not walls.
+                // A stack holds arrows at its last child by default, which is
+                // right beside unrelated content and wrong here: the next
+                // section's rows are where this list continues.
+                .environment(\.focusBoundaryPolicy, .escapeToParent)
         }
     }
 }

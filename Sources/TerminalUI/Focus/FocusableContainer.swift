@@ -184,9 +184,44 @@ extension AttributeNode: FocusableContainer {
             // them. Returning every child would let navigation select a
             // decorative sibling that holds no focusable and strand focus on
             // a node that cannot take it.
-            return children.filter { $0.containsFocusable() }
+            //
+            // Grouping is spliced rather than counted: two rows written one
+            // after the other inside a `Section` arrive as a single structural
+            // stack, and treating that as one child made a section of any size
+            // look like one destination — arrows stepped over every row but
+            // the first. Transparent has to mean transparent from both sides.
+            return children.flatMap { $0.navigableFocusables }
         default:
             return []
+        }
+    }
+
+    /// This node as its enclosing container sees it: itself when it is a
+    /// destination, or the destinations inside it when it is only grouping.
+    var navigableFocusables: [AttributeNode] {
+        // A destination stops the descent: whatever is inside a control is the
+        // control's business, not a set of places to arrow to.
+        if isFocusable { return [self] }
+        if isTransparentGrouping { return children.flatMap { $0.navigableFocusables } }
+        return containsFocusable() ? [self] : []
+    }
+
+    /// Whether this node only holds other nodes: the stacks a result builder
+    /// introduces, and the body of a composite view. Neither is something the
+    /// user placed, so neither is somewhere to arrow to — and neither may
+    /// stand in for the several destinations it may be holding.
+    private var isTransparentGrouping: Bool {
+        switch kind {
+        case .viewBody:
+            return true
+        case .layout(let info):
+            guard info.isStructural else { return false }
+            switch info.kind {
+            case .vstack, .hstack: return true
+            default: return false
+            }
+        default:
+            return false
         }
     }
 
