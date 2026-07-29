@@ -622,6 +622,9 @@ public enum GraphRenderer {
         let offset = node.scrollOffset
         let viewport = context.rect
         let showIndicators = (GraphContext.currentEnvironment?.scrollIndicators ?? .visible) == .visible
+        // Claimed below only if a track is actually painted; a pane whose
+        // content fits must not swallow clicks meant for what is under it.
+        node.scrollAffordanceRect = nil
 
         switch axis {
         case .horizontal:
@@ -688,6 +691,8 @@ public enum GraphRenderer {
                                               content: contentWidth,
                                               offset: offset) {
                     let trackY = viewport.y + viewport.height - 1
+                    node.scrollAffordanceRect = Rect(x: viewport.x, y: trackY,
+                                                     width: viewport.width, height: 1)
                     let trackStyle = Style(foreground: .gray, background: nil,
                                            bold: false, italic: false, underline: false)
                     let thumbStyle = Style(foreground: .cyan, background: nil,
@@ -757,6 +762,8 @@ public enum GraphRenderer {
                                               content: contentHeight,
                                               offset: offset) {
                     let trackX = viewport.x + viewport.width - 1
+                    node.scrollAffordanceRect = Rect(x: trackX, y: viewport.y,
+                                                     width: 1, height: viewport.height)
                     let trackStyle = Style(foreground: .gray, background: nil,
                                            bold: false, italic: false, underline: false)
                     let thumbStyle = Style(foreground: .cyan, background: nil,
@@ -1332,10 +1339,18 @@ public enum GraphRenderer {
             return
 
         case .overlay:
-            // Outside the focused child's rect — one cell to the left.
-            // Skip inside scroll containers: the scroll viewport's clipping
-            // fights with indicator cells drawn outside the content area.
-            if skipInScroll, scrollAncestorRect(of: node) != nil { return }
+            // Outside the focused child's rect — one cell to the left, in the
+            // padding a bordered pane already has.
+            //
+            // A scroll container used to disqualify the node outright. The
+            // concern was real but stated too broadly: what fights with a
+            // viewport is a bar drawn for a row that has scrolled *out* of it,
+            // not the existence of a scroll ancestor. Since every `Form`
+            // composes a `ScrollView`, the broad rule left every control in
+            // every form unmarked — the focused row was the one thing on
+            // screen with nothing to say it had focus. The viewport is a clip
+            // below instead.
+            let viewport = skipInScroll ? scrollAncestorRect(of: node) : nil
             // A presented modal is a bounded region too, but only its edge
             // cells are at risk: writing left of a control flush against the
             // dialog frame would punch a hole in the border. One cell in from
@@ -1355,12 +1370,19 @@ public enum GraphRenderer {
             let r = node.rect
             let drawX = r.x - 1
             guard drawX > 0 else { return }
+            // A row scrolled sideways out of its viewport would put the bar in
+            // whatever pane sits to the left of this one.
+            if let viewport, drawX < viewport.x - 1 { return }
             // Clamp to buffer bounds: focused node may have an off-screen
             // rect (e.g. after a layout rebuild where a child landed below
             // the viewport), in which case `r.y > buffer.height` inverts
             // the range and crashes. Same class of fix as CellBuffer.fill.
-            let startY = max(0, min(r.y, buffer.height))
-            let endY = max(startY, min(r.y + r.height, buffer.height))
+            // Inside a scroll container the viewport clamps too, so the part
+            // of a half-scrolled row that is drawn is the part that is marked.
+            let topLimit = max(0, viewport?.y ?? 0)
+            let bottomLimit = min(buffer.height, viewport.map { $0.y + $0.height } ?? buffer.height)
+            let startY = max(topLimit, min(r.y, bottomLimit))
+            let endY = max(startY, min(r.y + r.height, bottomLimit))
             for y in startY..<endY {
                 buffer[drawX, y] = Cell(character: glyph, style: cellStyle)
             }

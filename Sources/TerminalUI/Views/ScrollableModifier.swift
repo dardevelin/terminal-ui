@@ -80,6 +80,28 @@ private func findEnclosedScrollNode(_ node: AttributeNode) -> AttributeNode? {
 /// axis-respecting step sizes, page extents, and max-offset clamping
 /// so wheel feel is identical regardless of routing.
 public enum _ScrollMath {
+    /// Move the viewport to `fraction` of the way through the content — what
+    /// a press on the scrollbar track means. The inverse of the placement
+    /// `scrollbarThumb` computes, so pressing where the thumb is leaves it
+    /// where it is.
+    public static func jump(toFraction fraction: Double, axis: ScrollAxis, node: AttributeNode) {
+        guard let content = node.children.first else { return }
+        let viewport = node.rect
+        let contentExtent: Int
+        let viewportExtent: Int
+        switch axis {
+        case .vertical:
+            contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
+            viewportExtent = viewport.height
+        case .horizontal:
+            contentExtent = GraphMeasurer.measureWidth(content)
+            viewportExtent = viewport.width
+        }
+        let maxOffset = max(0, contentExtent - viewportExtent)
+        let target = (Double(maxOffset) * max(0, min(1, fraction))).rounded()
+        node.scrollOffset = max(0, min(maxOffset, Int(target)))
+    }
+
     @discardableResult
     public static func mutateOffset(event: KeyEvent, axis: ScrollAxis, node: AttributeNode) -> KeyEventResult {
         guard let content = node.children.first else { return .ignored }

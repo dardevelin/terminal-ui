@@ -592,3 +592,75 @@ struct FormArrowNavigationTests {
                 "four controls across two sections, all reachable by Down alone")
     }
 }
+
+// MARK: - Focus indicator
+
+// The bar that marks the focused row draws one cell to the left of it, in the
+// padding a form usually sits in. That is the `.overlay` style, whose own
+// documentation calls it the best visual for forms — and it was skipped for
+// any node inside a scroll container, on the grounds that scroll clipping
+// fights with cells drawn outside the content area. Once a `Form` composed a
+// `ScrollView`, that condition became true for every control in every form and
+// the focused row became the only thing on screen with nothing to say so.
+//
+// The clipping concern is real but narrower than the rule: it only matters
+// when the focused row has scrolled out of its own viewport, which is a
+// question about the row's position, not about whether a scroll container
+// exists somewhere above it.
+
+@Suite("Form — focus indicator")
+@MainActor
+struct FormFocusIndicatorTests {
+
+    private func markedRows(_ buffer: CellBuffer) -> [Int] {
+        (0..<buffer.height).filter { y in
+            (0..<buffer.width).contains { x in buffer[x, y].character == "▎" }
+        }
+    }
+
+    @Test("the focused row is marked")
+    func focusedRowIsMarked() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = TallForm(isOn: model.toggleBinding, rows: 4).padding().border()
+
+        var buffer = frame(engine, graph, view, width: 40, height: 12)
+        engine.focusNext()
+        buffer = frame(engine, graph, view, width: 40, height: 12)
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root)
+        }
+
+        let rows = markedRows(buffer)
+        #expect(rows.count == 1, "exactly one row carries the focus bar")
+
+        let text = (0..<buffer.width).map { String(buffer[$0, rows.first ?? 0].character) }.joined()
+        #expect(text.contains("Row 0"), "and it is the row that has focus")
+    }
+
+    // The narrower rule the blanket skip was standing in for: a row that has
+    // scrolled out of its viewport must not leave a bar behind on whatever is
+    // drawn where it used to be.
+    @Test("a row scrolled out of the viewport leaves no bar behind")
+    func scrolledAwayRowLeavesNoBar() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = TallForm(isOn: model.toggleBinding, rows: 30).padding().border()
+
+        var buffer = frame(engine, graph, view, width: 40, height: 10)
+        for _ in 0..<30 { engine.focusNext() }
+        buffer = frame(engine, graph, view, width: 40, height: 10)
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root)
+        }
+
+        let rows = markedRows(buffer)
+        #expect(rows.count <= 1)
+        for y in rows {
+            let text = (0..<buffer.width).map { String(buffer[$0, y].character) }.joined()
+            #expect(text.contains("Row "), "a bar only ever sits beside a row")
+        }
+    }
+}

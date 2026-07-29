@@ -621,6 +621,11 @@ public final class FocusEngine: @unchecked Sendable {
     /// jumps directly to the corresponding page.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
         guard let root else { return }
+        // A scrollbar is painted over the content's last column, so the cells
+        // it occupies belong to the scroll view, not to the row underneath —
+        // otherwise a press on the track would both scroll and activate
+        // whatever it was drawn on top of.
+        if handleScrollAffordanceClick(x: x, y: y, root: root) { return }
         if let target = findFocusableAt(x: x, y: y, in: root) {
             // The same containment rule Tab obeys: while a modal is
             // presented, clicking the content it dims must not pull focus
@@ -652,6 +657,53 @@ public final class FocusEngine: @unchecked Sendable {
             let relY = y - target.rect.y
             handler(relX, relY)
         }
+    }
+
+    /// Press on a scrollbar: the ends step, anywhere else on the track jumps
+    /// the viewport to that position. Returns whether the press was taken.
+    ///
+    /// Dragging the thumb is deliberately absent — a press-move-release
+    /// gesture is a different mechanism, and stepping and jumping are what
+    /// make the drawn affordance answer at all.
+    private func handleScrollAffordanceClick(x: Int, y: Int, root: AttributeNode) -> Bool {
+        guard let (node, axis, affordance) = findScrollAffordanceAt(x: x, y: y, in: root) else {
+            return false
+        }
+        let position = axis == .vertical ? y - affordance.y : x - affordance.x
+        let extent = axis == .vertical ? affordance.height : affordance.width
+        switch position {
+        case 0:
+            _ScrollMath.mutateOffset(
+                event: KeyEvent(key: axis == .vertical ? .up : .left), axis: axis, node: node
+            )
+        case extent - 1:
+            _ScrollMath.mutateOffset(
+                event: KeyEvent(key: axis == .vertical ? .down : .right), axis: axis, node: node
+            )
+        default:
+            // The ends are the step buttons, so the track the press maps onto
+            // is what lies between them.
+            _ScrollMath.jump(
+                toFraction: Double(position - 1) / Double(max(1, extent - 3)),
+                axis: axis, node: node
+            )
+        }
+        return true
+    }
+
+    /// The deepest scroll node whose painted scrollbar covers (x, y).
+    private func findScrollAffordanceAt(x: Int, y: Int, in node: AttributeNode)
+        -> (AttributeNode, ScrollAxis, Rect)?
+    {
+        for child in node.children.reversed() {
+            if let hit = findScrollAffordanceAt(x: x, y: y, in: child) { return hit }
+        }
+        guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind,
+              let affordance = node.scrollAffordanceRect,
+              x >= affordance.x, x < affordance.x + affordance.width,
+              y >= affordance.y, y < affordance.y + affordance.height
+        else { return nil }
+        return (node, axis, affordance)
     }
 
     /// Click path under `MouseFocusPolicy.disabled`. Fires the

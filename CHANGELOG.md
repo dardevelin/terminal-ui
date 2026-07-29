@@ -8,6 +8,26 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Down walks every row of a `Form`.** Arrow navigation stepped over rows and
+  stopped partway: the stacks a result builder introduces were dropped from the
+  focus walk along with their children, so a `Section` of any size presented one
+  destination — and a stack holding arrows at its last child ended the walk at
+  the first section boundary.
+- **The focus bar draws inside a scroll container.** It was skipped for any node
+  with a scroll ancestor, which since `Form` composes a `ScrollView` meant every
+  control in every form went unmarked. The bar is now clipped to the viewport
+  instead of dropped, so a row scrolled out of view still leaves nothing behind.
+- **The mouse wheel scrolls past a focusable that ignores it.** A focusable
+  under the cursor still gets first refusal — a `List` or `TextArea` scrolls its
+  own contents — but refusing now falls through to the deepest scroll region
+  rather than ending the search.
+- **`Stepper`'s ◂ ▸ take clicks**, like every other affordance the framework
+  draws. The label is measured as drawn, so a stepper inside a `Form` reads its
+  own padded column correctly.
+- **A scrollbar takes clicks.** Its ends step the viewport and the track jumps
+  it; the cells belong to the scroll view, so a press does not also activate the
+  row painted underneath.
+
 - **`Form` scrolls when its content outgrows the space it is given.** An
   overflowing form was clipped while its off-screen rows stayed focusable, so
   Tab landed on controls the user could not see. `Form` now composes the

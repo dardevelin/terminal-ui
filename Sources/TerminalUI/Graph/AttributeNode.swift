@@ -126,6 +126,15 @@ public class AttributeNode: @unchecked Sendable {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// The cells this frame's render painted with a scrollbar and its edge
+    /// indicators, or nil when the content fits and nothing was drawn.
+    ///
+    /// Stamped by the renderer rather than re-derived at click time so the
+    /// cells that respond are exactly the cells the user can see. The two
+    /// would have to agree on the viewport, the content extent and whether
+    /// indicators are visible at all — three chances to drift apart.
+    public var scrollAffordanceRect: Rect?
+
     /// Per-child ratios for SplitView (LayoutKind.split). Populated
     /// at graph construction; consumed by Layout.measureAndPlace to
     /// distribute width/height across siblings.
