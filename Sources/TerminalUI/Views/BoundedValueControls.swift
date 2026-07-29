@@ -178,6 +178,17 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
     let boundsAreValid: Bool
 
     @TerminalEnvironment(\.isEnabled) private var isEnabled
+    @TerminalEnvironment(\.formLabelWidth) private var formLabelWidth
+    @TerminalEnvironment(\.formStacksRows) private var formStacksRows
+
+    /// Cells the label occupies as drawn, which is where the affordances
+    /// begin. Measured through `FormLabel.rendered` rather than re-derived
+    /// from `label.count`, because inside a `Form` the label is padded to the
+    /// shared column — the mistake that made `Slider`'s track clicks land far
+    /// from where the user pressed.
+    private var labelWidthAsDrawn: Int {
+        FormLabel.rendered(text: label, width: formLabelWidth, stacks: formStacksRows).count
+    }
 
     public init(
         _ label: String,
@@ -236,6 +247,8 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
         let atUpper = !isInteractive || current >= upper
         let value = self.value
         let interactive = isInteractive
+        let step = self.step
+        let labelCells = labelWidthAsDrawn
 
         return FormRow(label: label) {
             HStack {
@@ -246,6 +259,26 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
         }
         .foreground(isEnabled && boundsAreValid ? .default : .gray)
         .focusable()
+        .onClick { relativeX, _ in
+            guard interactive else { return }
+            // The affordances are drawn to be pressed, so they have to be
+            // pressable. Click coordinates arrive relative to the focusable
+            // row, and inside a Form the label is padded to the shared column
+            // — the same correction `Slider` makes for its track.
+            switch relativeX - labelCells {
+            case ..<0: return
+            case 0: value.set(clamp(value.get().advanced(by: -step)))
+            default:
+                // Anything right of the decrement glyph and the value it
+                // guards reads as the increment side; the value text is
+                // narrow and demanding a single-cell hit would make the
+                // control feel broken.
+                let incrementColumn = 1 + " \(current) ".count
+                if relativeX - labelCells >= incrementColumn {
+                    value.set(clamp(value.get().advanced(by: step)))
+                }
+            }
+        }
         .onKeyPress { event in
             guard interactive else { return .ignored }
             switch event.key {

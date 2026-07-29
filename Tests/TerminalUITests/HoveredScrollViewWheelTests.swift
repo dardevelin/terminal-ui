@@ -181,3 +181,104 @@ struct HoveredScrollViewWheelTests {
                 "horizontal wheel-right must advance horizontal scrollOffset")
     }
 }
+
+// A focusable under the cursor gets first refusal on the wheel, but refusing
+// it must not end the search. Every row of a `Form` is focusable and none of
+// them scroll, so a wheel that stopped at the first focusable never reached
+// the scroll view holding them — the wheel worked over the gaps between rows
+// and nowhere else.
+
+@MainActor
+private final class WheelModel {
+    var flag = false
+    var binding: Binding<Bool> { Binding(get: { self.flag }, set: { self.flag = $0 }) }
+}
+
+@Suite("Wheel falls through a focusable that does not take it")
+@MainActor
+struct WheelFallthroughTests {
+
+    @Test("wheel over a focusable row scrolls the ScrollView enclosing it")
+    func wheelOverFocusableRowScrollsEnclosingScrollView() {
+        let model = WheelModel()
+        let view = ScrollView(.vertical) {
+            VStack {
+                ForEachWithID(0..<20, id: \.self) { index in
+                    Toggle("row \(index)", isOn: model.binding)
+                }
+            }
+        }
+
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+        var buffer = CellBuffer(width: 30, height: 5)
+        let rect = Rect(x: 0, y: 0, width: 30, height: 5)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                graph.update(from: view)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+            }
+        }
+        engine.rebuildIndex(root: graph.root!)
+
+        guard let scrollNode = engine.findScrollNodeAt(x: 1, y: 1, root: graph.root!) else {
+            Issue.record("test setup failed: no scroll layout node under the cursor")
+            return
+        }
+        // The premise: there *is* a focusable under the cursor, so the
+        // fallback is only reachable by falling through it.
+        #expect(engine.wheelTargetID(x: 1, y: 1, root: graph.root!, policy: .clickToLock) != nil)
+
+        let handled = GraphContext.$currentFocusEngine.withValue(engine) {
+            engine.routeWheel(
+                KeyEvent(key: .down), root: graph.root!, x: 1, y: 1, policy: .clickToLock
+            )
+        }
+
+        #expect(handled)
+        #expect(scrollNode.scrollOffset > 0,
+                "a toggle refuses the wheel, so the scroll view it sits in takes it")
+    }
+
+    @Test("a focusable that takes the wheel keeps it")
+    func focusableThatHandlesWheelKeepsIt() {
+        let view = ScrollView(.vertical) {
+            VStack {
+                ForEachWithID(0..<20, id: \.self) { index in
+                    Text("row \(index)")
+                }
+            }
+        }
+        .scrollable()
+
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+        var buffer = CellBuffer(width: 30, height: 5)
+        let rect = Rect(x: 0, y: 0, width: 30, height: 5)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                graph.update(from: view)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+            }
+        }
+        engine.rebuildIndex(root: graph.root!)
+
+        guard let scrollNode = engine.findScrollNodeAt(x: 1, y: 1, root: graph.root!) else {
+            Issue.record("test setup failed: no scroll layout node under the cursor")
+            return
+        }
+        let handled = GraphContext.$currentFocusEngine.withValue(engine) {
+            engine.routeWheel(
+                KeyEvent(key: .down), root: graph.root!, x: 1, y: 1, policy: .clickToLock
+            )
+        }
+
+        // `.scrollable()`'s own handler moves the same offset, so the
+        // assertion that matters is that it was not moved twice.
+        #expect(handled)
+        #expect(scrollNode.scrollOffset == 1,
+                "one wheel notch is one step, not one per path that could have taken it")
+    }
+}

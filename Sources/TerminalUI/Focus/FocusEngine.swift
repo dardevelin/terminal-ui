@@ -523,6 +523,41 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
+    /// Route a wheel event to whatever owns it under the cursor.
+    ///
+    /// A focusable under the cursor gets first refusal, because some of them
+    /// scroll their own contents — a `List`, a `TextArea`, anything holding
+    /// its own offset. When one declines the event, the wheel belongs to the
+    /// deepest scroll region under the cursor, the same rule that applies when
+    /// there is no focusable there at all.
+    ///
+    /// Trying only the focusable and stopping is what left a `Form` unable to
+    /// scroll under the mouse: every row is focusable and no row does anything
+    /// with a wheel, so the event died on a control that had already refused
+    /// it while the scroll view enclosing it never heard about it. The user
+    /// reads that as "the wheel works over the gaps and not over the rows".
+    ///
+    /// Returns whether anything took the event.
+    public func routeWheel(
+        _ event: KeyEvent,
+        root: AttributeNode,
+        x: Int,
+        y: Int,
+        policy: MouseFocusPolicy
+    ) -> Bool {
+        if let targetID = wheelTargetID(x: x, y: y, root: root, policy: policy),
+           routeKeyEvent(event, root: root, startingFrom: targetID) {
+            return true
+        }
+        // `.disabled` drops auto-routed wheel events by policy, and
+        // `wheelTargetID` has already returned nil for it.
+        guard policy != .disabled, let scrollNode = findScrollNodeAt(x: x, y: y, root: root) else {
+            return false
+        }
+        dispatchWheelToScrollNode(scrollNode, event: event)
+        return true
+    }
+
     /// Fire `.onHover` transitions for every registered hover handler
     /// whose inside-rect state changed since the last move. Inside
     /// rects without registered handlers are ignored — the framework

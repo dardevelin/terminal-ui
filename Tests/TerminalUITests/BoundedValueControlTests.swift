@@ -316,3 +316,77 @@ struct BoundedValueDegenerateTests {
         #expect(renderedText(render(gaugeGraph)).contains("0.5"))
     }
 }
+
+// The ◂ and ▸ are drawn to be pressed. A `Slider` has taken clicks on its
+// track since it shipped; a `Stepper` drew the same kind of affordance and
+// ignored them, which reads as a broken control rather than as a keyboard-only
+// one — there is nothing on screen that says "arrows only".
+
+@Suite("Stepper — clicking the affordances")
+@MainActor
+struct StepperClickTests {
+
+    @Test("clicking ▸ increments and ◂ decrements")
+    func clickingAffordancesAdjustsValue() {
+        let model = StepperClickModel()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = Stepper("Tab width", value: model.binding, in: 1...16)
+
+        var buffer = CellBuffer(width: 40, height: 4)
+        let rect = Rect(x: 0, y: 0, width: 40, height: 4)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                graph.update(from: view)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+            }
+        }
+        engine.rebuildIndex(root: graph.root!)
+
+        let row = (0..<buffer.width).map { String(buffer[$0, 0].character) }.joined()
+        guard let decrement = row.firstIndex(of: Character(SliderGlyph.decrement)),
+              let increment = row.firstIndex(of: Character(SliderGlyph.increment)) else {
+            Issue.record("stepper did not render its affordances: \(row)")
+            return
+        }
+
+        engine.handleMouseClick(x: row.distance(from: row.startIndex, to: increment), y: 0,
+                                root: graph.root!)
+        #expect(model.value == 5, "clicking ▸ steps up")
+
+        engine.handleMouseClick(x: row.distance(from: row.startIndex, to: decrement), y: 0,
+                                root: graph.root!)
+        #expect(model.value == 4, "clicking ◂ steps back down")
+    }
+
+    // A click on the label is not a click on an affordance; treating the whole
+    // row as "increment" would fire on every stray press.
+    @Test("clicking the label leaves the value alone")
+    func clickingLabelDoesNothing() {
+        let model = StepperClickModel()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = Stepper("Tab width", value: model.binding, in: 1...16)
+
+        var buffer = CellBuffer(width: 40, height: 4)
+        let rect = Rect(x: 0, y: 0, width: 40, height: 4)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                graph.update(from: view)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+            }
+        }
+        engine.rebuildIndex(root: graph.root!)
+
+        engine.handleMouseClick(x: 2, y: 0, root: graph.root!)
+        #expect(model.value == 4)
+    }
+}
+
+@MainActor
+private final class StepperClickModel {
+    var value = 4
+    var binding: Binding<Int> { Binding(get: { self.value }, set: { self.value = $0 }) }
+}
