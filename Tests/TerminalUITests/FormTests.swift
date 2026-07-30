@@ -703,17 +703,14 @@ struct FormTailReachabilityTests {
         for _ in 0..<8 { engine.focusNext() }
         _ = frame(engine, graph, view, width: 40, height: 8)
 
-        // Focus is on the last control and cannot advance.
-        let held = engine.keyboardFocusID
+        // Past the last control the cursor carries on onto the rows that can
+        // only be read, and the viewport follows it as it always does.
+        let lastControl = engine.keyboardFocusID
         engine.move(.down, root: graph.root!)
-        #expect(engine.keyboardFocusID == held, "there is no further control to reach")
+        #expect(engine.keyboardFocusID != lastControl,
+                "the read-only row below is still a row the cursor visits")
 
-        var text = ""
-        for _ in 0..<6 {
-            #expect(engine.scrollFocusedRegion(.down, root: graph.root!) || text.contains("1.0.0"))
-            text = renderedText(frame(engine, graph, view, width: 40, height: 8))
-            if text.contains("1.0.0") { break }
-        }
+        let text = renderedText(frame(engine, graph, view, width: 40, height: 8))
         #expect(text.contains("1.0.0"), "the tail of the form is readable from the keyboard")
     }
 
@@ -732,5 +729,87 @@ struct FormTailReachabilityTests {
 
         #expect(engine.scrollFocusedRegion(.down, root: graph.root!) == false,
                 "a key nothing can act on must stay available to whatever is next")
+    }
+}
+
+// MARK: - Read-only rows
+
+// A settings screen ends in rows you can read and not operate: a version
+// string, a disk gauge. They are rows, so the arrow cursor visits them —
+// otherwise the walk stops in the middle of a list the user can see more of,
+// and a viewport that scrolls while the cursor stays put reads as broken.
+//
+// Tab does not visit them. Tab moves between things you can operate, and a
+// stop where Enter and every other key does nothing is worse than no stop.
+//
+// Being read-only is stated by the cursor itself: a different glyph and a
+// different colour, because colour alone is not a signal (HIG, Accessibility:
+// "Don't convey information using color alone").
+
+@Suite("Form — read-only rows")
+@MainActor
+struct FormReadOnlyRowTests {
+
+    private func aboutForm(_ model: Model) -> some TerminalView {
+        Form {
+            Toggle("Autosave", isOn: model.toggleBinding)
+            LabeledContent("Version", value: "1.0.0")
+        }
+    }
+
+    @Test("the arrow cursor reaches a read-only row")
+    func arrowsReachReadOnlyRows() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, aboutForm(model), width: 40, height: 12)
+
+        engine.focusNext()
+        let control = engine.keyboardFocusID
+        engine.move(.down, root: graph.root!)
+
+        #expect(engine.keyboardFocusID != control,
+                "the cursor moves on to the row below the last control")
+    }
+
+    @Test("Tab does not stop on a read-only row")
+    func tabSkipsReadOnlyRows() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        _ = frame(engine, graph, aboutForm(model), width: 40, height: 12)
+
+        var visited: Set<NodeID> = []
+        for _ in 0..<4 {
+            engine.focusNext()
+            if let id = engine.keyboardFocusID { visited.insert(id) }
+        }
+        #expect(visited.count == 1, "the toggle is the only thing Tab can operate")
+    }
+
+    @Test("a read-only row is marked differently from a control")
+    func readOnlyCursorLooksDifferent() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = aboutForm(model).padding().border()
+
+        _ = frame(engine, graph, view, width: 40, height: 12)
+        engine.focusNext()
+        var buffer = frame(engine, graph, view, width: 40, height: 12)
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root)
+        }
+        let onControl = renderedText(buffer)
+        #expect(onControl.contains("▎"), "an operable row carries the solid bar")
+
+        engine.move(.down, root: graph.root!)
+        buffer = frame(engine, graph, view, width: 40, height: 12)
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root)
+        }
+        let onReadOnly = renderedText(buffer)
+        #expect(!onReadOnly.contains("▎"), "the solid bar means operable, so it is not reused")
+        #expect(onReadOnly.contains("┆"), "a read-only row is marked by its own glyph")
     }
 }

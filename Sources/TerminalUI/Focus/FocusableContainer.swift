@@ -298,6 +298,17 @@ extension AttributeNode: FocusableContainer {
     /// user never gets; `.disabled()` dropping out of Tab order is SwiftUI
     /// parity and applies to every consumer equally.
     var participatesInFocus: Bool {
-        isFocusableUnit && (_resolvedEnv?.isEnabled ?? true)
+        isFocusableUnit && (_resolvedEnv?.isEnabled ?? true) && !isReadOnlyFocus
+    }
+
+    /// Whether focus here is a reading position rather than an operable one.
+    ///
+    /// The one place the Tab index and the arrow cursor deliberately disagree:
+    /// arrows are a row cursor over a list, Tab moves between the things in it
+    /// you can work. Arrows reach these nodes through `isFocusable`, which is
+    /// what `containsFocusable` and the directional walk consult; Tab does not,
+    /// because `participatesInFocus` above builds its index.
+    var isReadOnlyFocus: Bool {
+        isFocusable && (_resolvedEnv?.focusIsReadOnly ?? false)
     }
 }

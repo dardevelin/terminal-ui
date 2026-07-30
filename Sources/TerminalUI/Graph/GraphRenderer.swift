@@ -1348,9 +1348,16 @@ public enum GraphRenderer {
         // Keyboard focus — cyan bar
         if let focusedID = focusEngine.keyboardFocusID,
            let node = focusEngine.findNode(id: focusedID, in: root) {
-            let focusStyle = Style(foreground: .cyan, background: nil, bold: true, italic: false, underline: false)
-            drawIndicator(node: node, style: style, glyph: "▎", cellStyle: focusStyle,
-                          into: &buffer, skipInScroll: true)
+            // A row you can read but not operate says so in its cursor, and
+            // says it twice: a lighter glyph as well as a quieter colour.
+            // Colour alone is not a signal (HIG, Accessibility: "Don't convey
+            // information using color alone"), and this distinction is the
+            // only thing telling the user why Enter does nothing here.
+            let readOnly = node.isReadOnlyFocus
+            let focusStyle = Style(foreground: readOnly ? .gray : .cyan, background: nil,
+                                   bold: !readOnly, italic: false, underline: false)
+            drawIndicator(node: node, style: style, glyph: readOnly ? "┆" : "▎",
+                          cellStyle: focusStyle, into: &buffer, skipInScroll: true)
         }
 
         // Mouse hover — subtle underline bar (only if different from keyboard focus)

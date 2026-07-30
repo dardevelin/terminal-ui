@@ -331,6 +331,11 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
             }
         }
         .foreground(isEnabled ? .default : .gray)
+        // Reports state the app owns, so there is nothing here to operate —
+        // but it is still a row, and a cursor that stopped above it would
+        // strand whatever a form puts below. Arrows visit it; Tab does not.
+        .focusable()
+        .environment(\.focusIsReadOnly, true)
     }
 }
 

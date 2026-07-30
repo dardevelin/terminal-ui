@@ -17,6 +17,17 @@ All notable changes to TerminalUI are documented here. Format based on
   with a scroll ancestor, which since `Form` composes a `ScrollView` meant every
   control in every form went unmarked. The bar is now clipped to the viewport
   instead of dropped, so a row scrolled out of view still leaves nothing behind.
+- **The arrow cursor visits read-only rows.** `LabeledContent` and `Gauge` are
+  rows, so a settings screen's closing section is somewhere the cursor goes;
+  Tab still skips them, because a stop where Enter does nothing is worse than
+  no stop. They are marked by their own cursor — a lighter `┆` in grey rather
+  than the solid cyan `▎` — so "you can read this, not operate it" is stated by
+  shape as well as by colour.
+- **A list on its last row stops promising more.** The ▼ and the scrollbar
+  thumb were derived from the content's *measured* height, which counts rows
+  that draw nothing, so a pane padded out by a fixed frame or a trailing spacer
+  sat on its last row still advertising content below — and still scrolled,
+  into blank space. Both now follow what the content actually drew.
 - **Arrows read past the last control.** A form's final rows are routinely the
   ones with nothing to focus — a version string, a gauge, a footer — and
   scroll-to-focused only ever follows focus, so they were laid out, drawn, and

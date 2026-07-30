@@ -107,6 +107,18 @@ public struct EnvironmentValues: Sendable {
     /// see `DisabledModifier.apply`.
     public var isEnabled: Bool = true
 
+    /// Whether focus on this subtree is a reading position rather than an
+    /// operable one — a version string, a gauge, any row a settings screen
+    /// shows and does not let you change.
+    ///
+    /// Such a row is still somewhere the arrow cursor goes, because it is a
+    /// row and a walk that stopped short of it would leave the user staring at
+    /// content the cursor refuses to reach. It is not somewhere Tab goes: Tab
+    /// moves between things you can operate, and a stop where Enter does
+    /// nothing is worse than no stop. Distinct from `isEnabled`, which means
+    /// "switched off" and leaves focus out of both.
+    public var focusIsReadOnly: Bool = false
+
     /// What the directional focus engine does when arrow navigation hits a
     /// container's edge with no neighbour on the requested axis.
     ///

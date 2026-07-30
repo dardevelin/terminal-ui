@@ -341,6 +341,11 @@ public struct LabeledContent<Label: TerminalView, Content: TerminalView>: Termin
 
     public var body: some TerminalView {
         FormRow(label: formLabelText) { content }
+            // A row the arrow cursor visits and Tab skips: there is nothing
+            // here to operate, but stopping the walk above it would strand
+            // every row below in a list the user can see more of.
+            .focusable()
+            .environment(\.focusIsReadOnly, true)
     }
 }
 
