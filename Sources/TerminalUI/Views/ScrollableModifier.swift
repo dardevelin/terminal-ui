@@ -85,38 +85,35 @@ public enum _ScrollMath {
     /// `scrollbarThumb` computes, so pressing where the thumb is leaves it
     /// where it is.
     public static func jump(toFraction fraction: Double, axis: ScrollAxis, node: AttributeNode) {
-        guard let content = node.children.first else { return }
+        guard node.children.first != nil else { return }
         let viewport = node.rect
-        let contentExtent: Int
-        let viewportExtent: Int
-        switch axis {
-        case .vertical:
-            contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
-            viewportExtent = viewport.height
-        case .horizontal:
-            contentExtent = GraphMeasurer.measureWidth(content)
-            viewportExtent = viewport.width
-        }
-        let maxOffset = max(0, contentExtent - viewportExtent)
+        let viewportExtent = axis == .vertical ? viewport.height : viewport.width
+        let maxOffset = max(0, contentExtent(of: node, axis: axis) - viewportExtent)
         let target = (Double(maxOffset) * max(0, min(1, fraction))).rounded()
         node.scrollOffset = max(0, min(maxOffset, Int(target)))
     }
 
+    /// How far the content reaches along the scroll axis.
+    ///
+    /// The render stamps what it actually drew; the measurement is the
+    /// fallback for the first frame, before there is a stamp. They differ
+    /// whenever content is padded out by a fixed frame or a trailing spacer,
+    /// and the drawn extent is the honest one — scrolling into rows that draw
+    /// nothing is scrolling into nothing.
+    private static func contentExtent(of node: AttributeNode, axis: ScrollAxis) -> Int {
+        if let drawn = node.scrollDrawnExtent { return drawn }
+        guard let content = node.children.first else { return 0 }
+        return axis == .vertical
+            ? GraphMeasurer.measureHeight(content, proposedWidth: node.rect.width)
+            : GraphMeasurer.measureWidth(content)
+    }
+
     @discardableResult
     public static func mutateOffset(event: KeyEvent, axis: ScrollAxis, node: AttributeNode) -> KeyEventResult {
-        guard let content = node.children.first else { return .ignored }
+        guard node.children.first != nil else { return .ignored }
         let viewport = node.rect
-        let contentExtent: Int
-        let viewportExtent: Int
-        switch axis {
-        case .vertical:
-            contentExtent = GraphMeasurer.measureHeight(content, proposedWidth: viewport.width)
-            viewportExtent = viewport.height
-        case .horizontal:
-            contentExtent = GraphMeasurer.measureWidth(content)
-            viewportExtent = viewport.width
-        }
-        let maxOffset = max(0, contentExtent - viewportExtent)
+        let viewportExtent = axis == .vertical ? viewport.height : viewport.width
+        let maxOffset = max(0, contentExtent(of: node, axis: axis) - viewportExtent)
         let pageStep = max(1, viewportExtent - 1)
 
         let delta: Int?

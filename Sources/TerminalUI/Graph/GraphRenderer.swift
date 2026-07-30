@@ -661,6 +661,10 @@ public enum GraphRenderer {
             // Offset child rects so hit testing works in screen coordinates
             offsetRects(of: contentChild, dx: viewport.x - offset, dy: viewport.y)
 
+            // See the vertical branch: drawn, not declared.
+            let drawnWidth = lastDrawnColumn(in: contentBuffer).map { $0 + 1 } ?? 0
+            node.scrollDrawnExtent = drawnWidth
+
             if showIndicators {
                 // ◀ when content extends before the viewport's left edge,
                 // ▶ when content extends past the right edge. Painted in the
@@ -675,7 +679,7 @@ public enum GraphRenderer {
                 if offset > 0 {
                     buffer[viewport.x, viewport.y] = Cell(character: "◀", style: indicatorStyle)
                 }
-                if contentWidth > offset + viewport.width {
+                if drawnWidth > offset + viewport.width {
                     buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▶", style: indicatorStyle)
                 }
 
@@ -688,7 +692,7 @@ public enum GraphRenderer {
                 // the scrollbar visual; the user trades one content
                 // row for the affordance.
                 if let thumb = scrollbarThumb(viewport: viewport.width,
-                                              content: contentWidth,
+                                              content: drawnWidth,
                                               offset: offset) {
                     let trackY = viewport.y + viewport.height - 1
                     node.scrollAffordanceRect = Rect(x: viewport.x, y: trackY,
@@ -733,6 +737,14 @@ public enum GraphRenderer {
 
             offsetRects(of: contentChild, dx: viewport.x, dy: viewport.y - offset)
 
+            // What the content draws, not what it declares. The affordances
+            // below answer "is there more to see", and rows padded out by a
+            // fixed frame or a trailing spacer are not more to see: a list
+            // sitting on its last row kept promising ▼ and kept scrolling into
+            // blank space, which reads as a stuck pane rather than as an end.
+            let drawnHeight = lastDrawnRow(in: contentBuffer).map { $0 + 1 } ?? 0
+            node.scrollDrawnExtent = drawnHeight
+
             if showIndicators {
                 // ▲ when content extends above the viewport's top row,
                 // ▼ when content extends below the bottom row. Painted in the
@@ -748,7 +760,7 @@ public enum GraphRenderer {
                 if offset > 0 {
                     buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▲", style: indicatorStyle)
                 }
-                if contentHeight > offset + viewport.height {
+                if drawnHeight > offset + viewport.height {
                     buffer[viewport.x + viewport.width - 1, viewport.y + viewport.height - 1] = Cell(character: "▼", style: indicatorStyle)
                 }
 
@@ -759,7 +771,7 @@ public enum GraphRenderer {
                 // edge-glyph already sits. Skipped when content fits
                 // (scrollbarThumb returns nil).
                 if let thumb = scrollbarThumb(viewport: viewport.height,
-                                              content: contentHeight,
+                                              content: drawnHeight,
                                               offset: offset) {
                     let trackX = viewport.x + viewport.width - 1
                     node.scrollAffordanceRect = Rect(x: trackX, y: viewport.y,
@@ -775,7 +787,7 @@ public enum GraphRenderer {
                         let trackY = viewport.y + y
                         let isTopGlyph = y == 0 && offset > 0
                         let isBottomGlyph = y == viewport.height - 1
-                            && contentHeight > offset + viewport.height
+                            && drawnHeight > offset + viewport.height
                         if isTopGlyph || isBottomGlyph { continue }
                         buffer[trackX, trackY] = Cell(character: "│", style: trackStyle)
                     }
@@ -784,13 +796,35 @@ public enum GraphRenderer {
                         let trackY = viewport.y + y
                         let isTopGlyph = y == 0 && offset > 0
                         let isBottomGlyph = y == viewport.height - 1
-                            && contentHeight > offset + viewport.height
+                            && drawnHeight > offset + viewport.height
                         if isTopGlyph || isBottomGlyph { continue }
                         buffer[trackX, trackY] = Cell(character: "█", style: thumbStyle)
                     }
                 }
             }
         }
+    }
+
+    /// The last row of a freshly rendered content buffer that drew anything,
+    /// or nil when nothing did. Scans upward, so the common case — content
+    /// that fills its buffer — stops on the first row it looks at.
+    private static func lastDrawnRow(in buffer: CellBuffer) -> Int? {
+        for y in stride(from: buffer.height - 1, through: 0, by: -1) {
+            for x in 0..<buffer.width where buffer[x, y] != .empty {
+                return y
+            }
+        }
+        return nil
+    }
+
+    /// The horizontal twin of `lastDrawnRow`.
+    private static func lastDrawnColumn(in buffer: CellBuffer) -> Int? {
+        for x in stride(from: buffer.width - 1, through: 0, by: -1) {
+            for y in 0..<buffer.height where buffer[x, y] != .empty {
+                return x
+            }
+        }
+        return nil
     }
 
     static func renderZStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {

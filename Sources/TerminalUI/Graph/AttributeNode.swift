@@ -126,6 +126,16 @@ public class AttributeNode: @unchecked Sendable {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// How far the scroll content actually *draws* along its axis, as opposed
+    /// to how tall it declares itself. Stamped each render, nil until then.
+    ///
+    /// Content padded out by a fixed frame or a trailing spacer measures taller
+    /// than it draws, and an affordance derived from the measurement promises
+    /// content that is not there: a list sitting on its last row still showed
+    /// ▼ and still scrolled, into blank space, which reads as a stuck pane
+    /// rather than as the end of the list.
+    public var scrollDrawnExtent: Int?
+
     /// The cells this frame's render painted with a scrollbar and its edge
     /// indicators, or nil when the content fits and nothing was drawn.
     ///
