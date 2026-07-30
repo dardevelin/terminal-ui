@@ -664,3 +664,73 @@ struct FormFocusIndicatorTests {
         }
     }
 }
+
+// A form's last rows are often the ones with nothing to focus: a version
+// string, a disk gauge, a footer. Scroll-to-focused only ever follows focus,
+// so once Down reached the last control the viewport stopped too and that tail
+// was unreachable — visible in the layout, impossible to read.
+//
+// When focus has nowhere to go, the region holding it may still have somewhere
+// to show. That is the keyboard's version of the rule the wheel already
+// follows: the deepest scroll region under the cursor takes what nothing else
+// wanted.
+
+@Suite("Form — reading past the last control")
+@MainActor
+struct FormTailReachabilityTests {
+
+    private func formWithUnfocusableTail(_ model: Model) -> some TerminalView {
+        Form {
+            Section("Settings") {
+                ForEachWithID(Array(0..<8), id: \.self) { index in
+                    Toggle("Row \(index)", isOn: model.toggleBinding)
+                }
+            }
+            Section("About") {
+                LabeledContent("Version", value: "1.0.0")
+            }
+        }
+    }
+
+    @Test("Down past the last control scrolls the rest of the form into view")
+    func downPastLastControlScrolls() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = formWithUnfocusableTail(model)
+
+        _ = frame(engine, graph, view, width: 40, height: 8)
+        for _ in 0..<8 { engine.focusNext() }
+        _ = frame(engine, graph, view, width: 40, height: 8)
+
+        // Focus is on the last control and cannot advance.
+        let held = engine.keyboardFocusID
+        engine.move(.down, root: graph.root!)
+        #expect(engine.keyboardFocusID == held, "there is no further control to reach")
+
+        var text = ""
+        for _ in 0..<6 {
+            #expect(engine.scrollFocusedRegion(.down, root: graph.root!) || text.contains("1.0.0"))
+            text = renderedText(frame(engine, graph, view, width: 40, height: 8))
+            if text.contains("1.0.0") { break }
+        }
+        #expect(text.contains("1.0.0"), "the tail of the form is readable from the keyboard")
+    }
+
+    @Test("a form with nowhere left to scroll does not claim the key")
+    func exhaustedFormDoesNotClaimTheKey() {
+        let model = Model()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        let view = Form {
+            Toggle("Only row", isOn: model.toggleBinding)
+        }
+
+        _ = frame(engine, graph, view, width: 40, height: 10)
+        engine.focusNext()
+        _ = frame(engine, graph, view, width: 40, height: 10)
+
+        #expect(engine.scrollFocusedRegion(.down, root: graph.root!) == false,
+                "a key nothing can act on must stay available to whatever is next")
+    }
+}

@@ -17,6 +17,11 @@ All notable changes to TerminalUI are documented here. Format based on
   with a scroll ancestor, which since `Form` composes a `ScrollView` meant every
   control in every form went unmarked. The bar is now clipped to the viewport
   instead of dropped, so a row scrolled out of view still leaves nothing behind.
+- **Arrows read past the last control.** A form's final rows are routinely the
+  ones with nothing to focus — a version string, a gauge, a footer — and
+  scroll-to-focused only ever follows focus, so they were laid out, drawn, and
+  unreachable from the keyboard. When focus has nowhere left to go, the region
+  holding it scrolls instead; a key that changes nothing stays unclaimed.
 - **The mouse wheel scrolls past a focusable that ignores it.** A focusable
   under the cursor still gets first refusal — a `List` or `TextArea` scrolls its
   own contents — but refusing now falls through to the deepest scroll region

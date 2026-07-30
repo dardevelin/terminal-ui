@@ -675,11 +675,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 // every render (see `GraphRenderer.render`) and persists.
                 let focused = focusEngine.focusedNode(in: graph.root)
                 let crossStack = focused?._resolvedEnv?.allowArrowFocusNavigation == true
+                let before = focusEngine.keyboardFocusID
                 if focusEngine.move(direction, root: root) == .unhandled, crossStack {
                     switch direction {
                     case .up, .left: focusEngine.focusPrevious()
                     case .down, .right: focusEngine.focusNext()
                     }
+                }
+                // Focus had nowhere to go, but the region holding it may still
+                // have something to show: the rows past the last control of a
+                // form — a version string, a gauge, a footer — are laid out and
+                // drawn and were unreachable, because scroll-to-focused only
+                // ever follows focus.
+                if focusEngine.keyboardFocusID == before {
+                    _ = focusEngine.scrollFocusedRegion(direction, root: root)
                 }
             }
 

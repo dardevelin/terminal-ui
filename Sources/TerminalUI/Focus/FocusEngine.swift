@@ -523,6 +523,47 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
+    /// Scroll the region holding focus, when focus itself has nowhere left to
+    /// go in that direction.
+    ///
+    /// A form's last rows are routinely the ones with nothing to focus — a
+    /// version string, a gauge, a footer. Scroll-to-focused only ever follows
+    /// focus, so the viewport stopped where the last control was and that tail
+    /// was unreachable from the keyboard: laid out, drawn, and impossible to
+    /// bring into view. This is the keyboard's version of the rule the wheel
+    /// already follows — the deepest enclosing scroll region takes what
+    /// nothing else wanted.
+    ///
+    /// Returns whether the viewport actually moved, so a key that changes
+    /// nothing stays available to whatever handles it next rather than being
+    /// silently swallowed at the end of a list.
+    public func scrollFocusedRegion(_ direction: FocusDirection, root: AttributeNode) -> Bool {
+        guard let focusedID = keyboardFocusID,
+              let focused = findNode(id: focusedID, in: root) else { return false }
+
+        let wantedAxis: ScrollAxis = (direction == .up || direction == .down)
+            ? .vertical
+            : .horizontal
+        let key: Key
+        switch direction {
+        case .up: key = .up
+        case .down: key = .down
+        case .left: key = .left
+        case .right: key = .right
+        }
+
+        var ancestor: AttributeNode? = focused.parent
+        while let node = ancestor {
+            defer { ancestor = node.parent }
+            guard case .layout(let info) = node.kind,
+                  case .scroll(let axis) = info.kind, axis == wantedAxis else { continue }
+            let before = node.scrollOffset
+            _ScrollMath.mutateOffset(event: KeyEvent(key: key), axis: axis, node: node)
+            return node.scrollOffset != before
+        }
+        return false
+    }
+
     /// Route a wheel event to whatever owns it under the cursor.
     ///
     /// A focusable under the cursor gets first refusal, because some of them
