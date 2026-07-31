@@ -300,7 +300,7 @@ public enum Layout {
              .focusable, .focusScope,
              .onKeyPress, .onAppear, .onChange, .onDisappear,
              .onClick, .onHover, .onPaste,
-             .actions, .environment,
+             .actions, .environment, .task,
              .overlay, .backgroundView, .modal:
             // Pass-through and Layer-3 modifiers: child gets the
             // parent rect unchanged. Layer 3 will replace .overlay /

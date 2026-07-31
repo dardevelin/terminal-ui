@@ -95,6 +95,15 @@ extension OnDisappearModifier: _LifecycleModifier {
     }
 }
 
+extension TaskModifier: _LifecycleModifier {
+    /// Runs on construct *and* every update, which is what `.task(id:)` needs:
+    /// the identity is compared on each pass and a changed one restarts the
+    /// work. Cancellation is the graph's job — see `AttributeGraph.fireDisappear`.
+    func onConstructOrUpdate(node: AttributeNode) {
+        startIfNeeded(on: node)
+    }
+}
+
 /// Called by the graph during node construction/update for modifier nodes.
 /// Checks if the modifier needs focus or lifecycle integration and wires it up.
 enum FocusGraphIntegration {

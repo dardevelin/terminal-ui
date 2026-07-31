@@ -443,6 +443,7 @@ public final class DebugStream: @unchecked Sendable {
             case .onAppear: kind = "onAppear"; value = ""
             case .onChange: kind = "onChange"; value = ""
             case .onDisappear: kind = "onDisappear"; value = ""
+            case .task: kind = "task"; value = ""
             case .onClick: kind = "onClick"; value = ""
             case .onHover: kind = "onHover"; value = ""
             case .onPaste: kind = "onPaste"; value = ""

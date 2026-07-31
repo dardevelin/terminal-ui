@@ -77,6 +77,20 @@ public class AttributeNode: @unchecked Sendable {
     /// rebuild, conditional flip, etc.). Nil for nodes without onDisappear.
     public var onDisappearAction: (() -> Void)?
 
+    /// Async work owned by this node, started by `.task { }` when the node
+    /// first appears and cancelled when it leaves the tree.
+    ///
+    /// The handle lives here rather than in the modifier because `body`
+    /// rebuilds the modifier — and its closure — every frame: a handle held by
+    /// the modifier would be a different one by the time anything came to
+    /// cancel it, and the work would outlive the view that started it.
+    public var lifecycleTask: Task<Void, Never>?
+
+    /// The `.task(id:)` value this node's running task was started for. A new
+    /// value cancels the old task and starts a fresh one; nil when the task
+    /// carries no identity and so runs once for the node's lifetime.
+    public var lifecycleTaskID: AnyHashable?
+
     /// Last `EquatableTerminalView` value cached for the user-Equatable
     /// fast path in `updateNode`. Stored as `Any` so the type-erased
     /// reconciler can compare new vs cached without naming the generic
@@ -309,6 +323,7 @@ extension NodeKind {
             case .onAppear: "onAppear"
             case .onChange: "onChange"
             case .onDisappear: "onDisappear"
+            case .task: "task"
             case .onClick: "onClick"
             case .onHover: "onHover"
             case .onPaste: "onPaste"
@@ -411,6 +426,12 @@ public enum ModifierEffect {
     case onAppear    // fires action on first graph construction (tracked on node)
     case onChange    // fires action when bound value changes (last value stored on node)
     case onDisappear // fires action when node is removed from the tree
+    /// `.task { }` — async work owned by the node: started when the node
+    /// first appears, cancelled when it leaves the tree. The handle lives on
+    /// the node (`_lifecycleTask`) because `body` rebuilds the closure every
+    /// frame, so a handle captured in the modifier would be a different one
+    /// by the time anything came to cancel it.
+    case task
     case onClick     // attaches click handler (handler stored on FocusEngine)
     case onHover     // attaches hover handler (handler stored on FocusEngine)
     case onPaste     // attaches paste handler (handler stored on FocusEngine)
@@ -455,7 +476,7 @@ extension ModifierEffect {
              .padding, .border, .frame, .flexible, .explicitID,
              .focusable, .focusScope, .onKeyPress, .onAppear, .onChange,
              .onDisappear, .onClick, .onHover, .onPaste, .actions,
-             .environment:
+             .environment, .task:
             .opaque
         }
     }

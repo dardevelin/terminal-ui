@@ -241,6 +241,8 @@ struct PreviewPane: TerminalView {
                 Text("(linear=0.50, easeIn=0.25, easeOut=0.75, easeInOut=0.50)")
                     .foreground(.gray)
             }
+        case .asyncTask:
+            AsyncTaskDemo()
         case .capabilities:
             // Read the framework-level singleton.
             let caps = Runtime.capabilities
@@ -957,4 +959,27 @@ func buildBrailleDemo() -> String {
         canvas.set(x: x, y: y)
     }
     return canvas.render()
+}
+
+
+/// The `.task` page's preview: work the view owns, ticking state that nothing
+/// else drives. No timer is declared for it and no key is pressed — if the
+/// screen advances, the run loop noticed an `@Observable` mutation by itself.
+struct AsyncTaskDemo: TerminalView {
+    // Reads the app-wide singleton rather than holding a reference: the work
+    // outlives a single body evaluation, and `state` is the shape this example
+    // already uses for exactly that reason.
+    var body: some TerminalView {
+        VStack {
+            Text("ticks: \(state.asyncTicks)").foreground(.cyan).bold()
+            Text("started when the page appeared, cancelled when you leave")
+                .foreground(.gray)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(120))
+                state.asyncTicks += 1
+            }
+        }
+    }
 }

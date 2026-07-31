@@ -149,6 +149,7 @@ extension ModifiedView: _GraphModified {
         case is OnAppearModifier: .onAppear
         case is any _OnChangeModifierProtocol: .onChange
         case is OnDisappearModifier: .onDisappear
+        case is any _TaskModifierProtocol: .task
         case is OnClickModifier: .onClick
         case is OnHoverModifier: .onHover
         case is OnPasteModifier: .onPaste

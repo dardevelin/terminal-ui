@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Layout
     case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView
     // Primitives
-    case text, forEach, subCell, timeline, capabilities
+    case text, forEach, subCell, timeline, asyncTask, capabilities
     // Input
     case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
@@ -190,6 +190,17 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 let curve = CurveTimeline(duration: .milliseconds(500), curve: .easeOut)
                 curve.start()
                 // ... view reads `curve.progress` (0..1) ...
+                """)
+        case .asyncTask: return PageInfo(id: self, category: .primitives, name: ".task",
+            summary: "Async work owned by a view: started when it appears, cancelled when it leaves. Mutating @Observable state from inside wakes the render loop, so the screen follows the work with no key press and no timer. `.task(id:)` restarts when the id changes.",
+            code: """
+                Text("ticks: \\(model.ticks)")
+                    .task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .milliseconds(120))
+                            model.ticks += 1
+                        }
+                    }
                 """)
         case .capabilities: return PageInfo(id: self, category: .primitives, name: "TerminalCapabilities",
             summary: "Detected terminal graphics protocol via env-sniff (TERM, TERM_PROGRAM, NO_COLOR). Read Runtime.capabilities.graphics to know which renderer to use (HYP-295).",

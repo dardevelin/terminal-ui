@@ -716,6 +716,14 @@ public final class AttributeGraph: @unchecked Sendable {
         for child in node.children {
             fireDisappear(on: child)
         }
+        // Work a view started belongs to that view: when it leaves the tree
+        // the task goes with it, or a screen the user navigated away from
+        // keeps polling and keeps waking the render loop.
+        if let running = node.lifecycleTask {
+            running.cancel()
+            node.lifecycleTask = nil
+            node.lifecycleTaskID = nil
+        }
         if let action = node.onDisappearAction {
             action()
             // Null out so a subsequent re-attach (e.g. modal toggled back

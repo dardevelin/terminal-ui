@@ -78,6 +78,9 @@ final class StorybookState {
     // `timelineFrame % 8` to pick the displayed glyph; if no timer is
     // running, it shows frame 0 statically.
     var timelineFrame: Int = 0
+    /// Ticked by the `.task` page's own async work, with no timer and no
+    /// input — the render loop has to notice the mutation on its own.
+    var asyncTicks: Int = 0
     // SplitView demo: nested two-level tree. Left pane is one leaf; right
     // pane is itself a vertical split. Holding the SplitState here means
     // mutations (slice 2 mutation API) will survive page switches.

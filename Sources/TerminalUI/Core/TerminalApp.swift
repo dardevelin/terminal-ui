@@ -504,7 +504,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
                 case .capped(let interval):
                     let frameStart = ContinuousClock.now
-                    if needsRender {
+                    // `hasDirtyNodes` is the atomic observation tracking sets
+                    // when an `@Observable` property changes, from whatever
+                    // thread changed it. Gating on `needsRender` alone meant
+                    // only *input* could produce a frame: state mutated by a
+                    // `Task` marked the graph dirty and the frame was dropped
+                    // until the user happened to press a key.
+                    if needsRender || graph.hasDirtyNodes {
                         renderDiffFrame()
                         needsRender = false
                     }
@@ -517,12 +523,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
                 case .onDemand:
                     // Render if dirty, then wait for next event
-                    if needsRender {
+                    if needsRender || graph.hasDirtyNodes {
                         renderDiffFrame()
                         needsRender = false
                     }
-                    // Block until an event arrives — zero CPU when idle
-                    while running && !eventQueue.hasEvents {
+                    // Wait for something to do. State counts as something to
+                    // do: an app whose only reactive input is a `Task` would
+                    // otherwise sit here forever with a screen it has already
+                    // been told is stale. Reading one atomic per poll leaves
+                    // the idle cost where it was.
+                    while running && !eventQueue.hasEvents && !graph.hasDirtyNodes {
                         #if DEBUG
                         // The socket must be serviced here too, not only at
                         // the top of the outer loop. An idle `.onDemand` app

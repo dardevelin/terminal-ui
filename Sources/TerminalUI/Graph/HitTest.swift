@@ -130,6 +130,7 @@ public struct HitResult {
             case .onAppear: values.append(("modifier", "onAppear"))
             case .onChange: values.append(("modifier", "onChange"))
             case .onDisappear: values.append(("modifier", "onDisappear"))
+            case .task: values.append(("modifier", "task"))
             case .onClick: values.append(("modifier", "onClick"))
             case .onHover: values.append(("modifier", "onHover"))
             case .onPaste: values.append(("modifier", "onPaste"))
@@ -173,6 +174,7 @@ public struct HitResult {
                 case .onAppear: return "onAppear"
                 case .onChange: return "onChange"
                 case .onDisappear: return "onDisappear"
+                case .task: return "task"
                 case .onClick: return "onClick"
                 case .onHover: return "onHover"
                 case .onPaste: return "onPaste"

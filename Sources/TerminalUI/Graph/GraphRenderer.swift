@@ -501,7 +501,7 @@ public enum GraphRenderer {
                  .onKeyPress, .onAppear, .onChange, .onDisappear,
                  .onClick, .onHover, .onPaste,
                  .actions, .environment, .explicitID,
-                 .padding, .border:
+                 .padding, .border, .task:
                 return node.children.first
             // A frame and `.flexible` state a size on their own behalf; the
             // presentation shapes carry a second subtree whose flexibility is
@@ -1181,6 +1181,11 @@ public enum GraphRenderer {
             // Removal-time hook — the closure is captured on the node and
             // invoked from `AttributeGraph` when the node leaves the tree.
             // The renderer is a pass-through.
+            render(child, into: &buffer, context: ctx)
+
+        case .task:
+            // The work is started on the node during construct/update and
+            // cancelled when the node leaves the tree; drawing is unaffected.
             render(child, into: &buffer, context: ctx)
 
         case .onClick:

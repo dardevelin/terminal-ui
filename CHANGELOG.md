@@ -6,7 +6,22 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **`.task { }` and `.task(id:)`** — async work owned by a view: started when it
+  appears, cancelled when it leaves, restarted when the id changes. The action
+  is `@MainActor`, so an app touches its `@Observable` model inside it the same
+  way it does in `onAppear`, with no hop and no wrapper.
+
 ### Fixed
+
+- **State mutated outside an input event now reaches the screen.** The run
+  loop's render gate consulted only `needsRender`, which the event paths set —
+  so `Task { model.x = await fetch() }` marked the graph dirty and the frame was
+  dropped until the user happened to press a key. `.onDemand` was worse: its
+  idle loop had no way to be woken by state at all. Both arms now consult
+  `hasDirtyNodes`, the atomic observation tracking already maintains. Idle cost
+  is unchanged — one atomic read on a loop that was already polling.
 
 - **Down walks every row of a `Form`.** Arrow navigation stepped over rows and
   stopped partway: the stacks a result builder introduces were dropped from the

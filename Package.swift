@@ -121,6 +121,12 @@ let package = Package(
             path: "Examples/Navigation",
             swiftSettings: strictSettings
         ),
+.executableTarget(
+            name: "AsyncState",
+            dependencies: ["TerminalUI"],
+            path: "Examples/AsyncState",
+            swiftSettings: strictSettings
+        ),
         .executableTarget(
             name: "Settings",
             dependencies: ["TerminalUI"],

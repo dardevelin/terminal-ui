@@ -56,3 +56,75 @@ extension TerminalView {
         ModifiedView(content: self, modifier: OnDisappearModifier(action: action))
     }
 }
+
+/// Type-erasure for `TaskModifier<ID>` so the graph can start and restart the
+/// work without naming the identity type.
+public protocol _TaskModifierProtocol {
+    /// Start the work if this node has none running, or if the identity it was
+    /// started for has changed. Cancels the outgoing task before replacing it.
+    ///
+    /// Uncontracted isolation, like every other lifecycle modifier: the graph
+    /// builds and updates on the MainActor, which is the invariant that lets
+    /// `AttributeNode` be `@unchecked Sendable` in the first place.
+    func startIfNeeded(on node: AttributeNode)
+}
+
+/// View modifier that owns async work for as long as the view is on screen.
+///
+/// SwiftUI parity: `View.task { }` and `View.task(id:)`. The work starts when
+/// the view appears and is cancelled when it leaves — the framework's answer
+/// to "load this when shown, stop when it goes away", which otherwise every
+/// app writes by hand with a detached `Task` that outlives its view.
+public struct TaskModifier<ID: Hashable>: ViewModifier, _TaskModifierProtocol {
+    public typealias ModifierType = Bool
+    public let id: ID?
+    public let priority: TaskPriority
+    public let action: @MainActor () async -> Void
+
+    public func startIfNeeded(on node: AttributeNode) {
+        let identity = id.map { AnyHashable($0) }
+        // Same identity and still running: nothing to do. A `.task` without an
+        // id has identity nil, which matches on every frame — so it starts
+        // once and is left alone, which is the whole point.
+        if node.lifecycleTask != nil, node.lifecycleTaskID == identity { return }
+
+        node.lifecycleTask?.cancel()
+        node.lifecycleTaskID = identity
+        let work = action
+        // `@MainActor` on the work, not `@Sendable`: the runtime is
+        // MainActor-isolated end to end, so an app can touch its `@Observable`
+        // model inside `.task` the way it does in `onAppear` — no hop, no
+        // wrapper. Awaits inside still suspend and resume as usual.
+        node.lifecycleTask = Task(priority: priority) { @MainActor in await work() }
+    }
+}
+
+extension TerminalView {
+    /// Run async work for as long as this view is on screen. The task is
+    /// started when the view appears and cancelled when it disappears.
+    ///
+    /// ```swift
+    /// Text(model.status)
+    ///     .task { await model.load() }
+    /// ```
+    ///
+    /// Mutating `@Observable` state from inside wakes the render loop, so the
+    /// screen follows the work without the app scheduling a redraw.
+    public func task(
+        priority: TaskPriority = .userInitiated,
+        _ action: @escaping @MainActor () async -> Void
+    ) -> ModifiedView<Self, TaskModifier<Never>> {
+        ModifiedView(content: self, modifier: TaskModifier(id: nil, priority: priority, action: action))
+    }
+
+    /// Run async work tied to `id`: cancelled and restarted whenever `id`
+    /// changes, cancelled for good when the view disappears. The shape for
+    /// "load the thing this view is currently showing".
+    public func task<ID: Hashable>(
+        id: ID,
+        priority: TaskPriority = .userInitiated,
+        _ action: @escaping @MainActor () async -> Void
+    ) -> ModifiedView<Self, TaskModifier<ID>> {
+        ModifiedView(content: self, modifier: TaskModifier(id: id, priority: priority, action: action))
+    }
+}
