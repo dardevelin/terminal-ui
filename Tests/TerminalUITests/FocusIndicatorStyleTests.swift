@@ -95,3 +95,60 @@ struct FocusIndicatorStyleTests {
         #expect(buffer[2, 4] == Cell.empty)
     }
 }
+
+// Focus must never be nowhere. The overlay bar draws one cell to the left of
+// the focused view, and a view flush against the left edge of the screen has
+// no such cell — so the indicator was dropped and the user got a Tab that
+// appeared to do nothing. In a sidebar-and-detail layout that is exactly the
+// stop *outside* the detail pane, so Tab out of a form read as a form that
+// traps Tab.
+//
+// A view one cell in was dropped too, by an off-by-one: column 0 is a real
+// cell, and `drawX > 0` refused to use it.
+
+@Suite("Focus indicator — views at the left edge")
+@MainActor
+struct FocusIndicatorLeftEdgeTests {
+
+    private func indicatorColumns(_ buffer: CellBuffer) -> [Int] {
+        (0..<buffer.width).filter { x in
+            (0..<buffer.height).contains { y in
+                buffer[x, y].character == "▎" || buffer[x, y].character == "┆"
+            }
+        }
+    }
+
+    @MainActor
+    private func draw(_ view: some TerminalView, width: Int = 20, height: Int = 4) -> CellBuffer {
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+        var buffer = CellBuffer(width: width, height: height)
+        let rect = Rect(x: 0, y: 0, width: width, height: height)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                graph.update(from: view)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+            }
+        }
+        engine.rebuildIndex(root: graph.root!)
+        engine.focusNext()
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            GraphRenderer.renderFocusIndicators(into: &buffer, focusEngine: engine, root: graph.root)
+        }
+        return buffer
+    }
+
+    @Test("a focusable flush against the left edge still shows focus")
+    func leftEdgeFocusableIsMarked() {
+        let buffer = draw(VStack { Text("edge").focusable() })
+        #expect(!indicatorColumns(buffer).isEmpty,
+                "a Tab stop that shows nothing reads as a Tab that did nothing")
+    }
+
+    @Test("a focusable one cell in uses column zero")
+    func oneCellInUsesColumnZero() {
+        let buffer = draw(VStack { Text("inset").focusable() }.padding())
+        #expect(indicatorColumns(buffer) == [0], "column 0 is a cell like any other")
+    }
+}

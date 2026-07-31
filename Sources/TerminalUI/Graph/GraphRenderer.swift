@@ -1410,7 +1410,19 @@ public enum GraphRenderer {
             }
             let r = node.rect
             let drawX = r.x - 1
-            guard drawX > 0 else { return }
+            // Column 0 is a cell like any other; refusing it left a view one
+            // cell in with no mark at all. A view flush against the left edge
+            // has no cell outside itself to use, so it marks its own first
+            // column instead — the same fallback the modal-edge case takes.
+            // Focus that is nowhere reads as a key that did nothing, and the
+            // stop outside a detail pane is exactly where that happens: Tab
+            // out of a form looked like a form that traps Tab.
+            guard drawX >= 0 else {
+                drawIndicator(node: node, style: .bar, glyph: glyph,
+                              cellStyle: cellStyle, into: &buffer,
+                              skipInScroll: skipInScroll)
+                return
+            }
             // A row scrolled sideways out of its viewport would put the bar in
             // whatever pane sits to the left of this one.
             if let viewport, drawX < viewport.x - 1 { return }
