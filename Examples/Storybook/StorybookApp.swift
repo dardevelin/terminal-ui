@@ -91,10 +91,10 @@ final class StorybookState {
     var currentMode: ActionContext = ActionContext()
     /// Left-pane fraction (0.0 .. 1.0) for the .actionContext two-pane
     /// resize demo. L grows the left pane, H shrinks it. Maps to
-    /// `actionContextSplit.root` ratios so SplitView (which honors
-    /// explicit ratios) drives the visible boundary. (HStack's flex
-    /// doesn't honor `.frame(width:)` — HYP-340 — so this demo uses
-    /// SplitView, the framework's purpose-built resizable container.)
+    /// `actionContextSplit.root` ratios so SplitView drives the visible
+    /// boundary — the framework's purpose-built resizable container, and the
+    /// right one to demonstrate even now that a stack honours an explicit
+    /// `.frame` on both axes.
     var actionContextLeftFraction: Double = 0.5
 
     /// SplitState driving the .actionContext page's resizable two-pane

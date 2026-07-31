@@ -439,7 +439,8 @@ public enum GraphRenderer {
                     y += flexHeight
                 } else {
                     let childRect = Rect(x: context.rect.x, y: y,
-                                         width: context.rect.width, height: max(1, flexHeight))
+                                         width: crossExtent(of: child, within: context.rect.width, horizontal: true),
+                                         height: max(1, flexHeight))
                     // Re-stamp the subtree's Layer-2 rects from this
                     // child's anchor. VStack/HStack/Scroll still own
                     // distribution (Layer 3), so the top-level Layout
@@ -454,7 +455,9 @@ public enum GraphRenderer {
                 continue
             }
             let h = childHeights[i]
-            let childRect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: max(1, h))
+            let childRect = Rect(x: context.rect.x, y: y,
+                                 width: crossExtent(of: child, within: context.rect.width, horizontal: true),
+                                 height: max(1, h))
             Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             y += h
@@ -470,6 +473,64 @@ public enum GraphRenderer {
         if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
         return false
+    }
+
+    /// What a stack gives a child on the axis it does not stack along: the
+    /// size the child asked for, or the whole of it when the child asked for
+    /// nothing. Never more than the stack has.
+    private static func crossExtent(of node: AttributeNode, within available: Int,
+                                    horizontal: Bool) -> Int {
+        let declared = horizontal ? declaredWidth(of: node) : declaredHeight(of: node)
+        guard let declared else { return available }
+        return max(1, min(available, declared))
+    }
+
+    /// The width a subtree explicitly asked for, or nil when it asked for
+    /// nothing and should take what the stack offers.
+    ///
+    /// A stack owns its main axis and hands out measured extents there, but it
+    /// used to hand every child the *whole* of its cross axis — so
+    /// `.frame(width: 8).border()` in a VStack drew its box at the stack's
+    /// width and only the text inside reflowed. Insets add themselves on the
+    /// way out, because that view occupies ten cells, not eight.
+    ///
+    /// Only an explicit request shrinks a child. A view that asked for nothing
+    /// still fills the cross axis, which is what `Divider` and every
+    /// background-filling row rely on.
+    static func declaredWidth(of node: AttributeNode) -> Int? {
+        declaredExtent(of: node, horizontal: true)
+    }
+
+    /// The height twin of `declaredWidth` — an HStack's cross axis.
+    static func declaredHeight(of node: AttributeNode) -> Int? {
+        declaredExtent(of: node, horizontal: false)
+    }
+
+    private static func declaredExtent(of node: AttributeNode, horizontal: Bool) -> Int? {
+        guard case .modifier(let effect) = node.kind else { return nil }
+        let child = node.children.first
+        func inner() -> Int? { child.flatMap { declaredExtent(of: $0, horizontal: horizontal) } }
+
+        switch effect {
+        case .frame(let width, let height, _, _, _, _):
+            if let explicit = horizontal ? width : height { return explicit }
+            return inner()
+        case .padding(let amount):
+            return inner().map { $0 + amount * 2 }
+        case .border:
+            return inner().map { $0 + 2 }
+        case .flexible(let axes, _):
+            // Asked for the space rather than a size, so it is not fixed on
+            // that axis — but may still be fixed on the other one.
+            let claimsAxis = horizontal ? axes.contains(.horizontal) : axes.contains(.vertical)
+            return claimsAxis ? nil : inner()
+        // A presentation carries a second subtree whose size is not the base
+        // view's to report.
+        case .overlay, .backgroundView, .modal:
+            return nil
+        default:
+            return inner()
+        }
     }
 
     /// The child whose flexibility this node inherits, or nil when the node
@@ -568,7 +629,8 @@ public enum GraphRenderer {
                     x += flexWidth
                 } else {
                     let childRect = Rect(x: x, y: context.rect.y,
-                                         width: max(1, flexWidth), height: context.rect.height)
+                                         width: max(1, flexWidth),
+                                         height: crossExtent(of: child, within: context.rect.height, horizontal: false))
                     Layout.measureAndPlace(graph: child, in: childRect)
                     render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     x += flexWidth
@@ -577,7 +639,8 @@ public enum GraphRenderer {
             }
             let w = childWidths[i]
             let clampedWidth = min(w, maxX - x)
-            let childRect = Rect(x: x, y: context.rect.y, width: max(1, clampedWidth), height: context.rect.height)
+            let childRect = Rect(x: x, y: context.rect.y, width: max(1, clampedWidth),
+                                 height: crossExtent(of: child, within: context.rect.height, horizontal: false))
             Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w

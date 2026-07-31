@@ -15,6 +15,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A stack honours an explicit `.frame` on the axis it does not stack along.**
+  A stack handed every child the whole of its cross axis, so
+  `.frame(width: 8).border()` in a `VStack` drew its box at the stack's width
+  and only the text inside reflowed — the box never resized. A child that asks
+  for a size now gets it; a child that asks for nothing still fills the axis,
+  which is what `Divider` and every background-filling row rely on.
 - **State mutated outside an input event now reaches the screen.** The run
   loop's render gate consulted only `needsRender`, which the event paths set —
   so `Task { model.x = await fetch() }` marked the graph dirty and the frame was
