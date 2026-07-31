@@ -805,6 +805,22 @@ public enum GraphRenderer {
         }
     }
 
+    /// Mark a view that sits flush against the left edge by inverting its
+    /// first column: the focus colour becomes the background, so the cell
+    /// reads as a marked cell while the character it holds survives.
+    private static func highlightFirstColumn(of node: AttributeNode, style: Style,
+                                             into buffer: inout CellBuffer) {
+        let rect = node.rect
+        guard rect.width > 0, rect.x >= 0, rect.x < buffer.width else { return }
+        let startY = max(0, min(rect.y, buffer.height))
+        let endY = max(startY, min(rect.y + rect.height, buffer.height))
+        let marked = Style(foreground: .black, background: style.foreground,
+                           bold: style.bold, italic: false, underline: false)
+        for y in startY..<endY {
+            buffer[rect.x, y] = Cell(character: buffer[rect.x, y].character, style: marked)
+        }
+    }
+
     /// The last row of a freshly rendered content buffer that drew anything,
     /// or nil when nothing did. Scans upward, so the common case — content
     /// that fills its buffer — stops on the first row it looks at.
@@ -1343,7 +1359,17 @@ public enum GraphRenderer {
     public static func renderFocusIndicators(into buffer: inout CellBuffer, focusEngine: FocusEngine, root: AttributeNode?) {
         guard let root else { return }
 
-        let style = GraphContext.currentEnvironment?.focusIndicatorStyle ?? .overlay
+        // `.focusIndicator(_:)` is written on a view, so it is read from the
+        // view it was written on. Asking the ambient environment instead meant
+        // the modifier only ever worked applied globally, and a pane that
+        // draws its own focus visual could not opt out of the bar — the same
+        // `_resolvedEnv` rule `allowArrowFocusNavigation` and the boundary
+        // policy already follow, for the same reason: the TaskLocal binding is
+        // bound during a frame's render walk, and this pass runs after it.
+        let ambient = GraphContext.currentEnvironment?.focusIndicatorStyle ?? .overlay
+        func style(for node: AttributeNode) -> FocusIndicatorStyle {
+            node._resolvedEnv?.focusIndicatorStyle ?? ambient
+        }
 
         // Keyboard focus — cyan bar
         if let focusedID = focusEngine.keyboardFocusID,
@@ -1356,7 +1382,7 @@ public enum GraphRenderer {
             let readOnly = node.isReadOnlyFocus
             let focusStyle = Style(foreground: readOnly ? .gray : .cyan, background: nil,
                                    bold: !readOnly, italic: false, underline: false)
-            drawIndicator(node: node, style: style, glyph: readOnly ? "┆" : "▎",
+            drawIndicator(node: node, style: style(for: node), glyph: readOnly ? "┆" : "▎",
                           cellStyle: focusStyle, into: &buffer, skipInScroll: true)
         }
 
@@ -1365,7 +1391,7 @@ public enum GraphRenderer {
            hoverID != focusEngine.keyboardFocusID,
            let node = focusEngine.findNode(id: hoverID, in: root) {
             let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
-            drawIndicator(node: node, style: style, glyph: "▏", cellStyle: hoverStyle,
+            drawIndicator(node: node, style: style(for: node), glyph: "▏", cellStyle: hoverStyle,
                           into: &buffer, skipInScroll: true)
         }
     }
@@ -1418,9 +1444,12 @@ public enum GraphRenderer {
             // stop outside a detail pane is exactly where that happens: Tab
             // out of a form looked like a form that traps Tab.
             guard drawX >= 0 else {
-                drawIndicator(node: node, style: .bar, glyph: glyph,
-                              cellStyle: cellStyle, into: &buffer,
-                              skipInScroll: skipInScroll)
+                // Nothing outside the view to mark, so mark the view's own
+                // first column — by restyling it, not by drawing over it. The
+                // glyph would cost the row its first character, and the first
+                // character of a row is a letter of the word the user is
+                // reading: `Account` marked this way renders as `▎ccount`.
+                highlightFirstColumn(of: node, style: cellStyle, into: &buffer)
                 return
             }
             // A row scrolled sideways out of its viewport would put the bar in

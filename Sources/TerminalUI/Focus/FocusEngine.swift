@@ -586,17 +586,46 @@ public final class FocusEngine: @unchecked Sendable {
         y: Int,
         policy: MouseFocusPolicy
     ) -> Bool {
-        if let targetID = wheelTargetID(x: x, y: y, root: root, policy: policy),
-           routeKeyEvent(event, root: root, startingFrom: targetID) {
-            return true
-        }
+        let focusable = wheelTargetID(x: x, y: y, root: root, policy: policy)
+            .flatMap { findNode(id: $0, in: root) }
         // `.disabled` drops auto-routed wheel events by policy, and
         // `wheelTargetID` has already returned nil for it.
-        guard policy != .disabled, let scrollNode = findScrollNodeAt(x: x, y: y, root: root) else {
-            return false
+        let scrollNode = policy == .disabled ? nil : findScrollNodeAt(x: x, y: y, root: root)
+
+        // Deepest under the cursor gets first refusal. A control inside a
+        // scroll view is deeper than it, so the control is asked first and a
+        // form row that ignores the wheel falls through to the pane holding
+        // it. A scroll view inside a focusable *area* is the other way round:
+        // the area exists so the engine has something to cycle to, and a wheel
+        // over the list it contains means scroll the list — not "operate the
+        // area", which for a list means moving its selection.
+        let focusableFirst = depth(of: focusable) >= depth(of: scrollNode)
+
+        if focusableFirst, let id = focusable?.id,
+           routeKeyEvent(event, root: root, startingFrom: id) {
+            return true
         }
-        dispatchWheelToScrollNode(scrollNode, event: event)
-        return true
+        if let scrollNode {
+            let before = scrollNode.scrollOffset
+            dispatchWheelToScrollNode(scrollNode, event: event)
+            if scrollNode.scrollOffset != before { return true }
+        }
+        if !focusableFirst, let id = focusable?.id {
+            return routeKeyEvent(event, root: root, startingFrom: id)
+        }
+        return false
+    }
+
+    /// How far a node sits from the root, or -1 for no node — so an absent
+    /// candidate always loses a depth comparison.
+    private func depth(of node: AttributeNode?) -> Int {
+        guard var current = node else { return -1 }
+        var depth = 0
+        while let parent = current.parent {
+            depth += 1
+            current = parent
+        }
+        return depth
     }
 
     /// Fire `.onHover` transitions for every registered hover handler
@@ -674,6 +703,16 @@ public final class FocusEngine: @unchecked Sendable {
             // redirected — dismissal is the modal's own explicit action.
             guard isReachableUnderActiveContainment(target) else { return }
             keyboardFocusID = target.id
+            // A row inside a focusable pane keeps its own click handler.
+            // Deepest wins is the rule the non-focusable path already follows,
+            // and making a whole area focusable — which is how an app gives
+            // the engine something to cycle to — must not swallow the clicks
+            // of everything inside it.
+            if let (inner, innerHandler) = findClickableAt(x: x, y: y, in: target),
+               inner.id != target.id {
+                innerHandler(x - inner.rect.x, y - inner.rect.y)
+                return
+            }
             if let handler = findClickHandler(for: target, root: root) {
                 let relX = x - target.rect.x
                 let relY = y - target.rect.y

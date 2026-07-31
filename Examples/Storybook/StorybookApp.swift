@@ -162,21 +162,31 @@ struct Sidebar: TerminalView {
             Text(" ↑↓ navigate").foreground(.gray)
             Text(" Tab → preview").foreground(.gray)
             Text(" Esc: quit").foreground(.gray)
-                .focusable()
-                .onKeyPress { event in
-                    switch event.key {
-                    case .up:
-                        if st.selectedIndex > 0 { st.selectedIndex -= 1 }
-                        return .handled
-                    case .down:
-                        if st.selectedIndex < Storybook.allPages.count - 1 {
-                            st.selectedIndex += 1
-                        }
-                        return .handled
-                    default:
-                        return .ignored
-                    }
+        }
+        // The sidebar is one of the app's two areas, so the area is what takes
+        // focus and the engine cycles between them. This lived on the quit
+        // hint above — a stand-in focusable, chosen because a single stable
+        // node avoids the reconciliation problem a per-row focusable has, but
+        // it put the focus stop on a line that is not the thing being
+        // navigated. Same stability, right node.
+        .focusable()
+        // The ▸ against the selected row is this pane's focus visual, and the
+        // pane starts at column 0 — the framework's bar would have to overwrite
+        // the first character of every row to appear at all.
+        .focusIndicator(.prefix)
+        .onKeyPress { event in
+            switch event.key {
+            case .up:
+                if st.selectedIndex > 0 { st.selectedIndex -= 1 }
+                return .handled
+            case .down:
+                if st.selectedIndex < Storybook.allPages.count - 1 {
+                    st.selectedIndex += 1
                 }
+                return .handled
+            default:
+                return .ignored
+            }
         }
     }
 
