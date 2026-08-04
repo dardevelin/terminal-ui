@@ -190,12 +190,17 @@ public struct CellSlice: Codable, Sendable {
 /// frame — non-blocking so the event loop keeps running when no client is
 /// connected.
 ///
-/// One client at a time. Reconnects are supported: if the accepted client
-/// disconnects the server goes back to waiting for the next `accept()`.
+/// One request at a time, from any number of connections. The dispatch below
+/// is synchronous inside `pump()`, so requests never interleave — but a second
+/// client is *served*, not ignored. Accepting only while no client was attached
+/// left later connections sitting unread in the kernel's backlog: their writes
+/// succeeded, so `swtui ctl kill` reported `status=quit-sent` against an app
+/// that never heard the command and never exited.
 public final class RemoteControlServer: @unchecked Sendable {
     private var listenFd: Int32 = -1
-    private var clientFd: Int32 = -1
-    private var readBuffer = Data()
+    /// Connected clients, each with the bytes read so far — a partial line
+    /// belongs to the connection that sent it, so the buffers cannot be shared.
+    private var clients: [Int32: Data] = [:]
     private let path: String
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -254,51 +259,58 @@ public final class RemoteControlServer: @unchecked Sendable {
     /// dispatches newline-separated JSON commands. Never blocks.
     @MainActor
     public func pump() {
-        acceptIfReady()
-        guard clientFd >= 0 else { return }
-        readAvailable()
-        processCompleteLines()
+        acceptPending()
+        for fd in clients.keys {
+            readAvailable(from: fd)
+            // The read may have hung up the connection.
+            guard clients[fd] != nil else { continue }
+            processCompleteLines(from: fd)
+        }
+    }
+
+    /// Drain the listen backlog. `accept` is non-blocking, so this returns as
+    /// soon as nothing is waiting.
+    @MainActor
+    private func acceptPending() {
+        guard listenFd >= 0 else { return }
+        while true {
+            let accepted = accept(listenFd, nil, nil)
+            guard accepted >= 0 else { return }
+            _ = fcntl(accepted, F_SETFL, O_NONBLOCK)
+            clients[accepted] = Data()
+        }
     }
 
     @MainActor
-    private func acceptIfReady() {
-        guard listenFd >= 0, clientFd < 0 else { return }
-        let accepted = accept(listenFd, nil, nil)
-        guard accepted >= 0 else { return }
-        _ = fcntl(accepted, F_SETFL, O_NONBLOCK)
-        clientFd = accepted
-        readBuffer.removeAll(keepingCapacity: true)
-    }
-
-    @MainActor
-    private func readAvailable() {
+    private func readAvailable(from fd: Int32) {
         // Read up to 4 KiB per pump; the buffer keeps partial lines between
         // pumps so fragmented commands assemble correctly.
         var scratch = [UInt8](repeating: 0, count: 4096)
         let n = scratch.withUnsafeMutableBufferPointer { buf in
-            posixRead(clientFd, buf.baseAddress!, buf.count)
+            posixRead(fd, buf.baseAddress!, buf.count)
         }
         if n > 0 {
-            readBuffer.append(scratch, count: n)
+            clients[fd]?.append(scratch, count: n)
         } else if n == 0 {
             // EOF — client closed.
-            disconnect()
+            disconnect(fd)
         }
         // n < 0 with EAGAIN is the normal "no data yet" case — ignore.
     }
 
     @MainActor
-    private func processCompleteLines() {
-        while let newlineIdx = readBuffer.firstIndex(of: RemoteControlProtocol.newline) {
-            let line = readBuffer[..<newlineIdx]
-            readBuffer.removeSubrange(...newlineIdx)
+    private func processCompleteLines(from fd: Int32) {
+        while let buffer = clients[fd],
+              let newlineIdx = buffer.firstIndex(of: RemoteControlProtocol.newline) {
+            let line = buffer[..<newlineIdx]
+            clients[fd]?.removeSubrange(...newlineIdx)
             guard !line.isEmpty else { continue }
-            handleLine(Data(line))
+            handleLine(Data(line), from: fd)
         }
     }
 
     @MainActor
-    private func handleLine(_ line: Data) {
+    private func handleLine(_ line: Data, from fd: Int32) {
         let response: RemoteResponse
         do {
             let request = try decoder.decode(RemoteRequest.self, from: line)
@@ -306,10 +318,10 @@ public final class RemoteControlServer: @unchecked Sendable {
         } catch {
             response = RemoteResponse(id: -1, ok: false, error: "decode: \(error)")
         }
-        send(response)
+        send(response, to: fd)
     }
 
-    private func send(_ response: RemoteResponse) {
+    private func send(_ response: RemoteResponse, to fd: Int32) {
         guard var data = try? encoder.encode(response) else { return }
         data.append(RemoteControlProtocol.newline)
         // Loop on write — the client socket is non-blocking, so a single
@@ -322,7 +334,7 @@ public final class RemoteControlServer: @unchecked Sendable {
             let base = buf.baseAddress!
             let total = buf.count
             while sent < total {
-                let n = posixWrite(clientFd, base + sent, total - sent)
+                let n = posixWrite(fd, base + sent, total - sent)
                 if n > 0 {
                     sent += n
                 } else if errno == EAGAIN || errno == EINTR {
@@ -337,20 +349,17 @@ public final class RemoteControlServer: @unchecked Sendable {
             }
         }
         if sent == 0 {
-            disconnect()
+            disconnect(fd)
         }
     }
 
-    private func disconnect() {
-        if clientFd >= 0 {
-            close(clientFd)
-            clientFd = -1
-        }
-        readBuffer.removeAll(keepingCapacity: true)
+    private func disconnect(_ fd: Int32) {
+        guard clients.removeValue(forKey: fd) != nil else { return }
+        close(fd)
     }
 
     deinit {
-        if clientFd >= 0 { close(clientFd) }
+        for fd in clients.keys { close(fd) }
         if listenFd >= 0 { close(listenFd) }
         unlink(path)
     }

@@ -155,14 +155,9 @@ def case_kill_all_refused() -> None:
 
 def case_kill_with_pid_against_alive_process() -> None:
     """`kill --pid <N>` against a live process must connect to that PID's
-    socket and send `quit`. We verify the contract HYP-348 owns: the
-    command exits 0, stdout reports `status=quit-sent`. Whether the
-    runtime processes the queued event quickly enough for the process
-    to actually exit before the runner tears it down is a separate
-    runtime concern (the remote-control quit relies on the run loop
-    waking from its blocked stdin read; today only the self-pipe wakes
-    it, and `enqueueEvent` doesn't trigger the pipe). Tracked
-    separately — this test pins the kill-command-side contract only."""
+    socket and send `quit`: the command exits 0 and stdout reports
+    `status=quit-sent`. This pins the command side only; that the target
+    actually dies is the case below."""
     with spawn_and_connect("Storybook") as (proc, client):
         client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
@@ -178,6 +173,38 @@ def case_kill_with_pid_against_alive_process() -> None:
         assert "status=quit-sent" in result.stdout, (
             f"kill must report `status=quit-sent` when the connect "
             f"+ write succeeded; got stdout={result.stdout!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Case 3b: `kill --pid <N>` actually ends the process
+# ---------------------------------------------------------------------------
+
+
+def case_kill_with_pid_actually_exits() -> None:
+    """The other half of `kill`: the target has to die.
+
+    The command reporting `status=quit-sent` only proves the byte left this
+    process. What a user means by `swtui ctl kill` is that the app stops, and
+    a queued quit that nothing wakes is indistinguishable from a hang."""
+    with spawn_and_connect("Storybook") as (proc, client):
+        client.wait_for_frame(1, timeout=2.0)
+        diag_dir = getattr(client, "diag_dir", None)
+        assert diag_dir is not None, "runner did not record diag_dir"
+        result = _swtui_ctl(
+            "--dir", str(Path(diag_dir) / "remote"),
+            "kill", "--pid", str(proc.pid),
+        )
+        assert result.returncode == 0, f"kill failed: {result.stdout!r} {result.stderr!r}"
+
+        deadline = time.monotonic() + 3.0
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                return
+            time.sleep(0.05)
+        raise AssertionError(
+            "the process was still running 3s after `kill --pid` returned "
+            "status=quit-sent — the quit is queued but nothing wakes the loop"
         )
 
 
@@ -317,6 +344,7 @@ CASES = [
     ("ctl.kill_without_pid_refused",            case_kill_without_pid_refused),
     ("ctl.kill_all_refused",                    case_kill_all_refused),
     ("ctl.kill_with_pid_against_alive_process", case_kill_with_pid_against_alive_process),
+    ("ctl.kill_with_pid_actually_exits",         case_kill_with_pid_actually_exits),
     ("ctl.kill_with_pid_against_dead_unlinks",  case_kill_with_pid_against_dead_unlinks),
     ("ctl.reap_preserves_live_sockets",         case_reap_preserves_live_sockets),
     ("ctl.reap_removes_dead_sockets",           case_reap_removes_dead_sockets),
