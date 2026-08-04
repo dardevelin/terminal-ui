@@ -916,7 +916,9 @@ public final class AttributeGraph: @unchecked Sendable {
     func constructVStack(_ vstack: any _GraphVStack, id: NodeID) -> AttributeNode {
         let node = AttributeNode(id: id, kind: .layout(LayoutInfo(
             kind: .vstack,
-            isStructural: vstack.isStructuralVStack
+            isStructural: vstack.isStructuralVStack,
+            spacing: vstack.layoutSpacing,
+            alignment: vstack.layoutAlignment
         )))
         let children = vstack.graphChildren()
         for (i, child) in children.enumerated() {
@@ -929,7 +931,11 @@ public final class AttributeGraph: @unchecked Sendable {
     }
 
     func constructHStack(_ hstack: any _GraphHStack, id: NodeID) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .hstack)))
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(
+            kind: .hstack,
+            spacing: hstack.layoutSpacing,
+            alignment: hstack.layoutAlignment
+        )))
         let children = hstack.graphChildren()
         for (i, child) in children.enumerated() {
             let childID = id.appending(.index(i))
@@ -941,7 +947,10 @@ public final class AttributeGraph: @unchecked Sendable {
     }
 
     func constructZStack(_ zstack: any _GraphZStack, id: NodeID) -> AttributeNode {
-        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .zstack)))
+        let node = AttributeNode(id: id, kind: .layout(LayoutInfo(
+            kind: .zstack,
+            alignment: zstack.layoutAlignment
+        )))
         let children = zstack.graphChildren()
         for (i, child) in children.enumerated() {
             let childID = id.appending(.index(i))
@@ -1234,14 +1243,28 @@ protocol _GraphVStack {
     /// User-written `VStack` returns false — it's a real layout boundary.
     /// Defaulted so existing conformances (user VStack) don't need updates.
     var isStructuralVStack: Bool { get }
+    /// The author's `spacing:` and `alignment:`. Defaulted so a synthetic
+    /// stack — which nobody wrote and therefore asked nothing of — reports
+    /// the neutral values.
+    var layoutSpacing: Int { get }
+    var layoutAlignment: Alignment { get }
 }
 
 extension _GraphVStack {
     var isStructuralVStack: Bool { false }
+    var layoutSpacing: Int { 0 }
+    var layoutAlignment: Alignment { .topLeading }
 }
 
 protocol _GraphHStack {
     func graphChildren() -> [Any]
+    var layoutSpacing: Int { get }
+    var layoutAlignment: Alignment { get }
+}
+
+extension _GraphHStack {
+    var layoutSpacing: Int { 0 }
+    var layoutAlignment: Alignment { .topLeading }
 }
 
 protocol _GraphModified {
@@ -1266,6 +1289,11 @@ protocol _GraphConditional {
 /// ForEach constructs children from identifiable data
 protocol _GraphZStack {
     func graphChildren() -> [Any]
+    var layoutAlignment: Alignment { get }
+}
+
+extension _GraphZStack {
+    var layoutAlignment: Alignment { .topLeading }
 }
 
 protocol _GraphForEach {

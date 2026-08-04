@@ -12,9 +12,22 @@
 /// ```
 public struct HStack<Content: TerminalView>: TerminalView {
     public let content: Content
+    public let alignment: VerticalAlignment
+    public let spacing: Int
 
-    public init(@TerminalViewBuilder content: () -> Content) {
+    /// - Parameters:
+    ///   - alignment: where shorter children sit down the stack. Defaults to
+    ///     `.top` rather than SwiftUI's `.center`, for the reason `VStack`
+    ///     documents: existing layouts were written against top alignment.
+    ///   - spacing: blank cells between children, none by default.
+    public init(
+        alignment: VerticalAlignment = .top,
+        spacing: Int = 0,
+        @TerminalViewBuilder content: () -> Content
+    ) {
         self.content = content()
+        self.alignment = alignment
+        self.spacing = max(0, spacing)
     }
 
     public var body: Never { fatalError() }

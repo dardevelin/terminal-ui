@@ -93,6 +93,10 @@ extension VStack: _GraphVStack {
     func graphChildren() -> [Any] {
         extractChildren(from: content)
     }
+    var layoutSpacing: Int { spacing }
+    var layoutAlignment: Alignment {
+        Alignment(horizontal: alignment, vertical: .top)
+    }
 }
 
 // MARK: - HStack
@@ -100,6 +104,10 @@ extension VStack: _GraphVStack {
 extension HStack: _GraphHStack {
     func graphChildren() -> [Any] {
         extractChildren(from: content)
+    }
+    var layoutSpacing: Int { spacing }
+    var layoutAlignment: Alignment {
+        Alignment(horizontal: .leading, vertical: alignment)
     }
 }
 
@@ -297,6 +305,7 @@ extension ZStack: _GraphZStack {
     func graphChildren() -> [Any] {
         extractChildren(from: content)
     }
+    var layoutAlignment: Alignment { alignment }
 }
 
 // MARK: - ForEach

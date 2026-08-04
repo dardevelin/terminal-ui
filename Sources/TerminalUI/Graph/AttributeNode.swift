@@ -368,9 +368,21 @@ public struct LayoutInfo {
     /// replaced by a hard, reliable flag.
     public var isStructural: Bool = false
 
-    public init(kind: LayoutKind, isStructural: Bool = false) {
+    /// Blank cells the stack leaves between children. Zero for structural
+    /// stacks — a result builder's grouping is not a place the author asked
+    /// for a gap.
+    public var spacing: Int = 0
+
+    /// Where a child narrower or shorter than the stack's cross axis sits.
+    /// Both stacks and `ZStack` carry the pair; each reads the one it needs.
+    public var alignment: Alignment = .topLeading
+
+    public init(kind: LayoutKind, isStructural: Bool = false,
+                spacing: Int = 0, alignment: Alignment = .topLeading) {
         self.kind = kind
         self.isStructural = isStructural
+        self.spacing = spacing
+        self.alignment = alignment
     }
 }
 

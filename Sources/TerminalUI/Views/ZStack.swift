@@ -12,9 +12,16 @@
 /// ```
 public struct ZStack<Content: TerminalView>: TerminalView {
     public let content: Content
+    public let alignment: Alignment
 
-    public init(@TerminalViewBuilder content: () -> Content) {
+    /// - Parameter alignment: where children smaller than the stack sit.
+    ///   `.topLeading` by default, matching the other two stacks.
+    public init(
+        alignment: Alignment = .topLeading,
+        @TerminalViewBuilder content: () -> Content
+    ) {
         self.content = content()
+        self.alignment = alignment
     }
 
     public var body: Never { fatalError() }

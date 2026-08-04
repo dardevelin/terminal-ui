@@ -270,11 +270,11 @@ public enum GraphRenderer {
 
         switch info.kind {
         case .vstack:
-            renderVStack(children, into: &buffer, context: context)
+            renderVStack(children, info: info, into: &buffer, context: context)
         case .hstack:
-            renderHStack(children, into: &buffer, context: context)
+            renderHStack(children, info: info, into: &buffer, context: context)
         case .zstack:
-            renderZStack(children, into: &buffer, context: context)
+            renderZStack(children, info: info, into: &buffer, context: context)
         case .scroll(let axis):
             renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
         case .split(let axis):
@@ -402,7 +402,10 @@ public enum GraphRenderer {
         return sizes
     }
 
-    static func renderVStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
+    static func renderVStack(_ children: [AttributeNode], info: LayoutInfo,
+                             into buffer: inout CellBuffer, context: RenderContext) {
+        let spacing = info.spacing
+        let gaps = spacing * max(0, children.count - 1)
         var flexIndices: [Int] = []
         var flexWeights: [Int] = []
         for (i, child) in children.enumerated() {
@@ -424,7 +427,9 @@ public enum GraphRenderer {
             }
         }
 
-        let remaining = max(0, context.rect.height - totalContentHeight)
+        // Gaps are spent before the flexible children divide what is left,
+        // or a spacer would swallow the space the author asked to keep empty.
+        let remaining = max(0, context.rect.height - totalContentHeight - gaps)
         let perFlex = weightedDistribution(weights: flexWeights, available: remaining)
         var flexHeightByIndex: [Int: Int] = [:]
         for (slot, idx) in flexIndices.enumerated() {
@@ -438,9 +443,11 @@ public enum GraphRenderer {
                 if case .primitive(.spacer) = child.kind {
                     y += flexHeight
                 } else {
-                    let childRect = Rect(x: context.rect.x, y: y,
-                                         width: crossExtent(of: child, within: context.rect.width, horizontal: true),
-                                         height: max(1, flexHeight))
+                    let width = vstackChildWidth(child, available: context.rect.width,
+                                                 alignment: info.alignment.horizontal)
+                    let childRect = Rect(
+                        x: context.rect.x + info.alignment.horizontal.offset(for: width, in: context.rect.width),
+                        y: y, width: width, height: max(1, flexHeight))
                     // Re-stamp the subtree's Layer-2 rects from this
                     // child's anchor. VStack/HStack/Scroll still own
                     // distribution (Layer 3), so the top-level Layout
@@ -452,16 +459,34 @@ public enum GraphRenderer {
                     render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     y += flexHeight
                 }
+                if i < children.count - 1 { y += spacing }
                 continue
             }
             let h = childHeights[i]
-            let childRect = Rect(x: context.rect.x, y: y,
-                                 width: crossExtent(of: child, within: context.rect.width, horizontal: true),
-                                 height: max(1, h))
+            let width = vstackChildWidth(child, available: context.rect.width,
+                                         alignment: info.alignment.horizontal)
+            let childRect = Rect(
+                x: context.rect.x + info.alignment.horizontal.offset(for: width, in: context.rect.width),
+                y: y, width: width, height: max(1, h))
             Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             y += h
+            if i < children.count - 1 { y += spacing }
         }
+    }
+
+    /// How wide a child sits across a `VStack`.
+    ///
+    /// A child that declared a width gets it. One that declared nothing fills
+    /// the stack under the default alignment — `Divider` and every
+    /// background-filling row depend on that — but asking for `.center` or
+    /// `.trailing` is asking for the child to be *placed*, which is only
+    /// meaningful once its own width is known, so that case measures.
+    private static func vstackChildWidth(_ child: AttributeNode, available: Int,
+                                         alignment: HorizontalAlignment) -> Int {
+        if let declared = declaredWidth(of: child) { return max(1, min(available, declared)) }
+        guard alignment != .leading else { return available }
+        return max(1, min(available, measureWidth(child)))
     }
 
     /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
@@ -473,16 +498,6 @@ public enum GraphRenderer {
         if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
         return false
-    }
-
-    /// What a stack gives a child on the axis it does not stack along: the
-    /// size the child asked for, or the whole of it when the child asked for
-    /// nothing. Never more than the stack has.
-    private static func crossExtent(of node: AttributeNode, within available: Int,
-                                    horizontal: Bool) -> Int {
-        let declared = horizontal ? declaredWidth(of: node) : declaredHeight(of: node)
-        guard let declared else { return available }
-        return max(1, min(available, declared))
     }
 
     /// The width a subtree explicitly asked for, or nil when it asked for
@@ -584,7 +599,10 @@ public enum GraphRenderer {
         return 1
     }
 
-    static func renderHStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
+    static func renderHStack(_ children: [AttributeNode], info: LayoutInfo,
+                             into buffer: inout CellBuffer, context: RenderContext) {
+        let spacing = info.spacing
+        let gaps = spacing * max(0, children.count - 1)
         // Identify flex children + their grow weights. Spacers, scroll
         // views, `.flexible(.horizontal)`, and `.frame(maxWidth: .infinity)`
         // all qualify; only `.flexible(grow:)` carries a non-default weight.
@@ -609,7 +627,8 @@ public enum GraphRenderer {
             }
         }
 
-        let remaining = max(0, context.rect.width - totalContentWidth)
+        // See the vertical twin: gaps come out before flex divides the rest.
+        let remaining = max(0, context.rect.width - totalContentWidth - gaps)
         let perFlex = weightedDistribution(weights: flexWeights, available: remaining)
         // Map flex slot index → allocated width.
         var flexWidthByIndex: [Int: Int] = [:]
@@ -628,23 +647,45 @@ public enum GraphRenderer {
                 if case .primitive(.spacer) = child.kind {
                     x += flexWidth
                 } else {
-                    let childRect = Rect(x: x, y: context.rect.y,
-                                         width: max(1, flexWidth),
-                                         height: crossExtent(of: child, within: context.rect.height, horizontal: false))
+                    let height = hstackChildHeight(child, available: context.rect.height,
+                                                   proposedWidth: max(1, flexWidth),
+                                                   alignment: info.alignment.vertical)
+                    let childRect = Rect(
+                        x: x,
+                        y: context.rect.y + info.alignment.vertical.offset(for: height, in: context.rect.height),
+                        width: max(1, flexWidth), height: height)
                     Layout.measureAndPlace(graph: child, in: childRect)
                     render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     x += flexWidth
                 }
+                if i < children.count - 1 { x += spacing }
                 continue
             }
             let w = childWidths[i]
             let clampedWidth = min(w, maxX - x)
-            let childRect = Rect(x: x, y: context.rect.y, width: max(1, clampedWidth),
-                                 height: crossExtent(of: child, within: context.rect.height, horizontal: false))
+            let height = hstackChildHeight(child, available: context.rect.height,
+                                           proposedWidth: max(1, clampedWidth),
+                                           alignment: info.alignment.vertical)
+            let childRect = Rect(
+                x: x,
+                y: context.rect.y + info.alignment.vertical.offset(for: height, in: context.rect.height),
+                width: max(1, clampedWidth), height: height)
             Layout.measureAndPlace(graph: child, in: childRect)
             render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w
+            if i < children.count - 1 { x += spacing }
         }
+    }
+
+    /// The vertical twin of `vstackChildWidth` — how tall a child sits across
+    /// an `HStack`. Height needs the child's own width to measure against,
+    /// since wrapping makes it width-dependent.
+    private static func hstackChildHeight(_ child: AttributeNode, available: Int,
+                                          proposedWidth: Int,
+                                          alignment: VerticalAlignment) -> Int {
+        if let declared = declaredHeight(of: child) { return max(1, min(available, declared)) }
+        guard alignment != .top else { return available }
+        return max(1, min(available, measureHeight(child, proposedWidth: proposedWidth)))
     }
 
     /// A child is "flex" if it should consume remaining space in a stack layout.
@@ -906,13 +947,31 @@ public enum GraphRenderer {
         return nil
     }
 
-    static func renderZStack(_ children: [AttributeNode], into buffer: inout CellBuffer, context: RenderContext) {
-        // Layer 2: Layout stamps every ZStack child's rect to the
-        // parent's rect. Render reads the pre-stamped rect — last
-        // child wins on overlapping cells.
+    static func renderZStack(_ children: [AttributeNode], info: LayoutInfo,
+                             into buffer: inout CellBuffer, context: RenderContext) {
+        // Layer 2: Layout stamps every ZStack child's rect to the parent's
+        // rect. Render reads the pre-stamped rect — last child wins on
+        // overlapping cells.
+        //
+        // Under the default `.topLeading` that is the whole story. Any other
+        // alignment means placing children, which needs each one's own size,
+        // so those measure and re-stamp.
+        let alignment = info.alignment
         for child in children {
             var childCtx = context
             childCtx.rect = child.rect
+            if alignment != .topLeading {
+                let width = min(context.rect.width,
+                                declaredWidth(of: child) ?? measureWidth(child))
+                let height = min(context.rect.height,
+                                 declaredHeight(of: child)
+                                    ?? measureHeight(child, proposedWidth: max(1, width)))
+                childCtx.rect = Rect(
+                    x: context.rect.x + alignment.horizontal.offset(for: width, in: context.rect.width),
+                    y: context.rect.y + alignment.vertical.offset(for: height, in: context.rect.height),
+                    width: max(1, width), height: max(1, height))
+                Layout.measureAndPlace(graph: child, in: childCtx.rect)
+            }
             render(child, into: &buffer, context: childCtx)
         }
     }

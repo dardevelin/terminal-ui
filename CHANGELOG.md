@@ -8,6 +8,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`VStack(alignment:spacing:)`, `HStack(alignment:spacing:)`,
+  `ZStack(alignment:)`** — with `HorizontalAlignment`, `VerticalAlignment` and
+  `Alignment` value types. The defaults are `.leading` / `.top` rather than
+  SwiftUI's `.center`: every layout written against this framework assumed
+  top-left placement, and a centring default would silently move all of them.
+  Spacing defaults to none, the unit being a whole cell.
 - **`.task { }` and `.task(id:)`** — async work owned by a view: started when it
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
