@@ -14,6 +14,12 @@ All notable changes to TerminalUI are documented here. Format based on
   SwiftUI's `.center`: every layout written against this framework assumed
   top-left placement, and a centring default would silently move all of them.
   Spacing defaults to none, the unit being a whole cell.
+- **`alignment:` on `frame`, `overlay` and `backgroundView`.** A view smaller
+  than its frame now has a stated placement rule, and an overlay can be pinned
+  to a corner — `.overlay(alignment: .topTrailing) { … }` for badges, close
+  buttons and corner indicators. An overlay aligns within the *base view's*
+  frame, not the rect its parent handed down, so a badge pins to the thing it
+  belongs to rather than to the screen edge.
 - **`.task { }` and `.task(id:)`** — async work owned by a view: started when it
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same

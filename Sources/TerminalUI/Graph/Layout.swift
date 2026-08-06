@@ -253,7 +253,8 @@ public enum Layout {
     /// Child inherits the parent rect unchanged.
     private static func placeModifier(_ node: AttributeNode, effect: ModifierEffect, in rect: Rect) {
         guard let child = node.children.first else { return }
-        let childRect = transformedRect(for: effect, parentRect: rect)
+        var childRect = transformedRect(for: effect, parentRect: rect)
+        childRect = aligned(childRect, of: child, for: effect)
         measureAndPlace(graph: child, in: childRect)
 
         // Overlay / backgroundView / modal carry a SECOND child
@@ -264,6 +265,29 @@ public enum Layout {
         if node.children.count > 1 {
             measureAndPlace(graph: node.children[1], in: rect)
         }
+    }
+
+    /// Place the content inside a frame that is bigger than it is.
+    ///
+    /// A `.frame` states a size; alignment states where the content sits in
+    /// it. Without this the content simply drew from the top-left corner and
+    /// `.frame(width: 20, alignment: .center)` said nothing. Only a
+    /// non-default alignment measures — a frame under `.topLeading` hands its
+    /// child the whole rect exactly as before, which is what keeps every view
+    /// already written against a frame rendering unchanged.
+    private static func aligned(_ rect: Rect, of child: AttributeNode,
+                                for effect: ModifierEffect) -> Rect {
+        guard case .frame(_, _, _, _, _, _, let alignment) = effect,
+              alignment != .topLeading else { return rect }
+
+        let width = min(rect.width, GraphMeasurer.measureWidth(child))
+        let height = min(rect.height,
+                         GraphMeasurer.measureHeight(child, proposedWidth: max(1, width)))
+        return Rect(
+            x: rect.x + alignment.horizontal.offset(for: width, in: rect.width),
+            y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
+            width: max(1, width), height: max(1, height)
+        )
     }
 
     /// Compute the child rect for a modifier effect.
@@ -282,7 +306,7 @@ public enum Layout {
             // BorderStyle uses the same 1-cell ring.
             return rect.inset(by: 1)
 
-        case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight):
+        case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight, _):
             var clamped = rect
             if let w = width { clamped.width = min(w, clamped.width) }
             // .infinity skips the min() clamp — the rect already

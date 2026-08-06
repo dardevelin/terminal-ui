@@ -421,7 +421,7 @@ public enum ModifierEffect {
     case underline
     case padding(Int)
     case border(BorderStyle)
-    case frame(width: Int?, height: Int?, minWidth: FrameDimension?, maxWidth: FrameDimension?, minHeight: FrameDimension?, maxHeight: FrameDimension?)
+    case frame(width: Int?, height: Int?, minWidth: FrameDimension?, maxWidth: FrameDimension?, minHeight: FrameDimension?, maxHeight: FrameDimension?, alignment: Alignment)
     /// `.flexible(_:grow:)` — opt-in flex distribution along `axes`.
     /// Inside a stack on the matching axis, the renderer treats this
     /// child like a `Spacer` for distribution purposes but renders the
@@ -429,8 +429,8 @@ public enum ModifierEffect {
     /// share when multiple flex siblings compete for the remainder.
     case flexible(axes: FrameAxes, grow: Int)
     case explicitID(AnyHashable)
-    case overlay     // child[0] = base, child[1] = overlay content
-    case backgroundView  // child[0] = background content, child[1] = base (render bg first)
+    case overlay(alignment: Alignment)     // child[0] = base, child[1] = overlay content
+    case backgroundView(alignment: Alignment)  // child[0] = background content, child[1] = base (render bg first)
     case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
     case focusable   // marks the child as able to receive focus
     case focusScope(String) // groups focusable descendants; arrows stay within

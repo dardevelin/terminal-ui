@@ -431,7 +431,7 @@ public final class DebugStream: @unchecked Sendable {
             case .underline: kind = "underline"; value = ""
             case .padding(let n): kind = "padding"; value = "\(n)"
             case .border(let s): kind = "border"; value = "\(s)"
-            case .frame(let w, let h, _, _, _, _): kind = "frame"; value = "\(w ?? 0)x\(h ?? 0)"
+            case .frame(let w, let h, _, _, _, _, _): kind = "frame"; value = "\(w ?? 0)x\(h ?? 0)"
             case .flexible(let axes, let grow): kind = "flexible"; value = "axes=\(axes.rawValue) grow=\(grow)"
             case .explicitID(let id): kind = "id"; value = "\(id)"
             case .overlay: kind = "overlay"; value = ""

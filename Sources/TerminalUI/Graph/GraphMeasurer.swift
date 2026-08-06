@@ -181,12 +181,12 @@ public enum GraphMeasurer {
             }
             // An explicit width answers on its own — see the height twin for
             // why measuring the child first and discarding it is not free.
-            if case .frame(let width, _, _, _, _, _) = effect, let width { return width }
+            if case .frame(let width, _, _, _, _, _, _) = effect, let width { return width }
 
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(_, _, let minW, let maxW, _, _) = effect {
+            if case .frame(_, _, let minW, let maxW, _, _, _) = effect {
                 // .infinity contributes nothing to intrinsic measurement —
                 // the renderer expands the rect during stack flex
                 // distribution, not during measurement.
@@ -286,12 +286,12 @@ public enum GraphMeasurer {
             // reported 0; now it walks — and evaluates the body of — every row
             // of a `Form` behind a `.frame(height:)`, once per frame, for a
             // number nothing reads.
-            if case .frame(_, let height, _, _, _, _) = effect, let height { return height }
+            if case .frame(_, let height, _, _, _, _, _) = effect, let height { return height }
 
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border = effect { base += 2 }
-            if case .frame(_, _, _, _, let minH, let maxH) = effect {
+            if case .frame(_, _, _, _, let minH, let maxH, _) = effect {
                 if let maxH = maxH?.fixedValue { base = min(base, maxH) }
                 if let minH = minH?.fixedValue { base = max(base, minH) }
             }

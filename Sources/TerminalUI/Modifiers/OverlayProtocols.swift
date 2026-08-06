@@ -4,11 +4,13 @@
 protocol _OverlayModifierProtocol {
     func constructOverlayNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateOverlayNode(_ node: AttributeNode, graph: AttributeGraph)
+    var overlayAlignment: Alignment { get }
 }
 
 protocol _BackgroundViewModifierProtocol {
     func constructBackgroundNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateBackgroundNode(_ node: AttributeNode, graph: AttributeGraph)
+    var backgroundAlignment: Alignment { get }
 }
 
 protocol _ModalModifierProtocol {
@@ -20,6 +22,8 @@ protocol _ModalModifierProtocol {
 // MARK: - Conformances
 
 extension OverlayModifier: _OverlayModifierProtocol {
+    var overlayAlignment: Alignment { alignment }
+
     func constructOverlayNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         graph.constructNode(for: overlay, id: id)
     }
@@ -29,6 +33,8 @@ extension OverlayModifier: _OverlayModifierProtocol {
 }
 
 extension BackgroundViewModifier: _BackgroundViewModifierProtocol {
+    var backgroundAlignment: Alignment { alignment }
+
     func constructBackgroundNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         graph.constructNode(for: background, id: id)
     }

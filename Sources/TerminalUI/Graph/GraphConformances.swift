@@ -145,11 +145,11 @@ extension ModifiedView: _GraphModified {
         case is UnderlineModifier: .underline
         case let pad as PaddingModifier: .padding(pad.amount)
         case let bdr as BorderModifier: .border(bdr.style)
-        case let frm as FrameModifier: .frame(width: frm.width, height: frm.height, minWidth: frm.minWidth, maxWidth: frm.maxWidth, minHeight: frm.minHeight, maxHeight: frm.maxHeight)
+        case let frm as FrameModifier: .frame(width: frm.width, height: frm.height, minWidth: frm.minWidth, maxWidth: frm.maxWidth, minHeight: frm.minHeight, maxHeight: frm.maxHeight, alignment: frm.alignment)
         case let flex as FlexibleModifier: .flexible(axes: flex.axes, grow: flex.grow)
         case let idm as IDModifier: .explicitID(idm.id)
-        case is any _OverlayModifierProtocol: .overlay
-        case is any _BackgroundViewModifierProtocol: .backgroundView
+        case let ovl as any _OverlayModifierProtocol: .overlay(alignment: ovl.overlayAlignment)
+        case let bg as any _BackgroundViewModifierProtocol: .backgroundView(alignment: bg.backgroundAlignment)
         case let modal as any _ModalModifierProtocol: .modal(isPresented: modal.modalIsPresented)
         case is FocusableModifier: .focusable
         case let scope as FocusScopeModifier: .focusScope(scope.id)

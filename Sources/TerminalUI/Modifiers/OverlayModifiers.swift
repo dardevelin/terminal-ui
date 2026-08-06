@@ -2,10 +2,15 @@
 public struct OverlayModifier<Overlay: TerminalView>: ViewModifier {
     public typealias ModifierType = Overlay
     public let overlay: Overlay
+    /// Where the overlay sits inside the base view's frame. The corner cases
+    /// are the reason this exists: badges, close buttons, corner indicators.
+    public var alignment: Alignment = .topLeading
 }
 
 /// Background modifier — renders content behind the base view's frame.
 public struct BackgroundViewModifier<Background: TerminalView>: ViewModifier {
+    /// Where the background sits inside the base view's frame.
+    public var alignment: Alignment = .topLeading
     public typealias ModifierType = Background
     public let background: Background
 }
@@ -20,13 +25,19 @@ public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
 
 extension TerminalView {
     /// Render additional content on top of this view's frame.
-    public func overlay<V: TerminalView>(@TerminalViewBuilder content: () -> V) -> ModifiedView<Self, OverlayModifier<V>> {
-        ModifiedView(content: self, modifier: OverlayModifier(overlay: content()))
+    public func overlay<V: TerminalView>(
+        alignment: Alignment = .topLeading,
+        @TerminalViewBuilder content: () -> V
+    ) -> ModifiedView<Self, OverlayModifier<V>> {
+        ModifiedView(content: self, modifier: OverlayModifier(overlay: content(), alignment: alignment))
     }
 
     /// Render additional content behind this view's frame.
-    public func backgroundView<V: TerminalView>(@TerminalViewBuilder content: () -> V) -> ModifiedView<Self, BackgroundViewModifier<V>> {
-        ModifiedView(content: self, modifier: BackgroundViewModifier(background: content()))
+    public func backgroundView<V: TerminalView>(
+        alignment: Alignment = .topLeading,
+        @TerminalViewBuilder content: () -> V
+    ) -> ModifiedView<Self, BackgroundViewModifier<V>> {
+        ModifiedView(content: self, modifier: BackgroundViewModifier(alignment: alignment, background: content()))
     }
 
     /// Present a floating modal over the entire screen when isPresented is true.

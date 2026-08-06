@@ -66,6 +66,10 @@ public struct FrameModifier: ViewModifier {
     public var maxWidth: FrameDimension?
     public var minHeight: FrameDimension?
     public var maxHeight: FrameDimension?
+    /// Where the content sits when the frame is bigger than it is. Without
+    /// this a view smaller than its frame had no stated placement rule and
+    /// simply drew from the top-left corner.
+    public var alignment: Alignment = .topLeading
 }
 
 // Explicit identity
@@ -104,15 +108,25 @@ extension TerminalView {
         ModifiedView(content: self, modifier: BorderModifier(style: style))
     }
 
-    public func frame(width: Int? = nil, height: Int? = nil) -> ModifiedView<Self, FrameModifier> {
-        ModifiedView(content: self, modifier: FrameModifier(width: width, height: height))
+    /// - Parameter alignment: where the content sits inside the frame when
+    ///   the frame is the larger of the two. `.topLeading` by default, as
+    ///   everywhere else in this framework — SwiftUI centres, and changing
+    ///   that here would move every view already written against a frame.
+    public func frame(width: Int? = nil, height: Int? = nil,
+                      alignment: Alignment = .topLeading) -> ModifiedView<Self, FrameModifier> {
+        ModifiedView(content: self, modifier: FrameModifier(
+            width: width, height: height, alignment: alignment
+        ))
     }
 
-    public func frame(minWidth: FrameDimension? = nil, maxWidth: FrameDimension? = nil, minHeight: FrameDimension? = nil, maxHeight: FrameDimension? = nil) -> ModifiedView<Self, FrameModifier> {
+    public func frame(minWidth: FrameDimension? = nil, maxWidth: FrameDimension? = nil,
+                      minHeight: FrameDimension? = nil, maxHeight: FrameDimension? = nil,
+                      alignment: Alignment = .topLeading) -> ModifiedView<Self, FrameModifier> {
         ModifiedView(content: self, modifier: FrameModifier(
             width: nil, height: nil,
             minWidth: minWidth, maxWidth: maxWidth,
-            minHeight: minHeight, maxHeight: maxHeight
+            minHeight: minHeight, maxHeight: maxHeight,
+            alignment: alignment
         ))
     }
 

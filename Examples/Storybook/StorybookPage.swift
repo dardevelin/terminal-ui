@@ -36,7 +36,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // category group below.
     //
     // Layout
-    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView
+    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView, alignment
     // Primitives
     case text, forEach, subCell, timeline, asyncTask, capabilities
     // Input
@@ -81,6 +81,26 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         .foreground(.ansi256(238))
                     Text(" OVER ").foreground(.cyan).bold()
                 }
+                """)
+        case .alignment: return PageInfo(id: self, category: .layout, name: "Alignment & spacing",
+            summary: "Stacks take alignment: and spacing:, frames and overlays take alignment:. Defaults are .leading/.top rather than SwiftUI's .center — every layout here was written against top-left placement, so centring by default would move all of them. Ask and you get it.",
+            code: """
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("one")
+                    Text("three")
+                }
+
+                HStack(alignment: .bottom, spacing: 2) {
+                    Text("tall\\nrows\\nhere")
+                    Text("bottom")
+                }
+
+                Text("badge")
+                    .frame(width: 18, height: 3, alignment: .center)
+                    .border()
+
+                Text("....\\n....")
+                    .overlay(alignment: .topTrailing) { Text("*") }
                 """)
         case .spacer: return PageInfo(id: self, category: .layout, name: "Spacer",
             summary: "Flexible empty space that consumes available axis room.",

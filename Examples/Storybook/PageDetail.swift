@@ -132,6 +132,20 @@ struct PreviewPane: TerminalView {
                     .foreground(.ansi256(238))
                 Text(" OVER ").foreground(.cyan).bold()
             }
+        case .alignment:
+            VStack(spacing: 1) {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("one").foreground(.cyan)
+                    Text("three").foreground(.cyan)
+                }
+                HStack(alignment: .bottom, spacing: 2) {
+                    Text("tall\nrows\nhere").foreground(.gray)
+                    Text("bottom").foreground(.yellow)
+                }
+                Text("centred").frame(width: 18, height: 3, alignment: .center).border()
+                Text("....\n....").foreground(.gray)
+                    .overlay(alignment: .topTrailing) { Text("*").foreground(.magenta).bold() }
+            }
         case .spacer:
             HStack {
                 Text("[left]").foreground(.yellow)

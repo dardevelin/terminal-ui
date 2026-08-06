@@ -495,9 +495,23 @@ public enum GraphRenderer {
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
-        if case .modifier(.frame(_, _, _, _, _, let maxH)) = node.kind, maxH == .infinity { return true }
+        if case .modifier(.frame(_, _, _, _, _, let maxH, _)) = node.kind, maxH == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
         return false
+    }
+
+    /// A child's own size, placed inside `available` by `alignment`.
+    private static func placedRect(of node: AttributeNode, in available: Rect,
+                                   alignment: Alignment) -> Rect {
+        let width = min(available.width, declaredWidth(of: node) ?? measureWidth(node))
+        let height = min(available.height,
+                         declaredHeight(of: node)
+                            ?? measureHeight(node, proposedWidth: max(1, width)))
+        return Rect(
+            x: available.x + alignment.horizontal.offset(for: width, in: available.width),
+            y: available.y + alignment.vertical.offset(for: height, in: available.height),
+            width: max(1, width), height: max(1, height)
+        )
     }
 
     /// The width a subtree explicitly asked for, or nil when it asked for
@@ -527,7 +541,7 @@ public enum GraphRenderer {
         func inner() -> Int? { child.flatMap { declaredExtent(of: $0, horizontal: horizontal) } }
 
         switch effect {
-        case .frame(let width, let height, _, _, _, _):
+        case .frame(let width, let height, _, _, _, _, _):
             if let explicit = horizontal ? width : height { return explicit }
             return inner()
         case .padding(let amount):
@@ -695,7 +709,7 @@ public enum GraphRenderer {
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }
-        if case .modifier(.frame(_, _, _, let maxW, _, _)) = node.kind, maxW == .infinity { return true }
+        if case .modifier(.frame(_, _, _, let maxW, _, _, _)) = node.kind, maxW == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isFlexChild(child) }
         return false
     }
@@ -1261,11 +1275,31 @@ public enum GraphRenderer {
         case .explicitID:
             render(child, into: &buffer, context: ctx)
 
-        case .overlay:
-            // Render base first, then overlay on top in same rect
+        case .overlay(let alignment):
+            // Base first, then the overlay over it. `.topLeading` keeps the
+            // original behaviour of handing the overlay the base's whole rect;
+            // any other alignment is a request to *place* it, which needs its
+            // own size — a badge pinned `.topTrailing` is the case this exists
+            // for.
             render(child, into: &buffer, context: ctx)
             if node.children.count > 1 {
-                render(node.children[1], into: &buffer, context: ctx)
+                let overlay = node.children[1]
+                var overlayCtx = ctx
+                if alignment != .topLeading {
+                    // Aligned within the *base view's* frame, not the rect the
+                    // parent happened to hand down. A stack gives its children
+                    // the full cross axis, so aligning against that would pin a
+                    // badge to the screen edge rather than to the thing it
+                    // belongs to.
+                    let baseWidth = min(ctx.rect.width, measureWidth(child))
+                    let baseHeight = min(ctx.rect.height,
+                                         measureHeight(child, proposedWidth: max(1, baseWidth)))
+                    let base = Rect(x: ctx.rect.x, y: ctx.rect.y,
+                                    width: max(1, baseWidth), height: max(1, baseHeight))
+                    overlayCtx.rect = placedRect(of: overlay, in: base, alignment: alignment)
+                    Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
+                }
+                render(overlay, into: &buffer, context: overlayCtx)
             }
 
         case .backgroundView:

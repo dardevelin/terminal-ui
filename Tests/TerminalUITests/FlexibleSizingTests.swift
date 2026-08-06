@@ -255,7 +255,7 @@ private func findAllFlexibleNodes(in node: AttributeNode) -> [AttributeNode] {
 
 @MainActor
 private func findFrameMaxWidthInfinityNode(in node: AttributeNode) -> AttributeNode? {
-    if case .modifier(.frame(_, _, _, let maxW, _, _)) = node.kind, maxW == .infinity {
+    if case .modifier(.frame(_, _, _, let maxW, _, _, _)) = node.kind, maxW == .infinity {
         return node
     }
     for child in node.children {

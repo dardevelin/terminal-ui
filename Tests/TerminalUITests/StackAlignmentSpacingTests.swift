@@ -120,3 +120,50 @@ struct StackAlignmentSpacingTests {
         #expect(column(of: "one", in: rendered) == 0)
     }
 }
+
+// A `.frame` states a size and `.overlay` states a layer; both were silent
+// about where the content goes inside them, so both drew from the top-left
+// corner. `.overlay(alignment: .topTrailing)` is the case that matters most —
+// badges, close buttons, corner indicators are the reason overlays exist.
+
+@Suite("Frames and overlays — alignment")
+@MainActor
+struct FrameOverlayAlignmentTests {
+
+    @Test("a frame places its content where it was told")
+    func frameAlignsContent() {
+        let centred = draw(Text("ab").frame(width: 10, height: 3, alignment: .center),
+                           width: 12, height: 4)
+        #expect(column(of: "ab", in: centred) == 4, "(10 - 2) / 2")
+        #expect(rowIndex(of: "ab", in: centred) == 1, "(3 - 1) / 2")
+
+        let corner = draw(Text("ab").frame(width: 10, height: 3, alignment: .bottomTrailing),
+                          width: 12, height: 4)
+        #expect(column(of: "ab", in: corner) == 8)
+        #expect(rowIndex(of: "ab", in: corner) == 2)
+    }
+
+    @Test("a frame with no alignment still draws from the corner")
+    func frameDefaultUnchanged() {
+        let rendered = draw(Text("ab").frame(width: 10, height: 3), width: 12, height: 4)
+        #expect(column(of: "ab", in: rendered) == 0)
+        #expect(rowIndex(of: "ab", in: rendered) == 0)
+    }
+
+    @Test("an overlay pins to the corner it was given")
+    func overlayPinsToCorner() {
+        let base = Text("....\n....\n....").overlay(alignment: .topTrailing) { Text("X") }
+        let rendered = draw(base, width: 6, height: 4)
+
+        #expect(rowIndex(of: "X", in: rendered) == 0)
+        #expect(column(of: "X", in: rendered) == 3, "flush against the base's right edge")
+    }
+
+    @Test("an overlay with no alignment covers from the corner, as before")
+    func overlayDefaultUnchanged() {
+        let base = Text("....\n....").overlay { Text("X") }
+        let rendered = draw(base, width: 6, height: 3)
+        #expect(rowIndex(of: "X", in: rendered) == 0)
+        #expect(column(of: "X", in: rendered) == 0)
+    }
+}
