@@ -485,8 +485,28 @@ public enum GraphRenderer {
     private static func vstackChildWidth(_ child: AttributeNode, available: Int,
                                          alignment: HorizontalAlignment) -> Int {
         if let declared = declaredWidth(of: child) { return max(1, min(available, declared)) }
+        if fillsHorizontally(child) { return available }
         guard alignment != .leading else { return available }
         return max(1, min(available, measureWidth(child)))
+    }
+
+    /// Whether a child fills the width it is given whatever the stack's
+    /// alignment says.
+    ///
+    /// Measuring a child is how alignment places it, but some children have a
+    /// nominal measurement and draw across everything they are handed. A
+    /// `Divider` measures one cell and rules its whole rect, so honouring that
+    /// measurement under `.center` turned the rule into a single dash floating
+    /// mid-stack; `.frame(maxWidth: .infinity)` is a request for all of it and
+    /// cannot mean "centre me at my natural size".
+    private static func fillsHorizontally(_ node: AttributeNode) -> Bool {
+        if case .primitive(.divider) = node.kind { return true }
+        return isFlexChild(node)
+    }
+
+    /// The vertical twin of `fillsHorizontally`.
+    private static func fillsVertically(_ node: AttributeNode) -> Bool {
+        isVFlexChild(node)
     }
 
     /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
@@ -698,6 +718,7 @@ public enum GraphRenderer {
                                           proposedWidth: Int,
                                           alignment: VerticalAlignment) -> Int {
         if let declared = declaredHeight(of: child) { return max(1, min(available, declared)) }
+        if fillsVertically(child) { return available }
         guard alignment != .top else { return available }
         return max(1, min(available, measureHeight(child, proposedWidth: proposedWidth)))
     }

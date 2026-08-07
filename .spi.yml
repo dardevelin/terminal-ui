@@ -1,0 +1,19 @@
+# Swift Package Index build configuration.
+#
+# Pins the platforms and toolchain SPI should build against, so its badge
+# reflects what this package actually supports rather than whatever default
+# it guesses: Swift 6.2 (the manifest requires it — 6.0 rejects the file),
+# macOS and Linux.
+#
+# `documentation_targets` is deliberately absent. SPI-hosted DocC would need
+# the DocC plugin resolvable during its build, and this package gates that
+# behind TUI_BUILD_DOCS so consumers clone nothing. Turning SPI documentation
+# on means deciding how those two interact, which is worth doing on purpose
+# rather than as a side effect of adding this file.
+version: 1
+builder:
+  configs:
+    - platform: macosSpm
+      swift_version: '6.2'
+    - platform: linux
+      swift_version: '6.2'

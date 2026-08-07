@@ -36,6 +36,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A `Divider` still spans a stack that is centred or trailing-aligned.**
+  Alignment measures a child so it can place it, and a `Divider` measures one
+  cell while drawing across whatever it is given — so it collapsed to a single
+  dash floating mid-stack. Anything that fills its cross axis, including
+  `.frame(maxWidth: .infinity)`, keeps the whole width under any alignment.
+- **A stack's spacing counts toward its measured size.** The measurer summed
+  its children and ignored the gaps, so any parent sizing a spaced stack — a
+  centred stack, a border, a frame — under-measured it and clipped the last
+  child by exactly the total gap.
 - **`swtui ctl` commands reach an app that already has a client attached.** The
   remote-control server accepted a connection only while none was open, so a
   second client's request sat unread in the kernel's backlog — its write

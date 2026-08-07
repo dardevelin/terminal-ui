@@ -136,7 +136,11 @@ public enum GraphMeasurer {
                 for child in children {
                     total += measureWidth(child)
                 }
-                return total
+                // Gaps are part of how wide the stack is. Leaving them out
+                // under-measures it, and every parent that sizes a stack from
+                // its measurement — a centred stack, a border, a frame — then
+                // clips the last child by exactly the total gap.
+                return total + info.spacing * max(0, children.count - 1)
             case .scroll:
                 // Both axes report the size of the content, measured through
                 // the same single child `renderScroll` draws. A flex parent
@@ -232,7 +236,8 @@ public enum GraphMeasurer {
                 for child in children {
                     total += measureHeight(child, proposedWidth: proposedWidth)
                 }
-                return total
+                // See the width twin: the gaps are part of the size.
+                return total + info.spacing * max(0, children.count - 1)
             case .hstack, .zstack:
                 var maxH = 0
                 for child in children {

@@ -167,3 +167,94 @@ struct FrameOverlayAlignmentTests {
         #expect(column(of: "X", in: rendered) == 0)
     }
 }
+
+// Alignment measures a child so it can place it — but some children have a
+// nominal width and fill whatever they are given. A `Divider` measures one
+// cell and draws a rule across its whole rect, so measuring it and honouring
+// the answer turns the rule into a single dash floating in the middle of the
+// stack. Found by building a consumer package against the public API, which is
+// the first thing that put a Divider under a non-default alignment.
+
+@Suite("Stacks — alignment does not shrink filling children")
+@MainActor
+struct AlignmentFillingChildTests {
+
+    @Test("a Divider still spans the stack when the stack is centred")
+    func dividerFillsUnderCenterAlignment() {
+        let rendered = draw(VStack(alignment: .center) {
+            Text("hi")
+            Divider()
+        }, width: 20, height: 3)
+
+        let rule = rendered.first { $0.contains("─") } ?? ""
+        #expect(rule.filter { $0 == "─" }.count == 20,
+                "the rule spans the stack, it is not centred as a one-cell dash")
+    }
+
+    @Test("a Divider still spans the stack when the stack is trailing-aligned")
+    func dividerFillsUnderTrailingAlignment() {
+        let rendered = draw(VStack(alignment: .trailing) {
+            Text("hi")
+            Divider()
+        }, width: 20, height: 3)
+
+        let rule = rendered.first { $0.contains("─") } ?? ""
+        #expect(rule.filter { $0 == "─" }.count == 20)
+    }
+
+    // The horizontal twin: a view that asked for the whole cross axis keeps it.
+    @Test("a maxWidth-infinity child still fills a centred stack")
+    func infiniteWidthChildFills() {
+        let rendered = draw(VStack(alignment: .center) {
+            Text("x").frame(maxWidth: .infinity)
+        }, width: 12, height: 2)
+        #expect(rendered[0].hasPrefix("x"), "it kept the full width, so it draws from the left")
+    }
+}
+
+// Spacing changes how much room a stack needs, so a parent asking "how wide
+// are you?" has to be told about the gaps. The measurer summed its children
+// and ignored them, so any parent that sizes a spaced stack — a centred
+// VStack, a border, a frame — under-measured it and clipped the last child.
+// Found by a consumer package rendering a centred card: `right` came out as
+// `rig`.
+
+@Suite("Stacks — spacing counts toward the measured size")
+@MainActor
+struct SpacingMeasurementTests {
+
+    @Test("an HStack reports its gaps in its width")
+    func hstackWidthIncludesSpacing() {
+        let graph = AttributeGraph()
+        graph.update(from: HStack(spacing: 2) {
+            Text("aaaa")
+            Text("bbbb")
+        })
+        #expect(GraphMeasurer.measureWidth(graph.root!) == 10, "4 + 4 of text, 2 of gap")
+    }
+
+    @Test("a VStack reports its gaps in its height")
+    func vstackHeightIncludesSpacing() {
+        let graph = AttributeGraph()
+        graph.update(from: VStack(spacing: 3) {
+            Text("one")
+            Text("two")
+        })
+        #expect(GraphMeasurer.measureHeight(graph.root!, proposedWidth: 10) == 5,
+                "two rows, three of gap")
+    }
+
+    // The shape that surfaced it: a spaced row centred inside a stack, which
+    // sizes the row from its measurement before placing it.
+    @Test("a centred stack does not clip a spaced row")
+    func centredSpacedRowIsNotClipped() {
+        let rendered = draw(VStack(alignment: .center) {
+            HStack(spacing: 2) {
+                Text("left")
+                Text("right")
+            }
+        }, width: 24, height: 2)
+
+        #expect(rendered[0].contains("right"), "the last child survives the measurement")
+    }
+}
