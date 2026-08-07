@@ -64,8 +64,15 @@ reason the harness cannot run inside the container — PTYs work fine there.
 - **macOS 15+ / Linux** — cross-platform, Docker-verified. Platform-specific code
   uses `#if canImport(Glibc)` / `#if canImport(Darwin)`, never runtime checks.
   Verify Linux builds via Docker, not assumptions.
-- **Zero runtime dependencies** for consumers. `swift-docc-plugin` is dev-only
-  (used only at `swift package generate-documentation`).
+- **Zero dependencies** for consumers — not just at runtime: resolving this
+  package clones nothing. `swift-docc-plugin` is opt-in behind
+  `TUI_BUILD_DOCS=1`, because SwiftPM has no dev-only dependency and declaring
+  it unconditionally made every consumer fetch it and swift-docc-symbolkit to
+  build a package that references neither:
+
+  ```bash
+  TUI_BUILD_DOCS=1 swift package generate-documentation
+  ```
 - **0 errors, 0 warnings, always.** DX is paramount.
 - All debug/diagnostic machinery is `#if DEBUG`-gated — zero release overhead.
 

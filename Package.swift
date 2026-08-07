@@ -15,6 +15,19 @@ let warningsAsErrors: [SwiftSetting] = ProcessInfo.processInfo
     ? [.unsafeFlags(["-warnings-as-errors"])]
     : []
 
+// DocC is a documentation *tool*, not something the library builds against —
+// but SwiftPM has no dev-only dependency, so declaring it unconditionally makes
+// every consumer clone it and swift-docc-symbolkit to build a package that
+// never references either. That contradicts the zero-dependencies promise, so
+// it follows the same opt-in shape as the strict gate above: this repo's docs
+// job sets the variable, and nobody else pays for it.
+//
+//     TUI_BUILD_DOCS=1 swift package generate-documentation
+let docsDependency: [Package.Dependency] = ProcessInfo.processInfo
+    .environment["TUI_BUILD_DOCS"] == "1"
+    ? [.package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.3.0")]
+    : []
+
 let strictSettings: [SwiftSetting] = [
     // Strict concurrency — full actor isolation, Sendable enforcement
     .enableExperimentalFeature("StrictConcurrency"),
@@ -43,10 +56,7 @@ let package = Package(
         // ImageDecoder protocol, future Image view + renderers.
         .library(name: "TerminalUIIO", targets: ["TerminalUIIO"]),
     ],
-    dependencies: [
-        // DocC — documentation generator. Only used at `swift package generate-documentation` time.
-        .package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.3.0"),
-    ],
+    dependencies: docsDependency,
     targets: [
         // Shared config module — used by TerminalUI (debug-only) and swtui CLI
         .target(

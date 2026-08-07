@@ -25,6 +25,15 @@ All notable changes to TerminalUI are documented here. Format based on
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
   way it does in `onAppear`, with no hop and no wrapper.
 
+### Changed
+
+- **Resolving TerminalUI now clones nothing.** `swift-docc-plugin` was declared
+  unconditionally, so every consumer fetched it and `swift-docc-symbolkit` to
+  build a package that references neither — SwiftPM has no dev-only dependency.
+  It is opt-in behind `TUI_BUILD_DOCS=1`, the same shape the strict-warnings
+  gate already used. Building documentation is unchanged:
+  `TUI_BUILD_DOCS=1 swift package generate-documentation`.
+
 ### Fixed
 
 - **`swtui ctl` commands reach an app that already has a client attached.** The
