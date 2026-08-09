@@ -1,0 +1,122 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Add input and the mouse") {
+        Pick up the task list from ``TerminalAppProtocol`` basics and make
+        it a real tool: a prompt that adds tasks, and toggling by mouse
+        click or Enter. Along the way you'll meet the rule every TUI with a
+        text field runs into — global keys must be gated the moment letters
+        belong to an input.
+
+        Start from where the first tutorial ended, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        and edit from there.
+    }
+
+    @Section(title: "A prompt for new tasks") {
+        @ContentAndMedia {
+            ``PromptInput`` is the framework's ready-made input line —
+            cursor movement, editing, paste, and submit handling included.
+            It reads and writes your state through two ``Binding``s, so the
+            store stays the single source of truth.
+        }
+
+        @Steps {
+            @Step {
+                Add a `draft` string and a `PromptInputState` to the store,
+                an `addDraft()` that turns the draft into a task, and the
+                ``PromptInput`` above the footer with `onSubmit` calling it.
+
+                Two keys changed meaning. The `j`/`k` chords are gone —
+                letters must reach the field, a rule the framework's own
+                apps follow. And `q` now quits only when the draft is
+                empty: the same key that types the letter q mid-task.
+
+                @Code(name: "main.swift", file: "tasks2-01-01.swift") {
+                    @Image(source: "preview-tasks2-01-01.png", alt: "Typing a new task into the prompt at the bottom of the app.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Toggle by click, and by Enter") {
+        @ContentAndMedia {
+            Mouse support needs no setup: SGR mouse events arrive already
+            parsed, and `.onClick` on any view gives you its clicks with
+            coordinates relative to that view. No hit-testing code, no
+            screen math.
+        }
+
+        @Steps {
+            @Step {
+                Give each row an `.onClick` that toggles that task by id —
+                the closure captures the row's own task, so there is
+                nothing to look up.
+
+                Enter gets a second job behind the same gate as `q`: with
+                a non-empty draft it submits; with nothing typed it
+                toggles the selected task. One key, two meanings, cleanly
+                separated by state.
+
+                @Code(name: "main.swift", file: "tasks2-02-01.swift") {
+                    @Image(source: "preview-tasks2-02-01.png", alt: "A task toggled done from the keyboard, checkbox filled.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Finishing touches") {
+        @ContentAndMedia {
+            Small affordances tell the user what the app can do before
+            they read anything: a badge on the prompt, and a footer that
+            names every gesture.
+        }
+
+        @Steps {
+            @Step {
+                Add the `badge` to the prompt and update the key-hint
+                footer. The app now supports keyboard-only use, mouse
+                toggling, and free text entry — with no mode switching
+                and no conflicts.
+
+                @Code(name: "main.swift", file: "tasks2-03-01.swift") {
+                    @Image(source: "preview-tasks2-03-01.png", alt: "The finished app: a new task added by typing, toggled done, with a badged prompt and full key hints.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Why did the `j`/`k` selection chords have to go when the prompt arrived?
+
+            @Choice(isCorrect: true) {
+                A global handler on a typeable key fires while the user is
+                writing — pressing `j` mid-word would move the selection.
+
+                @Justification(reaction: "Right.") {
+                    Global chords must never claim keys a focused text
+                    input needs; gate them on state, or use non-typing
+                    keys like arrows.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                `PromptInput` reserves every letter key for itself.
+
+                @Justification(reaction: "Not quite.") {
+                    The prompt only receives what reaches it — `onEvent`
+                    sees every key first, which is exactly why the app
+                    must be disciplined about what it grabs globally.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Arrow keys are faster than `j`/`k`.
+
+                @Justification(reaction: "Not quite.") {
+                    Speed is not the issue — conflict is. Arrows survive
+                    because they don't type characters.
+                }
+            }
+        }
+    }
+}

@@ -47,3 +47,21 @@
   }
   .tui-docs-nav a:hover { border-color: #c46a1e; color: #c46a1e; }
 }
+
+.tui-docs-brand {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 600; line-height: 1; text-decoration: none;
+  padding: 5px 10px 5px 6px; border-radius: 999px;
+  color: #f4f4f4; background: rgba(20, 20, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.tui-docs-brand img { width: 16px; height: auto; border-radius: 3px; display: block; }
+.tui-docs-brand:hover { border-color: #f2994a; color: #f2994a; }
+@media (prefers-color-scheme: light) {
+  .tui-docs-brand {
+    color: #1d1d1f; background: rgba(245, 245, 247, 0.8);
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+  .tui-docs-brand:hover { border-color: #c46a1e; color: #c46a1e; }
+}

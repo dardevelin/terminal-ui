@@ -27,8 +27,16 @@
     var nav = document.createElement("nav");
     nav.className = "tui-docs-nav";
     nav.setAttribute("aria-label", "TerminalUI documentation sections");
+    var brand = document.createElement("a");
+    brand.className = "tui-docs-brand";
+    brand.href = base + "/";
+    var mascot = document.createElement("img");
+    mascot.alt = "";
+    mascot.src = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MDAgNTc2IiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjU3NiI+IDxkZWZzPiA8c3R5bGU+IC5iZyAgICAgeyBmaWxsOiAjMEEwQTBBOyB9IC5vcmFuZ2UgeyBmaWxsOiAjRjI5OTRBOyB9IC5ydXN0ICAgeyBmaWxsOiAjQTU2QTJFOyB9IC5waW5rICAgeyBmaWxsOiAjRjlDNkI4OyB9IC53aGl0ZSAgeyBmaWxsOiAjRjRGNEY0OyB9IC5ncmVlbiAgeyBmaWxsOiAjN0RFM0E2OyB9IC5ub3NlICAgeyBmaWxsOiAjMDgwODA4OyB9IDwvc3R5bGU+IDwvZGVmcz4gPHJlY3QgY2xhc3M9ImJnIiB3aWR0aD0iNDAwIiBoZWlnaHQ9IjU3NiIgcng9IjI0Ii8+IDxnIHRyYW5zZm9ybT0idHJhbnNsYXRlKDQwLDMyKSI+IDxwb2x5Z29uIGNsYXNzPSJydXN0IiBwb2ludHM9IjAsOTYgICAgMzIsMzIgICA2NCw5NiIvPiA8cG9seWdvbiBjbGFzcz0icnVzdCIgcG9pbnRzPSIyNTYsOTYgIDI4OCwzMiAgMzIwLDk2Ii8+IDxwb2x5Z29uIGNsYXNzPSJvcmFuZ2UiIHBvaW50cz0iMCwyMjQgICAzMiwxNjAgICA2NCwyMjQiLz4gPHBvbHlnb24gY2xhc3M9InBpbmsiICAgcG9pbnRzPSI2NCwyMjQgIDk2LDE2MCAgMTI4LDIyNCIvPiA8cG9seWdvbiBjbGFzcz0ib3JhbmdlIiBwb2ludHM9IjEyOCwyMjQgMTYwLDE2MCAxOTIsMjI0Ii8+IDxwb2x5Z29uIGNsYXNzPSJwaW5rIiAgIHBvaW50cz0iMTkyLDIyNCAyMjQsMTYwIDI1NiwyMjQiLz4gPHBvbHlnb24gY2xhc3M9Im9yYW5nZSIgcG9pbnRzPSIyNTYsMjI0IDI4OCwxNjAgMzIwLDIyNCIvPiA8cmVjdCBjbGFzcz0ib3JhbmdlIiB4PSIwIiAgIHk9IjI1NiIgd2lkdGg9IjY0IiBoZWlnaHQ9IjEyOCIvPiA8cmVjdCBjbGFzcz0ib3JhbmdlIiB4PSIxMjgiIHk9IjI1NiIgd2lkdGg9IjY0IiBoZWlnaHQ9IjEyOCIvPiA8cmVjdCBjbGFzcz0ib3JhbmdlIiB4PSIyNTYiIHk9IjI1NiIgd2lkdGg9IjY0IiBoZWlnaHQ9IjEyOCIvPiA8Y2lyY2xlIGNsYXNzPSJncmVlbiIgY3g9Ijk2IiAgY3k9IjMyMCIgcj0iMjQiLz4gPGNpcmNsZSBjbGFzcz0iZ3JlZW4iIGN4PSIyMjQiIGN5PSIzMjAiIHI9IjI0Ii8+IDxyZWN0IGNsYXNzPSJ3aGl0ZSIgeD0iMCIgICB5PSIzODQiIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIvPiA8cmVjdCBjbGFzcz0id2hpdGUiIHg9IjMyIiAgeT0iNDQ4IiB3aWR0aD0iMzIiIGhlaWdodD0iNjQiLz4gPHJlY3QgY2xhc3M9IndoaXRlIiB4PSI2NCIgIHk9IjM4NCIgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0Ii8+IDxwb2x5Z29uIGNsYXNzPSJub3NlIiBwb2ludHM9IjEyOCw0MTYgMTkyLDQxNiAxNjAsNDgwIi8+IDxyZWN0IGNsYXNzPSJ3aGl0ZSIgeD0iMTkyIiB5PSIzODQiIHdpZHRoPSI2NCIgaGVpZ2h0PSI2NCIvPiA8cmVjdCBjbGFzcz0id2hpdGUiIHg9IjI1NiIgeT0iMzg0IiB3aWR0aD0iNjQiIGhlaWdodD0iNjQiLz4gPHJlY3QgY2xhc3M9IndoaXRlIiB4PSIyNTYiIHk9IjQ0OCIgd2lkdGg9IjMyIiBoZWlnaHQ9IjY0Ii8+IDwvZz4gPC9zdmc+";
+    brand.appendChild(mascot);
+    brand.appendChild(document.createTextNode("TerminalUI"));
+    nav.appendChild(brand);
     [
-      ["Home", base + "/"],
       ["Tutorials", base + "/tutorials/terminaluitutorials"],
       ["Reference", base + "/documentation/terminalui/"],
     ].forEach(function (entry) {

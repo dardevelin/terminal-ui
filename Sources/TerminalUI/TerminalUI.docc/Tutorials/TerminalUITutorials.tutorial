@@ -16,4 +16,13 @@
 
         @TutorialReference(tutorial: "doc:BuildATaskList")
     }
+
+    @Chapter(name: "Interaction") {
+        Text input, focus discipline, and the mouse — the difference
+        between a demo and a tool.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:AddInputAndTheMouse")
+    }
 }

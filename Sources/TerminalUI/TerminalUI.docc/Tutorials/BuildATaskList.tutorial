@@ -30,7 +30,9 @@
                 Run it with `swift run` — you get a raw-mode app with a
                 title, a rule, and a quit key.
 
-                @Code(name: "main.swift", file: "tasks-01-01.swift")
+                @Code(name: "main.swift", file: "tasks-01-01.swift") {
+                    @Image(source: "preview-tasks-01-01.png", alt: "The running app: a bold title, a rule, and a gray placeholder line.")
+                }
             }
         }
     }
@@ -50,7 +52,9 @@
                 calls into your app on the main thread, and this is the
                 pattern all bundled examples use.
 
-                @Code(name: "main.swift", file: "tasks-02-01.swift")
+                @Code(name: "main.swift", file: "tasks-02-01.swift") {
+                    @Image(source: "preview-tasks-02-01.png", alt: "The app is unchanged — the model exists but nothing renders it yet.")
+                }
             }
 
             @Step {
@@ -60,7 +64,9 @@
 
                 Run it: the three seeded tasks appear with empty checkboxes.
 
-                @Code(name: "main.swift", file: "tasks-02-02.swift")
+                @Code(name: "main.swift", file: "tasks-02-02.swift") {
+                    @Image(source: "preview-tasks-02-02.png", alt: "Three tasks with empty checkboxes.")
+                }
             }
         }
     }
@@ -80,7 +86,9 @@
                 cursor — the same affordance the framework's own components
                 use.
 
-                @Code(name: "main.swift", file: "tasks-03-01.swift")
+                @Code(name: "main.swift", file: "tasks-03-01.swift") {
+                    @Image(source: "preview-tasks-03-01.png", alt: "The selection cursor sits on the second task.")
+                }
             }
 
             @Step {
@@ -90,7 +98,9 @@
                 Notice what you did not write: no repaint calls, no dirty
                 tracking, no key routing tables.
 
-                @Code(name: "main.swift", file: "tasks-03-02.swift")
+                @Code(name: "main.swift", file: "tasks-03-02.swift") {
+                    @Image(source: "preview-tasks-03-02.png", alt: "The selected task is checked off.")
+                }
             }
         }
     }
@@ -110,7 +120,9 @@
                 `.foreground`, `.bold`, `.padding` (see ``TerminalView``) —
                 applied where meaning calls for them.
 
-                @Code(name: "main.swift", file: "tasks-04-01.swift")
+                @Code(name: "main.swift", file: "tasks-04-01.swift") {
+                    @Image(source: "preview-tasks-04-01.png", alt: "The finished app: colored cursor, dimmed done task, open count, and a key-hint footer.")
+                }
             }
         }
     }
