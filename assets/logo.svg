@@ -1,11 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 320" width="400" height="320">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 576" width="400" height="576">
   <!--
     TerminalUI — Ember Fox (v3-fox-13-ember-compact)
-    5 cells wide × 4 rows tall. Each cell = 64×64px.
-    Row 0: rust ear-backs at cols 0,4 (tall triangles, lower-half only)
-    Row 1: orange forehead with alternating pink inner-ear tufts (▲▲▲▲▲)
-    Row 2: orange eye band with terminal-green pupils at cols 1,3
-    Row 3: white muzzle (upper-half blocks), black downward nose triangle at col 2
+
+    A faithful render of assets/logo.ans on terminal cell geometry: 5 cells
+    wide × 4 rows tall, each cell 64×128px (the ~1:2 aspect of a real terminal
+    cell — square cells squash the fox to half height and break the mark).
+
+    Glyph grid, matching the .ans byte for byte:
+      Row 0: ▲   ▲   rust ear-backs at cols 0,4
+      Row 1: ▲▲▲▲▲   forehead band, orange with pink inner-ear tufts
+      Row 2: █●█●█   orange blocks; terminal-green ● pupils on the dark bg
+      Row 3: ▜▀▼▀▛   white muzzle, quadrant chin taper, nose as negative space
+
+    Triangle glyphs (▲▼) render as a vertically centered band ~half a cell
+    tall, so stacked rows keep the small gaps a terminal shows.
   -->
   <defs>
     <style>
@@ -15,34 +23,38 @@
       .pink   { fill: #F9C6B8; }
       .white  { fill: #F4F4F4; }
       .green  { fill: #7DE3A6; }
-      .nose   { fill: #0A0A0A; }
+      .nose   { fill: #080808; }
     </style>
   </defs>
-  <rect class="bg" width="400" height="320" rx="24"/>
+  <rect class="bg" width="400" height="576" rx="24"/>
   <g transform="translate(40,32)">
-    <!-- Row 0 — ear backs: rust ▲ shapes at col 0 (x=0) and col 4 (x=256) -->
-    <polygon class="rust" points="16,64   48,0   80,64"/>
-    <polygon class="rust" points="240,64 272,0  304,64"/>
+    <!-- Row 0 — ear backs -->
+    <polygon class="rust" points="0,96    32,32   64,96"/>
+    <polygon class="rust" points="256,96  288,32  320,96"/>
 
-    <!-- Row 1 — forehead band: alternating orange + pink ▲ tips (cols 0..4) -->
-    <polygon class="orange" points="0,128   32,64   64,128"/>
-    <polygon class="pink"   points="64,128  96,64  128,128"/>
-    <polygon class="orange" points="128,128 160,64 192,128"/>
-    <polygon class="pink"   points="192,128 224,64 256,128"/>
-    <polygon class="orange" points="256,128 288,64 320,128"/>
+    <!-- Row 1 — forehead band -->
+    <polygon class="orange" points="0,224   32,160   64,224"/>
+    <polygon class="pink"   points="64,224  96,160  128,224"/>
+    <polygon class="orange" points="128,224 160,160 192,224"/>
+    <polygon class="pink"   points="192,224 224,160 256,224"/>
+    <polygon class="orange" points="256,224 288,160 320,224"/>
 
-    <!-- Row 2 — eye band: orange base + green ● pupils at cols 1 and 3 -->
-    <rect class="orange" x="0"   y="128" width="320" height="64"/>
-    <circle class="green" cx="96"  cy="160" r="16"/>
-    <circle class="green" cx="224" cy="160" r="16"/>
+    <!-- Row 2 — orange blocks with phosphor-green pupils on the dark ground -->
+    <rect class="orange" x="0"   y="256" width="64" height="128"/>
+    <rect class="orange" x="128" y="256" width="64" height="128"/>
+    <rect class="orange" x="256" y="256" width="64" height="128"/>
+    <circle class="green" cx="96"  cy="320" r="24"/>
+    <circle class="green" cx="224" cy="320" r="24"/>
 
-    <!-- Row 3 — muzzle: white upper-half cheek pads, orange outer corners,
-         black downward nose triangle at center -->
-    <rect class="orange" x="0"   y="192" width="64" height="32"/>
-    <rect class="white"  x="64"  y="192" width="64" height="32"/>
-    <rect class="white"  x="192" y="192" width="64" height="32"/>
-    <rect class="orange" x="256" y="192" width="64" height="32"/>
-    <!-- nose ▼ -->
-    <polygon class="nose" points="144,192 176,192 160,224"/>
+    <!-- Row 3 — white muzzle: ▜ and ▛ keep only the inner lower quadrant,
+         giving the chin its inward taper; the ▼ nose is near-black on the
+         dark ground, reading as the notch between the cheek pads -->
+    <rect class="white" x="0"   y="384" width="64" height="64"/>
+    <rect class="white" x="32"  y="448" width="32" height="64"/>
+    <rect class="white" x="64"  y="384" width="64" height="64"/>
+    <polygon class="nose" points="128,416 192,416 160,480"/>
+    <rect class="white" x="192" y="384" width="64" height="64"/>
+    <rect class="white" x="256" y="384" width="64" height="64"/>
+    <rect class="white" x="256" y="448" width="32" height="64"/>
   </g>
 </svg>
