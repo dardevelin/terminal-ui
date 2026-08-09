@@ -8,6 +8,8 @@
         Continue from the second tutorial's finished code, or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         as the base to edit.
+
+        @Image(source: "demo-ch3.gif", alt: "Switching tabs, flipping the settings toggle, watching the list filter.")
     }
 
     @Section(title: "Tabs") {

@@ -9,6 +9,8 @@
         Start from where the first tutorial ended, or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         and edit from there.
+
+        @Image(source: "demo-ch2.gif", alt: "Typing a new task into the prompt, then toggling it done.")
     }
 
     @Section(title: "A prompt for new tasks") {

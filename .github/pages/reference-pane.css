@@ -1,3 +1,49 @@
+/* TerminalUI docs site chrome — injected on deploy and into the local
+   preview template. Theme model matches docc-render's own: the body carries
+   data-color-scheme (light | dark | auto, persisted in
+   localStorage "developer.setting.preferredColorScheme"); auto and
+   attribute-less pages follow the OS scheme. All components consume the
+   token layer below, so the three-way toggle works everywhere. */
+
+body {
+  --tui-fg: #1d1d1f;
+  --tui-muted: #6e6e73;
+  --tui-accent: #c46a1e;
+  --tui-pill-bg: rgba(245, 245, 247, 0.8);
+  --tui-pill-border: rgba(0, 0, 0, 0.15);
+  --tui-panel-bg: rgba(250, 250, 252, 0.98);
+  --tui-panel-border: rgba(0, 0, 0, 0.12);
+  --tui-dock-bg: rgba(245, 245, 247, 0.7);
+  --tui-current-bg: rgba(196, 106, 30, 0.15);
+}
+body[data-color-scheme="dark"] {
+  --tui-fg: #f4f4f4;
+  --tui-muted: #9a9a9a;
+  --tui-accent: #f2994a;
+  --tui-pill-bg: rgba(20, 20, 20, 0.72);
+  --tui-pill-border: rgba(255, 255, 255, 0.18);
+  --tui-panel-bg: rgba(20, 20, 20, 0.95);
+  --tui-panel-border: rgba(255, 255, 255, 0.18);
+  --tui-dock-bg: rgba(20, 20, 20, 0.55);
+  --tui-current-bg: rgba(242, 153, 74, 0.18);
+}
+@media (prefers-color-scheme: dark) {
+  body[data-color-scheme="auto"],
+  body:not([data-color-scheme]) {
+    --tui-fg: #f4f4f4;
+    --tui-muted: #9a9a9a;
+    --tui-accent: #f2994a;
+    --tui-pill-bg: rgba(20, 20, 20, 0.72);
+    --tui-pill-border: rgba(255, 255, 255, 0.18);
+    --tui-panel-bg: rgba(20, 20, 20, 0.95);
+    --tui-panel-border: rgba(255, 255, 255, 0.18);
+    --tui-dock-bg: rgba(20, 20, 20, 0.55);
+    --tui-current-bg: rgba(242, 153, 74, 0.18);
+  }
+}
+
+/* --- slide-over reference pane ----------------------------------------- */
+
 .tui-refpane-backdrop {
   position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45);
   display: none; z-index: 9999;
@@ -17,93 +63,86 @@
 }
 .tui-refpane-bar {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 10px 14px; border-bottom: 1px solid rgba(128, 128, 128, 0.3);
+  padding: 10px 14px; border-bottom: 1px solid var(--tui-panel-border);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-.tui-refpane-open { font-size: 13px; }
+.tui-refpane-open { font-size: 13px; color: var(--tui-accent); }
 .tui-refpane-close {
   border: none; background: none; font-size: 16px; cursor: pointer;
-  color: inherit; padding: 4px 8px;
+  color: var(--tui-fg); padding: 4px 8px;
 }
 .tui-refpane-frame { flex: 1; border: none; width: 100%; }
+
+/* --- bottom-right dock -------------------------------------------------- */
 
 .tui-docs-nav {
   position: fixed; bottom: 14px; right: 14px; z-index: 9998;
   display: flex; gap: 6px; align-items: center;
   padding: 5px; border-radius: 999px;
-  background: rgba(20, 20, 20, 0.55);
+  background: var(--tui-dock-bg);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
-@media (prefers-color-scheme: light) {
-  .tui-docs-nav { background: rgba(245, 245, 247, 0.7); }
-}
 .tui-docs-nav a {
   font-size: 12px; line-height: 1; text-decoration: none;
   padding: 6px 10px; border-radius: 999px;
-  color: #f4f4f4; background: rgba(20, 20, 20, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  color: var(--tui-fg); background: var(--tui-pill-bg);
+  border: 1px solid var(--tui-pill-border);
 }
-.tui-docs-nav a:hover { border-color: #f2994a; color: #f2994a; }
-@media (prefers-color-scheme: light) {
-  .tui-docs-nav a {
-    color: #1d1d1f; background: rgba(245, 245, 247, 0.8);
-    border-color: rgba(0, 0, 0, 0.15);
-  }
-  .tui-docs-nav a:hover { border-color: #c46a1e; color: #c46a1e; }
-}
-
+.tui-docs-nav a:hover { border-color: var(--tui-accent); color: var(--tui-accent); }
 .tui-docs-brand {
   display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; font-weight: 600; line-height: 1; text-decoration: none;
-  padding: 5px 10px 5px 6px; border-radius: 999px;
-  color: #f4f4f4; background: rgba(20, 20, 20, 0.72);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  padding: 5px 10px 5px 6px !important; border-radius: 999px;
 }
 .tui-docs-brand img { width: 16px; height: auto; border-radius: 3px; display: block; }
-.tui-docs-brand:hover { border-color: #f2994a; color: #f2994a; }
-@media (prefers-color-scheme: light) {
-  .tui-docs-brand {
-    color: #1d1d1f; background: rgba(245, 245, 247, 0.8);
-    border-color: rgba(0, 0, 0, 0.15);
-  }
-  .tui-docs-brand:hover { border-color: #c46a1e; color: #c46a1e; }
-}
+
+/* --- series navigator --------------------------------------------------- */
 
 .tui-series { display: inline-flex; gap: 6px; position: relative; }
 .tui-series-pill {
   font-size: 12px; line-height: 1; text-decoration: none; cursor: pointer;
-  padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.18);
-  color: #f4f4f4; background: rgba(20, 20, 20, 0.72); font-family: inherit;
+  padding: 6px 10px; border-radius: 999px;
+  border: 1px solid var(--tui-pill-border);
+  color: var(--tui-fg); background: var(--tui-pill-bg); font-family: inherit;
 }
-.tui-series-pill:hover { border-color: #f2994a; color: #f2994a; }
+.tui-series-pill:hover { border-color: var(--tui-accent); color: var(--tui-accent); }
 .tui-series-list {
   display: none; position: absolute; bottom: 40px; left: 0;
   min-width: 240px; padding: 10px 12px; border-radius: 10px;
-  background: rgba(20, 20, 20, 0.95); border: 1px solid rgba(255, 255, 255, 0.18);
+  background: var(--tui-panel-bg); border: 1px solid var(--tui-panel-border);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 .tui-series-list.tui-series-list-visible { display: block; }
 .tui-series-chapter {
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
-  color: #9a9a9a; margin: 8px 0 4px;
+  color: var(--tui-muted); margin: 8px 0 4px;
 }
 .tui-series-chapter:first-child { margin-top: 0; }
 .tui-series-list a {
   display: block; font-size: 12px; text-decoration: none;
-  color: #f4f4f4; padding: 4px 6px; border-radius: 6px;
+  color: var(--tui-fg); padding: 4px 6px; border-radius: 6px;
 }
-.tui-series-list a:hover { color: #f2994a; }
-.tui-series-list a.tui-series-current { background: rgba(242, 153, 74, 0.18); color: #f2994a; }
-@media (prefers-color-scheme: light) {
-  .tui-series-pill { color: #1d1d1f; background: rgba(245, 245, 247, 0.8); border-color: rgba(0, 0, 0, 0.15); }
-  .tui-series-pill:hover { border-color: #c46a1e; color: #c46a1e; }
-  .tui-series-list { background: rgba(250, 250, 252, 0.98); border-color: rgba(0, 0, 0, 0.12); }
-  .tui-series-chapter { color: #6e6e73; }
-  .tui-series-list a { color: #1d1d1f; }
-  .tui-series-list a:hover { color: #c46a1e; }
-  .tui-series-list a.tui-series-current { background: rgba(196, 106, 30, 0.15); color: #c46a1e; }
+.tui-series-list a:hover { color: var(--tui-accent); }
+.tui-series-list a.tui-series-current { background: var(--tui-current-bg); color: var(--tui-accent); }
+
+/* --- lightbox ----------------------------------------------------------- */
+
+.tui-lightbox {
+  position: fixed; inset: 0; z-index: 10000;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(0, 0, 0, 0.82);
+  cursor: zoom-out;
+}
+.tui-lightbox.tui-lightbox-visible { display: flex; }
+.tui-lightbox img {
+  max-width: 94vw; max-height: 92vh;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+.tui-lightbox-hint {
+  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+  color: #ccc; font-size: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }

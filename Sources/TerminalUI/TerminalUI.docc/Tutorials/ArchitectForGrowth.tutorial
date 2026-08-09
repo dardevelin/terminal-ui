@@ -1,0 +1,251 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Architect for growth") {
+        The task app is production-polished — and every line of it knows
+        every other line. That is fine at one screen; it is what makes the
+        tenth screen expensive. This chapter refactors the app around three
+        old ideas in their terminal shape: a service layer for side
+        effects, command/query separation for the store, and MVVM's rule
+        that views make no decisions. The app looks identical after every
+        step — the diffs are the lesson.
+
+        Continue from the previous chapter's finished code, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        as the base to edit.
+
+        @Image(source: "demo-ch7.gif", alt: "The refactored app loading through its service, then toggling tasks — behavior unchanged, structure earned.")
+    }
+
+    @Section(title: "Put side effects behind a service") {
+        @ContentAndMedia {
+            A service is the app's only door to the outside world. Today
+            the "outside world" is a four-second sleep and three hardcoded
+            tasks living inside a `.task` closure; the day it becomes a
+            file or an HTTP call, every view that knows about the sleep is
+            a view you have to edit. A `TaskService` protocol makes that
+            knowledge swappable — and because the store receives its
+            service through the initializer, a test can hand it a canned
+            one and drive every mutation without a terminal, a delay, or a
+            file in sight. That is the same seam this framework uses on
+            itself: behavior worth trusting is behavior you can exercise
+            from a plain test target.
+        }
+
+        @Steps {
+            @Step {
+                Define `TaskService` — `load()` and `save(_:)`, nothing
+                more — and move the seed data and the simulated latency
+                into `InMemoryTaskService`. The protocol is `Sendable`
+                because services are called from async work; making the
+                protocol carry that requirement means every future
+                implementation proves it too. The store takes
+                `init(service: any TaskService)`, keeps it private, and
+                gains one async command, `load()`, that asks the service
+                and lands the result; mutations now end with
+                `service.save(tasks)` — the in-memory save has nowhere to
+                write, which is honest, and exactly where a file-backed
+                service would.
+
+                The view's `.task` shrinks to `await store.load()` — it no
+                longer knows where tasks come from or how long they take.
+                Only the spinner ticker stays behind, on the loading row
+                itself: animation is presentation, so it belongs to the
+                view, and it stops when the load lands.
+
+                @Code(name: "main.swift", file: "tasks7-01-01.swift") {
+                    @Image(source: "preview-tasks7-01-01.png", alt: "The app after the service refactor: tasks loaded through the service, the first one toggled done.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Commands write, queries read") {
+        @ContentAndMedia {
+            The store's surface has grown organically: mutations, derived
+            values, and helpers in the order they were needed. This step
+            reorganizes it around one rule — CQRS in its lightweight,
+            single-process form. Commands (`addDraft`, `toggle(id:)`,
+            `deleteSelected`, `moveSelection`) are the only code anywhere
+            that writes state, and each is named for the user's intent.
+            Queries (`visibleTasks`, `remaining`, `completion`,
+            `selectedTask`) are the only surface views render, each
+            derived fact computed in exactly one place. Handlers call
+            commands; bodies read queries; nothing else touches state.
+
+            Not a line of behavior changes. What changes is what you can
+            answer by reading: "what can mutate the task list?" is now a
+            one-section grep instead of a whole-program audit.
+        }
+
+        @Steps {
+            @Step {
+                Regroup the store under two `MARK` headers and add the two
+                queries the views were computing inline: `selectedTask`
+                replaces the `first(where:)` in the detail pane (and the
+                `contains` gate in `requestDelete`), and `completion`
+                names what the header's `remaining == 0` check was really
+                asking — an empty list counts as vacuously complete, so
+                the answer is bit-identical to the old one.
+
+                Run it and nothing is different, which is the point: this
+                is the refactor you make while the app is small so the
+                rule is already standing when it is not. At one screen the
+                discipline is optional; at ten screens, with three stores,
+                it is the difference between a codebase and a crime scene.
+
+                @Code(name: "main.swift", file: "tasks7-02-01.swift") {
+                    @Image(source: "preview-tasks7-02-01.png", alt: "The app after the command/query split, rendering identically: the second task selected and toggled, the detail pane following.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Views stay dumb") {
+        @ContentAndMedia {
+            Map the vocabulary onto what you have and MVVM turns out to be
+            already half-built: `TaskItem` and `TaskService` are the
+            model, the `@Observable` `TaskStore` is the view-model, and
+            every ``TerminalView`` struct is the view. The remaining leak
+            is decision-making in view bodies — `TaskRow` chooses glyphs
+            and colors, the header runs a three-way `if`. Bodies re-run on
+            every observed change, so logic in a body is logic that runs
+            per frame, invisible to tests, and duplicated the first time a
+            second view needs the same answer. The fix is to hand views
+            conclusions, not questions.
+        }
+
+        @Steps {
+            @Step {
+                Add two presentation structs. `TaskRowPresentation` is
+                everything a row shows — cursor, checkbox, both colors —
+                built by the `row(for:)` query; `StatusLight` is a label
+                whose ``Color`` carries its meaning, produced by
+                `statusLight` for the header and `stateLight(for:)` for
+                the detail pane. `TaskRow`'s body loses its last
+                conditional, and the header's `if`/`else` chain collapses
+                into one `StatusText` line.
+
+                Every choice the UI makes is now a named query you can pin
+                with `#expect`; the views place answers on screen and do
+                nothing else. The app renders the same pixels it did three
+                steps ago — but the next screen you add starts from parts
+                that already know their jobs.
+
+                @Code(name: "main.swift", file: "tasks7-03-01.swift") {
+                    @Image(source: "preview-tasks7-03-01.png", alt: "The finished app rendering through presentation structs: the last task selected and done, the status light showing two open.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Why does the store take its `TaskService` through the initializer instead of constructing `InMemoryTaskService` itself?
+
+            @Choice(isCorrect: true) {
+                The store only knows the protocol, so tests can inject a
+                canned service and exercise every command without a
+                terminal, a delay, or a real data source.
+
+                @Justification(reaction: "Right.") {
+                    Injection moves the choice of implementation to the
+                    one construction site. The store becomes testable from
+                    a plain test target — the same seam the framework uses
+                    for its own behavior.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Constructing a service inside an `@Observable` class is
+                not allowed.
+
+                @Justification(reaction: "Not quite.") {
+                    The store could build the service itself just fine —
+                    it would compile and run. It would also weld the store
+                    to one implementation, which is what injection undoes.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Initializer injection makes `load()` run faster.
+
+                @Justification(reaction: "Not quite.") {
+                    Performance is identical either way. What injection
+                    buys is substitutability — for tests today, for a
+                    file-backed service tomorrow.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Under the command/query rule, what is allowed to call `deleteSelected()`?
+
+            @Choice(isCorrect: false) {
+                Any view body that notices the list should shrink.
+
+                @Justification(reaction: "Not quite.") {
+                    Bodies render queries; they never call commands. A
+                    body that mutated state would trigger another render
+                    from inside a render.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                Event handlers — `onEvent`, an `AlertAction`, an
+                `onClick` — which are the only places user intent arrives.
+
+                @Justification(reaction: "Right.") {
+                    Commands are the only writers, and handlers are the
+                    only callers of commands. Bodies read queries, and
+                    nothing else touches state — that is the whole rule.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A query, so views can trigger the delete by reading it.
+
+                @Justification(reaction: "Not quite.") {
+                    A query that mutated state would make every render a
+                    potential write — the exact ambiguity the separation
+                    exists to remove. Queries stay read-only.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Why must view bodies stay logic-free?
+
+            @Choice(isCorrect: false) {
+                Result builders cannot compile conditionals.
+
+                @Justification(reaction: "Not quite.") {
+                    They can — the app has used `if` in bodies since
+                    chapter one. The reason is about where decisions
+                    live, not about what compiles.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                Bodies re-run on every observed change, so body logic runs
+                per frame, cannot be tested directly, and gets duplicated
+                the first time another view needs the same decision.
+
+                @Justification(reaction: "Right.") {
+                    Moving the decision into a query names it, computes it
+                    once per frame in one place, and makes it testable
+                    with `#expect` — the view just places the answer.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Logic in a body blocks the render thread and drops frames.
+
+                @Justification(reaction: "Not quite.") {
+                    A ternary in a body will not drop a frame. The cost is
+                    architectural — unnamed, untestable, duplicated
+                    decisions — and it compounds with screen count, not
+                    with CPU.
+                }
+            }
+        }
+    }
+}

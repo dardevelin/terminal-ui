@@ -8,6 +8,8 @@
         Continue from Give It Structure's finished code, or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         as the base to edit.
+
+        @Image(source: "demo-ch5.gif", alt: "Opening the stats tab: table, sparkline, bars, and gauge.")
     }
 
     @Section(title: "A table of the facts") {

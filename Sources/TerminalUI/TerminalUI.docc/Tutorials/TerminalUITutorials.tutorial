@@ -12,7 +12,7 @@
     @Chapter(name: "Foundations") {
         Stand up an app, drive it from observable state, and handle keys.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks-04-01.png", alt: "The finished task list: colored cursor, checkboxes, open count.")
 
         @TutorialReference(tutorial: "doc:BuildATaskList")
     }
@@ -21,7 +21,7 @@
         Text input, focus discipline, and the mouse — the difference
         between a demo and a tool.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks2-03-01.png", alt: "The task app with a prompt, a badge, and a toggled task.")
 
         @TutorialReference(tutorial: "doc:AddInputAndTheMouse")
     }
@@ -30,7 +30,7 @@
         Tabs, split panes, and a settings form that changes the app live —
         composing screens once one stops being enough.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks3-02-01.png", alt: "Tabs across the top, list and detail side by side.")
 
         @TutorialReference(tutorial: "doc:GiveItStructure")
     }
@@ -39,7 +39,7 @@
         Push and pop with a navigation stack — and the judgment call
         between drilling down and showing both at once.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks4-03-01.png", alt: "A pushed detail screen with a breadcrumb title.")
 
         @TutorialReference(tutorial: "doc:NavigateToDetail")
     }
@@ -48,7 +48,7 @@
         Tables, sparklines, bars, and gauges — choosing the display form
         that fits what the number means.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks5-02-01.png", alt: "A stats tab: table, sparkline, and bar chart.")
 
         @TutorialReference(tutorial: "doc:ShowTheNumbers")
     }
@@ -57,8 +57,17 @@
         Confirmation before destruction, async loading, and the debug
         tools that work on every app you build.
 
-        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+        @Image(source: "preview-tasks6-01-01.png", alt: "A confirmation dialog floating over the app.")
 
         @TutorialReference(tutorial: "doc:MakeItProduction")
+    }
+
+    @Chapter(name: "Architecture") {
+        Services, commands and queries, and views that stay dumb — the
+        discipline that is optional at one screen and load-bearing at ten.
+
+        @Image(source: "preview-tasks7-03-01.png", alt: "The task app rendered through its presentation layer.")
+
+        @TutorialReference(tutorial: "doc:ArchitectForGrowth")
     }
 }

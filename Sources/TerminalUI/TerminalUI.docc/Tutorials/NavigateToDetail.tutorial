@@ -9,6 +9,8 @@
         Continue from the third tutorial's finished code, or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         as the base to edit.
+
+        @Image(source: "demo-ch4.gif", alt: "Pushing a task detail, toggling it, popping back.")
     }
 
     @Section(title: "Push instead of split") {

@@ -9,6 +9,8 @@
         before you start (the Install section of the README shows both) — or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         and read along with it running.
+
+        @Image(source: "demo-ch1.gif", alt: "The finished task list in motion: moving the cursor and toggling tasks.")
     }
 
     @Section(title: "Stand up the app") {

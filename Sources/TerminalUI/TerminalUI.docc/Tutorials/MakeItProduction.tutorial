@@ -8,6 +8,8 @@
         Continue from the third tutorial's finished code, or
         [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
         as the base to edit.
+
+        @Image(source: "demo-ch6.gif", alt: "The app loading, then a guarded delete with a confirmation dialog.")
     }
 
     @Section(title: "Destructive actions ask first") {
@@ -81,6 +83,9 @@
             debug tool already works against it — the tools ship in the
             framework behind `#if DEBUG`, so a debug build has them all
             and a release build compiles every trace of them away.
+
+            Up next: <doc:ArchitectForGrowth> — the structure that keeps
+            all of this maintainable as the app grows.
         }
 
         @Steps {

@@ -1,28 +1,21 @@
 /* docc-render (Xcode toolchain build) renders tutorial assessment choices
    with a background token chain that resolves to black under a light color
-   scheme, hiding the choice text (swift-docc-render topic.css: .choice uses
-   --colors-text-background → --color-text-background). Scope the fix to the
-   choices; page-level tokens stay untouched. Honors both the OS scheme and
-   docc-render's own in-page toggle (data-color-scheme). */
+   scheme, hiding the choice text. Scope the fix to the choices and follow
+   the same three-way theme model as the rest of the site chrome. */
 .choice {
   background: #f5f5f7 !important;
   color: #1d1d1f !important;
 }
-@media (prefers-color-scheme: dark) {
-  .choice {
-    background: #1d1d1f !important;
-    color: #f4f4f4 !important;
-  }
-}
-[data-color-scheme="light"] .choice,
-body[data-color-scheme="light"] .choice {
-  background: #f5f5f7 !important;
-  color: #1d1d1f !important;
-}
-[data-color-scheme="dark"] .choice,
 body[data-color-scheme="dark"] .choice {
   background: #1d1d1f !important;
   color: #f4f4f4 !important;
+}
+@media (prefers-color-scheme: dark) {
+  body[data-color-scheme="auto"] .choice,
+  body:not([data-color-scheme]) .choice {
+    background: #1d1d1f !important;
+    color: #f4f4f4 !important;
+  }
 }
 
 /* Tutorial step previews render collapsed to ~100px — far too small to
@@ -42,23 +35,4 @@ body[data-color-scheme="dark"] .choice {
 .code-listing {
   max-height: calc(100vh - 160px);
   overflow-y: auto;
-}
-
-/* Lightbox for tutorial images — any preview click opens it full size. */
-.tui-lightbox {
-  position: fixed; inset: 0; z-index: 10000;
-  display: none; align-items: center; justify-content: center;
-  background: rgba(0, 0, 0, 0.82);
-  cursor: zoom-out;
-}
-.tui-lightbox.tui-lightbox-visible { display: flex; }
-.tui-lightbox img {
-  max-width: 94vw; max-height: 92vh;
-  border-radius: 6px;
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
-}
-.tui-lightbox-hint {
-  position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-  color: #ccc; font-size: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
