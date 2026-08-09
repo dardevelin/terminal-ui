@@ -126,3 +126,29 @@ private struct Node: Identifiable {
         #expect(firstStackOverflow(graph.root!) == nil)
     }
 }
+
+@MainActor
+@Suite struct TabViewBarLayoutTests {
+    /// The tab bar measures its width through a GeometryReader; when readers
+    /// joined the flex vocabulary, the BAR became the greedy child and shoved
+    /// every tab's content to the bottom of the view. The bar is one row by
+    /// declaration — content must start right under it.
+    @Test func tabContentStartsDirectlyUnderTheBar() {
+        let view = TabView(selection: Binding(get: { 0 }, set: { _ in })) {
+            Tab("One") { Text("first page content") }
+            Tab("Two") { Text("second page content") }
+        }
+        let graph = AttributeGraph()
+        var buffer = CellBuffer(width: 40, height: 10)
+        let rect = Rect(x: 0, y: 0, width: 40, height: 10)
+        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+            graph.update(from: view)
+            Layout.measureAndPlace(graph: graph.root!, in: rect)
+            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+        }
+        let rows = (0..<10).map { y in (0..<40).map { String(buffer[$0, y].character) }.joined() }
+        #expect(rows[0].contains("One"))
+        #expect(rows.prefix(3).contains { $0.contains("first page content") },
+                "content should sit directly under the bar, got rows: \(rows)")
+    }
+}

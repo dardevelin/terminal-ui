@@ -1,18 +1,29 @@
 /// A descriptor for a single tab — holds a label and a content builder closure.
-/// Used with `TabView` to define tabbed content.
+/// Used with ``TabView`` to define tabbed content.
+///
+/// `Tab` is declarative data, not a view: it renders nothing on its own
+/// and only means something inside a ``TabView`` builder block, where
+/// ``TabBuilder`` collects it.
 ///
 /// Usage:
-/// ```
+/// ```swift
 /// TabView {
-///     Tab("Overview") { Text("First tab content") }
-///     Tab("Details")  { VStack { ... } }
-///     Tab("Settings") { SettingsView() }
+///     Tab("First") { Text("first page content") }
+///     Tab("Second") { Text("second page content") }
+///     Tab("Third") { Text("third page content") }
 /// }
 /// ```
 public struct Tab<Content: TerminalView> {
+    /// The text shown in the tab bar. Rendered with one cell of padding
+    /// each side; its width counts toward tab-bar overflow.
     public let label: String
+    /// The pane shown while this tab is selected.
     public let content: Content
 
+    /// - Parameters:
+    ///   - label: the tab-bar text. Keep it short — long labels push
+    ///     siblings into overflow (`<` / `>`) sooner.
+    ///   - content: the pane to show while this tab is selected.
     public init(_ label: String, @TerminalViewBuilder content: () -> Content) {
         self.label = label
         self.content = content()
@@ -21,17 +32,30 @@ public struct Tab<Content: TerminalView> {
 
 /// Storage for a type-erased tab — extracts the label
 /// and keeps the content as an existential for graph integration.
+///
+/// Exists because a `TabView`'s tabs hold heterogeneous content types;
+/// erasing each ``Tab`` to a descriptor lets ``TabBuilder`` collect them
+/// into one flat array. Normally produced by the builder — construct one
+/// directly only when assembling tabs dynamically outside a builder block
+/// (e.g. mapping a runtime collection into tabs).
 public struct TabDescriptor {
+    /// The text shown in the tab bar.
     public let label: String
+    /// The tab's pane, type-erased for storage alongside other tabs.
     public let content: any TerminalView
 
+    /// - Parameters:
+    ///   - label: the tab-bar text.
+    ///   - content: the pane to show while this tab is selected.
     public init(label: String, content: any TerminalView) {
         self.label = label
         self.content = content
     }
 }
 
-/// Result builder that collects `Tab` instances into a flat array of descriptors.
+/// Result builder that collects ``Tab`` instances into a flat array of
+/// ``TabDescriptor``s. Accepts `Tab` values of differing content types in
+/// one block — the erasure happens here, per expression.
 @resultBuilder
 public struct TabBuilder {
     public static func buildBlock(_ tabs: [TabDescriptor]...) -> [TabDescriptor] {
@@ -51,25 +75,35 @@ public struct TabBuilder {
 ///
 /// Features:
 /// - Tab bar with active tab highlighted (bold + underline) and inactive tabs dimmed
-/// - Keyboard navigation: left/right arrows when tab bar is focused, digit keys 1-9
+/// - Keyboard navigation: left/right arrows when tab bar is focused,
+///   Home/End for first/last, digit keys 1-9 (plain or with Ctrl)
 /// - Mouse: click on any tab label to switch
-/// - Overflow indicators (< >) when tabs exceed available width
+/// - Overflow indicators (< >) when tabs exceed available width; the
+///   selected tab stays visible, centered among what fits
 ///
-/// Usage with builder pattern:
-/// ```
+/// The tab bar occupies one terminal row, a ``Divider`` sits beneath it,
+/// and the selected pane fills the rest of the container. Only the
+/// selected pane exists in the layout graph — switching tabs rebuilds the
+/// content subtree, so inactive panes cost nothing per frame. Reach for
+/// `TabView` when panes are alternatives sharing one region; use
+/// ``SplitView`` when they should be visible side by side.
+///
+/// Usage with builder pattern (selection managed internally):
+/// ```swift
 /// TabView {
-///     Tab("Overview") { Text("First tab content") }
-///     Tab("Details")  { VStack { ... } }
-///     Tab("Settings") { SettingsView() }
+///     Tab("First") { Text("first page content") }
+///     Tab("Second") { Text("second page content") }
+///     Tab("Third") { Text("third page content") }
 /// }
 /// ```
 ///
-/// Usage with selection binding:
-/// ```
+/// Usage with selection binding, for driving or observing the selected
+/// index from app state:
+/// ```swift
 /// @TerminalState var tab = 0
 /// TabView(selection: $tab) {
-///     Tab("Overview") { Text("First") }
-///     Tab("Details")  { VStack { ... } }
+///     Tab("First") { Text("first page content") }
+///     Tab("Second") { Text("second page content") }
 /// }
 /// ```
 public struct TabView: TerminalView {
@@ -79,12 +113,22 @@ public struct TabView: TerminalView {
     @TerminalState var internalSelection = 0
 
     /// Create a TabView with automatic internal selection management.
+    ///
+    /// - Parameter content: the tabs, declared with ``Tab`` (or raw
+    ///   ``TabDescriptor`` values), in bar order.
     public init(@TabBuilder content: () -> [TabDescriptor]) {
         self.tabs = content()
         self.selectionBinding = nil
     }
 
     /// Create a TabView with an external selection binding.
+    ///
+    /// - Parameters:
+    ///   - selection: binding to the selected tab index. Out-of-range
+    ///     values are clamped when read, so a stale index cannot crash
+    ///     after tabs change count.
+    ///   - content: the tabs, declared with ``Tab`` (or raw
+    ///     ``TabDescriptor`` values), in bar order.
     public init(selection: Binding<Int>, @TabBuilder content: () -> [TabDescriptor]) {
         self.tabs = content()
         self.selectionBinding = selection
@@ -181,6 +225,11 @@ struct TabBar: TerminalView {
                 )
             }
         }
+        // The reader exists to learn the bar's WIDTH; the bar is one row by
+        // declaration. Without this bound, a GeometryReader's stack-flex
+        // greediness makes the bar the flexible child of TabView's column
+        // and every tab's content gets shoved to the bottom.
+        .frame(height: 1)
     }
 
     // MARK: - Tab Bar Layout
