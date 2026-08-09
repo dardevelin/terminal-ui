@@ -1,6 +1,21 @@
 # Getting Started
 
-Set up TerminalUI in a new Swift package and write your first TUI.
+The hands-on path: install, run something real, then build your own.
+
+If you'd rather type than read, this page is yours. Ten minutes from here
+you can have the package installed and the first tutorial open next to a
+running app:
+
+1. Install below (two minutes).
+2. Then go straight to <doc:BuildATaskList> — every step is a complete
+   program with a rendered preview, and reference pages open in a side
+   panel so you never leave the steps.
+3. When you want the second layer — input, focus rules, the mouse —
+   continue with <doc:AddInputAndTheMouse>.
+
+Prefer to understand the machine first? The architecture articles under
+<doc:ArchitecturalModels> are the reading path; this page will still be
+here when you want your hands on it.
 
 ## Requirements
 

@@ -25,4 +25,13 @@
 
         @TutorialReference(tutorial: "doc:AddInputAndTheMouse")
     }
+
+    @Chapter(name: "Structure") {
+        Tabs, split panes, and a settings form that changes the app live —
+        composing screens once one stops being enough.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:GiveItStructure")
+    }
 }

@@ -1,0 +1,120 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Give it structure") {
+        One screen stops scaling the moment an app does two jobs. Split the
+        task list into tabs with ``TabView``, put a detail pane beside the
+        list with ``SplitView``, and add a ``Form``-based settings screen
+        whose choices change the app live.
+
+        Continue from the second tutorial's finished code, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        as the base to edit.
+    }
+
+    @Section(title: "Tabs") {
+        @ContentAndMedia {
+            ``TabView`` owns the whole navigation surface: the bar renders
+            the labels, digits and arrows switch inside the bar, and Tab
+            crosses into the content. Your job is only to say what each tab
+            shows — selection is one `Int` in the store, bound the same way
+            as every other piece of state.
+        }
+
+        @Steps {
+            @Step {
+                Wrap the app in a ``TabView`` with two ``Tab``s: the whole
+                existing screen becomes `TasksPane`, and Settings holds a
+                placeholder. The extracted pane is unchanged code — moving a
+                screen into a tab is a cut-and-paste refactor, which is the
+                point of view composition.
+
+                @Code(name: "main.swift", file: "tasks3-01-01.swift") {
+                    @Image(source: "preview-tasks3-01-01.png", alt: "The task app with a two-tab bar across the top.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "A detail pane beside the list") {
+        @ContentAndMedia {
+            ``SplitView`` renders resizable panes from a ``SplitState`` tree
+            of leaves and nested splits. Its panes are ordinary view values —
+            their bodies read your store, so every pane follows state changes
+            like any other view.
+        }
+
+        @Steps {
+            @Step {
+                Build a `DetailPane` that shows the selected task, hold a
+                `SplitState` on the store (so pane ratios survive
+                re-renders), and give the split the room with `.flexible()` —
+                the prompt and the key hints move below it, full width.
+
+                Move the selection with the arrows: the detail follows,
+                because both panes read the same store.
+
+                @Code(name: "main.swift", file: "tasks3-02-01.swift") {
+                    @Image(source: "preview-tasks3-02-01.png", alt: "List on the left, a detail pane for the selected task on the right.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Settings that bite") {
+        @ContentAndMedia {
+            A settings screen earns its tab only if the settings do
+            something. ``Form`` gives you the scrolling, the label column,
+            and focus containment; a ``Toggle`` bound to the store gives the
+            option teeth.
+        }
+
+        @Steps {
+            @Step {
+                Replace the placeholder with a ``Form`` holding one
+                ``Section`` and one ``Toggle`` — "Show completed" — and
+                filter the list through a `visibleTasks` computed property.
+
+                Press `2` for Settings, toggle it, press `1`: completed
+                tasks are gone from the list. State in one place, three
+                views reading it.
+
+                @Code(name: "main.swift", file: "tasks3-03-01.swift") {
+                    @Image(source: "preview-tasks3-03-01.png", alt: "The Settings tab: a form with a Show completed toggle.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Why does the store hold the `SplitState` instead of the view building it in `body`?
+
+            @Choice(isCorrect: true) {
+                `SplitState` carries mutable pane ratios — rebuilding it
+                every render would reset any resizing the user did.
+
+                @Justification(reaction: "Right.") {
+                    State that must survive re-renders lives outside `body`;
+                    `body` is re-evaluated whenever observed state changes.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Views cannot construct `SplitState`.
+
+                @Justification(reaction: "Not quite.") {
+                    They can — it would just be a fresh tree each render,
+                    forgetting the user's pane ratios.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The store makes the split render faster.
+
+                @Justification(reaction: "Not quite.") {
+                    Performance is unchanged — persistence of the ratios is
+                    what's at stake.
+                }
+            }
+        }
+    }
+}
