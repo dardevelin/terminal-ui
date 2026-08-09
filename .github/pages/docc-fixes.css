@@ -36,3 +36,35 @@ body[data-color-scheme="dark"] .choice {
   max-height: calc(100vh - 160px);
   overflow-y: auto;
 }
+
+/* The tutorial hero renders the @Intro image as a faint full-bleed
+   background behind the text. Reshape that element into a media panel to
+   the right of the text column: fully opaque, contained, vertically
+   centered. The text column already occupies the left half. */
+.hero .bg {
+  left: auto !important;
+  right: 4% !important;
+  top: 50% !important;
+  transform: translateY(-50%);
+  width: 40% !important;
+  height: 76% !important;
+  opacity: 1 !important;
+  background-size: contain !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  border-radius: 8px;
+}
+@media (max-width: 900px) {
+  .hero .bg { display: none; }
+}
+
+/* Chapter cards on the tutorials overview render small enough to muddy the
+   terminal screenshots; give the asset column more of the row. */
+.tutorials-overview .content-section .asset,
+.tutorials-overview .content-section .image {
+  max-width: 460px !important;
+}
+.tutorials-overview .content-section .asset img,
+.tutorials-overview .content-section .image img {
+  width: 100%; height: auto;
+}

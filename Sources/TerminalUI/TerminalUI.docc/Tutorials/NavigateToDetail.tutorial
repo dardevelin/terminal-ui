@@ -20,7 +20,10 @@
             `navigationDestination(for:)` builds from that value.
             ``NavigationLink`` rows do the pushing, and the path is a plain
             array on the store: links append to it, Esc pops it, and the
-            stack renders whatever the top element resolves to.
+            stack renders whatever the top element resolves to. That one
+            array replaces the hand-rolled screen enum, the Esc handling,
+            and the way-back bookkeeping a manual approach accretes —
+            reach for it whenever a drill-down deserves the whole screen.
         }
 
         @Steps {

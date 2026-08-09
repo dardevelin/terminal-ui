@@ -111,6 +111,13 @@
             per frame, invisible to tests, and duplicated the first time a
             second view needs the same answer. The fix is to hand views
             conclusions, not questions.
+
+            The same step pays off the service seam: the composition root
+            swaps `InMemoryTaskService` for a JSON-backed
+            `FileTaskService` — one changed line, nothing else touched —
+            and your tasks now survive a relaunch. That is the whole
+            argument for injection, demonstrated: the day you want a real
+            backend, the store and every view are already ready.
         }
 
         @Steps {

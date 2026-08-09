@@ -44,7 +44,10 @@
     @Section(title: "The shape of history") {
         @ContentAndMedia {
             A table answers "what is the value"; charts answer everything
-            else. ``Sparkline`` plots a series onto a ``BrailleCanvas`` —
+            else — trend, spikes, and comparisons that sixty rows of
+            digits bury, whether the series is task completions, request
+            latency, or queue depth. ``Sparkline`` plots a series onto a
+            ``BrailleCanvas`` —
             every cell is a 2×4 grid of braille dots, so a 40×3-cell strip
             resolves 80×12 points — and ``BarChart`` compares labeled
             values with eighth-block precision. Both are views like any
@@ -137,16 +140,19 @@
         }
 
         @MultipleChoice {
-            How does a ``Table`` turn a `TaskItem` into the text of a cell?
+            Why does displaying `TaskItem` in a ``Table`` require no
+            changes to the model?
 
             @Choice(isCorrect: true) {
                 Each ``TableColumn`` carries a closure mapping a row to its
-                cell string.
+                cell string — the projection lives at the call site, not
+                on the model.
 
                 @Justification(reaction: "Right.") {
                     The column owns the projection — `{ $0.done ? "done" :
                     "open" }` — so the model never has to know it is being
-                    displayed.
+                    displayed, and two tables can show the same type
+                    differently.
                 }
             }
 

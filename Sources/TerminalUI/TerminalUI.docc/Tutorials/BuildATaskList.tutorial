@@ -3,7 +3,9 @@
         Build a small task manager: a list rendered from observable state,
         a selection cursor moved with the keyboard, and a toggle. Everything
         SwiftUI taught you about state driving views applies unchanged —
-        the pixels are just terminal cells.
+        the pixels are just terminal cells, and the escape codes, cursor
+        math, and redraw bookkeeping a hand-rolled TUI opens with never
+        appear.
 
         Create an executable package and add TerminalUI as a dependency
         before you start (the Install section of the README shows both) — or
@@ -17,9 +19,13 @@
         @ContentAndMedia {
             A TerminalUI app is a type conforming to ``TerminalAppProtocol``:
             `content()` declares the view tree, `onEvent(_:)` sees every
-            input event first and returns `false` to quit. Follow the links
-            as you go — symbols like ``VStack`` or ``Text`` open in a side
-            panel so you never lose your place.
+            input event first and returns `false` to quit. Those two
+            functions replace the raw-mode setup and input parsing a TUI
+            otherwise opens with — the framework takes the terminal on
+            launch and restores it on the way out, so quitting never leaves
+            your shell broken. Follow the links as you go — symbols like
+            ``VStack`` or ``Text`` open in a side panel so you never lose
+            your place.
         }
 
         @Steps {
@@ -44,7 +50,11 @@
             State lives in an `@Observable` class. Mutating it marks the
             graph dirty; the next frame re-renders whatever changed. There
             is no notification code to write — the same Observation
-            machinery SwiftUI uses drives the terminal renderer.
+            machinery SwiftUI uses drives the terminal renderer. Any value
+            more than one view shows belongs in a store like this — a log
+            buffer or a connection status as much as a task list — because
+            manual redraw calls are exactly where screens drift out of
+            sync with their data.
         }
 
         @Steps {
@@ -77,8 +87,10 @@
         @ContentAndMedia {
             `onEvent` receives every key before any focused view does, which
             makes it the right place for app-level bindings — navigation,
-            toggles, quit. Views re-render because the handlers mutate the
-            store, never because you tell them to.
+            toggles, quit. One switch you can read top to bottom beats key
+            handling scattered across widgets: when a key misbehaves, there
+            is exactly one place to look. Views re-render because the
+            handlers mutate the store, never because you tell them to.
         }
 
         @Steps {
@@ -111,7 +123,9 @@
         @ContentAndMedia {
             The last pass is what separates a demo from a tool: color that
             carries meaning, a live count in the header, a hint line at the
-            bottom, and breathing room from `.padding`.
+            bottom, and breathing room from `.padding`. In a grid of
+            monospace cells, color and weight are most of the visual
+            hierarchy you get — spend them on meaning, not decoration.
 
             Up next: <doc:AddInputAndTheMouse> gives the app a text field
             and the mouse — and the focus rules that come with them.
@@ -166,10 +180,12 @@
         }
 
         @MultipleChoice {
-            What does returning `false` from `onEvent` do?
+            A teammate returns `false` from `onEvent` to stop a key from
+            reaching a focused view. What actually happens?
 
             @Choice(isCorrect: true) {
-                Ends the run loop — the app restores the terminal and exits.
+                The app quits — `false` ends the run loop and restores the
+                terminal. Consumption is not what the return value means.
 
                 @Justification(reaction: "Right.") {
                     That is the whole contract: `true` keeps running,
@@ -178,7 +194,7 @@
             }
 
             @Choice(isCorrect: false) {
-                Marks the event as consumed so no view receives it.
+                The event is marked as consumed and no view receives it.
 
                 @Justification(reaction: "Not quite.") {
                     Event consumption is not routed through the return

@@ -14,11 +14,12 @@
 
     @Section(title: "Tabs") {
         @ContentAndMedia {
-            ``TabView`` owns the whole navigation surface: the bar renders
-            the labels, digits and arrows switch inside the bar, and Tab
-            crosses into the content. Your job is only to say what each tab
-            shows — selection is one `Int` in the store, bound the same way
-            as every other piece of state.
+            Tabs fit screens that are peers — tasks and settings, not a
+            list and its detail. ``TabView`` owns the whole navigation
+            surface: the bar renders the labels, digits and arrows switch
+            inside the bar, and Tab crosses into the content. Your job is
+            only to say what each tab shows — selection is one `Int` in
+            the store, bound the same way as every other piece of state.
         }
 
         @Steps {
@@ -38,10 +39,13 @@
 
     @Section(title: "A detail pane beside the list") {
         @ContentAndMedia {
-            ``SplitView`` renders resizable panes from a ``SplitState`` tree
-            of leaves and nested splits. Its panes are ordinary view values —
-            their bodies read your store, so every pane follows state changes
-            like any other view.
+            A split earns its columns when the user works in one pane while
+            referring to the other — a list beside its detail, logs beside
+            the request that produced them — where switching screens would
+            cost the context being scanned. ``SplitView`` renders resizable
+            panes from a ``SplitState`` tree of leaves and nested splits.
+            Its panes are ordinary view values — their bodies read your
+            store, so every pane follows state changes like any other view.
         }
 
         @Steps {
@@ -65,8 +69,9 @@
         @ContentAndMedia {
             A settings screen earns its tab only if the settings do
             something. ``Form`` gives you the scrolling, the label column,
-            and focus containment; a ``Toggle`` bound to the store gives the
-            option teeth.
+            and focus containment — the parts a hand-built settings screen
+            gets subtly wrong first; a ``Toggle`` bound to the store gives
+            the option teeth.
 
             Up next: <doc:NavigateToDetail> trades the split for push
             navigation — and teaches when each shape wins.
@@ -123,11 +128,13 @@
         }
 
         @MultipleChoice {
-            What is a ``Tab`` in a ``TabView``?
+            Your app grows to six tabs, each holding a heavy pane. What do
+            the five unselected tabs cost each frame?
 
             @Choice(isCorrect: true) {
-                Declarative data — a label and a content builder. Only the
-                selected tab's content enters the render graph.
+                Nothing — a ``Tab`` is declarative data, a label and a
+                content builder, and only the selected tab's content
+                enters the render graph.
 
                 @Justification(reaction: "Right.") {
                     Unselected panes cost nothing; switching tabs swaps
@@ -136,7 +143,8 @@
             }
 
             @Choice(isCorrect: false) {
-                A view that renders all panes and hides the unselected ones.
+                Full layout and render — the panes are drawn and then
+                hidden.
 
                 @Justification(reaction: "Not quite.") {
                     Hidden-but-rendered panes would pay layout and render
@@ -145,11 +153,12 @@
             }
 
             @Choice(isCorrect: false) {
-                A focus scope with a label.
+                Layout only — panes are pre-measured so switching is
+                instant.
 
                 @Justification(reaction: "Not quite.") {
-                    Focus is involved — the bar is focusable — but the
-                    `Tab` type itself is just label plus content.
+                    Nothing is pre-measured — unselected content is not
+                    built at all until its tab is selected.
                 }
             }
         }

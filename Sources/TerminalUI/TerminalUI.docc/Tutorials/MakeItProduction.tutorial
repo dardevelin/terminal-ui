@@ -19,7 +19,9 @@
             `.confirmationDialog` modifier on ``TerminalView`` presents a
             stacked-action dialog while a Bool binding is true — Escape
             dismisses it, Enter presses the focused button, and any
-            ``AlertAction`` closes it after running.
+            ``AlertAction`` closes it after running. The same modifier
+            guards any one-way door: an overwrite, a disconnect, a
+            force-push.
         }
 
         @Steps {
@@ -147,10 +149,11 @@
         }
 
         @MultipleChoice {
-            What does the `id:` parameter of `.task(id:)` change?
+            A pane loads details for whichever item is selected. Why reach
+            for `.task(id: selectedID)` instead of plain `.task`?
 
             @Choice(isCorrect: false) {
-                It names the task so the debugger can find it.
+                The id names the work so the debugger can find it.
 
                 @Justification(reaction: "Not quite.") {
                     The id is not a label — it is an identity value the
@@ -160,8 +163,9 @@
 
             @Choice(isCorrect: true) {
                 The work is cancelled and restarted whenever the id's
-                value changes; without an id it starts once and runs until
-                the view disappears.
+                value changes; plain `.task` starts once and runs until
+                the view disappears, so it would never notice a new
+                selection.
 
                 @Justification(reaction: "Right.") {
                     That is the shape for "load the thing this view is

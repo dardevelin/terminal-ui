@@ -1,9 +1,10 @@
+import Foundation
 import Observation
 import TerminalUI
 
 // MARK: Model
 
-struct TaskItem: Identifiable {
+struct TaskItem: Identifiable, Codable {
     let id: Int
     var title: String
     var done = false
@@ -25,6 +26,33 @@ struct InMemoryTaskService: TaskService {
     }
 
     func save(_ tasks: [TaskItem]) { }
+}
+
+/// The same contract, backed by a JSON file — the reason the service is a
+/// protocol. Swapping this in changes one line at the composition root;
+/// the store, the commands, and every view stay untouched, and the app's
+/// tasks now survive a relaunch.
+struct FileTaskService: TaskService {
+    private var fileURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("tasks-tutorial.json")
+    }
+
+    func load() async -> [TaskItem] {
+        guard let data = try? Data(contentsOf: fileURL),
+              let tasks = try? JSONDecoder().decode([TaskItem].self, from: data),
+              !tasks.isEmpty else {
+            return await InMemoryTaskService().load()
+        }
+        return tasks
+    }
+
+    func save(_ tasks: [TaskItem]) {
+        guard let data = try? JSONEncoder().encode(tasks) else { return }
+        try? FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try? data.write(to: fileURL)
+    }
 }
 
 // MARK: Presentation
@@ -163,7 +191,7 @@ final class TaskStore {
     }
 }
 
-nonisolated(unsafe) let store = TaskStore(service: InMemoryTaskService())
+nonisolated(unsafe) let store = TaskStore(service: FileTaskService())
 
 // MARK: Views
 

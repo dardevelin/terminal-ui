@@ -17,8 +17,11 @@
         @ContentAndMedia {
             ``PromptInput`` is the framework's ready-made input line —
             cursor movement, editing, paste, and submit handling included.
-            It reads and writes your state through two ``Binding``s, so the
-            store stays the single source of truth.
+            Building one by hand means cursor math and paste handling that
+            mostly works; reach for the component wherever your app takes
+            free text — a search box, a filter, a command line. It reads
+            and writes your state through two ``Binding``s, so the store
+            stays the single source of truth.
         }
 
         @Steps {
@@ -44,7 +47,8 @@
             Mouse support needs no setup: SGR mouse events arrive already
             parsed, and `.onClick` on any view gives you its clicks with
             coordinates relative to that view. No hit-testing code, no
-            screen math.
+            screen math — which makes any view you draw clickable, not
+            just the framework's buttons.
         }
 
         @Steps {
@@ -68,8 +72,10 @@
     @Section(title: "Finishing touches") {
         @ContentAndMedia {
             Small affordances tell the user what the app can do before
-            they read anything: a badge on the prompt, and a footer that
-            names every gesture.
+            they read anything — and in a terminal, with no menus to
+            browse, an undocumented key might as well not exist. A badge
+            on the prompt and a footer that names every gesture close
+            that gap.
 
             Up next: <doc:GiveItStructure> splits the app into tabs and
             panes once one screen stops being enough.
@@ -125,20 +131,24 @@
         }
 
         @MultipleChoice {
-            The coordinates `.onClick` hands you are relative to what?
+            Why can each row's `.onClick` closure toggle the right task
+            without any coordinate math?
 
             @Choice(isCorrect: true) {
-                The clicked view's own rectangle — (0, 0) is that view's
-                top-left cell.
+                The framework hit-tests the click and delivers it to the
+                view it landed on, with coordinates local to that view —
+                and the closure already captured its own row's task.
 
                 @Justification(reaction: "Right.") {
-                    That is why the row closure needs no math at all: the
-                    click already belongs to the row that received it.
+                    The click arrives already belonging to the row that
+                    received it; the handler never needs to know where
+                    that row sits on screen.
                 }
             }
 
             @Choice(isCorrect: false) {
-                The whole terminal screen.
+                The closure searches the task list by the click's screen
+                position.
 
                 @Justification(reaction: "Not quite.") {
                     Screen coordinates would force every handler to know
@@ -148,11 +158,12 @@
             }
 
             @Choice(isCorrect: false) {
-                The enclosing stack.
+                Each row registers its rectangle with the store on every
+                render.
 
                 @Justification(reaction: "Not quite.") {
-                    The receiver is the view the modifier is attached to,
-                    not its parent.
+                    No registry exists — hit-testing is the framework's
+                    job, and your view code never tracks its own geometry.
                 }
             }
         }
