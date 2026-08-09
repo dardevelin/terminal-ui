@@ -1,0 +1,260 @@
+import Observation
+import TerminalUI
+
+struct TaskItem: Identifiable {
+    let id: Int
+    var title: String
+    var done = false
+}
+
+@Observable
+final class TaskStore {
+    // Production apps rarely get their data for free at launch — the seed
+    // list is gone, and tasks arrive from a simulated load instead.
+    var tasks: [TaskItem] = []
+    var isLoading = true
+    var spinnerFrame = 0
+    var selectedID = 1
+    var tab = 0
+    var showCompleted = true
+    var draft = ""
+    var promptState = PromptInputState()
+    // Presentation state is state like any other: the dialog is on screen
+    // exactly while this is true, and both the presenting modifier and the
+    // key handling read it from the same place.
+    var confirmDelete = false
+    private var nextID = 1
+
+    // The split's panes are view values; their bodies read the store, so
+    // both sides follow selection changes like any other view. The state
+    // lives here so pane ratios survive re-renders.
+    let split = SplitState(root: .split(
+        axis: .horizontal,
+        children: [.leaf(TasksPane()), .leaf(DetailPane())],
+        ratios: [0.6, 0.4]))
+
+    var remaining: Int { tasks.filter { !$0.done }.count }
+
+    var visibleTasks: [TaskItem] {
+        showCompleted ? tasks : tasks.filter { !$0.done }
+    }
+
+    func finishLoading(_ loaded: [TaskItem]) {
+        tasks = loaded
+        nextID = (loaded.map(\.id).max() ?? 0) + 1
+        selectedID = loaded.first?.id ?? selectedID
+        isLoading = false
+    }
+
+    func addDraft() {
+        let title = draft.trimmingCharacters(in: .whitespaces)
+        guard !title.isEmpty else { return }
+        tasks.append(TaskItem(id: nextID, title: title))
+        nextID += 1
+        draft = ""
+    }
+
+    func moveSelection(_ delta: Int) {
+        guard !tasks.isEmpty else { return }
+        let current = tasks.firstIndex { $0.id == selectedID } ?? 0
+        let next = min(max(current + delta, 0), tasks.count - 1)
+        selectedID = tasks[next].id
+    }
+
+    func toggleSelected() {
+        toggle(id: selectedID)
+    }
+
+    func toggle(id: Int) {
+        guard let index = tasks.firstIndex(where: { $0.id == id }) else { return }
+        tasks[index].done.toggle()
+    }
+
+    func requestDelete() {
+        // Nothing selected means nothing to confirm — don't present a
+        // dialog whose Delete would do nothing.
+        guard tasks.contains(where: { $0.id == selectedID }) else { return }
+        confirmDelete = true
+    }
+
+    func deleteSelected() {
+        guard let index = tasks.firstIndex(where: { $0.id == selectedID }) else { return }
+        tasks.remove(at: index)
+        guard !tasks.isEmpty else { return }
+        // Land the cursor on the row that slid into the gap, or on the new
+        // last row when the deleted task was at the bottom.
+        selectedID = tasks[min(index, tasks.count - 1)].id
+    }
+}
+
+nonisolated(unsafe) let store = TaskStore()
+
+struct TaskRow: TerminalView {
+    let task: TaskItem
+    let isSelected: Bool
+
+    var body: some TerminalView {
+        HStack(spacing: 1) {
+            Text(isSelected ? "▸" : " ").foreground(.cyan)
+            Text(task.done ? "☑" : "☐").foreground(task.done ? .green : .default)
+            Text(task.title).foreground(task.done ? .gray : .default)
+        }
+    }
+}
+
+// This is a plain debug build, and that alone buys the whole debug story:
+// F1 toggles the frame-stats overlay, F2 the debug panel, F3 the inspector,
+// and `swtui ctl screenshot` / `swtui ctl tree` talk to the running app over
+// its per-process socket. Nothing below opts in — every TerminalUI debug
+// build carries the tools, and a release build compiles them all away.
+@main
+struct TasksApp: TerminalAppProtocol {
+    static func onEvent(_ event: TerminalEvent) -> Bool {
+        if case .key(let keyEvent) = event {
+            // While the dialog is up it owns the keyboard: the app's
+            // bindings stand aside so Enter presses the focused dialog
+            // button instead of toggling a task behind it. (Escape needs
+            // no help — the framework refuses an onEvent quit while a
+            // modal contains focus, so Escape closes the dialog first.)
+            guard !store.confirmDelete else { return true }
+            switch keyEvent.key {
+            // Letters belong to the text field now — a global chord on a
+            // typeable key would fire while the user is writing a task.
+            // Quit stays on q, but only when the draft is empty.
+            case .character("q") where store.draft.isEmpty: return false
+            case .escape: return false
+            case .up: store.moveSelection(-1)
+            case .down: store.moveSelection(1)
+            // Enter submits a non-empty draft; with nothing typed it is
+            // free to mean "toggle" — the same state gate as q.
+            case .enter where store.draft.isEmpty: store.toggleSelected()
+            // Destructive, so it only asks. Backspace rather than a letter:
+            // handled keys still reach the focused prompt, so a letter
+            // chord would also type itself into the draft — the same
+            // reasoning that gated q. With an empty draft Backspace has
+            // nothing to erase, leaving it free to mean "delete task".
+            case .backspace where store.draft.isEmpty:
+                store.requestDelete()
+            default: break
+            }
+        }
+        return true
+    }
+
+    static func content() -> some TerminalView {
+        TabView(selection: Binding(get: { store.tab }, set: { store.tab = $0 })) {
+            Tab("Tasks") { TasksSplit() }
+            Tab("Settings") { SettingsPane() }
+        }
+        .confirmationDialog(
+            "Delete task?",
+            isPresented: Binding(get: { store.confirmDelete },
+                                 set: { store.confirmDelete = $0 }),
+            message: "This cannot be undone."
+        ) {
+            AlertAction("Delete", role: .destructive) { store.deleteSelected() }
+            AlertAction("Cancel", role: .cancel) { }
+        }
+    }
+}
+
+struct SettingsPane: TerminalView {
+    var body: some TerminalView {
+        Form {
+            Section("Display") {
+                Toggle("Show completed", isOn: Binding(
+                    get: { store.showCompleted },
+                    set: { store.showCompleted = $0 }
+                ))
+            }
+        }
+    }
+}
+
+struct DetailPane: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            Text("Detail").bold().foreground(.cyan)
+            Divider()
+            if let task = store.tasks.first(where: { $0.id == store.selectedID }) {
+                Text(task.title)
+                Text(task.done ? "done" : "open").foreground(task.done ? .green : .yellow)
+                Text("id \(task.id)").foreground(.gray)
+            } else {
+                Text(store.isLoading ? "Loading…" : "Nothing selected.")
+                    .foreground(.gray)
+            }
+            Spacer()
+        }
+        .padding(1)
+    }
+}
+
+struct TasksSplit: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            SplitView(state: store.split)
+                .flexible()
+            PromptInput(
+                text: Binding(get: { store.draft }, set: { store.draft = $0 }),
+                state: Binding(get: { store.promptState }, set: { store.promptState = $0 }),
+                prompt: "❯",
+                badge: "new",
+                heightPolicy: .fixed(3),
+                onSubmit: { _ in store.addDraft() }
+            )
+            Text("type + Enter add   Enter toggle   ↑↓ move   ⌫ delete   q quit")
+                .foreground(.gray)
+        }
+        // Owns the load for as long as the view is on screen; cancelled if
+        // the view leaves. The sleeps stand in for a file read or network
+        // call, and each tick advances the spinner — mutating the store
+        // wakes the render loop, so nothing schedules a redraw.
+        .task {
+            for _ in 0..<40 {
+                if Task.isCancelled { return }
+                try? await Task.sleep(for: .milliseconds(100))
+                store.spinnerFrame += 1
+            }
+            store.finishLoading([
+                TaskItem(id: 1, title: "Read the TerminalUI tutorial"),
+                TaskItem(id: 2, title: "Build a task list"),
+                TaskItem(id: 3, title: "Ship it"),
+            ])
+        }
+    }
+}
+
+struct TasksPane: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            HStack {
+                Text("Tasks").bold().foreground(.cyan)
+                Spacer()
+                // The count is a status light now: gray while loading,
+                // green when the list is clear, yellow while work remains.
+                if store.isLoading {
+                    Text("loading").foreground(.gray)
+                } else if store.remaining == 0 {
+                    Text("all done").foreground(.green)
+                } else {
+                    Text("\(store.remaining) open").foreground(.yellow)
+                }
+            }
+            Divider()
+            if store.isLoading {
+                HStack(spacing: 1) {
+                    Spinner(frame: store.spinnerFrame).foreground(.cyan)
+                    Text("Loading tasks…").foreground(.gray)
+                }
+            } else {
+                ForEach(store.visibleTasks) { task in
+                    TaskRow(task: task, isSelected: task.id == store.selectedID)
+                        .onClick { _, _ in store.toggle(id: task.id) }
+                }
+            }
+            Spacer()
+        }
+        .padding(1)
+    }
+}

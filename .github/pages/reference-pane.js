@@ -164,3 +164,140 @@
     box.show(img.currentSrc || img.src, img.alt);
   }, true);
 })();
+
+// Series navigation for tutorial pages — built from the tutorials TOC's own
+// data, so it stays correct as chapters are added. Adds Prev/Next pills and
+// a "Series" popover listing every chapter with the current one marked.
+// Recomputes on SPA route changes (pushState is patched to emit an event).
+(function () {
+  "use strict";
+
+  function basePath() {
+    var first = window.location.pathname.split("/")[1] || "";
+    return (first === "documentation" || first === "tutorials") ? "" : "/" + first;
+  }
+
+  var series = null;   // [{chapter, title, url}]
+  var ui = null;       // {wrap, prev, next, list}
+
+  function loadSeries(done) {
+    if (series) { done(); return; }
+    var request = new XMLHttpRequest();
+    request.open("GET", basePath() + "/data/tutorials/terminaluitutorials.json");
+    request.onload = function () {
+      try {
+        var data = JSON.parse(request.responseText);
+        var refs = data.references || {};
+        var out = [];
+        (data.sections || []).forEach(function (section) {
+          if (section.kind !== "volume") return;
+          (section.chapters || []).forEach(function (chapter) {
+            (chapter.tutorials || []).forEach(function (id) {
+              var ref = refs[id];
+              if (ref && ref.url) {
+                out.push({ chapter: chapter.name, title: ref.title, url: ref.url });
+              }
+            });
+          });
+        });
+        if (out.length) { series = out; done(); }
+      } catch (parseError) { /* leave the dock as-is */ }
+    };
+    request.send();
+  }
+
+  function currentIndex() {
+    var path = window.location.pathname.replace(basePath(), "").replace(/\/$/, "");
+    for (var i = 0; i < series.length; i++) {
+      if (path.toLowerCase() === series[i].url.toLowerCase()) return i;
+    }
+    return -1;
+  }
+
+  function buildUI(nav) {
+    var wrap = document.createElement("span");
+    wrap.className = "tui-series";
+
+    var prev = document.createElement("a");
+    prev.className = "tui-series-pill";
+    prev.textContent = "← Prev";
+    var toggle = document.createElement("button");
+    toggle.className = "tui-series-pill tui-series-toggle";
+    toggle.textContent = "Series ▾";
+    var next = document.createElement("a");
+    next.className = "tui-series-pill";
+    next.textContent = "Next →";
+
+    var list = document.createElement("div");
+    list.className = "tui-series-list";
+
+    toggle.addEventListener("click", function () {
+      list.classList.toggle("tui-series-list-visible");
+    });
+    document.addEventListener("click", function (event) {
+      if (!event.target.closest(".tui-series")) {
+        list.classList.remove("tui-series-list-visible");
+      }
+    }, true);
+
+    wrap.appendChild(prev);
+    wrap.appendChild(toggle);
+    wrap.appendChild(next);
+    wrap.appendChild(list);
+    nav.insertBefore(wrap, nav.firstChild);
+    return { wrap: wrap, prev: prev, next: next, list: list };
+  }
+
+  function refresh() {
+    var nav = document.querySelector(".tui-docs-nav");
+    if (!nav) return;
+    var onTutorial = window.location.pathname.indexOf("/tutorials/terminalui/") !== -1;
+    if (!onTutorial) {
+      if (ui) ui.wrap.style.display = "none";
+      return;
+    }
+    loadSeries(function () {
+      if (!ui) ui = buildUI(nav);
+      ui.wrap.style.display = "";
+      var index = currentIndex();
+      var base = basePath();
+      var prevItem = index > 0 ? series[index - 1] : null;
+      var nextItem = (index >= 0 && index < series.length - 1) ? series[index + 1] : null;
+      ui.prev.style.display = prevItem ? "" : "none";
+      ui.next.style.display = nextItem ? "" : "none";
+      if (prevItem) { ui.prev.href = base + prevItem.url; ui.prev.title = prevItem.title; }
+      if (nextItem) { ui.next.href = base + nextItem.url; ui.next.title = nextItem.title; }
+
+      ui.list.textContent = "";
+      var lastChapter = null;
+      series.forEach(function (item, itemIndex) {
+        if (item.chapter !== lastChapter) {
+          lastChapter = item.chapter;
+          var heading = document.createElement("div");
+          heading.className = "tui-series-chapter";
+          heading.textContent = item.chapter;
+          ui.list.appendChild(heading);
+        }
+        var link = document.createElement("a");
+        link.href = base + item.url;
+        link.textContent = (itemIndex + 1) + ". " + item.title;
+        if (itemIndex === index) link.className = "tui-series-current";
+        ui.list.appendChild(link);
+      });
+    });
+  }
+
+  var pushState = history.pushState;
+  history.pushState = function () {
+    pushState.apply(this, arguments);
+    window.dispatchEvent(new Event("tui-route"));
+  };
+  window.addEventListener("popstate", refresh);
+  window.addEventListener("tui-route", function () { setTimeout(refresh, 50); });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () { setTimeout(refresh, 100); });
+  } else {
+    setTimeout(refresh, 100);
+  }
+})();

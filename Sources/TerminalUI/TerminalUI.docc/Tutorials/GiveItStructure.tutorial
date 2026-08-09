@@ -65,6 +65,9 @@
             something. ``Form`` gives you the scrolling, the label column,
             and focus containment; a ``Toggle`` bound to the store gives the
             option teeth.
+
+            Up next: <doc:NavigateToDetail> trades the split for push
+            navigation — and teaches when each shape wins.
         }
 
         @Steps {
@@ -113,6 +116,71 @@
                 @Justification(reaction: "Not quite.") {
                     Performance is unchanged — persistence of the ratios is
                     what's at stake.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            What is a ``Tab`` in a ``TabView``?
+
+            @Choice(isCorrect: true) {
+                Declarative data — a label and a content builder. Only the
+                selected tab's content enters the render graph.
+
+                @Justification(reaction: "Right.") {
+                    Unselected panes cost nothing; switching tabs swaps
+                    which content the graph holds.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A view that renders all panes and hides the unselected ones.
+
+                @Justification(reaction: "Not quite.") {
+                    Hidden-but-rendered panes would pay layout and render
+                    cost for every tab on every frame.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A focus scope with a label.
+
+                @Justification(reaction: "Not quite.") {
+                    Focus is involved — the bar is focusable — but the
+                    `Tab` type itself is just label plus content.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Toggling "Show completed" filters the list because…
+
+            @Choice(isCorrect: true) {
+                The rows render from `visibleTasks`, a computed property on
+                the observable store — flipping the toggle invalidates
+                everything that read it.
+
+                @Justification(reaction: "Right.") {
+                    Three views (list, detail, settings) read one store;
+                    none of them talk to each other.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The Toggle sends a message to the list view.
+
+                @Justification(reaction: "Not quite.") {
+                    No view references another — shared observable state is
+                    the only channel.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The Form rebuilds the whole app when any control changes.
+
+                @Justification(reaction: "Not quite.") {
+                    Only views whose observed state changed re-render;
+                    that is the point of Observation-driven frames.
                 }
             }
         }

@@ -1,0 +1,206 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Show the numbers") {
+        The task app tracks state; now make it show the numbers. Add a
+        Stats tab that presents the same store four ways: a ``Table`` for
+        exact values, a ``Sparkline`` for shape over time, a ``BarChart``
+        for comparison, and a ``Gauge`` for a single ratio.
+
+        Continue from Give It Structure's finished code, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        as the base to edit.
+    }
+
+    @Section(title: "A table of the facts") {
+        @ContentAndMedia {
+            ``Table`` renders rows as aligned columns: each ``TableColumn``
+            pairs a header, a width, and a closure mapping a row to its cell
+            string. It is display-only — no cursor, no focus — and the whole
+            table precomputes into one text node, which is why it stays
+            cheap at hundreds of rows. The interactive list keeps its job;
+            the table's job is exact values at a glance.
+        }
+
+        @Steps {
+            @Step {
+                Add a third ``Tab`` — Stats — holding a `StatsPane` with a
+                ``Table`` of the tasks. Two columns: the title, verbatim,
+                and a status derived per row. The closures pull whatever
+                string they like out of a `TaskItem`; the table never needs
+                your model to know it is being displayed.
+
+                Toggle a task with Enter, press `3`: the Status column
+                already knows, because the table's rows are `store.tasks`
+                read fresh each render.
+
+                @Code(name: "main.swift", file: "tasks5-01-01.swift") {
+                    @Image(source: "preview-tasks5-01-01.png", alt: "The Stats tab: a two-column table of tasks with a Status column reading done or open.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "The shape of history") {
+        @ContentAndMedia {
+            A table answers "what is the value"; charts answer everything
+            else. ``Sparkline`` plots a series onto a ``BrailleCanvas`` —
+            every cell is a 2×4 grid of braille dots, so a 40×3-cell strip
+            resolves 80×12 points — and ``BarChart`` compares labeled
+            values with eighth-block precision. Both are views like any
+            other: feed them from the store and they follow it.
+        }
+
+        @Steps {
+            @Step {
+                Seed a `history` array on the store — completions per day —
+                and render it as a ``Sparkline``, then compare open against
+                done in a ``BarChart``. Pin the sparkline's `min:` so the
+                axis stays put as data arrives, and give both charts a fixed
+                frame — they are flexible by default, and an unbounded chart
+                would take the leftover rows.
+
+                Toggle a task on the Tasks tab and come back: the bars move.
+                No chart-update code exists — the bars are a function of the
+                store, like every other view in the app.
+
+                @Code(name: "main.swift", file: "tasks5-02-01.swift") {
+                    @Image(source: "preview-tasks5-02-01.png", alt: "The Stats tab: the table, a braille sparkline of completions, and an open-versus-done bar chart.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "One number that matters") {
+        @ContentAndMedia {
+            When one ratio is the headline, draw it as a ``Gauge`` — a value
+            sitting within its range, free to move both ways, unlike a
+            ``ProgressBar``'s promise of an end state. That completes the
+            vocabulary: ``Table`` for exact values, ``Sparkline`` for shape
+            over time, ``BarChart`` for comparison, ``Gauge`` for a single
+            ratio. Pick by the question the screen answers, not by which
+            view looks fanciest.
+
+            Up next: <doc:MakeItProduction> — confirmation dialogs,
+            async loading, and the debug tools.
+        }
+
+        @Steps {
+            @Step {
+                Add a `completion` ratio to the store and a ``Gauge``
+                beneath the charts. The gauge takes a plain value, not a
+                binding — it reports state the app owns, so there is
+                nothing on it to operate.
+
+                One store, four questions answered: which tasks (table),
+                how the pace looks (sparkline), open versus done (bars),
+                how far along (gauge).
+
+                @Code(name: "main.swift", file: "tasks5-03-01.swift") {
+                    @Image(source: "preview-tasks5-03-01.png", alt: "The finished Stats tab: table, sparkline, bar chart, and a Done gauge reading 0.33.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            The app should show how request latency has moved over the last
+            minute. Which view fits?
+
+            @Choice(isCorrect: true) {
+                A ``Sparkline`` fed the rolling samples.
+
+                @Justification(reaction: "Right.") {
+                    Shape over time is the sparkline's question — the eye
+                    reads trend and spikes from the line, not from digits.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A ``Table`` with one row per sample.
+
+                @Justification(reaction: "Not quite.") {
+                    A table gives exact values, but sixty rows of numbers
+                    hide the trend a one-line sparkline makes obvious.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A ``Gauge`` of the latest sample.
+
+                @Justification(reaction: "Not quite.") {
+                    A gauge shows where one value sits in its range right
+                    now — the minute of history disappears.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            How does a ``Table`` turn a `TaskItem` into the text of a cell?
+
+            @Choice(isCorrect: true) {
+                Each ``TableColumn`` carries a closure mapping a row to its
+                cell string.
+
+                @Justification(reaction: "Right.") {
+                    The column owns the projection — `{ $0.done ? "done" :
+                    "open" }` — so the model never has to know it is being
+                    displayed.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The row type conforms to a protocol that names its columns.
+
+                @Justification(reaction: "Not quite.") {
+                    The only requirement on rows is `Identifiable`; columns
+                    are defined at the call site, per table.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The table reflects over the row's properties and prints
+                each one.
+
+                @Justification(reaction: "Not quite.") {
+                    Nothing is inferred — you choose the columns, their
+                    widths, and exactly how each cell string is derived.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Why do the charts update when a task is toggled on another tab,
+            with no chart-update code anywhere?
+
+            @Choice(isCorrect: true) {
+                Their bodies read the `@Observable` store, so the mutation
+                re-renders them like any other view.
+
+                @Justification(reaction: "Right.") {
+                    A chart is just a view: state drives it the same way it
+                    drives the list — one store, every reader follows.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Charts poll the store on a timer.
+
+                @Justification(reaction: "Not quite.") {
+                    Nothing polls — an idle app does zero work. The render
+                    is triggered by the state mutation itself.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The tab switch rebuilds the whole app, so the charts start
+                fresh.
+
+                @Justification(reaction: "Not quite.") {
+                    The charts would update even while visible, no tab
+                    switch needed — observation, not reconstruction, keeps
+                    them current.
+                }
+            }
+        }
+    }
+}

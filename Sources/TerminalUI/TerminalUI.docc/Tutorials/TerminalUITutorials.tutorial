@@ -34,4 +34,31 @@
 
         @TutorialReference(tutorial: "doc:GiveItStructure")
     }
+
+    @Chapter(name: "Navigation") {
+        Push and pop with a navigation stack — and the judgment call
+        between drilling down and showing both at once.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:NavigateToDetail")
+    }
+
+    @Chapter(name: "Data") {
+        Tables, sparklines, bars, and gauges — choosing the display form
+        that fits what the number means.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:ShowTheNumbers")
+    }
+
+    @Chapter(name: "Production") {
+        Confirmation before destruction, async loading, and the debug
+        tools that work on every app you build.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:MakeItProduction")
+    }
 }

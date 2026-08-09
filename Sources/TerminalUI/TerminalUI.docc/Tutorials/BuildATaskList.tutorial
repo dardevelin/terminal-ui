@@ -110,6 +110,9 @@
             The last pass is what separates a demo from a tool: color that
             carries meaning, a live count in the header, a hint line at the
             bottom, and breathing room from `.padding`.
+
+            Up next: <doc:AddInputAndTheMouse> gives the app a text field
+            and the mouse — and the focus rules that come with them.
         }
 
         @Steps {
@@ -156,6 +159,72 @@
                 @Justification(reaction: "Not quite.") {
                     The return value only decides whether the app keeps
                     running.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            What does returning `false` from `onEvent` do?
+
+            @Choice(isCorrect: true) {
+                Ends the run loop — the app restores the terminal and exits.
+
+                @Justification(reaction: "Right.") {
+                    That is the whole contract: `true` keeps running,
+                    `false` quits. Nothing else is signaled through it.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Marks the event as consumed so no view receives it.
+
+                @Justification(reaction: "Not quite.") {
+                    Event consumption is not routed through the return
+                    value — focused views see keys through their own
+                    handlers.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Skips rendering the next frame.
+
+                @Justification(reaction: "Not quite.") {
+                    Rendering is driven by state changes, not by event
+                    handler return values.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Why is the store a file-scope `let` instead of a property on `TasksApp`?
+
+            @Choice(isCorrect: true) {
+                `TerminalAppProtocol` members are static — there is no app
+                instance to hang stored state on, so shared state needs a
+                home reachable from static functions.
+
+                @Justification(reaction: "Right.") {
+                    The framework calls `content()` and `onEvent` on the
+                    main thread, which is what makes the file-scope pattern
+                    safe in practice.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                File-scope variables render faster.
+
+                @Justification(reaction: "Not quite.") {
+                    Placement has no effect on rendering — it is about
+                    where static functions can reach shared state.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                `@Observable` only works on globals.
+
+                @Justification(reaction: "Not quite.") {
+                    `@Observable` works on any class; the constraint is the
+                    protocol's static surface, not Observation.
                 }
             }
         }

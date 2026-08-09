@@ -72,3 +72,38 @@
   }
   .tui-docs-brand:hover { border-color: #c46a1e; color: #c46a1e; }
 }
+
+.tui-series { display: inline-flex; gap: 6px; position: relative; }
+.tui-series-pill {
+  font-size: 12px; line-height: 1; text-decoration: none; cursor: pointer;
+  padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #f4f4f4; background: rgba(20, 20, 20, 0.72); font-family: inherit;
+}
+.tui-series-pill:hover { border-color: #f2994a; color: #f2994a; }
+.tui-series-list {
+  display: none; position: absolute; bottom: 40px; left: 0;
+  min-width: 240px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(20, 20, 20, 0.95); border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.tui-series-list.tui-series-list-visible { display: block; }
+.tui-series-chapter {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em;
+  color: #9a9a9a; margin: 8px 0 4px;
+}
+.tui-series-chapter:first-child { margin-top: 0; }
+.tui-series-list a {
+  display: block; font-size: 12px; text-decoration: none;
+  color: #f4f4f4; padding: 4px 6px; border-radius: 6px;
+}
+.tui-series-list a:hover { color: #f2994a; }
+.tui-series-list a.tui-series-current { background: rgba(242, 153, 74, 0.18); color: #f2994a; }
+@media (prefers-color-scheme: light) {
+  .tui-series-pill { color: #1d1d1f; background: rgba(245, 245, 247, 0.8); border-color: rgba(0, 0, 0, 0.15); }
+  .tui-series-pill:hover { border-color: #c46a1e; color: #c46a1e; }
+  .tui-series-list { background: rgba(250, 250, 252, 0.98); border-color: rgba(0, 0, 0, 0.12); }
+  .tui-series-chapter { color: #6e6e73; }
+  .tui-series-list a { color: #1d1d1f; }
+  .tui-series-list a:hover { color: #c46a1e; }
+  .tui-series-list a.tui-series-current { background: rgba(196, 106, 30, 0.15); color: #c46a1e; }
+}

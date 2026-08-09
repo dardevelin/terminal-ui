@@ -1,0 +1,214 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Make it production") {
+        The task app from the previous chapters works. This chapter makes
+        it trustworthy: destructive actions ask before they act, data loads
+        asynchronously instead of appearing by magic, and you meet the
+        debug tools that every TerminalUI debug build carries for free.
+
+        Continue from the third tutorial's finished code, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        as the base to edit.
+    }
+
+    @Section(title: "Destructive actions ask first") {
+        @ContentAndMedia {
+            Deleting a task is the first thing in the app that cannot be
+            undone, so it is the first thing that should ask. The
+            `.confirmationDialog` modifier on ``TerminalView`` presents a
+            stacked-action dialog while a Bool binding is true — Escape
+            dismisses it, Enter presses the focused button, and any
+            ``AlertAction`` closes it after running.
+        }
+
+        @Steps {
+            @Step {
+                Add a delete key. The dialog attaches to the root
+                ``TabView`` so it presents over everything, and the
+                presentation flag `confirmDelete` lives on the store next
+                to the data it protects: the same flag the
+                `.confirmationDialog` binding reads is the one `onEvent`
+                checks to keep app bindings quiet while the dialog is up.
+
+                Backspace, not a letter: handled keys still reach the
+                focused ``PromptInput``, so a `d` chord would also type
+                itself into the draft — the same reasoning that gated `q`.
+                With an empty draft, Backspace has nothing to erase and is
+                free to mean "delete task". Press it: the dialog appears,
+                with focus on Cancel and Delete rendered in the theme's
+                destructive color.
+
+                @Code(name: "main.swift", file: "tasks6-01-01.swift") {
+                    @Image(source: "preview-tasks6-01-01.png", alt: "A Delete task? dialog floating over the app, with stacked Cancel and Delete buttons.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Load, don't block") {
+        @ContentAndMedia {
+            Real apps do not get their data for free at launch — it comes
+            from a file or a network, and the UI has to say so instead of
+            freezing. The `.task` modifier on ``TerminalView`` owns async
+            work for exactly as long as the view is on screen, and a
+            ``Spinner`` shows that something is happening while the list
+            is still empty.
+        }
+
+        @Steps {
+            @Step {
+                Drop the seeded tasks and load them from a `.task` on the
+                tasks screen. The sleeps stand in for the real read; each
+                tick advances the spinner frame, and mutating the store
+                wakes the render loop — nothing anywhere schedules a
+                redraw. When the view leaves the screen, the framework
+                cancels the task; the `id:` variant goes further and
+                restarts the work whenever its identity value changes.
+
+                Run it: a spinner and "Loading tasks…" hold the list's
+                place, then the loaded tasks land and the app behaves
+                exactly as before.
+
+                @Code(name: "main.swift", file: "tasks6-02-01.swift") {
+                    @Image(source: "preview-tasks6-02-01.png", alt: "The task list replaced by a spinner and a Loading tasks message while the load runs.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "The debug story") {
+        @ContentAndMedia {
+            Nothing in this app opts into debugging, yet every TerminalUI
+            debug tool already works against it — the tools ship in the
+            framework behind `#if DEBUG`, so a debug build has them all
+            and a release build compiles every trace of them away.
+        }
+
+        @Steps {
+            @Step {
+                Finish the polish: the header count becomes a status light
+                (gray "loading", yellow "N open", green "all done"), and
+                the detail pane says "Loading…" while the load runs.
+
+                Then run the app and press **F1** — live frame stats float
+                over your UI. **F2** opens the debug panel; **F3** drops an
+                inspector you can move over any cell to see which view
+                owns it. From another shell, `swift run swtui ctl
+                screenshot` captures the app's cells over its per-process
+                socket, and `swtui ctl tree` prints the live view graph —
+                the same tools work on any TerminalUI app you will ever
+                build, including this one, with zero setup.
+
+                @Code(name: "main.swift", file: "tasks6-03-01.swift") {
+                    @Image(source: "preview-tasks6-03-01.png", alt: "The finished app: a checked-off task rendered dim, a yellow open count, and the detail pane showing done in green.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Why does `confirmDelete` live on the store instead of inside the dialog?
+
+            @Choice(isCorrect: true) {
+                Both the presenting modifier and `onEvent` read the same
+                flag — presentation is app state, so the key handling can
+                stand aside exactly while the dialog is up.
+
+                @Justification(reaction: "Right.") {
+                    One source of truth drives the dialog's visibility and
+                    the keyboard gating; there is no second registry of
+                    "open dialogs" to keep in sync.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Dialogs cannot hold their own state.
+
+                @Justification(reaction: "Not quite.") {
+                    A view can own state — but then `onEvent`, which runs
+                    before the view layer, could not see whether a dialog
+                    is up.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Store properties render faster than view-local state.
+
+                @Justification(reaction: "Not quite.") {
+                    Performance is identical — visibility to the app's
+                    event handling is what the store placement buys.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            What does the `id:` parameter of `.task(id:)` change?
+
+            @Choice(isCorrect: false) {
+                It names the task so the debugger can find it.
+
+                @Justification(reaction: "Not quite.") {
+                    The id is not a label — it is an identity value the
+                    framework compares between renders.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                The work is cancelled and restarted whenever the id's
+                value changes; without an id it starts once and runs until
+                the view disappears.
+
+                @Justification(reaction: "Right.") {
+                    That is the shape for "load the thing this view is
+                    currently showing" — change the selection, and the old
+                    load is cancelled before the new one starts.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                It makes the task run on a background thread.
+
+                @Justification(reaction: "Not quite.") {
+                    The closure is main-actor either way, so it can touch
+                    your `@Observable` store directly; awaits inside still
+                    suspend as usual.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            What did the task app have to do to make F3 and `swtui ctl` work against it?
+
+            @Choice(isCorrect: false) {
+                Link a separate debug library and register the app with
+                `swtui`.
+
+                @Justification(reaction: "Not quite.") {
+                    There is nothing to link or register — the tools live
+                    inside TerminalUI behind `#if DEBUG`.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Nothing, and the tools also ship in release builds.
+
+                @Justification(reaction: "Not quite.") {
+                    Half right: nothing to do, but a release build
+                    compiles all debug machinery away — zero overhead is
+                    the point.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                Nothing — any debug build has the F-key tools and the
+                control socket; release builds compile them away.
+
+                @Justification(reaction: "Right.") {
+                    The inspector, overlay, panel, and the socket behind
+                    `swtui ctl screenshot` / `tree` come with every debug
+                    build of every TerminalUI app.
+                }
+            }
+        }
+    }
+}

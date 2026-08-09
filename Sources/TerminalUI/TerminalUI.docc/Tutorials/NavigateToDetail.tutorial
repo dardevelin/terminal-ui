@@ -1,0 +1,209 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Navigate to detail") {
+        Give It Structure put the detail beside the list with ``SplitView``.
+        This chapter builds the other shape: ``NavigationStack`` pushes the
+        detail over the list, and Esc pops back. Same store, same rows — a
+        different answer to where the detail goes, and a feel for when each
+        answer wins.
+
+        Continue from the third tutorial's finished code, or
+        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        as the base to edit.
+    }
+
+    @Section(title: "Push instead of split") {
+        @ContentAndMedia {
+            A ``NavigationStack`` shows one screen at a time: its root, until
+            a value is pushed — then the screen that
+            `navigationDestination(for:)` builds from that value.
+            ``NavigationLink`` rows do the pushing, and the path is a plain
+            array on the store: links append to it, Esc pops it, and the
+            stack renders whatever the top element resolves to.
+        }
+
+        @Steps {
+            @Step {
+                Swap the Tasks tab's ``SplitView`` for a ``NavigationStack``:
+                the `SplitState` and the side-by-side detail pane go, a
+                `path: [Int]` lands on the store, and each row becomes a
+                ``NavigationLink`` carrying its task's id.
+                `navigationDestination(for: Int.self)` turns a pushed id
+                into a `TaskDetail` screen.
+
+                The arrow and Enter cases leave `onEvent` too: links are
+                focusable, so the focus engine moves between rows and Enter
+                activates the focused one. Esc stays — it still quits at the
+                root, but while a screen is pushed the runtime hands Esc to
+                the stack instead, which pops one level.
+
+                @Code(name: "main.swift", file: "tasks4-01-01.swift") {
+                    @Image(source: "preview-tasks4-01-01.png", alt: "A pushed Detail screen for one task. The list is gone; only the tab bar remains around it.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Act on the pushed screen") {
+        @ContentAndMedia {
+            A detail screen that can only be looked at sends the user back
+            to the list for every change. Let it edit instead: the screen
+            carries nothing but the task's id and reads and writes the same
+            store the list does, so popping needs no save step — the list
+            is already right when it reappears.
+        }
+
+        @Steps {
+            @Step {
+                Put a ``Toggle`` on the detail screen, bound to the store
+                through the pushed id. Open a task, press Space, press Esc:
+                the screen pops and the row's checkbox already agrees with
+                the toggle.
+
+                Watch where focus lands after the pop — on the exact link
+                that pushed. A pushed screen is presented the way a modal
+                is: the covered list is unreachable while it is up, and the
+                same machinery restores the previous focus on the way out,
+                so a long list never loses the user's place.
+
+                @Code(name: "main.swift", file: "tasks4-02-01.swift") {
+                    @Image(source: "preview-tasks4-02-01.png", alt: "The pushed detail with a focused, checked Done toggle.")
+                }
+            }
+        }
+    }
+
+    @Section(title: "Show the trail") {
+        @ContentAndMedia {
+            The title row is the one piece of chrome a pushed screen keeps,
+            so make it earn its cells: a breadcrumb-style title says where
+            the user is and how they got there, and a hint line documents
+            the two keys the screen answers to.
+
+            Up next: <doc:ShowTheNumbers> adds a Stats tab — tables,
+            sparklines, and the judgment of which display form fits.
+        }
+
+        @Steps {
+            @Step {
+                Set the detail's `navigationTitle` to a breadcrumb — `Tasks
+                ▸` followed by the task's title — and add a `Space toggle
+                Esc back` hint line under the fields.
+
+                You now hold both shapes, built on one store. The split
+                shows list and detail at once — reach for it when the user
+                scans one while referring to the other and the context must
+                persist. The stack shows one thing at a time — reach for it
+                when a shallow drill-down deserves the whole screen and a
+                guaranteed way back. The store never changed between
+                chapters, which is the point: navigation shape is a
+                view-layer decision.
+
+                @Code(name: "main.swift", file: "tasks4-03-01.swift") {
+                    @Image(source: "preview-tasks4-03-01.png", alt: "The detail screen titled with a breadcrumb: Tasks, an arrow, then the task's name.")
+                }
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            A mail client lets the user scan the message list while reading one message. Which shape fits?
+
+            @Choice(isCorrect: true) {
+                A ``SplitView`` — list and detail stay on screen together.
+
+                @Justification(reaction: "Right.") {
+                    Scanning-while-reading needs both at once and a context
+                    that persists; that is the split's whole case.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A ``NavigationStack`` — reading pushes the message over the list.
+
+                @Justification(reaction: "Not quite.") {
+                    A push replaces the screen, so the list the user wants
+                    to keep scanning disappears with every open.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                A ``TabView`` — one tab for the list, one for the message.
+
+                @Justification(reaction: "Not quite.") {
+                    Tabs are for peer screens with no hierarchy; a message
+                    is subordinate to the list, not a sibling of it.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            While the detail screen is up, where does the task's `done` flag live?
+
+            @Choice(isCorrect: true) {
+                On the shared store — the pushed value is only the task's
+                id, and the screen reads and writes through it.
+
+                @Justification(reaction: "Right.") {
+                    That is why popping needs no save step and why the
+                    list's checkbox already agrees when it reappears.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                In the pushed screen's own state, copied back to the store
+                on pop.
+
+                @Justification(reaction: "Not quite.") {
+                    Nothing is copied in either direction — the ``Toggle``'s
+                    binding mutates the store directly, while the screen is
+                    still up.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                In the navigation path, alongside the pushed id.
+
+                @Justification(reaction: "Not quite.") {
+                    The path holds only the ids that select screens; it
+                    carries no task data at all.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            After Esc pops the detail, why is the link that pushed it focused again?
+
+            @Choice(isCorrect: true) {
+                A pushed screen is presented like a modal — the focus
+                engine fences the covered list off and restores the
+                previously focused node on dismissal.
+
+                @Justification(reaction: "Right.") {
+                    Push reuses the modal containment machinery, and focus
+                    restoration on pop is part of that contract.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                Focus always returns to the first focusable view after any
+                screen change.
+
+                @Justification(reaction: "Not quite.") {
+                    That would lose the user's place in a long list — pop
+                    restores the *specific* link that pushed, not the first.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The path binding records which link had focus and reapplies
+                it.
+
+                @Justification(reaction: "Not quite.") {
+                    The path holds pushed values only; focus bookkeeping
+                    belongs to the focus engine, not to your state.
+                }
+            }
+        }
+    }
+}

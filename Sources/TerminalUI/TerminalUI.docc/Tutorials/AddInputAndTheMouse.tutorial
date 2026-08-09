@@ -68,6 +68,9 @@
             Small affordances tell the user what the app can do before
             they read anything: a badge on the prompt, and a footer that
             names every gesture.
+
+            Up next: <doc:GiveItStructure> splits the app into tabs and
+            panes once one screen stops being enough.
         }
 
         @Steps {
@@ -115,6 +118,72 @@
                 @Justification(reaction: "Not quite.") {
                     Speed is not the issue — conflict is. Arrows survive
                     because they don't type characters.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            The coordinates `.onClick` hands you are relative to what?
+
+            @Choice(isCorrect: true) {
+                The clicked view's own rectangle — (0, 0) is that view's
+                top-left cell.
+
+                @Justification(reaction: "Right.") {
+                    That is why the row closure needs no math at all: the
+                    click already belongs to the row that received it.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The whole terminal screen.
+
+                @Justification(reaction: "Not quite.") {
+                    Screen coordinates would force every handler to know
+                    its own layout position — the framework resolves that
+                    for you.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                The enclosing stack.
+
+                @Justification(reaction: "Not quite.") {
+                    The receiver is the view the modifier is attached to,
+                    not its parent.
+                }
+            }
+        }
+
+        @MultipleChoice {
+            Why does ``PromptInput`` take two bindings — `text` and `state`?
+
+            @Choice(isCorrect: true) {
+                `text` is the draft your app owns; `state` carries the
+                editor's internals (cursor, history) — both live on your
+                store so the source of truth stays yours.
+
+                @Justification(reaction: "Right.") {
+                    Components read and write through bindings; they never
+                    own your data.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                One is for reading and one is for writing.
+
+                @Justification(reaction: "Not quite.") {
+                    Every ``Binding`` is two-way; the split is by what the
+                    data is, not by direction.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                `state` is required only when history is enabled.
+
+                @Justification(reaction: "Not quite.") {
+                    The state binding is part of the initializer — the
+                    prompt always persists its editing state through it.
                 }
             }
         }
