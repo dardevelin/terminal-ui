@@ -16,6 +16,7 @@ case here, add the case when you fix it so future regressions won't slip.
 
 from __future__ import annotations
 
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -1514,6 +1515,11 @@ def chat_send_message_appends(app: Client) -> None:
                 "submitted message body should appear in the message list")
     assert_true("you" in full,
                 "user's message should be tagged with the 'you' name")
+    # The row is `name HH:MM body` — the gap after the timestamp comes from
+    # the row's HStack spacing, which once defaulted to 0 and fused them
+    # ("10:42Hi everyone").
+    assert_true(re.search(r"\d\d:\d\d hello there", full) is not None,
+                "timestamp and body should be separated by a space")
 
 
 def chat_bot_reply_appears(app: Client) -> None:

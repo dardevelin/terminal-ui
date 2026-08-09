@@ -11,8 +11,8 @@ struct MessageRow: TerminalView {
     let message: Message
 
     var body: some TerminalView {
-        HStack {
-            Text(padded(message.kind.rawValue, to: 6))
+        HStack(spacing: 1) {
+            Text(padded(message.kind.rawValue, to: 5))
                 .foreground(message.kind.color)
                 .bold()
             Text(message.timestamp)
@@ -21,9 +21,8 @@ struct MessageRow: TerminalView {
         }
     }
 
-    /// Right-pad with spaces so columns align. The longest fixture
-    /// kind is `alice` (5) — pad to 6 so there's a guaranteed gap
-    /// before the timestamp column starts.
+    /// Right-pad with spaces so columns align; the stack's spacing
+    /// provides the gaps. The longest fixture kind is `alice` (5).
     private func padded(_ s: String, to width: Int) -> String {
         if s.count >= width { return s }
         return s + String(repeating: " ", count: width - s.count)
