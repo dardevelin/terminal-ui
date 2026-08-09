@@ -1,20 +1,38 @@
-/// GitHub-style contribution heatmap using block/shade characters.
-/// Maps values to intensity levels: ░▒▓█ or custom palette.
+/// A GitHub-style intensity grid: one character cell per data point,
+/// colored (and optionally shaded) by magnitude.
 ///
-/// Usage:
-/// ```
+/// Each row of `data` becomes one terminal row; each value maps to a color
+/// step on the chosen ``HeatMap/Palette`` ramp. With the default `.block`
+/// style every cell is a full block (`█`) and only the color varies;
+/// `.shade` varies the glyph too (` ░▒▓█`), which keeps the ramp legible
+/// on monochrome terminals. Values normalize against the grid's min/max
+/// unless `min:`/`max:` pin the scale.
+///
+/// The dense-grid chart: contribution calendars, per-hour activity
+/// matrices, correlation grids. For a single series over time, use
+/// ``Sparkline``; for labeled category comparison, ``BarChart``.
+///
+/// ```swift
+/// // A weekday x week activity calendar, as the ComponentsDemo wires it:
 /// HeatMap(
-///     data: contributions,  // [[Double]] — rows x cols
-///     palette: .green       // color ramp
+///     data: state.heatmapData,   // [[Double]] — rows x cols
+///     palette: .green,
+///     cellStyle: .shade
 /// )
 /// ```
 public struct HeatMap: TerminalView {
+    /// Grid values, `data[row][col]`, rendered top row first.
     public let data: [[Double]]
+    /// Color ramp values map onto.
     public let palette: Palette
+    /// Which glyph each cell renders with.
     public let cellChar: CellStyle
+    /// Value mapped to the ramp's low end; `nil` uses the grid minimum.
     public let minValue: Double?
+    /// Value mapped to the ramp's high end; `nil` uses the grid maximum.
     public let maxValue: Double?
 
+    /// Color ramp for mapping normalized values to ANSI-256 colors.
     public enum Palette {
         case green     // GitHub style: dark→bright green
         case red       // Red intensity
@@ -23,12 +41,19 @@ public struct HeatMap: TerminalView {
         case thermal   // Blue→cyan→green→yellow→red
     }
 
+    /// Glyph choice per cell.
     public enum CellStyle {
         case block     // █ (full block, color varies)
         case shade     // ░▒▓█ (character varies)
         case square    // ■ (smaller square)
     }
 
+    /// - Parameters:
+    ///   - data: Grid values, `data[row][col]`.
+    ///   - palette: Color ramp (default `.green`).
+    ///   - cellStyle: Cell glyph (default `.block`).
+    ///   - min: Ramp low end; `nil` uses the grid minimum.
+    ///   - max: Ramp high end; `nil` uses the grid maximum.
     public init(
         data: [[Double]],
         palette: Palette = .green,

@@ -1,12 +1,19 @@
 /// A scrolling dot-matrix ticker that renders text as Morse code patterns.
-/// Dots flow continuously from right to left like a telegraph tape.
 ///
-/// Each character is rendered in 5x7 dot-matrix font, with dots colored
-/// by their Morse encoding: one color for dots (·), another for dashes (—),
-/// and dimmed for structural dots that aren't part of the Morse signal.
+/// Dots flow continuously from right to left like a telegraph tape,
+/// wrapping around so the message loops. Each character is drawn in the
+/// 5x7 ``DotFont`` and packed into braille glyphs (2x4 dots per cell),
+/// so the whole strip is exactly 2 terminal rows tall. Dots are colored
+/// by their Morse encoding: one color for dots (·), another for dashes
+/// (—), and dimmed for structural dots that aren't part of the Morse
+/// signal. Purely decorative — a marquee for splash screens and demos;
+/// for static display lettering use ``DotMatrixText``.
 ///
-/// Usage:
-/// ```
+/// The ticker doesn't animate itself: the scroll offset is app state,
+/// advanced externally (same externally-driven pattern as ``Spinner``),
+/// which keeps the animation in step with the render loop.
+///
+/// ```swift
 /// @TerminalState var offset = 0
 ///
 /// MorseTicker(
@@ -26,13 +33,23 @@
 /// // In onEvent: case .timer("ticker"): offset += 1
 /// ```
 public struct MorseTicker: TerminalView {
+    /// Message to scroll. Letters and digits carry Morse coloring;
+    /// other glyphs render in `dimColor`.
     public let text: String
+    /// Scroll position in dot columns; advance to animate. Wraps
+    /// automatically, so a monotonically increasing counter is fine.
     public let scrollBinding: Binding<Int>
+    /// Viewport width in terminal cells (braille = width*2 dot columns).
     public let width: Int
+    /// Always 2 terminal rows (7 dot rows packed into braille).
     public let height: Int
+    /// Color for dots (·) in the Morse encoding.
     public let dotColor: Color
+    /// Color for dashes (—) in the Morse encoding.
     public let dashColor: Color
+    /// Color for structural dots outside the Morse signal.
     public let dimColor: Color
+    /// Background fill behind the strip.
     public let bgColor: Color
 
     /// Width of the ticker in terminal cells (braille = width*2 dot columns).

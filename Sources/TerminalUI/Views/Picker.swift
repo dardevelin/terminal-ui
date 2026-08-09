@@ -50,12 +50,39 @@ extension TerminalView {
 /// .pickerStyle(.dropdown)
 /// ```
 ///
+/// The whole control is one stop in the Tab order regardless of style, and
+/// the keys inside it follow ``PickerStyle``: `.inline` lists every option
+/// (Up/Down move the `▸` cursor, Enter/Space commit the `•` selection),
+/// `.segmented` is one row where Left/Right move *and* commit, `.dropdown`
+/// collapses to the current value and opens on Enter/Space/Down — Enter
+/// commits and closes, Esc closes without committing. Reach for ``Toggle``
+/// when the choice is binary, or a `List` when the rows are data to browse
+/// rather than a setting to hold.
+///
 /// The selection lives entirely in the binding. Nothing about which option is
 /// chosen is stored in the render graph, so reordering or filtering the option
 /// list cannot desynchronise it.
+///
+/// Wired to an `@Observable` model, the way the Settings example does it:
+/// ```swift
+/// Picker("Theme", selection: Binding(
+///     get: { model.theme }, set: { model.theme = $0 }
+/// )) {
+///     ForEach(Theme.allCases) { theme in
+///         Text(theme.title).tag(theme)
+///     }
+/// }
+/// .pickerStyle(.segmented)
+/// ```
 public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalView {
+    /// Label rendered before the options — or in the shared label column
+    /// inside a ``Form``.
     public let label: String
+    /// The committed choice. Written only when the user commits, never
+    /// while the highlight is merely browsing.
     public let selection: Binding<SelectionValue>
+    /// The option views, each carrying a `.tag(_:)` whose type matches
+    /// `SelectionValue`.
     public let content: Content
 
     /// Cursor position while the user is browsing. Separate from `selection`
@@ -77,6 +104,10 @@ public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalV
     /// the framework's hottest path.
     private let options: [PickerOption<SelectionValue>]
 
+    /// - Parameters:
+    ///   - label: Text rendered before the options.
+    ///   - selection: Binding the committed choice is written through.
+    ///   - content: Option views, each tagged with `.tag(_:)`.
     public init(
         _ label: String,
         selection: Binding<SelectionValue>,

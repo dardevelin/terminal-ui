@@ -1,28 +1,59 @@
 import Observation
 
-/// A scrollable, selectable list with keyboard navigation.
-/// Virtualizes rendering — only visible items are rendered.
-/// The visibleCount is the total height budget including scroll indicators.
+/// A scrollable, selectable list of rows with keyboard and mouse navigation.
 ///
-/// Usage:
-/// ```
-/// @TerminalState var selection: Int? = nil
-/// @TerminalState var scroll: Int = 0
-/// List(items, selection: $selection, scroll: $scroll, visibleCount: 20) { item in
-///     Text(item.name)
+/// Renders one row per element with a `▸` cursor on the selected row, plus
+/// gray `▲ N more` / `▼ N more` indicator lines when content extends past
+/// the viewport. Rendering is virtualized — only the visible window is
+/// materialized, so a 100k-row list costs the same as a 20-row one. Arrows,
+/// PageUp/PageDown, Home/End move the selection; clicking a row selects it.
+///
+/// Sizing: with an explicit `visibleCount` the list measures exactly that
+/// many rows (the budget includes the indicator lines) and composes cheaply
+/// in nested layouts. Without it, the list sizes to whatever height its
+/// container gives it — which also makes it greedy in stack layout, the way
+/// any size-reading view has to be.
+///
+/// Siblings: ``Table`` for column-aligned, non-interactive data; ``TreeView``
+/// when rows nest and expand/collapse; ``ForEach`` when you just need rows
+/// with no scrolling or selection.
+///
+/// ```swift
+/// // Bindings bridge to an @Observable model, as the example apps wire them:
+/// List(state.processes,
+///      selection: Binding(get: { state.selectedProcessID },
+///                         set: { state.selectedProcessID = $0 }),
+///      scroll: Binding(get: { state.processListScroll },
+///                      set: { state.processListScroll = $0 }),
+///      visibleCount: 25) { proc in
+///     Text(proc.name).foreground(proc.cpu > 80 ? .red : .default)
 /// }
 /// ```
 public struct List<Data: RandomAccessCollection, Content: TerminalView>: TerminalView
     where Data.Element: Identifiable
 {
+    /// The collection driving the rows.
     public let data: Data
+    /// Two-way selected-element ID. `nil` disables selection entirely —
+    /// the list still scrolls but draws no cursor.
     public let selection: Binding<Data.Element.ID?>?
+    /// Two-way scroll offset (index of the first visible row). Pass a
+    /// binding to persist scroll position across parent rebuilds or to
+    /// drive it programmatically; `nil` lets the list manage it internally.
     public let scroll: Binding<Int>?
     /// Explicit visible-item cap. `nil` (default) fits to container height;
     /// set to pin the height cheaply for nested layouts.
     public let visibleCount: Int?
+    /// Builds the row view for one element.
     public let content: (Data.Element) -> Content
 
+    /// - Parameters:
+    ///   - data: Rows, identified by `Element.ID`.
+    ///   - selection: Selected-element ID binding; `nil` for a display-only list.
+    ///   - scroll: First-visible-row binding; `nil` for internal management.
+    ///   - visibleCount: Total height budget in rows, including the
+    ///     `▲`/`▼` indicator lines; `nil` fits to the container.
+    ///   - content: Row builder, called only for visible elements.
     public init(
         _ data: Data,
         selection: Binding<Data.Element.ID?>? = nil,

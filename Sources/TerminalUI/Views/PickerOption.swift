@@ -1,5 +1,15 @@
 /// A view carrying a selection tag, produced by `.tag(_:)`.
 ///
+/// Apps meet this type only as the return value of `.tag(_:)` — it is the
+/// vehicle that lets a selection container (``Picker``) match a rendered
+/// option back to the ``Binding`` value it commits:
+///
+/// ```swift
+/// Picker("Theme", selection: $theme) {
+///     ForEach(Theme.allCases) { Text($0.title).tag($0) }
+/// }
+/// ```
+///
 /// The tag rides in the static type rather than in the render graph. That is
 /// the whole design: recovering it is a typed protocol witness instead of an
 /// `AnyHashable` downcast, and selection identity stays in the `Binding` where
@@ -52,6 +62,17 @@ extension TaggedView: _TaggedViewProtocol {
 }
 
 /// One selectable option recovered from a picker's content.
+///
+/// ``Picker`` builds these itself by walking its builder content for
+/// `.tag(_:)` values — apps declare options as tagged views and never
+/// construct this type directly:
+///
+/// ```swift
+/// Picker("Theme", selection: $theme) {
+///     Text("Light").tag(Theme.light)   // becomes PickerOption(value: .light, title: "Light")
+///     Text("Dark").tag(Theme.dark)
+/// }
+/// ```
 public struct PickerOption<Value: Hashable>: Equatable {
     /// The tag this option commits when chosen.
     public let value: Value
@@ -67,6 +88,13 @@ public struct PickerOption<Value: Hashable>: Equatable {
 }
 
 /// Recovers a picker's options from ordinary view-builder content.
+///
+/// The traversal engine behind ``Picker``: it walks builder output —
+/// tuples, `ForEach`, `if`/`else`, modifiers — collecting every `.tag(_:)`
+/// whose type matches the picker's selection, in declaration order.
+/// Apps never call it; it exists as a named public seam so the collection
+/// rules (first duplicate tag wins, mistyped tags are skipped not coerced)
+/// are documented in one place.
 public enum PickerOptions {
 
     /// Walk `content` and collect every option tagged with `Value`.

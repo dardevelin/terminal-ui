@@ -1,9 +1,13 @@
-/// 5x7 dot-matrix font for terminal rendering.
-/// Each glyph is a 7-row array of strings where `#` = dot on, `.` = dot off.
-/// Covers ASCII printable characters (space through ~).
+/// The 5x7 dot-matrix font behind ``DotMatrixText`` and ``MorseTicker``.
 ///
-/// Usage:
-/// ```
+/// Each glyph is a 7-row array of pattern strings where `#` = dot on,
+/// `.` = dot off — a bitmap you can consume from your own renderers
+/// (marquees, LED-style widgets, ``BrailleCanvas`` stamping). Covers the
+/// printable ASCII range (space through `~`); letters are uppercase-only
+/// (lookups are case-folded) and widths vary per glyph — measure with
+/// ``glyphWidth(for:)``, don't assume 5 columns.
+///
+/// ```swift
 /// let glyph = DotFont.glyph(for: "A")
 /// // glyph[0] = ".###."
 /// // glyph[1] = "#...#"

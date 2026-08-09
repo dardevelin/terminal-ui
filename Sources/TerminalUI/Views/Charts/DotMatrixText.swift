@@ -1,8 +1,16 @@
-/// Renders text as large dot-matrix characters using braille unicode or bullet dots.
-/// Two rendering modes: braille (compact, 2x4 dots/cell) and bullet (● characters).
+/// Renders a short string as large dot-matrix display characters —
+/// airport-departure-board / LED-marquee lettering.
 ///
-/// Usage:
-/// ```
+/// Each character comes from the shared 5x7 ``DotFont`` and scales up to
+/// display size in one of two ways: `.bullet` (the default) spends one
+/// terminal cell per dot (`●`), giving big 7-row letters; `.braille`
+/// packs the same dots into braille glyphs at 2x4 dots per cell, giving
+/// compact 2-row letters. Glyph geometry is fixed — the view opts out of
+/// wrapping, so give it room or it clips. This is a display element for
+/// banners and splash headers; for ordinary text use ``Text``, and for a
+/// scrolling animated strip see ``MorseTicker``.
+///
+/// ```swift
 /// DotMatrixText("HELLO", mode: .braille)
 ///     .foreground(.cyan)
 ///
@@ -10,19 +18,29 @@
 ///     .foreground(.rgb(218, 218, 214))
 /// ```
 public struct DotMatrixText: TerminalView {
+    /// The string to render; characters outside ``DotFont``'s ASCII
+    /// coverage fall back to the `?` glyph.
     public let text: String
+    /// Braille (compact) or bullet (large) rendering.
     public let mode: RenderMode
+    /// Dot columns of blank space between letters.
     public let letterGap: Int
 
+    /// How dots become terminal glyphs.
     public enum RenderMode: Sendable {
         /// Compact braille rendering — 2x4 dots per terminal cell
         case braille
         /// Bullet character rendering — one dot per cell, customizable characters
         case bullet(dot: String, empty: String)
 
+        /// `.bullet` with `●` dots and space gaps.
         public static let `default`: RenderMode = .bullet(dot: "\u{25CF}", empty: " ")
     }
 
+    /// - Parameters:
+    ///   - text: String to render in dot-matrix glyphs.
+    ///   - mode: Rendering mode (default `.bullet` with `●`).
+    ///   - letterGap: Blank dot columns between letters (default 1).
     public init(_ text: String, mode: RenderMode = .default, letterGap: Int = 1) {
         self.text = text
         self.mode = mode

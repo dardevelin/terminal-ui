@@ -4,20 +4,48 @@
 /// to the available viewport. Scroll offset auto-adjusts to keep the
 /// keyboard-focused child visible (scroll-to-focused).
 ///
-/// Usage:
+/// The viewport is whatever rect the parent hands the scroll view — in
+/// practice you carve a fixed window with `.frame(height:)` (or let it
+/// fill the container) and content beyond it is clipped to whole cells.
+/// Edge glyphs advertise clipped content in each direction; hide them via
+/// ``ScrollIndicatorVisibility`` with `.scrollIndicators(.hidden)`.
+///
+/// Three ways the offset moves:
+/// - **Focus.** Tabbing to a focusable descendant outside the viewport
+///   scrolls it into view automatically — nothing to opt into.
+/// - **Direct keys.** When the content has no focusable descendants there
+///   is nothing for Tab to land on; add `.scrollable()` so the scroll
+///   view itself takes focus and arrows / PageUp / PageDown / Home / End
+///   drive the offset.
+/// - **Programmatic.** `.scrollPosition(id:)` keeps a `.id(_:)`-tagged
+///   descendant visible without touching keyboard focus.
+///
+/// Prefer ``List`` when rows need selection and a row cursor; `ScrollView`
+/// is for free-form content that merely overflows.
+///
+/// Usage (vertical window, keyboard-scrollable):
 /// ```swift
-/// ScrollView(.horizontal) {
-///     HStack {
-///         ForEach(items) { item in
-///             Text(item.name)
+/// ScrollView(.vertical) {
+///     VStack {
+///         ForEachWithID(Array(0..<20), id: \.self) { row in
+///             Text("row \(row)")
 ///         }
 ///     }
 /// }
+/// .scrollable()
+/// .frame(height: 6)
 /// ```
 public struct ScrollView<Content: TerminalView>: TerminalView {
+    /// The single axis this view scrolls along; the cross axis clips.
     public let axes: ScrollAxis
+    /// The content measured at unlimited size in the scroll axis.
     public let content: Content
 
+    /// - Parameters:
+    ///   - axes: the scroll axis, `.vertical` by default.
+    ///   - content: the scrollable content. Give it focusable descendants,
+    ///     or pair the scroll view with `.scrollable()`, so keyboard users
+    ///     can reach what's past the first viewport.
     public init(_ axes: ScrollAxis = .vertical, @TerminalViewBuilder content: () -> Content) {
         self.axes = axes
         self.content = content()

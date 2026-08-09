@@ -5,12 +5,19 @@
 /// optional `message` is shown below the input when present so users can read
 /// why their value was rejected.
 public struct TextInputValidation: Sendable, Equatable {
+    /// How the field should present the result: `.ok` default chrome,
+    /// `.warning` yellow, `.error` red.
     public enum Severity: Sendable, Equatable {
         case ok, warning, error
     }
+    /// Drives the field's tint.
     public let severity: Severity
+    /// Shown on a row beneath the input when present.
     public let message: String?
 
+    /// - Parameters:
+    ///   - severity: Visual state the field should adopt.
+    ///   - message: Optional short explanation rendered under the input.
     public init(_ severity: Severity, _ message: String? = nil) {
         self.severity = severity
         self.message = message
@@ -20,28 +27,6 @@ public struct TextInputValidation: Sendable, Equatable {
     public static let ok = TextInputValidation(.ok)
 }
 
-/// An editable single-line text field with insertion-index cursor.
-///
-/// Left/Right move the cursor by one character clamped to `[0, value.count]`;
-/// Home/End jump to the extremes. Character insertion + backspace operate
-/// at the cursor index, not the tail. The visible cursor glyph (`│`)
-/// renders at the insertion point.
-///
-/// The first positional argument is a persistent **prompt/label** rendered
-/// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
-/// `placeholder:` for ghost text that disappears once the user types.
-/// Attach a `validate:` closure to colour the input's border and surface a
-/// short error message when the value fails validation.
-///
-/// Usage:
-/// ```
-/// @TerminalState var name = ""
-/// TextInput("Name: ", text: $name)
-/// TextInput(text: $name, placeholder: "type here...")
-/// TextInput(text: $email, validate: { v in
-///     v.contains("@") ? .ok : TextInputValidation(.error, "missing @")
-/// })
-/// ```
 /// Layout axis for `TextInput`. Mirrors SwiftUI's `Axis` shape on
 /// `TextField(_:axis:)` introduced in iOS 16 (WWDC22 *What's new in
 /// SwiftUI*: *"Text fields can be configured to expand vertically
@@ -58,15 +43,65 @@ public struct TextInputValidation: Sendable, Equatable {
 /// single-row layout regardless of axis — wrap behaviour and growth
 /// envelope are separate concerns.
 public enum TextInputAxis: Sendable, Equatable {
+    /// Single-row field; overflowing content scrolls horizontally.
     case horizontal
+    /// Field may grow downward when the line-break mode wraps.
     case vertical
 }
 
+/// An editable single-line text field with insertion-index cursor.
+///
+/// Renders as one terminal row: an optional dim prompt, then the value with
+/// the cursor glyph (`│`) at the insertion point. When the value outgrows
+/// the available width, a virtual window slides over it — and only when the
+/// cursor would clip an edge, so arrowing around mid-buffer does not
+/// recentre the view. Left/Right move the cursor by one character clamped
+/// to `[0, value.count]`; Home/End jump to the extremes. Character
+/// insertion + backspace operate at the cursor index, not the tail.
+///
+/// The field joins the Tab order via the framework's `.focusable`
+/// machinery. While it holds focus, every printable key belongs to the
+/// value — so global single-letter chords must not claim letters while a
+/// text field is focused. Enter is deliberately *not* handled: it bubbles
+/// to the parent, which can treat it as submit.
+///
+/// This is the single-line member of the text-entry trio: reach for
+/// ``TextArea`` when the user is editing a document (multi-line, selection,
+/// undo — Enter inserts a newline), and ``PromptInput`` for a chat/command
+/// prompt (Enter submits, Up recalls history).
+///
+/// The first positional argument is a persistent **prompt/label** rendered
+/// before the input (SwiftUI `TextField`-style, e.g. `"Name: "`). Use
+/// `placeholder:` for ghost text that disappears once the user types.
+/// Attach a `validate:` closure to colour the input's border and surface a
+/// short error message when the value fails validation.
+///
+/// Usage:
+/// ```swift
+/// @TerminalState var name = ""
+/// @TerminalState var email = ""
+///
+/// TextInput("Name: ", text: $name)
+/// TextInput(text: $name, placeholder: "type here...")
+/// TextInput(text: $email, validate: { value in
+///     value.contains("@") ? .ok : TextInputValidation(.error, "missing @")
+/// })
+/// ```
 public struct TextInput: TerminalView {
+    /// Persistent label drawn dim before the value; never disappears.
     public let prompt: String
+    /// Ghost text shown dim while the value is empty; gone once the user
+    /// types.
     public let placeholder: String
+    /// The edited value. The field reads and writes through this binding
+    /// on every keystroke and paste.
     public let text: Binding<String>
+    /// Runs against the current value once per render. A `.warning` or
+    /// `.error` result tints the field and shows the message on a row
+    /// beneath it; `nil` (no validator) keeps the default chrome.
     public let validate: ((String) -> TextInputValidation)?
+    /// Growth axis — see ``TextInputAxis``. `.horizontal` (default) is
+    /// always one row.
     public let axis: TextInputAxis
     /// Hard ceiling on `value.count`. When non-nil, `.character`
     /// insertions that would push the value past `maxLength` are

@@ -1,31 +1,5 @@
 import Foundation
 
-/// A chat-style multi-line input that grows with content.
-/// Designed for CLI tool prompts — Claude Code, Codex, OpenCode style.
-///
-/// Features:
-/// - Soft-wraps content at the container width; input grows downward.
-/// - `❯` prompt indicator on the left, continuation rows indent to match.
-/// - Visible block cursor with per-display-row projection.
-/// - Enter submits; Shift+Enter / Option+Enter / Ctrl+Enter insert a newline.
-///   (Shift+Enter detection requires a terminal with kitty keyboard or similar;
-///    Option+Enter is the universal fallback — sent as `ESC\r`.)
-/// - Up arrow from the top display row recalls history.
-/// - Optional context badge on the right (project name, mode).
-///
-/// Usage:
-/// ```
-/// @TerminalState var input = ""
-/// @TerminalState var promptState = PromptInputState()
-///
-/// PromptInput(
-///     text: $input,
-///     state: $promptState,
-///     prompt: "❯",
-///     onSubmit: { text in print("Submitted: \(text)") }
-/// )
-/// ```
-
 /// Which axis arrow Up/Down navigates on.
 ///
 /// `.display` matches editors (vim visual lines, VS Code, Claude Code):
@@ -284,6 +258,12 @@ public struct PromptInputHistoryEntry: Equatable, Sendable {
     }
 }
 
+/// Cursor, scroll, history, and paste-buffer state for a ``PromptInput``.
+///
+/// Create one per prompt and pass it as a `Binding` so the state survives
+/// re-evaluations. Submitted entries accumulate in `history` for ↑-recall;
+/// the paste-buffer pool is append-only, which is what lets a deleted
+/// marker's content be restored later without ever having left the state.
 public struct PromptInputState: Equatable, Sendable {
     /// Cursor column within the current text (logical, counts characters
     /// left of the cursor in `lines[cursorRow]`).
@@ -318,16 +298,70 @@ public struct PromptInputState: Equatable, Sendable {
     public init() {}
 }
 
+/// A chat-style multi-line input that grows with content and submits on
+/// Enter. Designed for CLI tool prompts — Claude Code, Codex, OpenCode style.
+///
+/// The command-prompt member of the text-entry trio: ``TextInput`` is a
+/// one-line form field, ``TextArea`` a document editor where Enter inserts
+/// a newline — here Enter means "send". The prompt joins the Tab order via
+/// the framework's `.focusable` machinery, and while it holds focus every
+/// printable key belongs to the buffer: an app must not claim bare letters
+/// as global chords while a prompt is focused (gate such chords on the
+/// field being empty or unfocused instead).
+///
+/// Features:
+/// - Soft-wraps content at the container width; input grows downward up to
+///   the ``PromptHeightPolicy`` ceiling, then scrolls to keep the cursor
+///   visible.
+/// - `❯` prompt indicator on the left, continuation rows indent to match.
+/// - Visible block cursor with per-display-row projection.
+/// - Enter submits the trimmed text through `onSubmit` and clears the
+///   buffer; Shift+Enter / Option+Enter / Ctrl+Enter insert a newline.
+///   (Shift+Enter detection requires a terminal with kitty keyboard or similar;
+///    Option+Enter is the universal fallback — sent as `ESC\r`.)
+/// - Up arrow from the top display row recalls submitted history; Down
+///   walks back toward the live input.
+/// - Large pastes collapse to a `[Pasted text #N +M lines]` marker per
+///   ``PasteMode``; pasting the same content again expands it.
+/// - Optional context badge on the right (project name, mode).
+///
+/// Usage — the Chat example's prompt bar, bound to an `@Observable` model:
+/// ```
+/// @TerminalState var promptState = PromptInputState()
+///
+/// PromptInput(
+///     text: Binding(get: { model.draft }, set: { model.draft = $0 }),
+///     state: $promptState,
+///     prompt: "❯",
+///     heightPolicy: .fixed(3),
+///     onSubmit: { _ in model.sendUserMessage() }
+/// )
+/// ```
 public struct PromptInput: TerminalView {
+    /// The buffer, always in *expanded* form — collapsed paste markers are
+    /// purely a display concern, so `onSubmit`, history, and any other
+    /// reader of this binding see the full pasted text.
     public let text: Binding<String>
+    /// Cursor, scroll, history, and paste buffers — see ``PromptInputState``.
     public let state: Binding<PromptInputState>
+    /// Glyph drawn at the start of the first row; continuation rows indent
+    /// by its width. Defaults to `❯`.
     public let prompt: String
+    /// Optional context badge (project name, mode) rendered to the right —
+    /// only while the input is a single empty-ish row, so it never overlaps
+    /// wrapped content.
     public let badge: String?
     /// Legacy cap kept for source compatibility. When non-nil, overrides
     /// `heightPolicy` with `.fixed(n)` — matches the pre-constructor.
     public let maxVisibleLines: Int?
+    /// How the prompt picks its rendered height — see ``PromptHeightPolicy``.
     public let heightPolicy: PromptHeightPolicy
+    /// Whether Up/Down step display rows or logical lines — see
+    /// ``PromptArrowMode``.
     public let arrowMode: PromptArrowMode
+    /// Called with the trimmed buffer when plain Enter is pressed on
+    /// non-empty content. The buffer clears and the entry joins history
+    /// before this runs; empty or whitespace-only input never fires it.
     public let onSubmit: ((String) -> Void)?
 
     /// Boundary-feedback mode read at body-eval time. Drives the

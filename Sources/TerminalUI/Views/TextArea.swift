@@ -1,17 +1,15 @@
-/// Editing state for a TextArea. Create one per editor instance and pass it
-/// as a `Binding` so the state persists across re-evaluations.
-///
-/// Usage:
-/// ```
-/// @TerminalState var source = ""
-/// @TerminalState var editorState = TextAreaState()
-/// TextArea(text: $source, state: $editorState)
-/// ```
 /// One undo-stack snapshot — captures everything the editor needs to
 /// restore the pre-edit state.
+///
+/// ``TextArea`` pushes one of these onto ``TextAreaState/undoStack`` before
+/// every text mutation; Ctrl+Z pops it back. Apps only meet this type when
+/// inspecting or persisting an editor's history.
 public struct TextAreaSnapshot: Equatable, Sendable {
+    /// The full document at snapshot time.
     public let text: String
+    /// Where the cursor sat.
     public let cursor: TextAreaCursor
+    /// The active selection, if any.
     public let selection: TextAreaSelection?
 
     public init(text: String, cursor: TextAreaCursor, selection: TextAreaSelection?) {
@@ -21,6 +19,21 @@ public struct TextAreaSnapshot: Equatable, Sendable {
     }
 }
 
+/// Editing state for a ``TextArea``: cursor, scroll, selection, and undo
+/// history.
+///
+/// Create one per editor instance and pass it as a `Binding` so the state
+/// persists across re-evaluations. The document itself lives in the
+/// separate `text` binding — keeping the two apart is what lets an app
+/// swap documents while preserving editor state, or reset the editor
+/// without touching the text.
+///
+/// Usage:
+/// ```swift
+/// @TerminalState var source = ""
+/// @TerminalState var editorState = TextAreaState()
+/// TextArea(text: $source, state: $editorState)
+/// ```
 public struct TextAreaState: Equatable, Sendable {
     /// Current cursor row/col within the document.
     public var cursor: TextAreaCursor = .zero
@@ -52,8 +65,15 @@ public struct TextAreaState: Equatable, Sendable {
 }
 
 /// Row/column position within a TextArea document.
+///
+/// Coordinates are *logical*: `row` indexes the `\n`-split lines and `col`
+/// counts characters into that line — soft-wrap display rows are a
+/// rendering concern and never appear here. `col == line.count` is the
+/// valid "after the last character" insertion point.
 public struct TextAreaCursor: Equatable, Sendable {
+    /// Index into the document's `\n`-split lines.
     public var row: Int
+    /// Character offset within the line, `0...line.count`.
     public var col: Int
 
     public static let zero = TextAreaCursor(row: 0, col: 0)
@@ -65,8 +85,14 @@ public struct TextAreaCursor: Equatable, Sendable {
 }
 
 /// A selected range within a TextArea document.
+///
+/// `start` is the anchor where Shift+arrow selection began; `end` follows
+/// the cursor, so `end` may precede `start` in document order — use
+/// ``TextAreaSelection/ordered`` when consuming the range.
 public struct TextAreaSelection: Equatable, Sendable {
+    /// The anchor — where selection began.
     public var start: TextAreaCursor
+    /// The moving edge — follows the cursor.
     public var end: TextAreaCursor
 
     /// Returns (first, last) in document order.
@@ -87,22 +113,6 @@ public struct TextAreaSelection: Equatable, Sendable {
 
 // MARK: - TextArea View
 
-/// A multi-line text editor with cursor positioning, selection, and scrolling.
-///
-/// Supports arrow key navigation (char/line), Ctrl+A/E (home/end),
-/// Ctrl+Left/Right (word jump), Shift+arrow selection, insert/delete/backspace,
-/// newline, vertical scrolling, and optional line numbers.
-///
-/// Usage:
-/// ```
-/// @TerminalState var source = ""
-/// @TerminalState var editorState = TextAreaState()
-///
-/// TextArea(text: $source, state: $editorState)
-///     .frame(width: 60, height: 20)
-///
-/// TextArea(text: $source, state: $editorState, lineNumbers: true)
-/// ```
 /// Arrow-key behaviour for TextArea.
 ///
 /// Mirrors `PromptArrowMode` and SwiftUI's TextEditor convention.
@@ -123,9 +133,47 @@ public enum TextAreaArrowMode: Sendable, Equatable {
     case display
 }
 
+/// A multi-line text editor with cursor positioning, selection, scrolling,
+/// and bounded undo.
+///
+/// Renders a viewport over a `\n`-delimited document: a block cursor,
+/// blue-background selection, vim-style `~` markers past the last line, and
+/// an optional line-number gutter. Long logical lines soft-wrap at the
+/// container width. Supports arrow-key navigation (char/line), Ctrl+A/E
+/// (home/end of line), Ctrl+Left/Right (word jump), Shift+arrow selection,
+/// insert/delete/backspace, newline, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y)
+/// undo/redo, and bracketed paste.
+///
+/// This is the *editor* of the text-entry trio: Enter inserts a newline and
+/// never submits. Reach for ``TextInput`` for a one-line form field, or
+/// ``PromptInput`` for a command prompt where Enter means "send" and Up
+/// recalls history. The editor joins the Tab order via the framework's
+/// `.focusable` machinery; while focused, printable keys edit the document,
+/// so they must not be claimed by global chords.
+///
+/// The document lives in the `text` binding; everything else — cursor,
+/// scroll, selection, undo history — lives in a ``TextAreaState`` the app
+/// owns:
+///
+/// Usage:
+/// ```swift
+/// @TerminalState var source = ""
+/// @TerminalState var editorState = TextAreaState()
+///
+/// TextArea(text: $source, state: $editorState)
+///     .frame(width: 60, height: 20)
+///
+/// TextArea(text: $source, state: $editorState,
+///          lineNumbers: true, visibleHeight: 6)
+/// ```
 public struct TextArea: TerminalView {
+    /// The document, joined with `\n`. Every edit writes back through this
+    /// binding, so external mutation (load a file, apply a patch) is just a
+    /// set — the editor re-clamps its cursor to the new content.
     public let text: Binding<String>
+    /// Cursor, scroll, selection, and undo state — see ``TextAreaState``.
     public let state: Binding<TextAreaState>
+    /// Draws a right-aligned line-number gutter (`  1 │ `) when true.
     public let lineNumbers: Bool
     /// Explicit visible height in rows. `nil` (default) fits to container.
     /// Old int-default (10) preserved as the fallback when no container

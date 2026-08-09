@@ -1,11 +1,31 @@
-/// A single styled run of text. Each field is optional — `nil` means
-/// "inherit from the modifier chain / render context."
+/// A single styled run of text — the building block of multi-color ``Text``.
+///
+/// Each field is optional — `nil` means "inherit from the modifier chain /
+/// render context", so a span only pins the attributes it cares about and
+/// everything else follows the surrounding style. Compose spans into a
+/// ``Text`` when one line needs more than one color or weight; for uniformly
+/// styled text, plain `Text("…").foreground(.red)` is simpler.
+///
+/// ```swift
+/// Text(spans: [
+///     TextSpan("+42", foreground: .green, bold: true),
+///     TextSpan(" additions"),
+/// ])
+/// // or fluent, from a String:
+/// Text("error".fg(.red).bolded())
+/// ```
 public struct TextSpan: Sendable, Equatable {
+    /// The literal characters this span contributes.
     public var text: String
+    /// Foreground color; `nil` inherits from the render context.
     public var foreground: Color?
+    /// Background color; `nil` inherits from the render context.
     public var background: Color?
+    /// Bold weight; `nil` inherits from the render context.
     public var bold: Bool?
+    /// Italic slant; `nil` inherits from the render context.
     public var italic: Bool?
+    /// Underline; `nil` inherits from the render context.
     public var underline: Bool?
 
     public init(
@@ -45,18 +65,23 @@ public struct TextSpan: Sendable, Equatable {
 // MARK: - TextSpan styling fluent API
 
 extension TextSpan {
+    /// A copy of this span with its foreground color set.
     public func fg(_ color: Color) -> TextSpan {
         var copy = self; copy.foreground = color; return copy
     }
+    /// A copy of this span with its background color set.
     public func bg(_ color: Color) -> TextSpan {
         var copy = self; copy.background = color; return copy
     }
+    /// A copy of this span rendered bold.
     public func bolded() -> TextSpan {
         var copy = self; copy.bold = true; return copy
     }
+    /// A copy of this span rendered italic.
     public func italicized() -> TextSpan {
         var copy = self; copy.italic = true; return copy
     }
+    /// A copy of this span rendered underlined.
     public func underlined() -> TextSpan {
         var copy = self; copy.underline = true; return copy
     }
@@ -90,6 +115,22 @@ extension String {
 
 // MARK: - SpanBuilder (result builder)
 
+/// Result builder that assembles ``TextSpan`` arrays for `Text { … }`.
+///
+/// Accepts bare `String`s (promoted to unstyled spans), single ``TextSpan``s,
+/// and span arrays, with `if`/`else` and `for` support — so mixed-style lines
+/// read declaratively instead of as array concatenation.
+///
+/// ```swift
+/// Text {
+///     "status: "
+///     if isHealthy {
+///         "ok".fg(.green)
+///     } else {
+///         "degraded".fg(.red).bolded()
+///     }
+/// }
+/// ```
 @resultBuilder
 public struct SpanBuilder {
     public static func buildBlock(_ components: [TextSpan]...) -> [TextSpan] {
@@ -120,10 +161,18 @@ public struct SpanBuilder {
 
 // MARK: - Text view
 
-/// A run of styled text, optionally composed of multiple `TextSpan`s.
+/// A run of styled text, optionally composed of multiple ``TextSpan``s.
 ///
-/// `Text` wraps on newlines and supports per-character styling via spans.
-/// Apply styling via modifiers (`.foreground`, `.bold`, `.italic`, `.underline`).
+/// The fundamental leaf view: every character-cell of output ultimately
+/// comes from a `Text` (higher-level views like ``Table`` and ``BarChart``
+/// precompute their content into one). Embedded `\n` starts a new row, and
+/// long lines soft-wrap to the container width unless `.wrap(.none)` opts
+/// out. Style the whole run via modifiers (`.foreground`, `.bold`,
+/// `.italic`, `.underline`), or vary style within the line via spans.
+///
+/// `Text` is also the bridge for string-producing helpers: render a
+/// ``BrailleCanvas`` or precomputed grid to a `String` and wrap it in
+/// `Text` to place it in the view tree.
 ///
 /// ```swift
 /// Text("hello").bold().foreground(.cyan)

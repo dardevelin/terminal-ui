@@ -4,16 +4,32 @@
 /// `Spacer` children expand to fill remaining vertical space. Sibling
 /// `Spacer` instances split the slack equally.
 ///
+/// Layout is computed in whole terminal cells: one row of `Text` is one
+/// cell tall, and `spacing: 1` inserts one visibly blank row — there is
+/// no sub-cell hairline to fall back on. Reach for `VStack` to arrange a
+/// column of content; use ``HStack`` for a row, ``ZStack`` to layer views
+/// in the same rect, ``ScrollView`` when the column may outgrow the
+/// viewport, and ``List`` when rows need selection and a row cursor.
+///
 /// ```swift
 /// VStack {
 ///     Text("title").bold()
 ///     Divider()
 ///     Text("body")
 /// }
+///
+/// VStack(alignment: .trailing, spacing: 1) {
+///     Text("one").foreground(.cyan)
+///     Text("three").foreground(.cyan)
+/// }
 /// ```
 public struct VStack<Content: TerminalView>: TerminalView {
+    /// The children, in declaration order (top to bottom).
     public let content: Content
+    /// Cross-axis placement for children narrower than the stack.
     public let alignment: HorizontalAlignment
+    /// Blank rows between adjacent children. Never negative — the
+    /// initializer clamps.
     public let spacing: Int
 
     /// - Parameters:

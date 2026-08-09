@@ -55,6 +55,15 @@ struct FormLabel: TerminalView {
 /// column, computed from the widest label in the whole form, so the eye can
 /// scan down the controls. A `Form` that did not align would be a `VStack`.
 ///
+/// Rows are the framework's labelled controls — ``Toggle``, ``Picker``,
+/// ``Slider``, ``Stepper``, ``Gauge``, ``LabeledContent`` — grouped by
+/// ``Section``. The whole form scrolls vertically as one unit, and focus
+/// treats it as one list: Tab moves between operable controls, the arrow
+/// row-cursor walks every row (including read-only ones) and crosses
+/// section boundaries rather than stopping at them. Reach for a plain
+/// `VStack` when the content is not label + control rows — the shared
+/// column is the only thing a `Form` adds.
+///
 /// Rows stack their label above the control when the terminal is too narrow to
 /// place both side by side. The threshold is derived from the measured label
 /// column and a minimum control budget rather than a magic width.
@@ -188,7 +197,20 @@ enum FormLabels {
 ///
 /// Renders an uppercase header, its rows, an optional footer, and a `Divider`
 /// separating it from the next section — the shipped `Divider`, not a second
-/// kind of rule.
+/// kind of rule. Grouping is visual only: focus walks straight through a
+/// section boundary, because a form is one list.
+///
+/// ```swift
+/// Form {
+///     Section("Privacy") {
+///         Toggle("Telemetry", isOn: $telemetry)
+///         Toggle("Crash reports", isOn: $crashReports)
+///     }
+///     Section("About") {
+///         LabeledContent("Version", value: "1.0.0")
+///     }
+/// }
+/// ```
 ///
 /// An empty section renders **nothing**: an orphan header over no rows, or a
 /// divider with nothing after it, reads as a rendering fault rather than as an
@@ -208,6 +230,10 @@ public struct Section<Header: TerminalView, Content: TerminalView, Footer: Termi
     /// only for labelled rows, so a section of plain `Text` still counts.
     let isEmpty: Bool
 
+    /// - Parameters:
+    ///   - content: The section's rows.
+    ///   - header: Rendered uppercase and dim above the rows.
+    ///   - footer: Rendered after the rows; `EmptyView()` for none.
     public init(
         @TerminalViewBuilder content: () -> Content,
         @TerminalViewBuilder header: () -> Header,
@@ -327,6 +353,10 @@ enum FormContent {
 ///
 /// The read-only counterpart to the interactive controls: it participates in
 /// the same shared column so a form mixing values and controls still aligns.
+/// Like ``Gauge``, the arrow row-cursor visits it but Tab skips it — there
+/// is nothing to operate, yet stopping the walk above it would strand the
+/// rows below. Reach for a bare `Text` only outside a form, where no column
+/// exists to join.
 public struct LabeledContent<Label: TerminalView, Content: TerminalView>: TerminalView {
     let label: Label
     let content: Content

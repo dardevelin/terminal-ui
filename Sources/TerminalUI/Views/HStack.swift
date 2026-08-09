@@ -3,16 +3,32 @@
 /// Children are laid out in declaration order. `Spacer` children expand
 /// to fill remaining horizontal space; siblings split slack equally.
 ///
+/// Layout is computed in whole terminal cells: `spacing: 1` inserts one
+/// blank column between children. A ``Spacer`` between two children is
+/// the idiom for a full-width bar with content pushed to both edges —
+/// status bars, headers, key-hint rows. Use ``VStack`` for a column,
+/// ``ZStack`` to layer views in the same rect, and ``SplitView`` when
+/// panes should divide the width by ratio rather than by content size.
+///
 /// ```swift
 /// HStack {
 ///     Text("left")
 ///     Spacer()
 ///     Text("right")
 /// }
+///
+/// HStack(alignment: .bottom, spacing: 2) {
+///     Text("tall\nrows\nhere").foreground(.gray)
+///     Text("bottom").foreground(.yellow)
+/// }
 /// ```
 public struct HStack<Content: TerminalView>: TerminalView {
+    /// The children, in declaration order (left to right).
     public let content: Content
+    /// Cross-axis placement for children shorter than the stack.
     public let alignment: VerticalAlignment
+    /// Blank columns between adjacent children. Never negative — the
+    /// initializer clamps.
     public let spacing: Int
 
     /// - Parameters:

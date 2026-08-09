@@ -1,35 +1,25 @@
-/// A view that displays line-level diffs between two strings.
-/// Supports unified and side-by-side display modes with colored
-/// additions/removals and keyboard scrolling.
-///
-/// Usage:
-/// ```
-/// // From two strings — computes diff automatically
-/// DiffView(original: oldSource, modified: newSource)
-///
-/// // Side-by-side mode
-/// DiffView(original: oldSource, modified: newSource, mode: .sideBySide)
-///
-/// // From pre-computed diff lines
-/// DiffView(lines: diffLines)
-///
-/// // With file header
-/// DiffView(original: old, modified: new)
-///     .diffHeader("path/to/file.swift")
-/// ```
-
 // MARK: - DiffLine (public model)
 
-/// A single line in a diff result.
+/// A single line in a diff result, as produced by ``DiffEngine``.
+///
+/// Carries the line text, whether it was added/removed/unchanged, and its
+/// line number on each side — `nil` where the line doesn't exist (no old
+/// number for additions, no new number for removals). Build these yourself
+/// only when adapting an external diff source; otherwise let ``DiffEngine``
+/// or `DiffView(original:modified:)` compute them.
 public struct DiffLine: Identifiable, Sendable {
+    /// Stable position of this line in the diff output.
     public let id: Int
+    /// Whether the line was added, removed, or left unchanged.
     public let kind: Kind
+    /// The line's text, without a trailing newline.
     public let text: String
     /// Line number in the original file (nil for additions).
     public let oldLineNumber: Int?
     /// Line number in the modified file (nil for removals).
     public let newLineNumber: Int?
 
+    /// Classification of a diff line.
     public enum Kind: Sendable {
         case unchanged
         case added
@@ -47,7 +37,7 @@ public struct DiffLine: Identifiable, Sendable {
 
 // MARK: - DiffMode
 
-/// Display mode for the diff view.
+/// Display mode for ``DiffView``.
 public enum DiffMode: Sendable {
     /// Unified diff — interleaved additions and removals (like `git diff`).
     case unified
@@ -57,9 +47,20 @@ public enum DiffMode: Sendable {
 
 // MARK: - DiffEngine
 
-/// Computes line-level diffs between two strings.
-/// Supports two algorithms: Myers (fast for small diffs) and LCS (simple, always correct).
-/// Separated from the view so it can be tested independently.
+/// Computes line-level diffs between two strings or line arrays.
+///
+/// Supports two algorithms: Myers (fast when the change set is small) and
+/// LCS (simple, always correct, better for heavily divergent inputs).
+/// Separated from the view so it can be tested independently — and so apps
+/// can diff once and reuse the result. Feed the output to
+/// `DiffView(lines:)` when the surrounding view rebuilds often; the
+/// string-pair `DiffView` initializer re-runs the diff on every parent
+/// body evaluation.
+///
+/// ```swift
+/// let lines = DiffEngine.diff(original: oldSource, modified: newSource)
+/// DiffView(lines: lines, mode: .sideBySide)
+/// ```
 public enum DiffEngine {
 
     /// Algorithm selection for diff computation.
@@ -268,10 +269,37 @@ public enum DiffEngine {
 // MARK: - DiffView
 
 /// Displays a line-level diff with colored markers and keyboard scrolling.
+///
+/// Renders one row per ``DiffLine``: gray line-number gutters on the left,
+/// then `+` lines in green and `-` lines in red. ``DiffMode/unified``
+/// interleaves additions and removals like `git diff`;
+/// ``DiffMode/sideBySide`` pairs them across a `│` divider, old file left,
+/// new file right. The view is focusable — arrows, PageUp/PageDown,
+/// Home/End scroll it — and only `visibleHeight` rows are rendered per
+/// frame regardless of diff size.
+///
+/// Reach for `DiffView` to show *what changed between two strings* — it
+/// owns the diffing. ``HunkDiffView`` is the sibling for reviewing
+/// pre-hunked `git diff` output with a line cursor, visual range selection,
+/// and comment callbacks.
+///
+/// ```swift
+/// DiffView(original: "hello\nworld",
+///          modified: "hello\nswift world")
+///     .frame(height: 6)
+///
+/// // Side-by-side, with a file header:
+/// DiffView(original: oldSource, modified: newSource, mode: .sideBySide)
+///     .diffHeader("path/to/file.swift")
+/// ```
 public struct DiffView: TerminalView {
+    /// The diff to display, in output order.
     public let lines: [DiffLine]
+    /// Unified or side-by-side layout.
     public let mode: DiffMode
+    /// Optional file path rendered as `--- a/…` / `+++ b/…` above the diff.
     public let header: String?
+    /// Rows rendered per frame; scrolling moves the window.
     public let visibleHeight: Int
 
     @TerminalState private var scrollOffset: Int = 0

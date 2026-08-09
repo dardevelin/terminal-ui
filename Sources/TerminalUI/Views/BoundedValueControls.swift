@@ -30,9 +30,18 @@ private let defaultTrackWidth = 20
 /// Slider(value: $volume, in: 0...100, step: 5, label: "Volume")
 /// ```
 ///
-/// Left/Right adjust by `step` — or 1% of the range when `step` is nil — and
-/// Home/End jump to the bounds. Clicking the track jumps the thumb to that
-/// position.
+/// Renders as a 20-cell track with a `●` thumb placed proportionally,
+/// followed by the numeric value — one row, one stop in the Tab order via
+/// the framework's `.focusable` machinery. Left/Right adjust by `step` — or
+/// 1% of the range when `step` is nil — and Home/End jump to the bounds.
+/// Clicking the track jumps the thumb to that position. Inside a ``Form``
+/// the label joins the shared column so the track aligns with sibling
+/// controls.
+///
+/// The continuous member of the bounded-value trio: reach for ``Stepper``
+/// when the value is discrete and every increment matters (a count, a
+/// width), and ``Gauge`` when the value is read-only state to display
+/// rather than a setting to adjust.
 ///
 /// **Dragging the thumb is not supported.** The framework has no `.onDrag`
 /// primitive yet, so the control ships keyboard- and click-driven rather than
@@ -47,6 +56,12 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
     @TerminalEnvironment(\.formLabelWidth) private var formLabelWidth
     @TerminalEnvironment(\.formStacksRows) private var formStacksRows
 
+    /// - Parameters:
+    ///   - value: The chosen value; clamped into `bounds` on every write.
+    ///   - bounds: The range the track spans. Defaults to `0...1`.
+    ///   - step: Left/Right increment. `nil` means 1% of the range.
+    ///   - label: Optional text before the track; joins the shared column
+    ///     inside a ``Form``.
     public init(
         value: Binding<V>,
         in bounds: ClosedRange<V> = 0...1,
@@ -167,8 +182,17 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
 /// Stepper("Tab width", value: $tabWidth, in: 1...16)
 /// ```
 ///
-/// Left/Right or `-`/`+` adjust by `step`. The affordance at a bound renders
-/// dim, so the limit is visible before the user presses into it.
+/// Renders as `◂ value ▸` on one row — one stop in the Tab order via the
+/// framework's `.focusable` machinery. Left/Right or `-`/`+` adjust by
+/// `step`, and clicking either affordance presses it. The affordance at a
+/// bound renders dim, so the limit is visible before the user presses into
+/// it. Inside a ``Form`` the label joins the shared column.
+///
+/// The discrete member of the bounded-value trio: reach for ``Slider``
+/// when the value is continuous and its position within the range is what
+/// matters, and ``Gauge`` for read-only display. Any `Strideable` value
+/// works — counts, sizes, or floating-point values stepped by a fixed
+/// stride.
 public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric {
     let label: String
     let value: Binding<V>
@@ -190,6 +214,12 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
         FormLabel.rendered(text: label, width: formLabelWidth, stacks: formStacksRows).count
     }
 
+    /// - Parameters:
+    ///   - label: Text before the affordances; joins the shared column
+    ///     inside a ``Form``.
+    ///   - value: The adjusted value; clamped into `bounds` on every write.
+    ///   - bounds: The limits the value cannot leave.
+    ///   - step: Stride per press. Defaults to 1.
     public init(
         _ label: String,
         value: Binding<V>,
@@ -299,13 +329,25 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
 
 /// A read-only display of a value within a range.
 ///
-/// Distinct from `ProgressBar`, which is the obvious question: a **ProgressBar
+/// ```swift
+/// Gauge(value: 0.62, label: "Disk")
+/// ```
+///
+/// Renders as a 20-cell bar — `█` fill, `░` remainder — followed by the
+/// numeric value, on one row. Inside a ``Form`` the label joins the shared
+/// column, so gauges align with the interactive rows around them.
+///
+/// Distinct from ``ProgressBar``, which is the obvious question: a **ProgressBar
 /// means "this task is completing"** and implies an end state, while a
 /// **Gauge means "this value sits here within its range"** and may move in
-/// either direction forever — disk usage, battery, memory pressure.
+/// either direction forever — disk usage, battery, memory pressure. When the
+/// user should *set* the value rather than read it, reach for ``Slider`` or
+/// ``Stepper``.
 ///
-/// Takes a value rather than a binding and is not focusable: it reports state
-/// the app owns, so a stop in the Tab order would do nothing when reached.
+/// Takes a value rather than a binding and Tab never stops on it: it reports
+/// state the app owns, so a stop in the Tab order would do nothing when
+/// reached. The arrow row-cursor still visits it, so a form's walk does not
+/// strand the rows below.
 public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
     let value: V
     let scale: BoundedValueScale<V>
@@ -313,6 +355,11 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
 
     @TerminalEnvironment(\.isEnabled) private var isEnabled
 
+    /// - Parameters:
+    ///   - value: The value to display; clamped into `bounds` for rendering.
+    ///   - bounds: The range the bar spans. Defaults to `0...1`.
+    ///   - label: Optional text before the bar; joins the shared column
+    ///     inside a ``Form``.
     public init(value: V, in bounds: ClosedRange<V> = 0...1, label: String? = nil) {
         self.value = value
         self.scale = BoundedValueScale(bounds: bounds)

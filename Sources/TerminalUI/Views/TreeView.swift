@@ -1,25 +1,16 @@
-/// A hierarchical tree view with expandable/collapsible nodes,
-/// keyboard navigation, mouse support, and box-drawing connectors.
+/// Customizable colors and marker glyphs for ``TreeView`` appearance.
 ///
-/// Works with any data type that provides children via a key path.
-/// Children are lazily evaluated — only expanded nodes compute their children.
+/// Every knob has a sensible default (`.default`), so most trees pass no
+/// style at all. Mutate a copy to rebrand the markers or highlight colors:
 ///
-/// Usage:
-/// ```
-/// TreeView(rootItems, children: \.children) { item in
-///     Text(item.name)
-/// }
-///
-/// // With selection binding
-/// @TerminalState var selected: Int? = nil
-/// TreeView(items, children: \.children, selection: $selected) { item in
-///     HStack {
-///         Text(item.isDirectory ? "+" : "-")
-///         Text(item.name)
-///     }
+/// ```swift
+/// var style = TreeViewStyle()
+/// style.selectedBackground = .ansi256(238)
+/// style.connectorColor = .blue
+/// TreeView(roots, children: \.children, style: style) { node in
+///     Text(node.name)
 /// }
 /// ```
-/// Customizable style for TreeView appearance.
 public struct TreeViewStyle: Sendable {
     /// Color of expand/collapse arrow on unselected rows
     public var arrowColor: Color = .gray
@@ -45,15 +36,53 @@ public struct TreeViewStyle: Sendable {
     public init() {}
 }
 
+/// A hierarchical tree with expandable nodes, box-drawing connectors, and
+/// keyboard/mouse navigation.
+///
+/// Draws each row with `├──`/`└──` branch connectors, `│` continuation
+/// lines for open ancestor levels, and a `▾`/`▸` disclosure arrow on nodes
+/// that have children. Arrows move the cursor (right expands, left
+/// collapses or jumps to the parent), Enter/Space toggles, clicking a row
+/// selects and toggles it. Root items start expanded; collapsed branches
+/// contribute no rows and their children are never computed.
+///
+/// Works with any element that exposes optional children of the same
+/// collection type via a key path — `nil` children marks a leaf. Expansion
+/// state lives inside the view; the optional `selection` binding surfaces
+/// the current row's ID to the app.
+///
+/// Sizing follows ``List``: an explicit `visibleCount` pins the height to
+/// exactly that many rows (indicator lines included); `nil` fits to the
+/// container, which makes the tree greedy in stack layout. Reach for
+/// ``List`` when data is flat, ``Table`` when it's flat *and* columnar.
+///
+/// ```swift
+/// // A file browser pane, as the GitClient example wires it:
+/// TreeView(
+///     rows,
+///     children: \.children,
+///     selection: Binding(get: { state.selectedPath },
+///                        set: { state.selectedPath = $0 })
+/// ) { row in
+///     Text(row.label)
+/// }
+/// ```
 public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: TerminalView
     where Data.Element: Identifiable, Data.Element.ID: Sendable
 {
+    /// Root items of the tree.
     public let data: Data
+    /// Key path to an element's children; `nil` children marks a leaf.
     public let childrenKeyPath: KeyPath<Data.Element, Data?>
+    /// Two-way selected-node ID. The tree also tracks its own row cursor;
+    /// this binding mirrors it outward so the app can react to selection.
     public let selection: Binding<Data.Element.ID?>?
     /// Cap on visible rows. `nil` (default) fits to container height.
     public let visibleCount: Int?
+    /// Colors and marker glyphs; see ``TreeViewStyle``.
     public let style: TreeViewStyle
+    /// Builds the row view for one node (connectors and arrows are drawn
+    /// by the tree; this is just the label).
     public let content: (Data.Element) -> Content
 
     @TerminalState var expandedIDs: Set<AnyHashableID> = []
@@ -61,6 +90,14 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     @TerminalState var scrollOffset: Int = 0
     @TerminalState var initialized: Bool = false
 
+    /// - Parameters:
+    ///   - data: Root items.
+    ///   - children: Key path to an element's children (`nil` = leaf).
+    ///   - selection: Selected-node ID binding; `nil` keeps selection internal.
+    ///   - visibleCount: Height budget in rows including `▲`/`▼` indicator
+    ///     lines; `nil` fits to the container.
+    ///   - style: Colors and marker glyphs (default `TreeViewStyle.default`).
+    ///   - content: Row label builder, called only for visible nodes.
     public init(
         _ data: Data,
         children: KeyPath<Data.Element, Data?>,

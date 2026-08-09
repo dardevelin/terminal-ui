@@ -1,21 +1,47 @@
-/// A sparkline chart using braille characters for 2x4 sub-cell resolution.
-/// Renders a series of data points as a smooth line.
+/// A compact line chart of a numeric series, drawn in braille dots.
 ///
-/// Usage:
-/// ```
-/// Sparkline(data: cpuHistory, width: 40, height: 5)
-/// Sparkline(data: values, width: 60, height: 8, min: 0, max: 100)
+/// Plots the series onto a ``BrailleCanvas`` — every terminal cell is a
+/// 2×4 grid of braille dots (U+2800 block), so a 40×5-cell sparkline
+/// resolves 80×20 points — and connects consecutive samples with line
+/// segments. `filled: true` shades the area under the line. One color for
+/// the whole chart, set via `.foreground(_:)`.
+///
+/// This is the shape for *history*: CPU over the last minute, latency per
+/// tick. To compare labeled categories, use ``BarChart``; for a 2D grid,
+/// ``HeatMap``. By default the value range auto-scales to the data's
+/// min/max each frame — pin `min:`/`max:` for a stable axis on live data,
+/// otherwise the chart visibly re-normalizes as samples arrive.
+///
+/// ```swift
+/// // A rolling CPU gauge, as the ComponentsDemo wires it:
+/// Sparkline(
+///     data: state.cpuHistory,
+///     width: 60, height: 5,
+///     min: 0, max: 100
+/// )
+/// .foreground(.green)
 /// ```
 public struct Sparkline: TerminalView {
+    /// Samples, plotted left to right and spread across the full width.
     public let data: [Double]
     /// Explicit cell width. `nil` (default) fits to container width.
     public let chartWidth: Int?
     /// Explicit cell height. `nil` (default) fits to container height.
     public let chartHeight: Int?
+    /// Bottom of the value range; `nil` auto-scales to the data minimum.
     public let minValue: Double?
+    /// Top of the value range; `nil` auto-scales to the data maximum.
     public let maxValue: Double?
+    /// Shade the area under the line.
     public let filled: Bool
 
+    /// - Parameters:
+    ///   - data: Samples, left to right.
+    ///   - width: Cell width; `nil` fits to container.
+    ///   - height: Cell height; `nil` fits to container.
+    ///   - min: Fixed range bottom; `nil` auto-scales per frame.
+    ///   - max: Fixed range top; `nil` auto-scales per frame.
+    ///   - filled: Shade under the line (default `false`).
     public init(
         data: [Double],
         width: Int? = nil,

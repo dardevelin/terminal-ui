@@ -1,26 +1,12 @@
-/// A GitHub PR review-style hunk diff viewer with visual selection,
-/// keyboard navigation, and locked ranges for inline review comments.
-///
-/// Usage:
-/// ```
-/// HunkDiffView(
-///     hunks: hunks,
-///     fileName: "src/auth/handler.swift",
-///     onLineSelect: { lineIndex in print("selected \(lineIndex)") },
-///     onRangeSelect: { start, end in print("range \(start)...\(end)") }
-/// )
-///
-/// // With locked range (for committed review comments)
-/// HunkDiffView(
-///     hunks: hunks,
-///     fileName: "handler.swift",
-///     lockedRange: (5, 12)
-/// )
-/// ```
-
 // MARK: - HunkDiff namespace
 
-/// Namespace for hunk diff data types, avoiding collision with DiffView's DiffLine.
+/// Namespace for hunk diff data types, avoiding collision with ``DiffView``'s
+/// ``DiffLine``.
+///
+/// Models diff output the way `git diff` structures it: a file is a list of
+/// ``HunkDiff/Hunk``s, each a contiguous run of ``HunkDiff/Line``s with
+/// `@@ -old,+new @@` start coordinates. Populate these from your own diff
+/// parser (or any external tool's output) and hand them to ``HunkDiffView``.
 public enum HunkDiff {
 
     /// The type of a diff line within a hunk.
@@ -32,9 +18,13 @@ public enum HunkDiff {
 
     /// A single line within a diff hunk.
     public struct Line: Sendable {
+        /// Added, removed, or unchanged context.
         public let type: LineType
+        /// The line's text, without the leading `+`/`-`/space marker.
         public let content: String
+        /// Line number in the old file (`nil` for additions).
         public let oldLineNo: Int?
+        /// Line number in the new file (`nil` for removals).
         public let newLineNo: Int?
 
         public init(type: LineType, content: String, oldLineNo: Int? = nil, newLineNo: Int? = nil) {
@@ -47,8 +37,11 @@ public enum HunkDiff {
 
     /// A hunk of contiguous diff lines, as produced by `git diff`.
     public struct Hunk: Sendable {
+        /// First line number this hunk covers in the old file.
         public let oldStart: Int
+        /// First line number this hunk covers in the new file.
         public let newStart: Int
+        /// The hunk's lines, in file order.
         public let lines: [Line]
 
         public init(oldStart: Int, newStart: Int, lines: [Line]) {
@@ -97,10 +90,41 @@ public enum HunkDiff {
 
 /// A hunk-based diff viewer with cursor navigation, visual selection mode,
 /// and locked ranges — modeled after GitHub PR review inline diff panels.
+///
+/// Renders a bold file-name header, then each hunk under its magenta
+/// `@@ -old,count +new,count @@` header: dual line-number gutters, `+`
+/// lines green, `-` lines red, context gray. A `▸` cursor marks the
+/// current line (j/k or arrows move it); pressing `v` anchors a vim-style
+/// visual selection drawn with a `┃` bar (`v` again commits it via
+/// `onRangeSelect`, Escape cancels). A `lockedRange` renders with a yellow
+/// `┃` bar — for a range a committed review comment is pinned to.
+///
+/// Reach for `HunkDiffView` when reviewing pre-hunked `git diff` output
+/// line by line; ``DiffView`` is the sibling that computes and displays a
+/// whole-string diff without per-line interaction.
+///
+/// ```swift
+/// // A review pane, as the GitClient example wires it:
+/// HunkDiffView(
+///     hunks: file.hunks,
+///     fileName: file.path,
+///     visibleCount: 20,
+///     onRangeSelect: { start, end in
+///         state.commentRange = (start, end)
+///     }
+/// )
+/// ```
 public struct HunkDiffView: TerminalView {
+    /// Hunks to display, in file order.
     public let hunks: [HunkDiff.Hunk]
+    /// Path shown in the header row.
     public let fileName: String
+    /// Global line-index range highlighted with the yellow locked bar,
+    /// or `nil` for none. Indices count content lines across all hunks,
+    /// starting at 0 (hunk headers excluded).
     public let lockedRange: (Int, Int)?
+    /// Rows rendered per frame (hunk headers included); the cursor drags
+    /// the window along as it moves.
     public let visibleCount: Int
     private let onLineSelect: ((Int) -> Void)?
     private let onRangeSelect: ((Int, Int) -> Void)?
@@ -110,6 +134,16 @@ public struct HunkDiffView: TerminalView {
     @TerminalState private var visualAnchor: Int = 0
     @TerminalState private var scrollOffset: Int = 0
 
+    /// - Parameters:
+    ///   - hunks: Diff hunks, in file order.
+    ///   - fileName: Path shown in the header row.
+    ///   - lockedRange: Global line-index range to pin with the locked
+    ///     bar (committed review comments); `nil` for none.
+    ///   - visibleCount: Rows rendered per frame (default 40).
+    ///   - onLineSelect: Called with the cursor's global line index on
+    ///     every move outside visual mode.
+    ///   - onRangeSelect: Called with the (start, end) global line range
+    ///     while extending — and when committing — a visual selection.
     public init(
         hunks: [HunkDiff.Hunk],
         fileName: String,

@@ -19,6 +19,19 @@ import Observation
 /// counterpart to Enter pushing — and popping restores focus to the link that
 /// pushed, so a long list does not lose the user's place.
 ///
+/// In terminal terms a push *replaces* the screen: the pushed content is
+/// presented over a blank base with a title row (set via
+/// `.navigationTitle(_:)`) above it, so the covered level never bleeds
+/// through. Reach for a stack when screens form a drill-down hierarchy;
+/// use `.modal` for a transient overlay the user dismisses back to the
+/// same screen, and `TabView` for peer screens with no hierarchy.
+///
+/// Two path modes: the bound initialiser drives display from a caller's
+/// `Binding<[D]>` — pushes and Esc write back through it, and mutating the
+/// array programmatically navigates. The unbound initialiser lets the
+/// stack own its path (a ``NavigationPathStore``) when no outside code
+/// needs to steer.
+///
 /// **Mount policy: the root and the top screen are mounted; intermediate
 /// levels are not.** SwiftUI keeps every level mounted, but nesting a modal
 /// inside a modal's content centres it on that sub-buffer rather than the
@@ -324,10 +337,14 @@ public final class NavigationPushAction: @unchecked Sendable {
 /// NavigationLink(value: item) { Text(item.name) }
 /// ```
 ///
-/// Enter or a click pushes; the stack resolves the value to a screen through a
-/// matching `.navigationDestination(for:)`. Used with no stack in scope it
-/// renders its label and does nothing on activation — a link is a valid leaf
-/// view, not an error.
+/// The link renders its label and joins the Tab order via the framework's
+/// `.focusable` machinery; Enter, Space, or a click pushes, and the stack
+/// resolves the value to a screen through a matching
+/// `.navigationDestination(for:)`. When the pushed screen pops (Esc), focus
+/// returns to this link. Used with no stack in scope it renders its label
+/// and does nothing on activation — a link is a valid leaf view, not an
+/// error. Reach for ``Button`` when activation should run an action on the
+/// *current* screen rather than navigate.
 public struct NavigationLink<Label: TerminalView>: TerminalView {
     let value: any Hashable
     let label: Label
@@ -335,6 +352,10 @@ public struct NavigationLink<Label: TerminalView>: TerminalView {
     @TerminalEnvironment(\.navigationPush) private var push
     @TerminalEnvironment(\.isEnabled) private var isEnabled
 
+    /// - Parameters:
+    ///   - value: Pushed onto the stack's path on activation; its type
+    ///     selects the `.navigationDestination(for:)` that builds the screen.
+    ///   - label: The link's visible content.
     public init(value: some Hashable, @TerminalViewBuilder label: () -> Label) {
         self.value = value
         self.label = label()

@@ -1,42 +1,27 @@
-/// A full-width status bar pinned to the bottom of its container.
-/// Supports left, center, and right sections with inverse video styling.
-///
-/// Usage:
-/// ```
-/// StatusBar {
-///     StatusBar.Section(.left) {
-///         Text(" NORMAL ").bold().background(.blue)
-///     }
-///     StatusBar.Section(.center) {
-///         Text("myfile.swift")
-///     }
-///     StatusBar.Section(.right) {
-///         Text("Ln 42, Col 8")
-///     }
-/// }
-///
-/// // Simple key hints bar
-/// StatusBar.keyHints([
-///     ("^C", "Quit"),
-///     ("^S", "Save"),
-///     ("Tab", "Focus"),
-/// ])
-/// ```
-
 // MARK: - Section model
 
-/// Describes which zone a section occupies in the status bar.
+/// Describes which zone a section occupies in the ``StatusBar``.
 public enum StatusBarAlignment: Sendable {
     case left
     case center
     case right
 }
 
-/// A single section of a StatusBar, carrying its alignment and styled spans.
+/// A single section of a ``StatusBar``, carrying its alignment and styled spans.
+///
+/// Usually built via the `StatusBar.Section(_:content:)` factory inside a
+/// `StatusBar { … }` block rather than constructed directly. Span style
+/// fields left `nil` inherit the bar's background/foreground, so sections
+/// blend into the bar unless they opt out.
 public struct StatusBarSection: Sendable {
+    /// Which zone this section occupies.
     public let alignment: StatusBarAlignment
+    /// The section's styled content, concatenated left to right.
     public let spans: [TextSpan]
 
+    /// - Parameters:
+    ///   - alignment: Zone to occupy.
+    ///   - spans: Styled content; `nil` style fields inherit bar colors.
     public init(_ alignment: StatusBarAlignment, spans: [TextSpan]) {
         self.alignment = alignment
         self.spans = spans
@@ -45,6 +30,8 @@ public struct StatusBarSection: Sendable {
 
 // MARK: - SectionBuilder (result builder for sections)
 
+/// Result builder collecting ``StatusBarSection``s for `StatusBar { … }`,
+/// with `if`/`else` and `for` support for conditional sections.
 @resultBuilder
 public struct StatusBarSectionBuilder {
     public static func buildBlock(_ sections: StatusBarSection...) -> [StatusBarSection] {
@@ -69,12 +56,50 @@ public struct StatusBarSectionBuilder {
 
 // MARK: - StatusBar view
 
+/// A one-row, full-width bar with left / center / right sections — the
+/// vim-style mode line or key-hint strip at the bottom of an app.
+///
+/// Renders exactly one terminal row and stretches to its container's full
+/// width, painting the gaps between sections in the bar's background color
+/// (a dark gray by default) so the strip reads as one solid band.
+/// Sections are ``TextSpan`` content, not views: spans that leave style
+/// fields `nil` inherit the bar's colors. If content overflows the width,
+/// sections pack with single-space gaps and truncate on the right.
+///
+/// The bar is one row of a layout, not a floating overlay — pin it with a
+/// `Spacer()` above it in the app's root ``VStack``.
+///
+/// ```swift
+/// VStack {
+///     mainContent
+///     Spacer()
+///     StatusBar {
+///         StatusBar.Section(.left) {
+///             TextSpan("READY", bold: true)
+///         }
+///         StatusBar.Section(.center) {
+///             TextSpan("tab:1/3")
+///         }
+///         StatusBar.Section(.right) {
+///             TextSpan("0.2ms", foreground: .green)
+///         }
+///     }
+/// }
+///
+/// // Or the canned key-hint strip:
+/// StatusBar.keyHints([("^C", "Quit"), ("Tab", "Focus")])
+/// ```
 public struct StatusBar: TerminalView {
     let sections: [StatusBarSection]
     let barBackground: Color
     let barForeground: Color
 
     /// Create a status bar with section content.
+    /// - Parameters:
+    ///   - background: Bar fill color, applied to gaps and to spans that
+    ///     don't override it (default dark gray, `.ansi256(238)`).
+    ///   - foreground: Default text color for spans that don't override it.
+    ///   - content: Sections, built via `StatusBar.Section(_:content:)`.
     public init(
         background: Color = .ansi256(238),
         foreground: Color = .white,
@@ -105,6 +130,7 @@ public struct StatusBar: TerminalView {
     // MARK: - Section factory
 
     /// Create a section with a specific alignment from styled spans.
+    /// The builder accepts bare `String`s and ``TextSpan``s (not views).
     public static func Section(
         _ alignment: StatusBarAlignment,
         @SpanBuilder content: () -> [TextSpan]
@@ -116,7 +142,8 @@ public struct StatusBar: TerminalView {
 
     /// A status bar pre-populated with key binding hints.
     /// Each tuple is (key, description), rendered as "key description" pairs
-    /// separated by double spaces.
+    /// separated by double spaces — keys bold in `keyColor`, descriptions
+    /// in the bar foreground, all left-aligned.
     public static func keyHints(
         _ bindings: [(String, String)],
         background: Color = .ansi256(238),

@@ -4,9 +4,20 @@ import Darwin
 import Glibc
 #endif
 
-/// A 2D braille dot-matrix canvas for sub-cell resolution rendering.
-/// Each terminal cell maps to a 2x4 braille dot grid (Unicode braille block U+2800).
-/// Total resolution: width*2 x height*4 dots.
+/// A 2D braille dot-matrix canvas for sub-cell resolution drawing.
+///
+/// Each terminal cell maps to a 2x4 grid from the Unicode braille block
+/// (U+2800), so a canvas of `width` x `height` cells addresses
+/// `width*2` x `height*4` individually settable dots — the highest
+/// plotting resolution a text terminal offers. Primitives cover dots,
+/// Bresenham lines, quadratic/cubic beziers, circles, and filled rects,
+/// all in *dot* coordinates with origin at the top-left; out-of-bounds
+/// writes are silently clipped.
+///
+/// `BrailleCanvas` is not a view: it renders to a multi-line `String`
+/// that you wrap in ``Text`` to place in the tree. ``Sparkline`` is this
+/// canvas packaged as a view for the common data-series case — drop down
+/// to the canvas for free-form drawing.
 ///
 /// Dot layout per cell:
 /// ```
@@ -16,12 +27,15 @@ import Glibc
 /// ⡀ ⢀   (0,3) (1,3)
 /// ```
 ///
-/// Usage:
-/// ```
-/// var canvas = BrailleCanvas(width: 40, height: 10)
-/// canvas.set(x: 5, y: 3)   // set a dot
-/// canvas.line(x0: 0, y0: 0, x1: 79, y1: 39)  // draw line
-/// let text = canvas.render()  // multi-line string
+/// ```swift
+/// // A sine wave, as the Storybook page draws it:
+/// var canvas = BrailleCanvas(width: 40, height: 6)
+/// for x in 0..<canvas.dotWidth {
+///     let t = Double(x) / Double(canvas.dotWidth) * .pi * 4
+///     let y = Int((sin(t) + 1) / 2 * Double(canvas.dotHeight - 1))
+///     canvas.set(x: x, y: y)
+/// }
+/// Text(canvas.render()).foreground(.cyan)
 /// ```
 public struct BrailleCanvas {
     /// Width in terminal cells (dots = width * 2)
@@ -63,7 +77,8 @@ public struct BrailleCanvas {
 
     // MARK: - Drawing Primitives
 
-    /// Draw a line using Bresenham's algorithm.
+    /// Draw a straight segment between two dot coordinates
+    /// (Bresenham's algorithm).
     public mutating func line(x0: Int, y0: Int, x1: Int, y1: Int) {
         var x = x0, y = y0
         let dx = abs(x1 - x0)
@@ -155,7 +170,8 @@ public struct BrailleCanvas {
 
     // MARK: - Rendering
 
-    /// Render the canvas to a multi-line string of braille characters.
+    /// Render the canvas to a multi-line string of braille characters,
+    /// one line per cell row. Wrap the result in ``Text`` to display it.
     public func render() -> String {
         var lines: [String] = []
         for cellY in 0..<height {
