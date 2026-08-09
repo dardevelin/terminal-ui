@@ -49,15 +49,63 @@ jobs:
             --transform-for-static-hosting \
             --hosting-base-path "${{ github.event.repository.name }}"
 
-      # DocC's static site 404s at the bare root — the content lives under
-      # /documentation/terminalui/. Give the root a redirect so the Pages
-      # URL itself lands somewhere useful.
-      - name: Add root redirect
+      # DocC's static site 404s at the bare root. Replace it with the
+      # landing page: a selector between Tutorials, the in-depth reference,
+      # and the sample download. Deep routes keep their own SPA bootstrap
+      # copies, so overwriting the root is safe.
+      - name: Install landing page
         run: |
-          cat > docs-site/index.html <<HTML
-          <!DOCTYPE html>
-          <meta http-equiv="refresh" content="0; url=/${{ github.event.repository.name }}/documentation/terminalui/">
-          HTML
+          cp .github/pages/index.html docs-site/index.html
+          cp assets/logo.svg docs-site/logo.svg
+
+      # Inside tutorials, reference links open in a slide-over panel instead
+      # of navigating away — inject the enhancement into every SPA bootstrap
+      # copy (the landing page is plain HTML and takes no injection).
+      - name: Inject tutorial reference pane and render fixes
+        run: |
+          cp .github/pages/reference-pane.js docs-site/reference-pane.js
+          cp .github/pages/reference-pane.css docs-site/reference-pane.css
+          cp .github/pages/docc-fixes.css docs-site/docc-fixes.css
+          base="/${{ github.event.repository.name }}"
+          snippet="<link rel=\"stylesheet\" href=\"$base/docc-fixes.css\"><link rel=\"stylesheet\" href=\"$base/reference-pane.css\"><script src=\"$base/reference-pane.js\"></script></body>"
+          find docs-site -mindepth 2 -name index.html -print0 |
+            xargs -0 sed -i "s|</body>|$snippet|"
+
+      # The tutorial's final step is a complete program; package it as the
+      # downloadable sample the landing page and tutorial link to. One
+      # source of truth — the tutorial resource itself.
+      - name: Build sample project download
+        run: |
+          mkdir -p sample/Tasks/Sources/Tasks docs-site/downloads
+          cp Sources/TerminalUI/TerminalUI.docc/Resources/tasks-04-01.swift sample/Tasks/Sources/Tasks/main.swift
+          cat > sample/Tasks/Package.swift <<'MANIFEST'
+          // swift-tools-version: 6.2
+          import PackageDescription
+
+          let package = Package(
+              name: "Tasks",
+              platforms: [.macOS(.v15)],
+              dependencies: [
+                  .package(url: "https://github.com/dardevelin/terminal-ui", branch: "main"),
+              ],
+              targets: [
+                  .executableTarget(
+                      name: "Tasks",
+                      dependencies: [.product(name: "TerminalUI", package: "terminal-ui")]
+                  ),
+              ]
+          )
+          MANIFEST
+          cat > sample/Tasks/README.md <<'NOTE'
+          # Tasks — the TerminalUI tutorial app
+
+          The finished app from the "Build a task list" tutorial.
+
+              swift run
+
+          Keys: up/down or j/k to move, space or Enter to toggle, q to quit.
+          NOTE
+          (cd sample && zip -qr ../docs-site/downloads/build-a-task-list.zip Tasks)
 
       - uses: actions/upload-pages-artifact@v3
         with:

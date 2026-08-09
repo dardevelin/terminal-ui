@@ -42,6 +42,25 @@ while port_in_use "$port"; do
   fi
 done
 
+# The toolchain's docc-render template paints tutorial assessment choices
+# black under a light color scheme (.choice's background token chain).
+# The deployed site gets .github/pages/docc-fixes.css injected by the docs
+# workflow; the local preview gets the same fix by serving a patched copy of
+# the render template via DOCC_HTML_DIR.
+render_dir="$(dirname "$(xcrun --find docc 2>/dev/null || command -v docc)")/../share/docc/render"
+if [ -d "$render_dir" ] && [ -f ".github/pages/docc-fixes.css" ]; then
+  patched="$(mktemp -d)/render"
+  cp -R "$render_dir" "$patched"
+  style="<style>$(cat .github/pages/docc-fixes.css)</style>"
+  python3 - "$patched/index.html" "$style" <<'PYEOF'
+import sys
+path, style = sys.argv[1], sys.argv[2]
+html = open(path).read()
+open(path, "w").write(html.replace("</head>", style + "</head>", 1))
+PYEOF
+  export DOCC_HTML_DIR="$patched"
+fi
+
 echo "Serving documentation for $target at http://localhost:$port/documentation/"
 
 TUI_BUILD_DOCS=1 swift package --disable-sandbox preview-documentation \

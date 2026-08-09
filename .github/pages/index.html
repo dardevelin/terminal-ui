@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TerminalUI — Documentation</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --panel: #161616; --border: #2a2a2a;
+    --fg: #f4f4f4; --muted: #9a9a9a; --accent: #f2994a; --green: #7de3a6;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #ffffff; --panel: #f5f5f7; --border: #d2d2d7; --fg: #1d1d1f; --muted: #6e6e73; }
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--fg); min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 3rem 1.5rem;
+  }
+  img.logo { width: 140px; height: auto; margin-bottom: 1rem; }
+  h1 { font-size: 2rem; letter-spacing: -0.02em; }
+  p.tag { color: var(--muted); margin: .5rem 0 2.5rem; text-align: center; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; width: 100%; max-width: 820px; }
+  a.card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 1.4rem 1.2rem; text-decoration: none; color: var(--fg);
+    transition: border-color .15s ease, transform .15s ease;
+  }
+  a.card:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .card .glyph { font-size: 1.6rem; display: block; margin-bottom: .6rem; }
+  .card h2 { font-size: 1.05rem; margin-bottom: .35rem; }
+  .card p { color: var(--muted); font-size: .88rem; line-height: 1.45; }
+  .card .hint { display: inline-block; margin-top: .8rem; color: var(--accent); font-size: .85rem; }
+  footer { margin-top: auto; padding-top: 3rem; color: var(--muted); font-size: .85rem; }
+  footer a { color: var(--muted); }
+</style>
+</head>
+<body>
+  <img class="logo" src="logo.svg" alt="TerminalUI — Ember Fox mascot">
+  <h1>TerminalUI</h1>
+  <p class="tag">SwiftUI for the terminal. macOS, Linux, over SSH.</p>
+
+  <div class="cards">
+    <a class="card" href="tutorials/terminaluitutorials">
+      <span class="glyph">🎓</span>
+      <h2>Tutorials</h2>
+      <p>Learn by building — step-by-step, every step a complete program you
+         can run. Start here if TerminalUI is new to you.</p>
+      <span class="hint">Build a task list →</span>
+    </a>
+    <a class="card" href="documentation/terminalui/">
+      <span class="glyph">📖</span>
+      <h2>In depth</h2>
+      <p>The full API reference and the architecture articles: the attribute
+         graph, the layout model, the performance history.</p>
+      <span class="hint">API reference →</span>
+    </a>
+    <a class="card" href="downloads/build-a-task-list.zip">
+      <span class="glyph">⬇︎</span>
+      <h2>Sample project</h2>
+      <p>The finished tutorial app as a runnable Swift package —
+         download, <code>swift run</code>, and poke at it locally.</p>
+      <span class="hint">Download the Tasks app →</span>
+    </a>
+  </div>
+
+  <footer>
+    <a href="https://github.com/dardevelin/terminal-ui">Source on GitHub</a>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,26 @@
+/* docc-render (Xcode toolchain build) renders tutorial assessment choices
+   with a background token chain that resolves to black under a light color
+   scheme, hiding the choice text (swift-docc-render topic.css: .choice uses
+   --colors-text-background → --color-text-background). Scope the fix to the
+   choices; page-level tokens stay untouched. Honors both the OS scheme and
+   docc-render's own in-page toggle (data-color-scheme). */
+.choice {
+  background: #f5f5f7 !important;
+  color: #1d1d1f !important;
+}
+@media (prefers-color-scheme: dark) {
+  .choice {
+    background: #1d1d1f !important;
+    color: #f4f4f4 !important;
+  }
+}
+[data-color-scheme="light"] .choice,
+body[data-color-scheme="light"] .choice {
+  background: #f5f5f7 !important;
+  color: #1d1d1f !important;
+}
+[data-color-scheme="dark"] .choice,
+body[data-color-scheme="dark"] .choice {
+  background: #1d1d1f !important;
+  color: #f4f4f4 !important;
+}
