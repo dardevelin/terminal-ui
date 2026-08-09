@@ -216,9 +216,6 @@ remaining casts. See `Sources/TerminalUI/TerminalUI.docc/Articles/Performance.md
 
 ## Current direction
 
-Tracked in Linear: team Hyperlocalwave, project "Developer Experience Tooling" —
-query it for current priorities rather than trusting any list written here.
-
 The active large effort is **i3-shaped tiling primitives**: the SplitNode model +
 SplitView, the `FocusableContainer` protocol + directional `FocusEngine.move()`,
 and an ActionContext stack with scoped key-bindings (i3 modes) have shipped;
@@ -229,16 +226,7 @@ Prefer hardening the core over starting new epics.
 
 ## Orientation for new sessions
 
-Don't explore the codebase from scratch. Before diagnosing anything as a
-regression or starting new work:
-
-1. `git log --oneline -10` — what changed recently; `git diff HEAD~N` — what's in flight
-2. **MemPalace**: `mempalace_search query="<topic>" wing="swift_tui"` — architectural
-   decisions, past bugs, design rationale. `mempalace_kg_query entity="TerminalUI"`
-   for implemented features and milestones. (`swift_tui` is the external wing name,
-   unrelated to any directory in this repo.)
-3. **Linear**: team Hyperlocalwave, project "Developer Experience Tooling"
-4. **Obsidian**: vault `swift_tui_framework/` — `obsidian search query="<topic>"`,
-   then `obsidian read path="swift_tui_framework/<doc>.md"`. Start at `00_index.md`;
-   `17_profiling_progression.md` holds the optimization history with measurements.
-5. **Claude memory**: `~/.claude/projects/-Users-dbrasdasilva-workspace-swift-workspace/memory/MEMORY.md`
+Don't explore the codebase from scratch: start with `git log --oneline -10`
+for what changed recently and `git diff HEAD~N` for what's in flight, and
+read the DocC articles under `Sources/TerminalUI/TerminalUI.docc/Articles/`
+for architecture and performance history.

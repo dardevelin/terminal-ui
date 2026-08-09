@@ -343,6 +343,16 @@ v1.0.0. 1084 tests in 229 suites, run on macOS and Linux, plus a PTY-driven
 behavioural harness that walks every Storybook page. Builds with zero
 warnings under `-warnings-as-errors`.
 
+## How this was built
+
+TerminalUI is developed in extensive collaboration with
+[Claude Code](https://claude.com/claude-code). That is not incidental to the
+design: the debug socket, the PTY harness, and the cell-grid assertions
+described above are the loop the AI works in — it drives the running apps,
+reads the frames back, and verifies its changes the same way any contributor
+would. Direction, design taste, and acceptance stay human. If something in
+here looks wrong, it probably is — please open an issue.
+
 ## License
 
 TerminalUI is available under any of:

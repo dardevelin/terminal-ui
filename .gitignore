@@ -27,3 +27,11 @@
 .idea/
 *.swp
 *~
+
+# Personal tooling — Claude Code hooks with machine-specific paths, private
+# session instructions, and MemPalace artifacts. None of it is part of the
+# project.
+.claude/
+CLAUDE.local.md
+entities.json
+mempalace.yaml
