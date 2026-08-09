@@ -77,17 +77,17 @@ It is the wrong fit when:
 
 ## What's included
 
-34 views and 7 chart components. Every name below links to its source, and
-every one has a live page in the Storybook — `swift run Storybook` is the
+34 views and 7 chart components. Every name below links to its documentation,
+and every one has a live page in the Storybook — `swift run Storybook` is the
 animated version of this table.
 
 | | Components |
 |---|---|
-| **Layout** | [`VStack`](Sources/TerminalUI/Views/VStack.swift) · [`HStack`](Sources/TerminalUI/Views/HStack.swift) · [`ZStack`](Sources/TerminalUI/Views/ZStack.swift) · [`Spacer`](Sources/TerminalUI/Views/Spacer.swift) · [`Divider`](Sources/TerminalUI/Views/Divider.swift) · [`ScrollView`](Sources/TerminalUI/Views/ScrollView.swift) · [`SplitView`](Sources/TerminalUI/Views/Split/SplitView.swift) · [`GeometryReader`](Sources/TerminalUI/Views/GeometryReader.swift) |
-| **Content & data** | [`Text`](Sources/TerminalUI/Views/Text.swift) · [`ForEach`](Sources/TerminalUI/Views/ForEach.swift) · [`List`](Sources/TerminalUI/Views/List.swift) · [`Table`](Sources/TerminalUI/Views/Table.swift) · [`TabView`](Sources/TerminalUI/Views/TabView.swift) · [`TreeView`](Sources/TerminalUI/Views/TreeView.swift) · [`DiffView`](Sources/TerminalUI/Views/DiffView.swift) · [`HunkDiffView`](Sources/TerminalUI/Views/HunkDiffView.swift) · [`BufferView`](Sources/TerminalUI/Views/BufferView.swift) · [`ProgressBar`](Sources/TerminalUI/Views/ProgressBar.swift) · [`Gauge`](Sources/TerminalUI/Views/BoundedValueControls.swift) · [`Spinner`](Sources/TerminalUI/Views/ProgressBar.swift) · [`StatusBar`](Sources/TerminalUI/Views/StatusBar.swift) |
-| **Input & forms** | [`Button`](Sources/TerminalUI/Views/Button.swift) · [`TextInput`](Sources/TerminalUI/Views/TextInput.swift) · [`TextArea`](Sources/TerminalUI/Views/TextArea.swift) · [`Toggle`](Sources/TerminalUI/Views/Toggle.swift) · [`Picker`](Sources/TerminalUI/Views/Picker.swift) · [`Slider`](Sources/TerminalUI/Views/BoundedValueControls.swift) · [`Stepper`](Sources/TerminalUI/Views/BoundedValueControls.swift) · [`PromptInput`](Sources/TerminalUI/Views/PromptInput.swift) · [`Form`](Sources/TerminalUI/Views/Form.swift) · [`Section`](Sources/TerminalUI/Views/Form.swift) · [`LabeledContent`](Sources/TerminalUI/Views/Form.swift) · [`NavigationStack`](Sources/TerminalUI/Views/Navigation.swift) · [`NavigationLink`](Sources/TerminalUI/Views/Navigation.swift) |
-| **Charts** | [`BarChart`](Sources/TerminalUI/Views/Charts/BarChart.swift) · [`Sparkline`](Sources/TerminalUI/Views/Charts/Sparkline.swift) · [`HeatMap`](Sources/TerminalUI/Views/Charts/HeatMap.swift) · [`BrailleCanvas`](Sources/TerminalUI/Views/Charts/BrailleCanvas.swift) · [`DotMatrixText`](Sources/TerminalUI/Views/Charts/DotMatrixText.swift) · [`DotFont`](Sources/TerminalUI/Views/Charts/DotFont.swift) · [`MorseTicker`](Sources/TerminalUI/Views/Charts/MorseTicker.swift) |
-| **Presentation** | [`.alert`](Sources/TerminalUI/Views/AlertPresentation.swift) · [`.confirmationDialog`](Sources/TerminalUI/Views/AlertPresentation.swift) · [`.modal`](Sources/TerminalUI/Modifiers/OverlayModifiers.swift) — with focus containment |
+| **Layout** | [`VStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/vstack) · [`HStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hstack) · [`ZStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/zstack) · [`Spacer`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spacer) · [`Divider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/divider) · [`ScrollView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/scrollview) · [`SplitView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/splitview) · [`GeometryReader`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/geometryreader) |
+| **Content & data** | [`Text`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/text) · [`ForEach`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/foreach) · [`List`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/list) · [`Table`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/table) · [`TabView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tabview) · [`TreeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/treeview) · [`DiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/diffview) · [`HunkDiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hunkdiffview) · [`BufferView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/bufferview) · [`ProgressBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/progressbar) · [`Gauge`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/gauge) · [`Spinner`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spinner) · [`StatusBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/statusbar) |
+| **Input & forms** | [`Button`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/button) · [`TextInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textinput) · [`TextArea`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textarea) · [`Toggle`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/toggle) · [`Picker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/picker) · [`Slider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/slider) · [`Stepper`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/stepper) · [`PromptInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/promptinput) · [`Form`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/form) · [`Section`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/section) · [`LabeledContent`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/labeledcontent) · [`NavigationStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationstack) · [`NavigationLink`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationlink) |
+| **Charts** | [`BarChart`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/barchart) · [`Sparkline`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/sparkline) · [`HeatMap`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/heatmap) · [`BrailleCanvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/braillecanvas) · [`DotMatrixText`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotmatrixtext) · [`DotFont`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotfont) · [`MorseTicker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/morseticker) |
+| **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
 
 Beyond the components:
 
@@ -280,6 +280,24 @@ path) into a cell buffer; a compositor diffs that buffer against the previous
 frame and emits cursor moves plus writes only for changed cells, flushed in a
 single POSIX `write` per frame. `@Observable` tracking means unchanged state
 skips the entire pipeline.
+
+## Documentation
+
+The API reference and the architecture articles (the attribute graph, the
+layout model, the performance history) are DocC, deployed to GitHub Pages on
+every push to `main` by `.github/workflows/docs.yml`:
+
+**<https://dardevelin.github.io/terminal-ui/documentation/terminalui/>**
+
+To browse it locally with live reload while working on the docs:
+
+```bash
+TUI_BUILD_DOCS=1 swift package --disable-sandbox preview-documentation --target TerminalUI
+```
+
+The `TUI_BUILD_DOCS` gate exists because SwiftPM has no dev-only
+dependencies — without it, every consumer of the package would clone the
+DocC plugin to build a library that doesn't need it.
 
 ## Library products
 

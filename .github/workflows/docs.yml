@@ -1,0 +1,75 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Deploying to Pages needs these; everything else stays read-only.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  # Pages deployments are not meaningfully parallel — the last push wins.
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build DocC site
+    runs-on: ubuntu-latest
+    # Package.swift requires swift-tools-version 6.2; swift:6.0 rejects the
+    # manifest outright.
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache build
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: docs-spm-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            docs-spm-${{ hashFiles('Package.swift') }}-
+            docs-spm-
+
+      # TUI_BUILD_DOCS gates the swift-docc-plugin dependency so ordinary
+      # consumers resolving this package clone nothing — docs builds are the
+      # one place that opts in. The hosting base path must equal the repo
+      # name for github.io project pages, so derive it rather than hardcode.
+      - name: Generate documentation
+        run: |
+          TUI_BUILD_DOCS=1 swift package \
+            --allow-writing-to-directory docs-site \
+            generate-documentation \
+            --target TerminalUI \
+            --output-path docs-site \
+            --transform-for-static-hosting \
+            --hosting-base-path "${{ github.event.repository.name }}"
+
+      # DocC's static site 404s at the bare root — the content lives under
+      # /documentation/terminalui/. Give the root a redirect so the Pages
+      # URL itself lands somewhere useful.
+      - name: Add root redirect
+        run: |
+          cat > docs-site/index.html <<HTML
+          <!DOCTYPE html>
+          <meta http-equiv="refresh" content="0; url=/${{ github.event.repository.name }}/documentation/terminalui/">
+          HTML
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs-site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
