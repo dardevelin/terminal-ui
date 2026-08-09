@@ -292,8 +292,14 @@ every push to `main` by `.github/workflows/docs.yml`:
 To browse it locally with live reload while working on the docs:
 
 ```bash
-TUI_BUILD_DOCS=1 swift package --disable-sandbox preview-documentation --target TerminalUI
+tools/scripts/preview_docs.sh
 ```
+
+This wraps `TUI_BUILD_DOCS=1 swift package --disable-sandbox
+preview-documentation --target TerminalUI`, picking the next free port when
+8080 is taken and shutting the server down cleanly however the script is
+stopped — killing the bare `swift package` wrapper with anything but SIGINT
+orphans the underlying `docc` server, which then squats the port.
 
 The `TUI_BUILD_DOCS` gate exists because SwiftPM has no dev-only
 dependencies — without it, every consumer of the package would clone the
