@@ -42,21 +42,27 @@ while port_in_use "$port"; do
   fi
 done
 
-# The toolchain's docc-render template paints tutorial assessment choices
-# black under a light color scheme (.choice's background token chain).
-# The deployed site gets .github/pages/docc-fixes.css injected by the docs
-# workflow; the local preview gets the same fix by serving a patched copy of
-# the render template via DOCC_HTML_DIR.
+# The local preview serves the same site enhancements the deploy workflow
+# injects — the light-mode assessment fix, the docs/tutorials navigation
+# pills, and the tutorial slide-over reference pane — by patching a copy of
+# the toolchain's render template and serving it via DOCC_HTML_DIR. The
+# toolchain itself is never touched.
 render_dir="$(dirname "$(xcrun --find docc 2>/dev/null || command -v docc)")/../share/docc/render"
-if [ -d "$render_dir" ] && [ -f ".github/pages/docc-fixes.css" ]; then
+if [ -d "$render_dir" ] && [ -d ".github/pages" ]; then
   patched="$(mktemp -d)/render"
   cp -R "$render_dir" "$patched"
-  style="<style>$(cat .github/pages/docc-fixes.css)</style>"
-  python3 - "$patched/index.html" "$style" <<'PYEOF'
+  python3 - "$patched/index.html" <<'PYEOF'
 import sys
-path, style = sys.argv[1], sys.argv[2]
+path = sys.argv[1]
 html = open(path).read()
-open(path, "w").write(html.replace("</head>", style + "</head>", 1))
+head = "<style>{}\n{}</style>".format(
+    open(".github/pages/docc-fixes.css").read(),
+    open(".github/pages/reference-pane.css").read(),
+)
+body = "<script>{}</script>".format(open(".github/pages/reference-pane.js").read())
+html = html.replace("</head>", head + "</head>", 1)
+html = html.replace("</body>", body + "</body>", 1)
+open(path, "w").write(html)
 PYEOF
   export DOCC_HTML_DIR="$patched"
 fi

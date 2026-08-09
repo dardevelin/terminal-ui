@@ -13,15 +13,19 @@
 
     @Section(title: "Stand up the app") {
         @ContentAndMedia {
-            A TerminalUI app is a type conforming to `TerminalAppProtocol`:
+            A TerminalUI app is a type conforming to ``TerminalAppProtocol``:
             `content()` declares the view tree, `onEvent(_:)` sees every
-            input event first and returns `false` to quit.
+            input event first and returns `false` to quit. Follow the links
+            as you go — symbols like ``VStack`` or ``Text`` open in a side
+            panel so you never lose your place.
         }
 
         @Steps {
             @Step {
                 Declare the entry point. `content()` is the SwiftUI `body`
-                of the whole app; `onEvent` quits on `q` or Escape.
+                of the whole app, built from views like ``VStack``,
+                ``Text``, and ``Divider``; `onEvent` (see ``TerminalEvent``
+                and ``KeyEvent``) quits on `q` or Escape.
 
                 Run it with `swift run` — you get a raw-mode app with a
                 title, a rule, and a quit key.
@@ -50,9 +54,9 @@
             }
 
             @Step {
-                Render the tasks with `ForEach`, one row view per item.
-                `TaskRow` is an ordinary `TerminalView` — composition works
-                exactly like SwiftUI, down to the `HStack(spacing: 1)`.
+                Render the tasks with ``ForEach``, one row view per item.
+                `TaskRow` is an ordinary ``TerminalView`` — composition works
+                exactly like SwiftUI, down to the ``HStack``'s `spacing: 1`.
 
                 Run it: the three seeded tasks appear with empty checkboxes.
 
@@ -103,8 +107,8 @@
                 Finish the app: completed tasks render dim with a green
                 check, the header shows how many remain, and a footer
                 documents the keys. All of it is the same three modifiers —
-                `.foreground`, `.bold`, `.padding` — applied where meaning
-                calls for them.
+                `.foreground`, `.bold`, `.padding` (see ``TerminalView``) —
+                applied where meaning calls for them.
 
                 @Code(name: "main.swift", file: "tasks-04-01.swift")
             }

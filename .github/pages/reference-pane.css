@@ -26,3 +26,24 @@
   color: inherit; padding: 4px 8px;
 }
 .tui-refpane-frame { flex: 1; border: none; width: 100%; }
+
+.tui-docs-nav {
+  position: fixed; top: 10px; right: 14px; z-index: 9998;
+  display: flex; gap: 6px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.tui-docs-nav a {
+  font-size: 12px; line-height: 1; text-decoration: none;
+  padding: 6px 10px; border-radius: 999px;
+  color: #f4f4f4; background: rgba(20, 20, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.tui-docs-nav a:hover { border-color: #f2994a; color: #f2994a; }
+@media (prefers-color-scheme: light) {
+  .tui-docs-nav a {
+    color: #1d1d1f; background: rgba(245, 245, 247, 0.8);
+    border-color: rgba(0, 0, 0, 0.15);
+  }
+  .tui-docs-nav a:hover { border-color: #c46a1e; color: #c46a1e; }
+}

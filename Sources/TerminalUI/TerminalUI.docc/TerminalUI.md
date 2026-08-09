@@ -9,6 +9,10 @@ TerminalUI brings the SwiftUI paradigm to the terminal: declarative views,
 cell buffer, composites a delta against the previous frame, and emits only the
 cells that changed through a single POSIX write per frame.
 
+> Tip: New to the framework? Start with the tutorial — <doc:BuildATaskList>
+> builds a working app step by step, and every reference page here is one
+> click away from its steps.
+
 ## Hello world
 
 ```swift
