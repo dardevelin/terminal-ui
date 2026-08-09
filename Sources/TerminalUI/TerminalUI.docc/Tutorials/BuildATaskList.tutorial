@@ -1,0 +1,145 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Build a task list") {
+        Build a small task manager: a list rendered from observable state,
+        a selection cursor moved with the keyboard, and a toggle. Everything
+        SwiftUI taught you about state driving views applies unchanged —
+        the pixels are just terminal cells.
+
+        Create an executable package and add TerminalUI as a dependency
+        before you start (the Install section of the README shows both).
+    }
+
+    @Section(title: "Stand up the app") {
+        @ContentAndMedia {
+            A TerminalUI app is a type conforming to `TerminalAppProtocol`:
+            `content()` declares the view tree, `onEvent(_:)` sees every
+            input event first and returns `false` to quit.
+        }
+
+        @Steps {
+            @Step {
+                Declare the entry point. `content()` is the SwiftUI `body`
+                of the whole app; `onEvent` quits on `q` or Escape.
+
+                Run it with `swift run` — you get a raw-mode app with a
+                title, a rule, and a quit key.
+
+                @Code(name: "main.swift", file: "tasks-01-01.swift")
+            }
+        }
+    }
+
+    @Section(title: "Render from observable state") {
+        @ContentAndMedia {
+            State lives in an `@Observable` class. Mutating it marks the
+            graph dirty; the next frame re-renders whatever changed. There
+            is no notification code to write — the same Observation
+            machinery SwiftUI uses drives the terminal renderer.
+        }
+
+        @Steps {
+            @Step {
+                Add the model: a `TaskItem` value and a `TaskStore` holding
+                an array of them. The store is file-scope — the framework
+                calls into your app on the main thread, and this is the
+                pattern all bundled examples use.
+
+                @Code(name: "main.swift", file: "tasks-02-01.swift")
+            }
+
+            @Step {
+                Render the tasks with `ForEach`, one row view per item.
+                `TaskRow` is an ordinary `TerminalView` — composition works
+                exactly like SwiftUI, down to the `HStack(spacing: 1)`.
+
+                Run it: the three seeded tasks appear with empty checkboxes.
+
+                @Code(name: "main.swift", file: "tasks-02-02.swift")
+            }
+        }
+    }
+
+    @Section(title: "Drive it from the keyboard") {
+        @ContentAndMedia {
+            `onEvent` receives every key before any focused view does, which
+            makes it the right place for app-level bindings — navigation,
+            toggles, quit. Views re-render because the handlers mutate the
+            store, never because you tell them to.
+        }
+
+        @Steps {
+            @Step {
+                Add a selection: the store remembers `selectedID`, arrow keys
+                (and `j`/`k`) move it, and the selected row draws a `▸`
+                cursor — the same affordance the framework's own components
+                use.
+
+                @Code(name: "main.swift", file: "tasks-03-01.swift")
+            }
+
+            @Step {
+                Toggle with space or Enter. `toggleSelected()` flips one
+                task's `done`; the checkbox glyph follows on the next frame.
+
+                Notice what you did not write: no repaint calls, no dirty
+                tracking, no key routing tables.
+
+                @Code(name: "main.swift", file: "tasks-03-02.swift")
+            }
+        }
+    }
+
+    @Section(title: "Polish") {
+        @ContentAndMedia {
+            The last pass is what separates a demo from a tool: color that
+            carries meaning, a live count in the header, a hint line at the
+            bottom, and breathing room from `.padding`.
+        }
+
+        @Steps {
+            @Step {
+                Finish the app: completed tasks render dim with a green
+                check, the header shows how many remain, and a footer
+                documents the keys. All of it is the same three modifiers —
+                `.foreground`, `.bold`, `.padding` — applied where meaning
+                calls for them.
+
+                @Code(name: "main.swift", file: "tasks-04-01.swift")
+            }
+        }
+    }
+
+    @Assessments {
+        @MultipleChoice {
+            Why does the checkbox update when `toggleSelected()` mutates the store?
+
+            @Choice(isCorrect: false) {
+                The framework re-renders on every frame regardless of state.
+
+                @Justification(reaction: "Not quite.") {
+                    Idle frames do no work — an unchanged store skips the
+                    whole pipeline.
+                }
+            }
+
+            @Choice(isCorrect: true) {
+                The store is `@Observable`, so mutating it marks the graph
+                dirty and the next frame re-renders what changed.
+
+                @Justification(reaction: "Right.") {
+                    Observation tracking is the only re-render trigger —
+                    the same model SwiftUI uses.
+                }
+            }
+
+            @Choice(isCorrect: false) {
+                `onEvent` returns `true`, which forces a render.
+
+                @Justification(reaction: "Not quite.") {
+                    The return value only decides whether the app keeps
+                    running.
+                }
+            }
+        }
+    }
+}

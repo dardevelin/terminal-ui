@@ -1,0 +1,19 @@
+@Tutorials(name: "TerminalUI") {
+    @Intro(title: "Building terminal apps with TerminalUI") {
+        Learn the framework the way you'll actually use it: by building an
+        app. Each tutorial is a sequence of small steps, and every step's
+        code is a complete program you can run with `swift run`.
+
+        For the concepts behind the steps — the attribute graph, the layout
+        model, rendering — see the articles under Essentials on the
+        documentation landing page.
+    }
+
+    @Chapter(name: "Foundations") {
+        Stand up an app, drive it from observable state, and handle keys.
+
+        @Image(source: "tutorial-tasks-card.png", alt: "The TerminalUI mascot.")
+
+        @TutorialReference(tutorial: "doc:BuildATaskList")
+    }
+}

@@ -30,11 +30,20 @@ Run with `swift run`. Press `q` to exit.
 
 ## Topics
 
+### Tutorials
+
+Step-by-step, building a real app — start here if you learn by doing.
+
+- <doc:TerminalUITutorials>
+- <doc:BuildATaskList>
+
 ### Getting started
 
 - <doc:GettingStarted>
 
 ### Architecture
+
+In-depth: how the framework works, for when you need to reason about it.
 
 - <doc:ArchitecturalModels>
 - <doc:AttributeGraph>
