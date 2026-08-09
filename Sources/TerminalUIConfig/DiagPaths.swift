@@ -72,6 +72,50 @@ public enum DiagPaths {
         return "/tmp/\(tmpPrefix)\(hash)-\(getpid())"
     }
 
+    /// Every `remote/` socket directory belonging to THIS checkout,
+    /// newest first. The enumeration a client needs for `list` and `reap`.
+    public static func clientRemoteDirs(tmpRoot: String = "/tmp") -> [String] {
+        let prefix = "\(tmpPrefix)\(cwdHash)-"
+        let fileManager = FileManager.default
+        let entries = (try? fileManager.contentsOfDirectory(atPath: tmpRoot)) ?? []
+        let dirs = entries.compactMap { entry -> (path: String, modified: Date)? in
+            guard entry.hasPrefix(prefix) else { return nil }
+            let remote = "\(tmpRoot)/\(entry)/remote"
+            var isDirectory = ObjCBool(false)
+            guard fileManager.fileExists(atPath: remote, isDirectory: &isDirectory),
+                  isDirectory.boolValue else { return nil }
+            let attributes = try? fileManager.attributesOfItem(atPath: remote)
+            let modified = attributes?[.modificationDate] as? Date ?? .distantPast
+            return (remote, modified)
+        }
+        return dirs.sorted { $0.modified > $1.modified }.map(\.path)
+    }
+
+    /// The socket path a CLIENT process (swtui ctl, scripts) should target.
+    ///
+    /// A client must never resolve through its own `tmpDataDir`: the PID in
+    /// that path is the client's, and no app ever wrote there — `swtui ctl`
+    /// doing exactly that is how every invocation failed while the Python
+    /// harness client (which searches the checkout's dirs) kept passing.
+    /// Searches every per-process dir for this checkout, newest first, and
+    /// returns the first that actually holds the wanted socket file — or
+    /// nil, so the caller reports "no running app" instead of a fabricated
+    /// path. `TERMINALUI_DATA_DIR` still wins when set, mirroring
+    /// `dataDir(useTmp:)`.
+    public static func clientSocketPath(pid: Int32?, tmpRoot: String = "/tmp") -> String? {
+        let filename = pid.map { "\($0).sock" } ?? "latest.sock"
+        if let override = ProcessInfo.processInfo.environment[dataDirEnvVar],
+           !override.isEmpty {
+            return "\(override)/remote/\(filename)"
+        }
+        let fileManager = FileManager.default
+        for dir in clientRemoteDirs(tmpRoot: tmpRoot) {
+            let candidate = "\(dir)/\(filename)"
+            if fileManager.fileExists(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
     /// FNV-1a hash of the current cwd, exposed so callers can enumerate
     /// every per-process dir for THIS checkout regardless of PID.
     public static var cwdHash: String {

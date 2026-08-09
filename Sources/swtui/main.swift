@@ -328,23 +328,27 @@ func ctlCommand(args: [String]) {
     // Flags may appear before or after the subcommand — scan the whole arg
     // list and peel off `--pid`, `--socket`, `--dir`. The first remaining
     // token is the subcommand; the rest become positional args.
-    var socketDir = DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp)
-    var socketPath = "\(socketDir)/latest.sock"
+    //
+    // ctl is a CLIENT: it must resolve sockets by searching this checkout's
+    // per-process dirs (`DiagPaths.clientSocketPath`), never through its own
+    // `tmpDataDir` — the PID in that path is ctl's, and no app ever wrote
+    // there. Resolution defers until after flag parsing so `--pid` targets
+    // the dir that actually holds that socket.
+    var explicitDir: String? = nil
+    var explicitSocket: String? = nil
     var explicitPID: Int32? = nil
     var nonFlags: [String] = []
     var i = 0
     while i < args.count {
         let arg = args[i]
         if arg == "--pid", i + 1 < args.count {
-            socketPath = "\(socketDir)/\(args[i + 1]).sock"
             explicitPID = Int32(args[i + 1])
             i += 2
         } else if arg == "--socket", i + 1 < args.count {
-            socketPath = args[i + 1]
+            explicitSocket = args[i + 1]
             i += 2
         } else if arg == "--dir", i + 1 < args.count {
-            socketDir = args[i + 1]
-            socketPath = "\(socketDir)/latest.sock"
+            explicitDir = args[i + 1]
             i += 2
         } else {
             nonFlags.append(arg)
@@ -356,6 +360,26 @@ func ctlCommand(args: [String]) {
         exit(1)
     }
     let positional = Array(nonFlags.dropFirst())
+
+    let socketDirs: [String]
+    if let explicitDir {
+        socketDirs = [explicitDir]
+    } else {
+        socketDirs = DiagPaths.clientRemoteDirs()
+    }
+    let socketPath: String
+    if let explicitSocket {
+        socketPath = explicitSocket
+    } else if let explicitDir {
+        let filename = explicitPID.map { "\($0).sock" } ?? "latest.sock"
+        socketPath = "\(explicitDir)/\(filename)"
+    } else if let resolved = DiagPaths.clientSocketPath(pid: explicitPID) {
+        socketPath = resolved
+    } else {
+        let target = explicitPID.map { "pid \($0)" } ?? "any app"
+        log.error("no running debug app found for this checkout (\(target); searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
+        exit(1)
+    }
 
     let payload: [String: Any]
     switch subcommand {
@@ -447,21 +471,21 @@ func ctlCommand(args: [String]) {
         // Read-only enumeration of running debug apps. No filesystem
         // mutation: dead sockets are reported as dead but NOT unlinked.
         // Use `swtui ctl reap` to clean those up.
-        ctlList(socketDir: socketDir)
+        ctlList(socketDirs: socketDirs)
         return
     case "reap":
         // Unlink stale sockets whose owning PID is dead. Never sends
         // `quit`. Live processes are always preserved. This is the
         // verb automation calls; humans use `kill --pid <N>` when
         // they know exactly what they're killing.
-        ctlReap(socketDir: socketDir)
+        ctlReap(socketDirs: socketDirs)
         return
     case "kill":
         // Send `quit` to a single explicit PID. The legacy `kill all`
         // dragnet is gone — too easy to send `quit` to the user's
         // live session by accident. Bare `kill` (no --pid) is a
         // usage error that exits non-zero.
-        ctlKill(socketDir: socketDir, explicitPID: explicitPID, positional: positional)
+        ctlKill(socketDirs: socketDirs, explicitPID: explicitPID, positional: positional)
         return
     default:
         log.error("unknown ctl subcommand: \(subcommand)")
@@ -539,24 +563,22 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
 /// **never mutates filesystem state**. Stale sockets are reported but
 /// not unlinked — that's `swtui ctl reap`'s job. Splitting display
 /// from cleanup means automation can `list` without fearing accidents.
-private func ctlList(socketDir: String) {
+private func ctlList(socketDirs: [String]) {
     let fm = FileManager.default
-    guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else {
-        // Machine-readable line — leave plain.
-        print("(no sockets — socket dir missing)")
-        return
-    }
     var aliveCount = 0
     var deadCount = 0
-    for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
-        let path = "\(socketDir)/\(name)"
-        let pid = name.replacingOccurrences(of: ".sock", with: "")
-        let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
-        // Machine-readable list — keep plain so `swtui ctl list | awk`
-        // works without stripping ANSI.
-        let status = alive ? "alive" : "dead"
-        print("pid=\(pid) status=\(status) socket=\(path)")
-        if alive { aliveCount += 1 } else { deadCount += 1 }
+    for socketDir in socketDirs {
+        guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else { continue }
+        for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
+            let path = "\(socketDir)/\(name)"
+            let pid = name.replacingOccurrences(of: ".sock", with: "")
+            let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
+            // Machine-readable list — keep plain so `swtui ctl list | awk`
+            // works without stripping ANSI.
+            let status = alive ? "alive" : "dead"
+            print("pid=\(pid) status=\(status) socket=\(path)")
+            if alive { aliveCount += 1 } else { deadCount += 1 }
+        }
     }
     if aliveCount == 0 && deadCount == 0 {
         print("(no debug apps)")
@@ -570,21 +592,20 @@ private func ctlList(socketDir: String) {
 /// Live processes are always preserved. The verb automation should
 /// call from CI / Stop hooks / cron — replaces the legacy `kill all`
 /// dragnet which sent `quit` indiscriminately.
-private func ctlReap(socketDir: String) {
+private func ctlReap(socketDirs: [String]) {
     let fm = FileManager.default
-    guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else {
-        print("(no sockets — socket dir missing)")
-        return
-    }
     var reaped = 0
-    for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
-        let path = "\(socketDir)/\(name)"
-        let pid = name.replacingOccurrences(of: ".sock", with: "")
-        let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
-        if alive { continue }
-        if unlink(path) == 0 {
-            print("reaped pid=\(pid) socket=\(path)")
-            reaped += 1
+    for socketDir in socketDirs {
+        guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else { continue }
+        for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
+            let path = "\(socketDir)/\(name)"
+            let pid = name.replacingOccurrences(of: ".sock", with: "")
+            let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
+            if alive { continue }
+            if unlink(path) == 0 {
+                print("reaped pid=\(pid) socket=\(path)")
+                reaped += 1
+            }
         }
     }
     print("# \(reaped) socket\(reaped == 1 ? "" : "s") reaped")
@@ -600,7 +621,7 @@ private func ctlReap(socketDir: String) {
 /// `quit` to a user's live `swift run Storybook` session that
 /// happened to share a directory with whatever the caller was trying
 /// to clean up. Identity must be explicit.
-private func ctlKill(socketDir: String, explicitPID: Int32?, positional: [String]) {
+private func ctlKill(socketDirs: [String], explicitPID: Int32?, positional: [String]) {
     // Refuse the legacy "all" alias and bare-kill invocations both —
     // surface a usage error so automation that relied on the old
     // semantics fails loudly instead of silently doing the wrong
@@ -622,7 +643,13 @@ private func ctlKill(socketDir: String, explicitPID: Int32?, positional: [String
         exit(2)
     }
 
-    let path = "\(socketDir)/\(pid).sock"
+    // Find the dir that actually holds this PID's socket — a client must
+    // search the checkout's per-process dirs, not assume one location.
+    let fm = FileManager.default
+    guard let path = socketDirs.map({ "\($0)/\(pid).sock" }).first(where: { fm.fileExists(atPath: $0) }) else {
+        print("pid=\(pid) status=no-socket")
+        exit(1)
+    }
     let payload: [String: Any] = ["id": 1, "cmd": "quit"]
     guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
         print("pid=\(pid) status=encode-failed")
