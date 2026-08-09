@@ -510,8 +510,14 @@ public enum GraphRenderer {
     }
 
     /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
-    /// and `.frame(maxHeight: .infinity)` all consume remaining height.
+    /// `.frame(maxHeight: .infinity)`, and `GeometryReader` all consume
+    /// remaining height. A GeometryReader exists to be told its size — with
+    /// no entry here a stack measured it instead, so it collapsed to its
+    /// content's natural size, and any view whose body reads its size through
+    /// one (`TreeView`) echoed the parent's extent back as a fixed measure
+    /// and overflowed the stack.
     private static func isVFlexChild(_ node: AttributeNode) -> Bool {
+        if node.geometryRebuilder != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
@@ -724,9 +730,11 @@ public enum GraphRenderer {
     }
 
     /// A child is "flex" if it should consume remaining space in a stack layout.
-    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`, and
-    /// `.frame(maxWidth: .infinity)` all qualify in HStacks.
+    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
+    /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
+    /// HStacks — see `isVFlexChild` for why the reader is here.
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
+        if node.geometryRebuilder != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }

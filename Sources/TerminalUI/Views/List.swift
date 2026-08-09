@@ -38,11 +38,23 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     }
 
     public var body: some TerminalView {
-        GeometryReader { size in
-            if self.data.isEmpty {
+        // An explicit `visibleCount` is a declared size: the list is exactly
+        // that many rows and measures as such. Only a size-driven list needs
+        // the GeometryReader — which also makes it greedy in stack layout,
+        // the way a size-reading view has to be.
+        if let declaredCount = visibleCount {
+            if data.isEmpty {
                 _EmptyPlaceholder()
             } else {
-                self.renderList(visibleCount: self.visibleCount ?? max(1, size.height))
+                renderList(visibleCount: declaredCount)
+            }
+        } else {
+            GeometryReader { size in
+                if self.data.isEmpty {
+                    _EmptyPlaceholder()
+                } else {
+                    self.renderList(visibleCount: max(1, size.height))
+                }
             }
         }
     }

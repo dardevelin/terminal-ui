@@ -89,14 +89,26 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         let selectedIdxBinding = $selectedIndex
         let scrollBinding = $scrollOffset
         let initBinding = $initialized
-        return GeometryReader { size in
-            self.renderTree(
-                visibleCount: self.visibleCount ?? max(1, size.height),
+        // An explicit `visibleCount` is a declared size — no GeometryReader,
+        // so the tree measures fixed instead of greedily filling its stack.
+        if let declaredCount = visibleCount {
+            renderTree(
+                visibleCount: declaredCount,
                 expandedBinding: expandedBinding,
                 selectedIdxBinding: selectedIdxBinding,
                 scrollBinding: scrollBinding,
                 initBinding: initBinding
             )
+        } else {
+            GeometryReader { size in
+                self.renderTree(
+                    visibleCount: max(1, size.height),
+                    expandedBinding: expandedBinding,
+                    selectedIdxBinding: selectedIdxBinding,
+                    scrollBinding: scrollBinding,
+                    initBinding: initBinding
+                )
+            }
         }
     }
 
