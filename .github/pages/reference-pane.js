@@ -100,13 +100,19 @@
     };
   }
 
+  // Symmetric: from a tutorial, reference links peek open; from the
+  // reference, tutorial links peek open. Either way the reader sees where
+  // the link leads and chooses "Open full page" deliberately instead of
+  // being navigated away.
   document.addEventListener("click", function (event) {
-    if (!isTutorialPath()) return;
     var anchor = event.target.closest && event.target.closest("a[href]");
     if (!anchor) return;
-    var href = anchor.getAttribute("href");
-    if (!href || href.indexOf("/documentation/") === -1) return;
     if (anchor.closest(".tui-refpane") || anchor.closest(".tui-docs-nav")) return;
+    var href = anchor.getAttribute("href");
+    if (!href) return;
+    var toReference = isTutorialPath() && href.indexOf("/documentation/") !== -1;
+    var toTutorial = !isTutorialPath() && href.indexOf("/tutorials/") !== -1;
+    if (!toReference && !toTutorial) return;
     event.preventDefault();
     if (!pane) pane = buildPane();
     pane.show(anchor.href);

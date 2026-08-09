@@ -9,9 +9,20 @@ TerminalUI brings the SwiftUI paradigm to the terminal: declarative views,
 cell buffer, composites a delta against the previous frame, and emits only the
 cells that changed through a single POSIX write per frame.
 
-> Tip: New to the framework? Start with the tutorial — <doc:BuildATaskList>
-> builds a working app step by step, and every reference page here is one
-> click away from its steps.
+## Two ways to read this documentation
+
+- **Learn by doing.** The <doc:TerminalUITutorials> build a real app step by
+  step — every step is a complete program with a rendered preview of what it
+  draws. Start there if the framework is new to you.
+- **Read in depth.** The Topics below cover every view, modifier, and
+  protocol, and the Architecture articles explain the machine underneath:
+  the attribute graph, the layout model, the render pipeline, and the
+  performance history. Start there if you want to understand before you
+  build.
+
+The two paths stay connected: tutorial steps link into the reference as
+symbols come up, and links between the two open in a side panel so you
+never lose your place in either.
 
 ## Hello world
 
@@ -39,7 +50,6 @@ Run with `swift run`. Press `q` to exit.
 Step-by-step, building a real app — start here if you learn by doing.
 
 - <doc:TerminalUITutorials>
-- <doc:BuildATaskList>
 
 ### Getting started
 
