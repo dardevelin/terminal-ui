@@ -38,3 +38,4 @@ mempalace.yaml
 
 # Secondary docs scratch path — used when a live preview holds .build's lock
 **/.build-docs/
+**/.build-*/
