@@ -20,6 +20,7 @@ public struct HStack<Content: TerminalView>: TerminalView {
     ///     `.top` rather than SwiftUI's `.center`, for the reason `VStack`
     ///     documents: existing layouts were written against top alignment.
     ///   - spacing: blank cells between children, none by default.
+    ///   - content: the children, left to right.
     public init(
         alignment: VerticalAlignment = .top,
         spacing: Int = 0,

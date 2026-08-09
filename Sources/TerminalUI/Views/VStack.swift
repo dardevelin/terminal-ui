@@ -26,6 +26,7 @@ public struct VStack<Content: TerminalView>: TerminalView {
     ///     here is a whole cell, so a default gap would be a visible design
     ///     decision imposed on every stack rather than the hairline SwiftUI
     ///     inserts.
+    ///   - content: the children, top to bottom.
     public init(
         alignment: HorizontalAlignment = .leading,
         spacing: Int = 0,

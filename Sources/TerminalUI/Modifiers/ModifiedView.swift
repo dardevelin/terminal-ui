@@ -108,10 +108,13 @@ extension TerminalView {
         ModifiedView(content: self, modifier: BorderModifier(style: style))
     }
 
-    /// - Parameter alignment: where the content sits inside the frame when
-    ///   the frame is the larger of the two. `.topLeading` by default, as
-    ///   everywhere else in this framework — SwiftUI centres, and changing
-    ///   that here would move every view already written against a frame.
+    /// - Parameters:
+    ///   - width: exact width in cells; nil leaves the axis to the layout.
+    ///   - height: exact height in cells; nil leaves the axis to the layout.
+    ///   - alignment: where the content sits inside the frame when
+    ///     the frame is the larger of the two. `.topLeading` by default, as
+    ///     everywhere else in this framework — SwiftUI centres, and changing
+    ///     that here would move every view already written against a frame.
     public func frame(width: Int? = nil, height: Int? = nil,
                       alignment: Alignment = .topLeading) -> ModifiedView<Self, FrameModifier> {
         ModifiedView(content: self, modifier: FrameModifier(

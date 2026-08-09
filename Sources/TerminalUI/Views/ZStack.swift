@@ -14,8 +14,10 @@ public struct ZStack<Content: TerminalView>: TerminalView {
     public let content: Content
     public let alignment: Alignment
 
-    /// - Parameter alignment: where children smaller than the stack sit.
-    ///   `.topLeading` by default, matching the other two stacks.
+    /// - Parameters:
+    ///   - alignment: where children smaller than the stack sit.
+    ///     `.topLeading` by default, matching the other two stacks.
+    ///   - content: the children, back to front — later children draw on top.
     public init(
         alignment: Alignment = .topLeading,
         @TerminalViewBuilder content: () -> Content
