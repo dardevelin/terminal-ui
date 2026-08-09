@@ -118,3 +118,49 @@
     pane.show(anchor.href);
   }, true);
 })();
+
+// Lightbox: on tutorial pages, clicking any content image opens it at full
+// size — the step previews are unreadable at panel width. Capture phase so
+// this wins over docc-render's own preview toggle; Escape or a click closes.
+(function () {
+  "use strict";
+
+  var box = null;
+
+  function buildLightbox() {
+    var overlay = document.createElement("div");
+    overlay.className = "tui-lightbox";
+    var image = document.createElement("img");
+    var hint = document.createElement("div");
+    hint.className = "tui-lightbox-hint";
+    hint.textContent = "Click anywhere or press Escape to close";
+    overlay.appendChild(image);
+    overlay.appendChild(hint);
+    document.body.appendChild(overlay);
+
+    function hide() { overlay.classList.remove("tui-lightbox-visible"); }
+    overlay.addEventListener("click", hide);
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") hide();
+    });
+
+    return {
+      show: function (src, alt) {
+        image.src = src;
+        image.alt = alt || "";
+        overlay.classList.add("tui-lightbox-visible");
+      },
+    };
+  }
+
+  document.addEventListener("click", function (event) {
+    if (window.location.pathname.indexOf("/tutorials/") === -1) return;
+    var img = event.target.closest && event.target.closest("img");
+    if (!img) return;
+    if (img.closest(".tui-docs-nav") || img.closest(".tui-lightbox") || img.closest(".tui-refpane")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (!box) box = buildLightbox();
+    box.show(img.currentSrc || img.src, img.alt);
+  }, true);
+})();
