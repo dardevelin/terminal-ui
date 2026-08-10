@@ -73,9 +73,11 @@ jobs:
 
       # The tutorial's final step is a complete program; package it as the
       # downloadable sample the landing page and tutorial link to. One
-      # source of truth — the tutorial resource itself.
+      # source of truth — the tutorial resource itself. The swift image
+      # ships no zip binary — install it, as CI does for python3.
       - name: Build sample project download
         run: |
+          apt-get update -qq && apt-get install -y -qq zip
           mkdir -p sample/Tasks/Sources/Tasks docs-site/downloads
           cp Sources/TerminalUI/TerminalUI.docc/Resources/tasks-04-01.swift sample/Tasks/Sources/Tasks/main.swift
           cat > sample/Tasks/Package.swift <<'MANIFEST'
