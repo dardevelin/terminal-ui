@@ -19,23 +19,46 @@ import Foundation
 /// are `{id, ok, result?, error?}`. Commands that mutate runtime state
 /// (`send_key`, `focus_set`) return `{ok: true}` with no result.
 public enum RemoteControlProtocol {
+    /// The line delimiter (`\n`) framing every request and response.
     public static let newline: UInt8 = 0x0A
 }
 
 /// A request body. Additional cmd-specific fields ride on the same struct
 /// via optional properties — keeps the wire flat for easy hand-authoring.
+///
+/// The verb goes in ``cmd``; every other property is a payload field that
+/// only some verbs read (unused fields are simply omitted from the JSON).
+/// Recognized verbs: `ping`, `send_key`, `send_text`, `send_mouse`,
+/// `focus_get`, `focus_set`, `query_cells`, `query_tree`,
+/// `inspector_probe`, `inspector_move`, `inspector_toggle`,
+/// `inspect_range`, `scan`, `frame_number`, `screenshot`, `list_actions`,
+/// `invoke_action`, `quit`. The typed Python client in
+/// `tools/terminalui/client.py` speaks this same shape.
 public struct RemoteRequest: Codable, Sendable {
+    /// Client-chosen correlation ID; the response echoes it back.
     public var id: Int
+    /// The command verb — selects which handler runs and which payload
+    /// fields below are read.
     public var cmd: String
     // send_key / send_text payloads
+    /// `send_key`: key name (`"a"`, `"enter"`, `"F5"`, ...); also
+    /// `focus_set`'s target node ID.
     public var key: String?
+    /// `send_key`: modifier names (`"ctrl"`, `"alt"`, `"shift"`).
     public var modifiers: [String]?
+    /// `send_text`: literal text typed into the app as individual key
+    /// events. Also `focus_set`'s preferred field for the target node ID.
     public var text: String?
     // query_cells + inspector_probe + inspect_range payload
+    /// `query_cells` / `inspect_range`: region as `[x, y, w, h]` in cells.
     public var rect: [Int]?  // [x, y, w, h]
+    /// Cell x for `send_mouse`, `inspector_probe`, and `inspector_move`.
     public var x: Int?
+    /// Cell y for `send_mouse`, `inspector_probe`, and `inspector_move`.
     public var y: Int?
     // wait_for_frame payload
+    /// Number of frames a client-side frame-wait spans; no shipped verb
+    /// reads it — clients poll `frame_number` instead.
     public var frames: Int?
     // send_mouse payload — `kind` is one of:
     //   "move"   — mouse cursor at (x, y), no button state change
@@ -43,27 +66,44 @@ public struct RemoteRequest: Codable, Sendable {
     //   "press"  — press only
     //   "release"— release only
     //   "wheel_up" / "wheel_down" — scroll at (x, y)
+    /// `send_mouse`: event kind — `"move"`, `"click"`, `"press"`,
+    /// `"release"`, `"wheel_up"`, or `"wheel_down"`.
     public var kind: String?
+    /// `send_mouse`: button name (`"left"`, `"middle"`, `"right"`);
+    /// defaults to left when omitted.
     public var button: String?
     // grid overlay for query_cells / screenshot (coordinate rulers)
+    /// `query_cells` / `screenshot`: include coordinate-ruler overlays.
     public var grid: Bool?
     // scan criteria — first non-nil match wins. `match_kind` e.g. "Text",
     // "Button"; `match_text` substring match on a text node; `match_focused`
     // finds the currently-focused node.
+    /// `scan`: match nodes by kind tag, e.g. `"Text"`, `"Button"`.
     public var matchKind: String?
+    /// `scan`: match text nodes containing this substring.
     public var matchText: String?
+    /// `scan`: match the currently keyboard-focused node.
     public var matchFocused: Bool?
     /// Action invocation payload — the stable Action.ID to fire via
     /// ActionDispatch.invoke. Used by the `invoke_action` command.
     public var actionId: String?
 }
 
+/// One JSON-line reply to a ``RemoteRequest`` — always `{id, ok}` plus
+/// either a ``result`` on success or an ``error`` message on failure.
 public struct RemoteResponse: Codable, Sendable {
+    /// Echo of the request's correlation ID.
     public var id: Int
+    /// Whether the command succeeded. Mutating verbs (`send_key`,
+    /// `focus_set`, ...) return `ok` alone with no result.
     public var ok: Bool
+    /// Query payload — present only for verbs that return data; consumers
+    /// read the ``RemoteResult`` field matching the verb they sent.
     public var result: RemoteResult?
+    /// Human-readable failure reason; present only when ``ok`` is false.
     public var error: String?
 
+    /// Assemble a response; the dispatcher builds one per handled request.
     public init(id: Int, ok: Bool, result: RemoteResult? = nil, error: String? = nil) {
         self.id = id
         self.ok = ok
@@ -75,11 +115,17 @@ public struct RemoteResponse: Codable, Sendable {
 /// Union response payload. A tagged struct is simpler than an enum here —
 /// JSON consumers pick the field that matches the command they sent.
 public struct RemoteResult: Codable, Sendable {
+    /// `focus_get`'s answer — the keyboard-focused node.
     public var focus: FocusInfo?
+    /// `query_cells`' answer — the requested region's text.
     public var cells: CellSlice?
+    /// `query_tree`'s answer — the graph root, nested.
     public var tree: GraphDebugNode?
+    /// `frame_number`'s answer — the current frame counter.
     public var frame: Int?
+    /// `screenshot`'s answer — path of the written capture file.
     public var screenshotPath: String?
+    /// `inspector_probe`'s answer — one probe at the requested cell.
     public var inspector: InspectorProbe?
     /// Multiple probes — one per cell in the requested range. Used by
     /// `inspect_range` so a single round trip covers a whole rect.
@@ -90,6 +136,7 @@ public struct RemoteResult: Codable, Sendable {
     /// Whether `invoke_action` matched and fired an action.
     public var fired: Bool?
 
+    /// Assembles a payload; pass only the field matching the verb.
     public init(focus: FocusInfo? = nil,
                 cells: CellSlice? = nil,
                 tree: GraphDebugNode? = nil,
@@ -115,18 +162,27 @@ public struct RemoteResult: Codable, Sendable {
 /// `Action` plus its bound input bindings, so an LLM can introspect
 /// "what can I do here?" and invoke by stable ID.
 public struct ActionRemoteInfo: Codable, Sendable {
+    /// The stable Action ID `invoke_action` fires by.
     public var id: String
+    /// The action's menu/help title.
     public var title: String
+    /// Longer explanation, when the action declared one.
     public var description: String?
+    /// `false` for actions that surface in readouts but won't fire.
     public var enabled: Bool
+    /// The device bindings that trigger the action; empty for
+    /// ID-only actions.
     public var bindings: [ActionBindingRemoteInfo]
 }
 
+/// Wire-format form of one `InputBinding`, inside ``ActionRemoteInfo``.
 public struct ActionBindingRemoteInfo: Codable, Sendable {
     /// "keyboard" / "mouse" / "gesture" / "voice" / "accessibility".
     public var kind: String
     /// Keyboard binding fields.
     public var key: String?
+    /// Keyboard modifier names (`"ctrl"`, `"alt"`, `"shift"`); nil for
+    /// non-keyboard bindings.
     public var modifiers: [String]?
     /// Mouse binding field.
     public var button: String?
@@ -136,16 +192,32 @@ public struct ActionBindingRemoteInfo: Codable, Sendable {
 
 /// Inspector probe result — what the in-app inspector shows for the node at
 /// a given cell. Same data the crosshair renders, so MCP-driven smoke tests
-/// see exactly what a user with Ctrl+I open would see.
+/// see exactly what a user with the inspector open would see.
+///
+/// Returned by the `inspector_probe` verb (one probe at the requested
+/// cell, or at the live inspector cursor when no coordinates are given)
+/// and by `inspect_range` (one probe per cell of a rect). The node fields
+/// are nil when no node hit-tests at that cell.
 public struct InspectorProbe: Codable, Sendable {
+    /// Probed cell's x coordinate.
     public var cursorX: Int
+    /// Probed cell's y coordinate.
     public var cursorY: Int
+    /// Whether the in-app inspector overlay was active when probed.
     public var active: Bool
+    /// Kind tag of the deepest node at the cell (`"text"`, `"vstack"`, ...);
+    /// nil when nothing hit-tests there.
     public var nodeKind: String?
+    /// That node's layout rect as `[x, y, width, height]` in cells.
     public var nodeRect: [Int]?
+    /// The node's declared properties as shown in the inspector panel
+    /// (e.g. content, colors), keyed by property name.
     public var declared: [String: String]
+    /// Modifier names wrapping the node, outermost first — the "chain"
+    /// line of the inspector panel.
     public var modifierChain: [String]
 
+    /// Assemble a probe; the dispatcher builds these from hit-test results.
     public init(cursorX: Int, cursorY: Int, active: Bool,
                 nodeKind: String? = nil, nodeRect: [Int]? = nil,
                 declared: [String: String] = [:], modifierChain: [String] = []) {
@@ -159,17 +231,30 @@ public struct InspectorProbe: Codable, Sendable {
     }
 }
 
+/// Wire-format description of the keyboard-focused node — `focus_get`'s
+/// result.
 public struct FocusInfo: Codable, Sendable {
+    /// Path-formatted ID of the focused node; nil when nothing is
+    /// focused.
     public var nodeID: String?
+    /// The focused node's kind tag (`"text"`, `"button"`, ...).
     public var kind: String?
-    public var rect: [Int]  // [x, y, w, h], empty if no focus
-    public var value: String?  // text content, label, etc.
+    /// Layout rect as `[x, y, width, height]` in cells; empty when
+    /// nothing is focused.
+    public var rect: [Int]
+    /// The node's payload summary — text content, label, etc.
+    public var value: String?
 }
 
+/// A rectangular region of the screen as text — `query_cells`' result.
 public struct CellSlice: Codable, Sendable {
+    /// Region left edge, 0-based column.
     public var x: Int
+    /// Region top edge, 0-based row.
     public var y: Int
+    /// Region width in cells; each row string is padded to it.
     public var width: Int
+    /// Region height in rows — `rows.count`.
     public var height: Int
     /// Row-major text — one string per row, padded to `width`. Suitable for
     /// `contains("...")` assertions in test scripts without building a map.
@@ -180,6 +265,8 @@ public struct CellSlice: Codable, Sendable {
     /// `rulerLeft` is per-row digits prepended to `rows` conceptually — it's
     /// returned separately so consumers can choose to concatenate or not.
     public var rulerTop: [String]?
+    /// Per-row row-number digits (`grid: true` only), parallel to `rows`;
+    /// returned separately so consumers choose whether to concatenate.
     public var rulerLeft: [String]?
 }
 
@@ -218,6 +305,9 @@ public final class RemoteControlServer: @unchecked Sendable {
     }()
     private let dispatcher: any RemoteControlDispatcher
 
+    /// Binds the listening socket at `path` and routes every parsed
+    /// request through `dispatcher`. Bind failure leaves an inert server
+    /// rather than throwing.
     public init(path: String, dispatcher: any RemoteControlDispatcher) {
         self.path = path
         self.dispatcher = dispatcher
@@ -372,6 +462,8 @@ public final class RemoteControlServer: @unchecked Sendable {
 /// implementation lives inside the runtime (see `RuntimeRemoteDispatcher`).
 @MainActor
 public protocol RemoteControlDispatcher: AnyObject {
+    /// Handles one request synchronously and returns its response;
+    /// never throws — failures come back as `{ok: false, error}`.
     func dispatch(_ request: RemoteRequest) -> RemoteResponse
 }
 
@@ -379,12 +471,21 @@ public protocol RemoteControlDispatcher: AnyObject {
 /// free of the `TerminalRuntime<RootView>` generic.
 @MainActor
 public protocol RemoteControlRuntime: AnyObject {
+    /// Injects an event into the runtime's queue as if input produced
+    /// it.
     func enqueueEvent(_ event: TerminalEvent)
+    /// The current attribute-graph root, or nil before the first frame.
     func remoteCurrentGraphRoot() -> AttributeNode?
+    /// The runtime's live focus engine.
     func remoteFocusEngine() -> FocusEngine
+    /// The runtime's live inspector.
     func remoteInspector() -> Inspector
+    /// The last flushed frame's cell buffer, or nil before the first
+    /// flush.
     func remotePreviousBuffer() -> CellBuffer?
+    /// Asks the runtime to write a screenshot capture on its next frame.
     func remoteRequestCapture()
+    /// The monotonic frame counter — clients poll it to await a render.
     func remoteCurrentFrameNumber() -> Int
     /// Build the framework's default action scope (Ctrl+C → Action.quit,
     /// Esc → Action.dismissOrQuit) so `list_actions` / `invoke_action`
@@ -399,10 +500,13 @@ public protocol RemoteControlRuntime: AnyObject {
 public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
     private weak var runtime: (any RemoteControlRuntime)?
 
+    /// Creates a dispatcher over the runtime; the reference is weak, so
+    /// a deallocated runtime turns every request into an error response.
     public init(runtime: any RemoteControlRuntime) {
         self.runtime = runtime
     }
 
+    /// Routes the request's `cmd` verb to its handler on the runtime.
     public func dispatch(_ request: RemoteRequest) -> RemoteResponse {
         guard let runtime else {
             return RemoteResponse(id: request.id, ok: false, error: "runtime deallocated")

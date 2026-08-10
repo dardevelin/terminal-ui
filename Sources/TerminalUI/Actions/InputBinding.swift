@@ -36,7 +36,9 @@ public enum InputBinding: Sendable, Hashable {
 /// gesture recognizer's vocabulary is data-driven; future cases can
 /// add typed gesture descriptors without breaking source.
 public struct GestureID: Hashable, Sendable, ExpressibleByStringLiteral {
+    /// The recognizer-reported identifier string.
     public let raw: String
+    /// Wraps a recognizer identifier; string literals convert directly.
     public init(_ raw: String) { self.raw = raw }
     public init(stringLiteral value: StringLiteralType) { self.raw = value }
 }
@@ -51,10 +53,16 @@ public struct GestureID: Hashable, Sendable, ExpressibleByStringLiteral {
 /// behaviour). Set via the `whenContext:` / `whenContextContains:`
 /// overloads on `Action.bound(to:)`.
 public struct BoundAction: Sendable {
+    /// The action this binding fires.
     public let action: Action
+    /// The device-side trigger — chord, click, gesture, voice, or
+    /// accessibility label.
     public let binding: InputBinding
+    /// Gate against the runtime `ActionContext`; `nil` fires
+    /// unconditionally.
     public let contextRequirement: ContextRequirement?
 
+    /// Creates a pairing; prefer `Action.bound(to:)` at call sites.
     public init(
         action: Action,
         binding: InputBinding,

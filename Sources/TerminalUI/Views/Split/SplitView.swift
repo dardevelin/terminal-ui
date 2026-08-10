@@ -45,6 +45,8 @@ import Foundation
 public struct SplitView: TerminalView {
     let state: SplitState
 
+    /// Creates a split container driven by its observable state.
+    ///
     /// - Parameter state: the observable split tree. The view holds the
     ///   reference and re-renders when the tree mutates; the caller keeps
     ///   ownership, mirroring SwiftUI's `NavigationPath` pattern.

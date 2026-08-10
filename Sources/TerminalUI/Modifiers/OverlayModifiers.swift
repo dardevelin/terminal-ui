@@ -1,6 +1,7 @@
 /// Overlay modifier — renders content on top of the base view's frame.
 public struct OverlayModifier<Overlay: TerminalView>: ViewModifier {
     public typealias ModifierType = Overlay
+    /// The view drawn over the base view's cells.
     public let overlay: Overlay
     /// Where the overlay sits inside the base view's frame. The corner cases
     /// are the reason this exists: badges, close buttons, corner indicators.
@@ -12,6 +13,7 @@ public struct BackgroundViewModifier<Background: TerminalView>: ViewModifier {
     /// Where the background sits inside the base view's frame.
     public var alignment: Alignment = .topLeading
     public typealias ModifierType = Background
+    /// The view drawn behind the base view's cells.
     public let background: Background
 }
 
@@ -19,7 +21,10 @@ public struct BackgroundViewModifier<Background: TerminalView>: ViewModifier {
 /// Dims the background and centers content.
 public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
     public typealias ModifierType = Bool
+    /// Whether the modal is shown this frame; `false` renders the base
+    /// view alone.
     public let isPresented: Bool
+    /// The panel content, centered over the dimmed screen while presented.
     public let content: ModalContent
 }
 

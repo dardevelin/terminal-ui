@@ -47,6 +47,8 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     /// Builds the row view for one element.
     public let content: (Data.Element) -> Content
 
+    /// Creates a list over an `Identifiable` collection.
+    ///
     /// - Parameters:
     ///   - data: Rows, identified by `Element.ID`.
     ///   - selection: Selected-element ID binding; `nil` for a display-only list.

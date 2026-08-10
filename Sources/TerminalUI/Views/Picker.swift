@@ -104,6 +104,9 @@ public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalV
     /// the framework's hottest path.
     private let options: [PickerOption<SelectionValue>]
 
+    /// Creates a picker; the option list is collected from `content`'s
+    /// `.tag(_:)` values once, here, not per frame.
+    ///
     /// - Parameters:
     ///   - label: Text rendered before the options.
     ///   - selection: Binding the committed choice is written through.

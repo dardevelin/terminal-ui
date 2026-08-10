@@ -20,6 +20,8 @@ public struct Tab<Content: TerminalView> {
     /// The pane shown while this tab is selected.
     public let content: Content
 
+    /// Creates a tab descriptor for a ``TabView`` block.
+    ///
     /// - Parameters:
     ///   - label: the tab-bar text. Keep it short — long labels push
     ///     siblings into overflow (`<` / `>`) sooner.
@@ -44,6 +46,9 @@ public struct TabDescriptor {
     /// The tab's pane, type-erased for storage alongside other tabs.
     public let content: any TerminalView
 
+    /// Creates a type-erased descriptor directly — the escape hatch for
+    /// assembling tabs from runtime data outside a builder block.
+    ///
     /// - Parameters:
     ///   - label: the tab-bar text.
     ///   - content: the pane to show while this tab is selected.
@@ -58,14 +63,19 @@ public struct TabDescriptor {
 /// one block — the erasure happens here, per expression.
 @resultBuilder
 public struct TabBuilder {
+    /// Concatenates the block's per-expression descriptor lists in source
+    /// order.
     public static func buildBlock(_ tabs: [TabDescriptor]...) -> [TabDescriptor] {
         tabs.flatMap { $0 }
     }
 
+    /// Accepts an already-erased ``TabDescriptor`` expression.
     public static func buildExpression(_ tab: TabDescriptor) -> [TabDescriptor] {
         [tab]
     }
 
+    /// Accepts a typed ``Tab`` expression, erasing its content here so
+    /// tabs of different content types coexist in one block.
     public static func buildExpression<C: TerminalView>(_ tab: Tab<C>) -> [TabDescriptor] {
         [TabDescriptor(label: tab.label, content: tab.content)]
     }

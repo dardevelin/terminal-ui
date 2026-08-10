@@ -11,6 +11,8 @@ public struct FocusableModifier: ViewModifier {
 /// which matches the SwiftUI convention (Tab = major sections, arrows = local).
 public struct FocusScopeModifier: ViewModifier {
     public typealias ModifierType = String
+    /// The scope's name; arrow navigation stays inside members sharing
+    /// it.
     public let id: String
 }
 
@@ -19,6 +21,8 @@ public struct FocusScopeModifier: ViewModifier {
 /// and a key event is received.
 public struct OnKeyPressModifier: ViewModifier {
     public typealias ModifierType = KeyEventResult
+    /// Receives key events first while focused; return `.handled` to
+    /// consume, `.ignored` to let the event bubble.
     public let handler: (KeyEvent) -> KeyEventResult
 }
 
@@ -26,6 +30,8 @@ public struct OnKeyPressModifier: ViewModifier {
 /// Receives coordinates relative to the view's rect origin.
 public struct OnClickModifier: ViewModifier {
     public typealias ModifierType = Void
+    /// Receives the click position in cells, relative to the view's own
+    /// top-left corner.
     public let handler: (_ relativeX: Int, _ relativeY: Int) -> Void
 }
 
@@ -40,6 +46,8 @@ public struct OnClickModifier: ViewModifier {
 /// framework auto-routing OFF for.
 public struct OnHoverModifier: ViewModifier {
     public typealias ModifierType = Void
+    /// Fires with `true` on cursor entry and `false` on exit — state
+    /// transitions only, never per-move.
     public let handler: (_ isHovering: Bool) -> Void
 }
 
@@ -51,6 +59,7 @@ public struct OnHoverModifier: ViewModifier {
 /// transport text.
 public struct OnPasteModifier: ViewModifier {
     public typealias ModifierType = Void
+    /// Receives the full decoded paste payload, newlines included.
     public let handler: (_ payload: String) -> Void
 }
 

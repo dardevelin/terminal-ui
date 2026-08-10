@@ -31,8 +31,12 @@ public struct TreeViewStyle: Sendable {
     /// Prefix shown before unselected rows (for alignment)
     public var unselectedPrefix: String = "  "
 
+    /// The stock style — gray connectors, cyan selected arrow, `▾`/`▸`
+    /// markers, no selected-row background.
     public static let `default` = TreeViewStyle()
 
+    /// Creates the default style; mutate the copy's properties to
+    /// customize individual knobs.
     public init() {}
 }
 
@@ -90,6 +94,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     @TerminalState var scrollOffset: Int = 0
     @TerminalState var initialized: Bool = false
 
+    /// Creates a tree over hierarchical data.
+    ///
     /// - Parameters:
     ///   - data: Root items.
     ///   - children: Key path to an element's children (`nil` = leaf).

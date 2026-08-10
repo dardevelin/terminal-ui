@@ -32,6 +32,8 @@ public struct VStack<Content: TerminalView>: TerminalView {
     /// initializer clamps.
     public let spacing: Int
 
+    /// Creates a vertical stack.
+    ///
     /// - Parameters:
     ///   - alignment: where narrower children sit across the stack. Defaults
     ///     to `.leading`, not SwiftUI's `.center`: a terminal reads

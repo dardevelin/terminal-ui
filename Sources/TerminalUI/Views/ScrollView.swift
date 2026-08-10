@@ -41,6 +41,8 @@ public struct ScrollView<Content: TerminalView>: TerminalView {
     /// The content measured at unlimited size in the scroll axis.
     public let content: Content
 
+    /// Creates a scroll view over overflowing content.
+    ///
     /// - Parameters:
     ///   - axes: the scroll axis, `.vertical` by default.
     ///   - content: the scrollable content. Give it focusable descendants,
@@ -57,7 +59,9 @@ public struct ScrollView<Content: TerminalView>: TerminalView {
 /// Scroll direction — horizontal or vertical.
 /// Separate from layout axis to avoid name collision with TerminalUI.Axis if one exists.
 public enum ScrollAxis: Sendable, Equatable {
+    /// Content scrolls left/right; height clips to the viewport.
     case horizontal
+    /// Content scrolls up/down; width clips to the viewport. The default.
     case vertical
 }
 
@@ -65,7 +69,9 @@ public enum ScrollAxis: Sendable, Equatable {
 /// "there is more content in this direction." Default `.visible` — the user
 /// gets affordance out of the box. Hide per-view via `.scrollIndicators(.hidden)`.
 public enum ScrollIndicatorVisibility: Sendable, Equatable {
+    /// Paint the edge glyphs where clipped content exists. The default.
     case visible
+    /// Never paint edge glyphs; the viewport shows content only.
     case hidden
 }
 
@@ -81,8 +87,11 @@ public enum ScrollIndicatorVisibility: Sendable, Equatable {
 /// marker formalises that contract for the type-system without
 /// changing runtime behaviour.
 public struct ScrollTargetID: Equatable, @unchecked Sendable {
+    /// The erased `.id(_:)` value of the descendant to keep visible.
     public let id: AnyHashable
 
+    /// Wraps any `Hashable` identifier for transport through the
+    /// environment.
     public init<ID: Hashable>(_ id: ID) {
         self.id = AnyHashable(id)
     }

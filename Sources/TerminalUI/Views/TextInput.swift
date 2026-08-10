@@ -8,13 +8,20 @@ public struct TextInputValidation: Sendable, Equatable {
     /// How the field should present the result: `.ok` default chrome,
     /// `.warning` yellow, `.error` red.
     public enum Severity: Sendable, Equatable {
-        case ok, warning, error
+        /// Value accepted — default chrome.
+        case ok
+        /// Value suspect — yellow border tint, input still usable.
+        case warning
+        /// Value rejected — red border tint.
+        case error
     }
     /// Drives the field's tint.
     public let severity: Severity
     /// Shown on a row beneath the input when present.
     public let message: String?
 
+    /// Creates a validation result.
+    ///
     /// - Parameters:
     ///   - severity: Visual state the field should adopt.
     ///   - message: Optional short explanation rendered under the input.
@@ -157,6 +164,11 @@ public struct TextInput: TerminalView {
     /// stored anchor.
     @TerminalState var windowStart: Int = -1
 
+    /// Creates a single-row field bound to `text`.
+    ///
+    /// `prompt` is a persistent label before the value; `placeholder` is
+    /// ghost text while the value is empty. `maxLength` `nil` means
+    /// unlimited; `validate` `nil` skips validation chrome entirely.
     public init(
         _ prompt: String = "",
         text: Binding<String>,

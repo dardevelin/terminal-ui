@@ -1,22 +1,35 @@
 import Foundation
 
-/// In-app debug panel — renders directly into the cell buffer.
-/// Toggled with ctrl+d. Shows graph tree, frame stats, input log.
-/// Erased in release builds.
+// In-app debug panel — renders directly into the cell buffer.
+// Shows graph tree, frame stats, input log. Erased in release builds.
 
 #if DEBUG
 
+/// Which view the ``DebugPanel`` is showing; ``DebugPanel/toggle()``
+/// cycles through these in declaration order.
 public enum DebugPanelMode {
+    /// Panel not rendered.
     case hidden
-    case graphTree      // show live node tree
-    case frameTimeline  // show frame time histogram
-    case inputLog       // show recent input events
+    /// The live node tree.
+    case graphTree
+    /// The frame-time histogram.
+    case frameTimeline
+    /// The recent-input event log.
+    case inputLog
 }
 
+/// The F2 side panel — a right-docked column showing the live node tree,
+/// a frame-time histogram, or the recent-input log, drawn directly into
+/// the cell buffer outside the view tree. Owned by the runtime, which
+/// cycles its modes via the `toggle_debug_panel` keybinding and feeds it
+/// history through ``recordFrameTime(_:)`` / ``recordInput(_:timestamp:)``.
+/// Erased in release builds.
 public final class DebugPanel {
+    /// Current panel view. Setting it marks the panel for re-render.
     public var mode: DebugPanelMode = .hidden {
         didSet { isDirty = true }
     }
+    /// Panel width in cells; the renderer clamps it to half the buffer width.
     public var width: Int = 45
 
     // Ring buffers for history
@@ -38,8 +51,11 @@ public final class DebugPanel {
     // Collapsed nodes — tracked by NodeID
     var collapsedNodes: Set<NodeID> = []
 
+    /// Creates a hidden panel. The runtime owns the sole instance.
     public init() {}
 
+    /// Advance to the next mode: hidden → graph tree → frame timeline →
+    /// input log → hidden. Bound to F2 by default (`toggle_debug_panel`).
     public func toggle() {
         switch mode {
         case .hidden:     mode = .graphTree
@@ -49,6 +65,8 @@ public final class DebugPanel {
         }
     }
 
+    /// Runtime hook: append one frame's build time (milliseconds) to the
+    /// timeline's ring buffer (last 120 frames).
     public func recordFrameTime(_ ms: Double) {
         frameTimes.append(ms)
         if frameTimes.count > maxHistory {
@@ -57,6 +75,8 @@ public final class DebugPanel {
         if mode == .frameTimeline { isDirty = true }
     }
 
+    /// Runtime hook: append one input event to the input-log ring buffer
+    /// (last 120 events). `timestamp` is process uptime in seconds.
     public func recordInput(_ description: String, timestamp: Double) {
         inputEvents.append((timestamp, description))
         if inputEvents.count > maxHistory {
@@ -72,21 +92,26 @@ public final class DebugPanel {
 
     // MARK: - Graph Tree Scroll
 
+    /// Scroll the graph-tree view up by `amount` lines, clamped at the top.
     public func scrollGraphUp(amount: Int = 1) {
         graphScrollOffset = max(0, graphScrollOffset - amount)
         isDirty = true
     }
 
+    /// Scroll the graph-tree view down by `amount` lines, keeping at
+    /// least five lines visible at the bottom.
     public func scrollGraphDown(amount: Int = 1) {
         let maxOffset = max(0, graphTotalLines - 5)  // Keep at least 5 visible lines
         graphScrollOffset = min(maxOffset, graphScrollOffset + amount)
         isDirty = true
     }
 
+    /// Page the graph-tree view up by one panel height (minus a two-line overlap).
     public func scrollGraphPageUp(visibleLines: Int) {
         scrollGraphUp(amount: max(1, visibleLines - 2))
     }
 
+    /// Page the graph-tree view down by one panel height (minus a two-line overlap).
     public func scrollGraphPageDown(visibleLines: Int) {
         scrollGraphDown(amount: max(1, visibleLines - 2))
     }
@@ -497,6 +522,7 @@ public final class DebugPanel {
 
 #else
 
+/// Release stub — the panel has no modes outside DEBUG builds.
 public enum DebugPanelMode { case hidden }
 public final class DebugPanel: Sendable {
     public var mode: DebugPanelMode { .hidden }

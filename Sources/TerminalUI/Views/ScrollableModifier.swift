@@ -32,6 +32,7 @@ extension ScrollView {
 /// so graph construction hooks a scroll-axis-aware key handler on the
 /// produced focusable node.
 public struct ScrollableScrollView<Content: TerminalView>: TerminalView {
+    /// The wrapped scroll view whose offset the key handler drives.
     public let content: ScrollView<Content>
 
     public var body: some TerminalView {

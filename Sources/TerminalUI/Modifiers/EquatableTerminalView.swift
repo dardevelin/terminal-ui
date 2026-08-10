@@ -44,7 +44,9 @@ public protocol _EquatableTerminalView {
 /// compares with `==` on next update — equal values skip body
 /// re-evaluation entirely.
 public struct EquatableTerminalView<Content: TerminalView & Equatable>: TerminalView, _EquatableTerminalView {
+    /// The wrapped view whose `==` gates re-evaluation.
     public let content: Content
+    /// Wraps a view; prefer the `.equatable()` modifier at call sites.
     public init(_ content: Content) { self.content = content }
 
     public var body: Content { content }

@@ -15,25 +15,87 @@ import TerminalInk
 // `.gray` is the one TerminalUI-specific name; it maps to
 // `NamedColor.brightBlack` (the xterm convention "gray = SGR 90").
 
+/// A terminal color, spanning the three ANSI color models: the 16 named
+/// palette colors, the 256-color indexed palette, and 24-bit truecolor.
+///
+/// The named cases emit standard SGR palette codes (30–37 foreground,
+/// 90–97 bright foreground, 40–47 / 100–107 background), so the actual
+/// hue is whatever the user's terminal theme maps that slot to — a
+/// feature, not a bug: apps that stick to named colors automatically
+/// respect the user's palette. ``ansi256(_:)`` and ``rgb(_:_:_:)`` pin
+/// exact colors at the cost of ignoring the theme. ``default`` is not a
+/// color at all but the terminal's own default foreground/background.
+///
+/// Colors are applied through ``Style`` (in a ``Cell``) or, at the view
+/// layer, via modifiers and span helpers:
+///
+/// ```swift
+/// Text("ok").foreground(.green)
+/// Text("warn".fg(.yellow).bolded())
+/// Text("exact").foreground(.rgb(255, 128, 0))
+/// ```
 public enum Color: Sendable {
+    /// The terminal's own default foreground or background color
+    /// (SGR 39 / 49) — whatever the emulator's theme uses when no
+    /// color is set. Distinct from any palette entry.
     case `default`
+    /// Named ANSI palette black (SGR 30 fg / 40 bg). Rendered hue is
+    /// theme-defined.
     case black
+    /// Named ANSI palette red (SGR 31 fg / 41 bg). Rendered hue is
+    /// theme-defined.
     case red
+    /// Named ANSI palette green (SGR 32 fg / 42 bg). Rendered hue is
+    /// theme-defined.
     case green
+    /// Named ANSI palette yellow (SGR 33 fg / 43 bg). Rendered hue is
+    /// theme-defined.
     case yellow
+    /// Named ANSI palette blue (SGR 34 fg / 44 bg). Rendered hue is
+    /// theme-defined.
     case blue
+    /// Named ANSI palette magenta (SGR 35 fg / 45 bg). Rendered hue is
+    /// theme-defined.
     case magenta
+    /// Named ANSI palette cyan (SGR 36 fg / 46 bg). Rendered hue is
+    /// theme-defined.
     case cyan
+    /// Named ANSI palette white (SGR 37 fg / 47 bg) — usually light
+    /// gray in practice; ``brightWhite`` is the fully bright slot.
     case white
+    /// The xterm "bright black" palette slot (SGR 90 fg / 100 bg),
+    /// which virtually every theme renders as gray. TerminalUI names
+    /// it for what you see, not for the spec's label.
     case gray
+    /// Bright ANSI palette red (SGR 91 fg / 101 bg). Rendered hue is
+    /// theme-defined.
     case brightRed
+    /// Bright ANSI palette green (SGR 92 fg / 102 bg). Rendered hue is
+    /// theme-defined.
     case brightGreen
+    /// Bright ANSI palette yellow (SGR 93 fg / 103 bg). Rendered hue is
+    /// theme-defined.
     case brightYellow
+    /// Bright ANSI palette blue (SGR 94 fg / 104 bg). Rendered hue is
+    /// theme-defined.
     case brightBlue
+    /// Bright ANSI palette magenta (SGR 95 fg / 105 bg). Rendered hue
+    /// is theme-defined.
     case brightMagenta
+    /// Bright ANSI palette cyan (SGR 96 fg / 106 bg). Rendered hue is
+    /// theme-defined.
     case brightCyan
+    /// Bright ANSI palette white (SGR 97 fg / 107 bg) — the brightest
+    /// palette slot, typically pure white.
     case brightWhite
+    /// An index into the xterm 256-color palette (SGR 38;5;N / 48;5;N):
+    /// 0–15 mirror the named colors, 16–231 form a 6×6×6 color cube,
+    /// 232–255 a 24-step grayscale ramp. Exact — does not follow the
+    /// user's 16-color theme.
     case ansi256(UInt8)
+    /// 24-bit truecolor (SGR 38;2;R;G;B / 48;2;R;G;B), one 0–255 value
+    /// per channel. Exact on truecolor terminals; terminals without
+    /// truecolor support approximate or ignore it.
     case rgb(UInt8, UInt8, UInt8)
 
     /// Lower this `Color` to the equivalent `InkColor` for SGR

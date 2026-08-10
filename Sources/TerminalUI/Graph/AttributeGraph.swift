@@ -7,6 +7,7 @@ import Synchronization
 /// Subsequent frames: reconciles in place — reuses existing nodes,
 /// updates values, rebuilds only when structure changes.
 public final class AttributeGraph: @unchecked Sendable {
+    /// The tree's root node; nil until the first ``update(from:)`` builds it.
     public var root: AttributeNode?
 
     /// Set during update() — tracks whether any primitive values actually changed.
@@ -17,11 +18,16 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Set by Observation onChange callbacks (which fire on the thread that
     /// mutated the @Observable property). Read/cleared on MainActor in update().
     private let _hasDirtyNodes = Atomic<Bool>(false)
+    /// Whether any node awaits re-evaluation. Set by Observation `onChange`
+    /// from whatever thread mutated the state; the runtime reads it before
+    /// doing any frame work — false means the frame is skipped entirely,
+    /// which is what makes idle cost zero.
     public var hasDirtyNodes: Bool {
         get { _hasDirtyNodes.load(ordering: .relaxed) }
         set { _hasDirtyNodes.store(newValue, ordering: .relaxed) }
     }
 
+    /// Creates an empty graph; the first ``update(from:)`` builds the tree.
     public init() {}
 
     // MARK: - Dirty queue (in-place drain)
@@ -107,8 +113,16 @@ public final class AttributeGraph: @unchecked Sendable {
     //   `drain()` path bypasses this.
     // dirtyDrainCount     — every `drain()` cycle that re-evaluated
     //   one or more dirty nodes in place.
+    /// Composite bodies run inside an observation scope since the last
+    /// ``resetFrameStats()`` — both first builds and re-evaluations. Debug
+    /// builds only.
     public private(set) var bodyEvaluationCount: Int = 0
+    /// Full root reconciliations (``update(from:)`` calls) since the last
+    /// reset; the in-place ``drain()`` path never increments it. Debug
+    /// builds only.
     public private(set) var rootWalkCount: Int = 0
+    /// ``drain()`` cycles that re-evaluated at least one dirty node in place
+    /// since the last reset. Debug builds only.
     public private(set) var dirtyDrainCount: Int = 0
 
     /// Reset every counter to zero. Tests call this between scenarios.

@@ -22,6 +22,8 @@
 // (URLs, identifiers) hard-breaks at character level so it remains
 // visible; a boundary space is dropped where wrapping forces a new
 // chunk so wrapped lines don't start with a stray leading space.
+/// Namespace for the shared text-layout primitives — word-aware wrapping
+/// used by `Text`, ``TextArea``, and ``PromptInput``.
 public enum TextLayout {
 
     /// Wraps `line` into chunks of ≤`width` cells, preferring

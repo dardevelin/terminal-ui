@@ -9,8 +9,11 @@
 /// bug — the dispatcher fires the first match and reports the
 /// duplicate via DebugStream.
 public struct ActionID: Hashable, Sendable, ExpressibleByStringLiteral, CustomStringConvertible {
+    /// The full dotted identifier, e.g. `"app.quit"`.
     public let raw: String
 
+    /// Creates an ID from its dotted string form. String literals also
+    /// convert directly (`let id: ActionID = "app.quit"`).
     public init(_ raw: String) {
         self.raw = raw
     }

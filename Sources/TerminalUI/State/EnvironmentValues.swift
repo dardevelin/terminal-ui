@@ -15,11 +15,33 @@
 /// ```
 
 /// Storage for all environment values — passed down during rendering.
+///
+/// One value flows down the tree per frame: `.environment(_:_:)` copies it,
+/// rewrites one key path, and binds the copy for its subtree only, so an
+/// override never leaks to siblings and the nearest ancestor's setting wins.
+/// Every property carries a default, which makes a read with no ancestor
+/// override always well-defined — including reads that happen before the
+/// first render, when no environment is bound yet and ``TerminalEnvironment``
+/// falls back to a default-initialized value.
+///
+/// Views read single values with ``TerminalEnvironment``; most properties
+/// also have a named convenience modifier (`.focusIndicator(_:)`,
+/// `.pasteMode(_:)`, …) that wraps the raw `.environment` call.
 public struct EnvironmentValues: Sendable {
+    /// Color and glyph palette the framework's components draw with.
+    /// Override per subtree via `.environment(\.theme, ...)`.
     public var theme: any Theme = DefaultTheme()
+    /// Terminal dimensions in cells, restamped by the runtime on resize.
     public var terminalSize: TerminalSize = .default
+    /// Color depth output is encoded at. Defaults to `.trueColor`; the
+    /// runtime lowers it to what the terminal reports so styles degrade
+    /// instead of emitting unsupported SGR sequences.
     public var colorSupport: ColorSupport = .trueColor
+    /// Whether the subtree being evaluated sits under the keyboard-focused
+    /// node, letting descendants restyle while their container holds focus.
     public var isFocused: Bool = false
+    /// Node currently holding keyboard focus, or nil when nothing does —
+    /// the environment's read-only mirror of `FocusEngine.keyboardFocusID`.
     public var focusedID: NodeID? = nil
     /// Keyboard-focus indicator style. Default `.overlay` preserves
     /// pre-visuals (cyan `▎` bar at `rect.x - 1`). Set via
@@ -189,18 +211,37 @@ public struct EnvironmentValues: Sendable {
     /// registration written on the stack itself reaches it.
     public var navigationDestinations = NavigationDestinations()
 
+    /// Creates the default environment — every value at its documented
+    /// default, as seen by a view with no `.environment` ancestors.
     public init() {}
 }
 
 /// Property wrapper to read environment values.
+///
+/// Resolves its key path against `GraphContext.currentEnvironment` at read
+/// time, so the value reflects every `.environment(_:_:)` override between
+/// the root and the view whose body is evaluating:
+///
+/// ```swift
+/// @TerminalEnvironment(\.theme) var theme
+/// ```
+///
+/// Outside body evaluation — event handlers, or any read before the first
+/// render — no environment is bound and reads fall back to the defaults of
+/// ``EnvironmentValues``. Read the wrapper in `body` and capture the result
+/// into a closure when a handler needs the resolved value.
 @propertyWrapper
 public struct TerminalEnvironment<Value> {
     private let keyPath: KeyPath<EnvironmentValues, Value>
 
+    /// Creates a reader for the single environment value at `keyPath`.
     public init(_ keyPath: KeyPath<EnvironmentValues, Value>) {
         self.keyPath = keyPath
     }
 
+    /// The value at the key path, resolved from the environment bound to the
+    /// current body evaluation — or from a default ``EnvironmentValues`` when
+    /// none is bound (handlers, pre-render reads).
     public var wrappedValue: Value {
         let env = GraphContext.currentEnvironment ?? EnvironmentValues()
         return env[keyPath: keyPath]
@@ -218,15 +259,23 @@ public protocol _AnyEnvironmentModifier {
 /// Modifier that sets an environment value for a subtree.
 public struct EnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier {
     public typealias ModifierType = Value
+    /// The ``EnvironmentValues`` entry this modifier writes.
     public let keyPath: WritableKeyPath<EnvironmentValues, Value>
+    /// The value descendants observe; an inner modifier for the same key
+    /// path shadows it.
     public let value: Value
 
+    /// Writes ``value`` at ``keyPath`` into the in-flight environment.
     public func apply(to env: inout EnvironmentValues) {
         env[keyPath: keyPath] = value
     }
 }
 
 extension TerminalView {
+    /// Set an ``EnvironmentValues`` entry for this view and every
+    /// descendant. Descendants read it via `@Environment(\.keyPath)`; a
+    /// nested `.environment` for the same key path shadows this one for its
+    /// own subtree (innermost wins), exactly like SwiftUI.
     public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> ModifiedView<Self, EnvironmentModifier<V>> {
         ModifiedView(content: self, modifier: EnvironmentModifier(keyPath: keyPath, value: value))
     }

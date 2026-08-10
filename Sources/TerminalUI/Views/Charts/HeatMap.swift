@@ -34,20 +34,32 @@ public struct HeatMap: TerminalView {
 
     /// Color ramp for mapping normalized values to ANSI-256 colors.
     public enum Palette {
-        case green     // GitHub style: dark→bright green
-        case red       // Red intensity
-        case blue      // Blue intensity
-        case gray      // Grayscale
-        case thermal   // Blue→cyan→green→yellow→red
+        /// GitHub contribution style: dark green to bright green.
+        case green
+        /// Red intensity ramp.
+        case red
+        /// Blue intensity ramp.
+        case blue
+        /// Grayscale ramp.
+        case gray
+        /// Multi-hue ramp: blue → cyan → green → yellow → red.
+        case thermal
     }
 
     /// Glyph choice per cell.
     public enum CellStyle {
-        case block     // █ (full block, color varies)
-        case shade     // ░▒▓█ (character varies)
-        case square    // ■ (smaller square)
+        /// Full block `█` for every cell; only the color varies. The
+        /// default.
+        case block
+        /// Shade glyphs ` ░▒▓█` vary with magnitude — legible even on
+        /// monochrome terminals.
+        case shade
+        /// Smaller square `■`, leaving visible cell gaps.
+        case square
     }
 
+    /// Creates a heat map.
+    ///
     /// - Parameters:
     ///   - data: Grid values, `data[row][col]`.
     ///   - palette: Color ramp (default `.green`).

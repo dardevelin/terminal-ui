@@ -1,5 +1,13 @@
 /// Stable identity for a node in the attribute graph.
 /// Built from the structural path through the view tree.
+///
+/// The path records how the node is reached from the root: child index for
+/// plain structure, the user's id for `ForEach` / `.id()` elements, and the
+/// branch taken for conditionals. Two frames that build the same structure
+/// therefore mint the same IDs — which is what lets the reconciler match old
+/// nodes to new view values and keep `@TerminalState` storage, focus, and
+/// scroll offsets alive across body re-evaluation. `Hashable` and value-typed
+/// so it keys the focus index and the engine's handler tables directly.
 public struct NodeID: Hashable, Sendable, CustomStringConvertible {
     var path: [PathComponent]
 
@@ -26,6 +34,8 @@ public struct NodeID: Hashable, Sendable, CustomStringConvertible {
     }
 }
 
+/// One step in a `NodeID`'s root-to-node path — how a child is
+/// identified within its parent.
 public enum PathComponent: Hashable, @unchecked Sendable {
     /// Structural identity — nth child of parent
     case index(Int)

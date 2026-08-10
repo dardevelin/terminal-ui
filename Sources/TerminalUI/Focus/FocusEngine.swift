@@ -92,6 +92,9 @@ public final class FocusEngine: @unchecked Sendable {
     /// without threading `root` through every call site.
     public private(set) var lastIndexedRoot: AttributeNode?
 
+    /// Creates an empty engine — nothing focused, no handlers, no index.
+    /// The runtime rebuilds the index after each graph update; queries are
+    /// only meaningful once `rebuildIndex` has run against the current tree.
     public init() {}
 
     // MARK: - Index Rebuilding
@@ -955,10 +958,16 @@ public final class FocusEngine: @unchecked Sendable {
 
     // MARK: - Queries
 
+    /// True iff `nodeID` currently holds keyboard focus. At most one node
+    /// holds it; Tab/Shift+Tab (and arrows, where enabled) move it. Mouse
+    /// hover is tracked independently — see ``isMouseHovered(_:)``.
     public func isKeyboardFocused(_ nodeID: NodeID) -> Bool {
         keyboardFocusID == nodeID
     }
 
+    /// True iff the mouse cursor sits inside `nodeID`'s rect. Independent of
+    /// keyboard focus: under the default `.clickToLock` policy, hovering never
+    /// moves focus — clicking promotes the hover target to keyboard focus.
     public func isMouseHovered(_ nodeID: NodeID) -> Bool {
         mouseHoverID == nodeID
     }
@@ -1114,13 +1123,24 @@ public final class FocusEngine: @unchecked Sendable {
 
 // MARK: - Focus Direction
 
+/// The spatial direction of an arrow-key focus move.
 public enum FocusDirection {
-    case up, down, left, right
+    /// Toward the top of the screen.
+    case up
+    /// Toward the bottom of the screen.
+    case down
+    /// Toward the left edge.
+    case left
+    /// Toward the right edge.
+    case right
 }
 
 // MARK: - Key Event Result
 
+/// What a key handler tells the dispatcher about an event.
 public enum KeyEventResult {
+    /// The event was consumed; dispatch stops here.
     case handled
+    /// The event was not consumed; it bubbles to the next handler.
     case ignored
 }

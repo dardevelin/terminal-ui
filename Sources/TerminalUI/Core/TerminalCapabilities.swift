@@ -20,11 +20,18 @@ import Observation
 /// Ordered roughly by fidelity: kitty has the highest, asciiArt
 /// the lowest.
 public enum GraphicsProtocol: Sendable, Equatable {
+    /// Kitty graphics protocol — pixel-perfect image placement.
     case kitty
+    /// iTerm2 inline-images protocol.
     case iterm2
+    /// DEC Sixel bitmap graphics.
     case sixel
-    case halfBlock     // 24-bit color, no graphics protocol
-    case asciiArt      // monochrome / NO_COLOR
+    /// No graphics protocol; images approximate via `▀` half-block cells
+    /// with 24-bit color.
+    case halfBlock
+    /// Monochrome fallback (`NO_COLOR` / dumb terminals) — character art
+    /// only.
+    case asciiArt
 }
 
 /// Whether the terminal delivers Option (macOS) / Alt as a Meta prefix rather
@@ -61,7 +68,9 @@ public let platformComposesOptionDefault: Bool = {
 /// inspection — apps and developers can read the log to
 /// understand why a particular protocol was chosen.
 public struct DetectionStep: Sendable, Equatable {
+    /// What was checked — e.g. an environment variable name.
     public let probe: String
+    /// What the probe concluded, human-readable.
     public let result: String
 }
 
@@ -75,7 +84,16 @@ public struct DetectionStep: Sendable, Equatable {
 /// blocked cross-module access from non-isolated render contexts.
 @Observable
 public final class TerminalCapabilities: @unchecked Sendable {
+    /// The best graphics protocol this terminal is believed to support,
+    /// from environment sniffing (`NO_COLOR`, `TERM`, `TERM_PROGRAM`).
+    /// Image-capable views read this to pick a renderer;
+    /// ``GraphicsProtocol/asciiArt`` and ``GraphicsProtocol/halfBlock``
+    /// are the no-protocol fallbacks.
     public private(set) var graphics: GraphicsProtocol
+    /// The ordered probe-by-probe record of how detection reached its
+    /// answers — one ``DetectionStep`` per environment check. Surfaced
+    /// in DevTools so "why did it pick sixel here?" is answerable
+    /// without re-deriving the detection order.
     public private(set) var detectionLog: [DetectionStep]
 
     /// Whether Option-modified keys reach the framework as `.alt` events.
@@ -216,5 +234,7 @@ public final class TerminalCapabilities: @unchecked Sendable {
 /// Framework-level runtime singletons. `Runtime.capabilities`
 /// is the canonical place to read graphics-protocol detection.
 public enum Runtime {
+    /// The process-wide capability record, detected once at startup from
+    /// the environment.
     public static let capabilities = TerminalCapabilities()
 }

@@ -141,18 +141,23 @@ public enum DiagPaths {
 
     // MARK: - Output paths
 
+    /// Directory for on-demand frame captures: `{dataDir}/captures`.
     public static func capturesDir(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("captures")
     }
 
+    /// Directory for per-frame trace screenshots: `{dataDir}/screenshots`.
     public static func screenshotsDir(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("screenshots")
     }
 
+    /// Directory for per-frame trace logs: `{dataDir}/traces`.
     public static func tracesDir(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("traces")
     }
 
+    /// Path of the debug event-stream socket: `{dataDir}/debug.sock`.
+    /// Distinct from the remote-control sockets under `socketDir(useTmp:)`.
     public static func socketPath(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.sock")
     }
@@ -165,6 +170,7 @@ public enum DiagPaths {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("remote")
     }
 
+    /// Path of the JSON-lines debug event log: `{dataDir}/debug.jsonl`.
     public static func jsonlPath(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.jsonl")
     }

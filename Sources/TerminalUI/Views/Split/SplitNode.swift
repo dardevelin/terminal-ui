@@ -25,13 +25,24 @@ public indirect enum SplitNode {
     /// It stays legal for trees nobody serialises: demos, tests, throwaway
     /// layouts.
     case leaf(any TerminalView, id: String? = nil)
+    /// An interior node: sibling subtrees distributed along `axis`, each
+    /// granted its `ratios` share of the parent rect, with a one-cell
+    /// divider drawn between neighbours. `children` and `ratios` are
+    /// parallel arrays; a child may itself be a `.split` on the other
+    /// axis, which is how nested tilings are built.
     case split(axis: SplitAxis, children: [SplitNode], ratios: [Double])
 }
 
 /// Axis for a split container. Mirrors i3's `orientation_t` (HORIZ /
 /// VERT) — `.horizontal` = children laid side-by-side, `.vertical`
 /// = stacked top-to-bottom.
+///
+/// The name describes the direction the panes run, not the divider: a
+/// horizontal split arranges panes along the horizontal axis and draws
+/// vertical `│` divider columns between them.
 public enum SplitAxis: Sendable, Equatable {
+    /// Panes side-by-side, left to right, separated by `│` columns.
     case horizontal
+    /// Panes stacked top to bottom, separated by `─` rows.
     case vertical
 }

@@ -63,6 +63,8 @@ public enum HitTest {
     }
 }
 
+/// What a hit-test at a cell position found: the deepest node whose rect
+/// contains the point, plus how the walk got there.
 public struct HitResult {
     /// The deepest node at the hit point
     public let node: AttributeNode

@@ -1,16 +1,25 @@
 import Foundation
 
-/// Debug overlay — renders directly into the cell buffer's bottom row.
-/// Bypasses the view tree and graph entirely — zero framework overhead.
-/// Erased in release builds.
+// Debug overlay — renders directly into the cell buffer's bottom row.
+// Bypasses the view tree and graph entirely — zero framework overhead.
+// Erased in release builds.
 
 #if DEBUG
 
+/// The F1 stats line — one row of live frame metrics (fps, build/flush
+/// time, delta bytes, dirty percentage) drawn into the buffer's bottom row.
+/// Owned and rendered by the runtime, which toggles it via the
+/// `toggle_debug_overlay` keybinding; it bypasses the view tree entirely
+/// and costs nothing while hidden. Erased in release builds.
 public final class DebugOverlay {
+    /// Whether the stats row is currently drawn. The runtime flips this
+    /// via ``toggle()``; nothing renders while false.
     public var visible: Bool = false
 
+    /// Creates a hidden overlay. The runtime owns the sole instance.
     public init() {}
 
+    /// Flip ``visible``. Bound to F1 by default (`toggle_debug_overlay`).
     public func toggle() { visible = !visible }
 
     /// Render directly into the buffer — called by the runtime, not the graph.

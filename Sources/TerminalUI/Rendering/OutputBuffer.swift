@@ -7,10 +7,25 @@ import Darwin
 /// A growable byte buffer that writes directly to a file descriptor.
 /// Avoids String allocation entirely — works in raw UTF-8 bytes.
 /// Reusable across frames to avoid repeated allocation.
+///
+/// The final stage of the render pipeline: after the ``Compositor``
+/// flattens layers and ``CellBuffer/renderDiff(from:into:)`` computes
+/// the delta, the resulting escape sequences and glyph bytes accumulate
+/// here and `flush(to:)` sends the whole frame in one POSIX `write`
+/// syscall — one atomic write per frame, no tearing, minimal syscall
+/// and SSH round-trip overhead. The API is layered accordingly: raw
+/// byte/string writes at the bottom, ANSI helpers (`writeCSI`,
+/// `writeCursorPosition`, `writeStyle`…) built on them. The runtime
+/// keeps one instance alive and `reset()`s it each frame so the hot
+/// path never reallocates once the buffer has grown to frame size.
 public struct OutputBuffer {
     private var bytes: [UInt8]
     private var count: Int
 
+    /// Create a buffer with `capacity` bytes preallocated (default
+    /// 64 KiB — comfortably a full frame for typical terminal sizes).
+    /// The buffer grows by doubling if a frame outruns it, so capacity
+    /// only tunes when the first reallocation happens, not correctness.
     public init(capacity: Int = 65536) {
         self.bytes = [UInt8](repeating: 0, count: capacity)
         self.count = 0
@@ -19,18 +34,24 @@ public struct OutputBuffer {
     /// Number of bytes currently in the buffer
     public var size: Int { count }
 
+    /// Empty the buffer for the next frame while keeping its allocated
+    /// capacity — called at the start of every render pass.
     public mutating func reset() {
         count = 0
     }
 
     // MARK: - Writing raw bytes
 
+    /// Append one raw byte. The primitive under every other writer —
+    /// the ANSI helpers spell sequences out byte-by-byte through this.
     public mutating func write(_ byte: UInt8) {
         ensureCapacity(1)
         bytes[count] = byte
         count += 1
     }
 
+    /// Append a borrowed byte slice verbatim — bulk path for callers
+    /// that already hold contiguous UTF-8/ANSI bytes.
     public mutating func write(_ slice: UnsafeBufferPointer<UInt8>) {
         ensureCapacity(slice.count)
         for i in 0..<slice.count {
@@ -39,6 +60,9 @@ public struct OutputBuffer {
         count += slice.count
     }
 
+    /// Append a compile-time string literal's UTF-8 bytes — no heap
+    /// allocation or bridging, since `StaticString` exposes its bytes
+    /// in place.
     public mutating func write(_ string: StaticString) {
         string.withUTF8Buffer { buf in
             ensureCapacity(buf.count)

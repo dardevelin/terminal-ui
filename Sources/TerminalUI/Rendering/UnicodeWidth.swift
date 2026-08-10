@@ -29,6 +29,9 @@ import Glibc
 import Darwin
 #endif
 
+/// Terminal-width and control-character classification for grapheme
+/// clusters — the cell-count arithmetic every layout measurement rests
+/// on.
 extension Character {
     /// Whether this is a control character a terminal would act on rather
     /// than draw.
@@ -136,6 +139,7 @@ extension Character {
     }
 }
 
+/// String-level terminal-width measurement over any string slice.
 extension StringProtocol {
     /// Total terminal cell count for this string. Sums `Character.displayWidth`
     /// over all grapheme clusters.

@@ -1,7 +1,15 @@
+/// The inherited drawing state a render walk carries into each node: the
+/// ambient ``Style`` (modifiers accumulate into it on the way down) and the
+/// rect the node may draw within.
 public struct RenderContext {
+    /// Ambient text style — foreground, background, and attributes inherited
+    /// from enclosing modifiers.
     public var style: Style
+    /// The cell region this node draws within, in buffer coordinates.
     public var rect: Rect
 
+    /// Creates a context for a render walk — `.plain` style unless the
+    /// caller is continuing an inherited chain.
     public init(style: Style = .plain, rect: Rect) {
         self.style = style
         self.rect = rect
@@ -1519,10 +1527,14 @@ public enum GraphRenderer {
 
     // MARK: - Measurement (delegated to GraphMeasurer)
 
+    /// The subtree's natural width in cells — the measurement pass stacks
+    /// use to size fixed children before flex distribution.
     public static func measureWidth(_ node: AttributeNode) -> Int {
         GraphMeasurer.measureWidth(node)
     }
 
+    /// The subtree's natural height in cells at the proposed width —
+    /// height is width-dependent because text wraps.
     public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
         GraphMeasurer.measureHeight(node, proposedWidth: proposedWidth)
     }

@@ -24,6 +24,8 @@ public struct ZStack<Content: TerminalView>: TerminalView {
     /// Where children smaller than the stack's rect are placed.
     public let alignment: Alignment
 
+    /// Creates a depth stack.
+    ///
     /// - Parameters:
     ///   - alignment: where children smaller than the stack sit.
     ///     `.topLeading` by default, matching the other two stacks.

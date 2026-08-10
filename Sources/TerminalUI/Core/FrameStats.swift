@@ -44,13 +44,22 @@ public struct FrameStats: Sendable {
     /// Whether this frame did actual rendering work
     public var wasActive: Bool
 
-    // Last active frame stats — preserved across idle frames
+    // Last active frame stats — preserved across idle frames, so debug
+    // readouts keep showing the cost of real work instead of idle zeros.
+
+    /// `buildTime` of the most recent frame that actually rendered.
     public var lastActiveBuildTime: Duration
+    /// `flushTime` of the most recent frame that actually rendered.
     public var lastActiveFlushTime: Duration
+    /// `cellsChanged` of the most recent frame that actually rendered.
     public var lastActiveCellsChanged: Int
+    /// `bytesWritten` of the most recent frame that actually rendered.
     public var lastActiveBytesWritten: Int
+    /// Smoothed FPS counting only frames that rendered — idle frames
+    /// excluded.
     public var activeRenderFps: Double
 
+    /// All-zero stats — the value before the first frame completes.
     public static let zero = FrameStats(
         fps: 0, lastFrameTime: .zero, buildTime: .zero, flushTime: .zero,
         frameCount: 0, cellsChanged: 0, totalCells: 0, bytesWritten: 0,

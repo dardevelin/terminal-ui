@@ -20,9 +20,14 @@
 /// view to *mean*, never how it draws. Outside a selection container the tag
 /// is simply unread, which is why `.tag()` is safe to leave on a view.
 public struct TaggedView<Tag: Hashable, Content: TerminalView>: TerminalView {
+    /// The selection value a container commits when this view's option is
+    /// chosen.
     public let tag: Tag
+    /// The wrapped view, rendered unchanged.
     public let content: Content
 
+    /// Creates a tagged wrapper; prefer the `.tag(_:)` modifier at call
+    /// sites.
     public init(tag: Tag, content: Content) {
         self.tag = tag
         self.content = content
@@ -81,6 +86,8 @@ public struct PickerOption<Value: Hashable>: Equatable {
     /// string to lay out without re-rendering the tagged subtree.
     public let title: String
 
+    /// Creates an option pairing a committable value with its display
+    /// title. Normally produced by ``Picker``'s content walk, not by apps.
     public init(value: Value, title: String) {
         self.value = value
         self.title = title

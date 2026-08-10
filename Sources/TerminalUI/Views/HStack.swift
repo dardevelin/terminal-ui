@@ -31,6 +31,8 @@ public struct HStack<Content: TerminalView>: TerminalView {
     /// initializer clamps.
     public let spacing: Int
 
+    /// Creates a horizontal stack.
+    ///
     /// - Parameters:
     ///   - alignment: where shorter children sit down the stack. Defaults to
     ///     `.top` rather than SwiftUI's `.center`, for the reason `VStack`

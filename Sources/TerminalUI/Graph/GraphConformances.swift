@@ -63,6 +63,9 @@ protocol _TupleViewProtocol {
 }
 
 extension TupleView: _TupleViewProtocol {
+    /// The packed sibling views as an erased array, in declaration order.
+    /// Graph plumbing — reconciliation flattens the tuple through this;
+    /// a non-tuple `Content` (single view) yields a one-element array.
     public func children() -> [Any] {
         let mirror = Mirror(reflecting: value)
         if mirror.displayStyle == .tuple {

@@ -7,7 +7,11 @@ import Foundation
 /// into several navigable rows. `.logical` treats each `\n`-delimited line
 /// as a single step; soft-wrapped rows are skipped.
 public enum PromptArrowMode: Sendable, Equatable {
+    /// One arrow step moves one terminal display row; soft-wrapped lines
+    /// take several steps to cross. The default.
     case display
+    /// One arrow step moves one `\n`-delimited logical line; soft-wrapped
+    /// continuation rows are skipped.
     case logical
 }
 
@@ -87,7 +91,10 @@ public enum PasteMode: Equatable, Sendable {
 /// Whether the auto-hint row beneath the prompt ("paste again to
 /// expand") is rendered. Library users opt out via `.pasteHint(.hidden)`.
 public enum PasteHintVisibility: Equatable, Sendable {
+    /// Render the hint row when the cursor sits adjacent to a collapsed
+    /// paste marker. The default.
     case visible
+    /// Never render the hint row; the prompt keeps its content height.
     case hidden
 }
 
@@ -126,6 +133,8 @@ public protocol PromptInputLocalizer: Sendable {
 /// strings here are the spec'd defaults from the design memo
 /// 2026-04-26 (`project_promptinput_paste_design_apr26.md`).
 public struct DefaultPromptInputLocalizer: PromptInputLocalizer {
+    /// Creates the stock English localizer. Stateless — every instance
+    /// produces identical strings.
     public init() {}
 
     public func textMarker(id: Int, lineCount: Int) -> String {
@@ -150,6 +159,7 @@ public struct DefaultPromptInputLocalizer: PromptInputLocalizer {
 /// tracked as a follow-up ticket. The case shape is forward-compatible
 /// so the consumer-facing API stays stable when image paste lands.
 public enum PasteBufferContent: Hashable, Equatable, Sendable {
+    /// Plain-text paste payload, stored verbatim (newlines included).
     case text(String)
     /// Image buffer — opaque payload bytes plus mime type. The actual
     /// kitty graphics protocol / OSC 52 clipboard wiring lives in its
@@ -170,7 +180,11 @@ public enum PasteBufferContent: Hashable, Equatable, Sendable {
 /// > presentation, thus allowing to re-apply"*
 public struct PasteBuffer: Identifiable, Equatable, Sendable {
     public typealias ID = Int
+    /// Buffer identity — allocated from ``PromptInputState/nextBufferID``,
+    /// monotonic and never reused within a prompt's lifetime.
     public let id: ID
+    /// The stored payload. Immutable once pooled; expansion and collapse
+    /// only change the referencing ``PasteReference``.
     public let content: PasteBufferContent
     /// Content hash for dedupe. Same payload pasted twice reuses the
     /// existing buffer (per the C2 sign-off in the design memory).
@@ -178,12 +192,18 @@ public struct PasteBuffer: Identifiable, Equatable, Sendable {
     /// session scope; we don't need a cryptographic hash.
     public let contentHash: Int
 
+    /// Creates a pooled buffer; `contentHash` is computed from `content`
+    /// at construction so dedupe lookups never re-hash the payload.
     public init(id: ID, content: PasteBufferContent) {
         self.id = id
         self.content = content
         self.contentHash = Self.hash(content)
     }
 
+    /// The dedupe hash for a payload — the same function that populates
+    /// `contentHash`, exposed so callers can probe the pool before
+    /// allocating a new buffer. Session-scoped `Hasher` output, not stable
+    /// across processes.
     public static func hash(_ content: PasteBufferContent) -> Int {
         var hasher = Hasher()
         hasher.combine(content)
@@ -203,7 +223,11 @@ public struct PasteBuffer: Identifiable, Equatable, Sendable {
 /// matching how the binding's String index counts.
 public struct PasteReference: Identifiable, Equatable, Sendable {
     public typealias ID = Int
+    /// Reference identity — allocated from
+    /// ``PromptInputState/nextReferenceID``, monotonic per prompt.
     public let id: ID
+    /// The pooled ``PasteBuffer`` this reference presents. Multiple
+    /// references may share one buffer.
     public let bufferID: PasteBuffer.ID
     /// Start offset in the expanded binding text (character count from
     /// `text.startIndex`). Reference's range is `[start, start + length)`.
@@ -223,6 +247,8 @@ public struct PasteReference: Identifiable, Equatable, Sendable {
     /// LLM-suggested names populate this field.
     public var name: String?
 
+    /// Creates a reference into the buffer pool. Defaults produce the
+    /// Phase A shape: collapsed marker, no name.
     public init(
         id: ID,
         bufferID: PasteBuffer.ID,
@@ -243,10 +269,17 @@ public struct PasteReference: Identifiable, Equatable, Sendable {
 /// Snapshot of state suitable for storing in `history` so ↑-recall
 /// restores both the text and the reference set with original IDs.
 public struct PromptInputHistoryEntry: Equatable, Sendable {
+    /// The submitted text, exactly as it read at submit time (references
+    /// still collapsed to their markers).
     public let text: String
+    /// The paste buffers referenced by this entry, preserved with their
+    /// original IDs so recall re-links markers to content.
     public let buffers: [PasteBuffer]
+    /// The reference set live at submit time. Empty for plain-text entries.
     public let references: [PasteReference]
 
+    /// Creates a history entry. Buffer and reference sets default to empty
+    /// for plain-text submissions.
     public init(
         text: String,
         buffers: [PasteBuffer] = [],
@@ -295,6 +328,8 @@ public struct PromptInputState: Equatable, Sendable {
     /// future image) per the design's "single shared counter" decision.
     public var nextReferenceID: PasteReference.ID = 1
 
+    /// Creates empty prompt state: cursor at origin, no history, empty
+    /// buffer pool, ID counters starting at 1.
     public init() {}
 }
 
@@ -396,6 +431,15 @@ public struct PromptInput: TerminalView {
     private static let badgeBgColor: Color = .ansi256(237)
     private static let dimColor: Color = .ansi256(242)
 
+    /// Creates a prompt bound to its text and state.
+    ///
+    /// `text` is the live buffer; `state` holds cursor/scroll/history and
+    /// must outlive re-evaluations (bind it to `@TerminalState` or an
+    /// `@Observable` model). `prompt` is the left indicator glyph
+    /// (default `❯`); `badge` is an optional right-aligned context tag.
+    /// `maxVisibleLines` is a legacy alias for `.fixed(n)` and, when
+    /// non-nil, overrides `heightPolicy`. Enter fires `onSubmit` with the
+    /// trimmed text; Shift/Option/Ctrl+Enter insert a newline.
     public init(
         text: Binding<String>,
         state: Binding<PromptInputState>,

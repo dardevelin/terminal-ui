@@ -90,8 +90,11 @@ internal func _terminalAtExitHandler() {
 private let vt100DefaultCols = 80
 private let vt100DefaultRows = 24
 
+/// The terminal window's dimensions in character cells.
 public struct TerminalSize: Sendable {
+    /// Width in columns.
     public var cols: Int
+    /// Height in rows.
     public var rows: Int
 
     /// VT100 default (80x24) — fallback when ioctl(TIOCGWINSZ) fails
@@ -109,13 +112,26 @@ public struct TerminalSize: Sendable {
 // the unit boundary. Production code uses `RealPosixSyscalls` which
 // delegates straight through to libc with no overhead.
 
+/// Injection seam for the three libc calls `Terminal` makes — exists so
+/// tests can fault-inject syscall failures (non-TTY stdin, headless CI,
+/// a 0x0 window size) that a real TTY test runner can never produce.
+/// Production uses `RealPosixSyscalls`; tests use ``FailingPosixSyscalls``.
 public protocol PosixSyscalls: Sendable {
+    /// `tcgetattr(3)`: read `fd`'s termios state into `termiosOut`;
+    /// 0 on success, -1 on failure.
     func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32
+    /// `tcsetattr(3)`: apply `termiosIn` to `fd` per `optAct`;
+    /// 0 on success, -1 on failure.
     func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32
+    /// `ioctl(2)` with a `winsize` out-parameter (`TIOCGWINSZ`);
+    /// 0 on success, -1 on failure.
     func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32
 }
 
+/// The production ``PosixSyscalls``: delegates straight through to libc
+/// with no overhead.
 public struct RealPosixSyscalls: PosixSyscalls {
+    /// Creates the pass-through implementation. Stateless.
     public init() {}
 
     public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
@@ -146,16 +162,31 @@ public struct RealPosixSyscalls: PosixSyscalls {
 #if DEBUG
 /// Test-only failing implementation. Records call counts, returns -1
 /// on any flagged syscall, and can simulate the ioctl 0×0 fallback.
+///
+/// Fault-injection mock for ``PosixSyscalls``: a test flips the
+/// `...ShouldFail` flags, hands the instance to the code under test, and
+/// asserts on the `...CallCount` counters afterward. Unflagged calls
+/// succeed with deterministic values (zeroed termios, 80x24 window) so a
+/// test only ever exercises the failure it asked for. Debug builds only.
 public final class FailingPosixSyscalls: PosixSyscalls, @unchecked Sendable {
+    /// Make ``tcgetattr(_:_:)`` return -1 — simulates a non-TTY stdin.
     public var tcgetattrShouldFail: Bool = false
+    /// Make ``tcsetattr(_:_:_:)`` return -1 — simulates raw mode failing to apply.
     public var tcsetattrShouldFail: Bool = false
+    /// Make ``ioctl(_:_:_:)`` return -1 — simulates the size query failing outright.
     public var ioctlShouldFail: Bool = false
+    /// Make ``ioctl(_:_:_:)`` succeed but report a 0x0 window — the
+    /// headless-CI case the size-fallback path must survive.
     public var ioctlReturnsZeroSize: Bool = false
 
+    /// Times ``tcgetattr(_:_:)`` was called — assert on it to pin retry/skip behavior.
     public var tcgetattrCallCount: Int = 0
+    /// Times ``tcsetattr(_:_:_:)`` was called — assert on it to pin retry/skip behavior.
     public var tcsetattrCallCount: Int = 0
+    /// Times ``ioctl(_:_:_:)`` was called — assert on it to pin retry/skip behavior.
     public var ioctlCallCount: Int = 0
 
+    /// Creates a mock with every failure flag off and counters at zero.
     public init() {}
 
     public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
@@ -194,6 +225,20 @@ public final class FailingPosixSyscalls: PosixSyscalls, @unchecked Sendable {
 
 // MARK: - Terminal Control
 
+/// Static control surface for the physical terminal: raw mode,
+/// alternate screen, mouse tracking, bracketed paste, size queries, and
+/// crash-path cleanup.
+///
+/// This is the pipeline's boundary with the outside world. Everything
+/// above it (graph, renderer, compositor) works on in-memory cells;
+/// `Terminal` owns the stateful device modes those frames assume —
+/// `TerminalApp.run()` enables them at startup, and
+/// `installSignalCleanup()` guarantees they are unwound on any exit
+/// path, because a terminal left in raw mode + mouse tracking corrupts
+/// the user's shell. A namespace enum (no instances): a process has one
+/// controlling terminal, and the mode changes are process-global
+/// termios/escape-sequence state. All sequences are xterm/DEC private
+/// modes that unsupporting terminals ignore silently.
 public enum Terminal {
     nonisolated(unsafe) private static var originalTermios: termios?
 
@@ -204,9 +249,19 @@ public enum Terminal {
     nonisolated(unsafe) public static var posix: any PosixSyscalls = RealPosixSyscalls()
 
     #if DEBUG
+    /// Debug-only geometry override consulted by ``size()`` when ioctl
+    /// reports 0×0 columns or rows — lets headless tests pin a specific
+    /// simulated size instead of the VT100 fallback. Set to `nil` to
+    /// exercise the release fallback path. Compiled out of release
+    /// builds.
     nonisolated(unsafe) public static var debugMinSize: TerminalSize? = .default
     #endif
 
+    /// Current terminal dimensions in cells, via `ioctl(TIOCGWINSZ)` on
+    /// stdout. Falls back to ``TerminalSize/default`` (80×24) when the
+    /// query fails or reports zero — piped stdout, headless CI — so
+    /// callers always get a renderable, non-zero geometry. Re-queried
+    /// after SIGWINCH (see `checkResize()`).
     public static func size() -> TerminalSize {
         var windowSize = winsize()
         let ioctlResult = posix.ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
@@ -274,17 +329,30 @@ public enum Terminal {
         return true
     }
 
+    /// Restore the termios state captured by `enableRawMode()`,
+    /// returning stdin to cooked (line-buffered, echoing) mode. A no-op
+    /// if raw mode was never successfully enabled — safe to call
+    /// defensively on any shutdown path.
     public static func disableRawMode() {
         if var original = originalTermios {
             _ = posix.tcsetattr(STDIN_FILENO, TCSAFLUSH, &original)
         }
     }
 
+    /// Switch to the alternate screen buffer (DEC 1049) and hide the
+    /// cursor. The shell's scrollback is saved untouched underneath;
+    /// ``exitAlternateScreen()`` restores it exactly — the standard
+    /// full-screen TUI convention.
     public static func enterAlternateScreen() {
         // alternateScreen on + cursorVisible off
         writeRaw("\u{1B}[?1049h\u{1B}[?25l")
     }
 
+    /// Leave the alternate screen, restoring the user's shell content
+    /// and cursor. Also force-disables mouse tracking both before and
+    /// after the switch — Apple Terminal keeps per-screen mouse state,
+    /// so a single disable would be undone by the screen restore and
+    /// leave the shell spewing SGR mouse bytes.
     public static func exitAlternateScreen() {
         // HYP-342 — disable mouse modes BOTH before AND after the
         // alt-screen exit. Apple Terminal.app saves/restores per-
@@ -314,6 +382,10 @@ public enum Terminal {
         write(sequence)
     }
 
+    /// Disable all four mouse tracking modes, in the reverse of the
+    /// order `enableMouseTracking()` enabled them. Idempotent — issued
+    /// liberally on every shutdown path, since stray mouse reporting is
+    /// the classic way a crashed TUI corrupts the shell.
     public static func disableMouseTracking() {
         let sequence = disableMode(ANSIMode.mouseSGR)
             + disableMode(ANSIMode.mouseMotion)
@@ -331,6 +403,9 @@ public enum Terminal {
         write(enableMode(ANSIMode.bracketedPaste))
     }
 
+    /// Turn off bracketed-paste mode (xterm 2004) so pasted text is no
+    /// longer wrapped in `ESC[200~ … ESC[201~` markers. Part of the
+    /// standard shutdown sequence; idempotent.
     public static func disableBracketedPaste() {
         write(disableMode(ANSIMode.bracketedPaste))
     }

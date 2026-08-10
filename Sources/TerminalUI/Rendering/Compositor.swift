@@ -4,13 +4,28 @@
 /// Each layer renders into an isolated CellBuffer, then layers
 /// are composited bottom-to-top into the final output buffer.
 public struct Layer {
+    /// The cells this layer rendered for the current frame. The
+    /// renderer draws into this; the ``Compositor`` reads from it.
     public var buffer: CellBuffer
+    /// Column (in cells) of the layer's left edge in output space.
+    /// May be negative or off-screen — compositing clamps.
     public var x: Int
+    /// Row (in cells) of the layer's top edge in output space.
+    /// May be negative or off-screen — compositing clamps.
     public var y: Int
+    /// How this layer's cells combine with what is already beneath it
+    /// — see ``LayerStyle``.
     public var style: LayerStyle
+    /// Last frame's ``buffer``, kept by `snapshotBuffer()` so
+    /// `computeDirtyRegion()` can find what changed. `nil` (or a size
+    /// mismatch) means the whole layer counts as dirty.
     public var previousBuffer: CellBuffer?
+    /// What changed since the snapshot — set by `computeDirtyRegion()`
+    /// during delta compositing. `.clean` layers are skipped entirely.
     public var dirtyRect: DirtyRegion
 
+    /// How a layer's cells combine with the output beneath it when
+    /// composited — the terminal-grid analogue of a blend mode.
     public enum LayerStyle {
         /// Replace all cells in the destination (standard app content).
         case opaque
@@ -24,6 +39,9 @@ public struct Layer {
         case dim(Color)
     }
 
+    /// The change footprint of a layer since its last snapshot —
+    /// what delta compositing uses to skip clean layers and bound the
+    /// recomposite to the smallest rect (in layer-local cells).
     public enum DirtyRegion: Equatable {
         /// Entire layer needs recompositing
         case full
@@ -33,6 +51,10 @@ public struct Layer {
         case clean
     }
 
+    /// Create a layer with a fresh empty buffer of the given cell
+    /// dimensions, positioned at (x, y) in output space. Starts fully
+    /// dirty (no previous frame to diff against), so its first
+    /// composite is unconditional.
     public init(width: Int, height: Int, x: Int = 0, y: Int = 0, style: LayerStyle = .opaque) {
         self.buffer = CellBuffer(width: width, height: height)
         self.x = x
@@ -80,6 +102,17 @@ public struct Layer {
 
 /// Composites multiple layers into a final cell buffer.
 /// Supports full and delta compositing.
+///
+/// This is the merge stage of the render pipeline: after the renderer
+/// fills each ``Layer``'s buffer (base content, modal, overlay…), the
+/// compositor flattens them bottom-to-top — honoring each layer's
+/// ``Layer/LayerStyle`` (replace, skip-empty, or dim) — into the single
+/// ``CellBuffer`` that is then diffed against the previous frame and
+/// flushed through ``OutputBuffer``. The delta path asks each layer for
+/// its ``Layer/DirtyRegion`` first: clean layers are skipped, and only
+/// the union of dirty rects is recomposited (from *all* layers, since a
+/// higher layer may occlude a lower one inside that rect). A stateless
+/// namespace — all per-frame state lives in the layers themselves.
 public enum Compositor {
 
     /// Full composite — merge all layers, bottom to top.

@@ -8,10 +8,17 @@
 /// structured child task on the same actor. The mutable state is not
 /// safe to touch from arbitrary threads — see `GraphContext.swift`.
 public class AttributeNode: @unchecked Sendable {
+    /// Structural identity — stable across frames, the reconciler's match key.
     public let id: NodeID
+    /// What this node is — primitive, layout, modifier, or composite body.
+    /// The render and measure walks switch on it; nothing casts.
     public var kind: NodeKind
+    /// Owning node; weak to break the cycle with ``children``. Nil at the root.
     public weak var parent: AttributeNode?
+    /// Child nodes in declaration order.
     public var children: [AttributeNode] = []
+    /// Whether this node needs re-evaluation on the next update. New nodes
+    /// start dirty; ``markDirty()`` sets it, reconciliation clears it.
     public var isDirty: Bool = true
 
     /// Cached layout result — the rectangle this node occupies
@@ -217,6 +224,9 @@ public class AttributeNode: @unchecked Sendable {
     /// rebuild (e.g. on the very first render before any seed exists).
     public var geometryRebuilder: ((Size, AttributeNode) -> Void)?
 
+    /// Creates a node, dirty by default so the first update evaluates it,
+    /// and snapshots the focus granularity in force at the construction
+    /// site — see ``focusGranularity`` for why render-time reads are too late.
     public init(id: NodeID, kind: NodeKind) {
         self.id = id
         self.kind = kind
@@ -251,9 +261,13 @@ public class AttributeNode: @unchecked Sendable {
 
 /// Discriminated node kind — switch on this, never `as?` cast.
 public enum NodeKind {
+    /// A leaf that draws cells directly; see ``PrimitiveContent``.
     case primitive(PrimitiveContent)
+    /// A container that positions children (stack, scroll, split…).
     case layout(LayoutInfo)
+    /// A modifier applied to the subtree beneath it.
     case modifier(ModifierEffect)
+    /// A user view's evaluated `body` — one node per composite view.
     case viewBody(ViewBodyInfo)
 
     /// Quick kind checks for reconciliation type-safety.
@@ -339,12 +353,21 @@ extension NodeKind {
 
 // MARK: - Primitive
 
+/// What a `.primitive` leaf node draws — the closed set of contents the
+/// renderer's enum dispatch understands.
 public enum PrimitiveContent {
+    /// Styled text runs; `\n` in a span starts a new row.
     case text([TextSpan])
+    /// Elastic blank space along the enclosing stack's axis.
     case spacer
+    /// A one-cell rule across the enclosing stack's cross axis.
     case divider
+    /// A determinate progress row: `value` is the completed fraction in
+    /// `0...1`, drawn with `filled`/`empty` glyphs.
     case progressBar(value: Double, label: String?, filled: Character, empty: Character)
+    /// One animated glyph — frame `frame` of `style`'s cycle.
     case spinner(frame: Int, style: SpinnerStyle)
+    /// Renders nothing and occupies no cells.
     case empty
     /// Pre-rasterized cell content. The renderer blits `source[x, y]`
     /// to `buffer[rect.x + x, rect.y + y]` for the intersection of
@@ -356,8 +379,12 @@ public enum PrimitiveContent {
 
 // MARK: - Layout
 
+/// Parameters a `.layout` node carries — which container algorithm runs,
+/// plus the spacing and alignment the container was declared with.
 public struct LayoutInfo {
+    /// The container algorithm that positions this node's children.
     public var kind: LayoutKind
+    /// Child sizes cached by the most recent measurement pass, in child order.
     public var childSizes: [Size] = []
     /// `true` when the layout node was synthesized by a result builder
     /// (TupleView) or by `ForEach`. Structural vstacks are transparent
@@ -377,6 +404,8 @@ public struct LayoutInfo {
     /// Both stacks and `ZStack` carry the pair; each reads the one it needs.
     public var alignment: Alignment = .topLeading
 
+    /// Creates layout info for a container node; defaults describe an
+    /// author-written, unspaced, top-leading-aligned container.
     public init(kind: LayoutKind, isStructural: Bool = false,
                 spacing: Int = 0, alignment: Alignment = .topLeading) {
         self.kind = kind
@@ -386,10 +415,17 @@ public struct LayoutInfo {
     }
 }
 
+/// The container algorithm a layout node runs — one case per layout
+/// primitive the graph lays out natively.
 public enum LayoutKind: Equatable {
+    /// Children stacked top-to-bottom.
     case vstack
+    /// Children laid side-by-side, left-to-right.
     case hstack
+    /// Children overlaid in declaration order, later ones drawn on top.
     case zstack
+    /// A viewport over content larger than the assigned rect, offset along
+    /// the given axis by the node's persisted `scrollOffset`.
     case scroll(ScrollAxis)
     /// Resizable split container with explicit per-child ratios.
     /// Children laid side-by-side (`.horizontal`) or stacked
@@ -399,28 +435,56 @@ public enum LayoutKind: Equatable {
     case split(SplitAxis)
 }
 
+/// A two-dimensional extent in terminal cells — the currency of the
+/// measurement pass, where every node reports how many columns and rows
+/// it wants within the space it was offered.
 public struct Size: Equatable, Sendable {
+    /// Horizontal extent in cells (columns).
     public var width: Int
+    /// Vertical extent in cells (rows).
     public var height: Int
 
+    /// Create a size from cell counts.
     public init(width: Int, height: Int) {
         self.width = width
         self.height = height
     }
 
+    /// The empty size (0 × 0) — what zero-content views measure to.
     public static let zero = Size(width: 0, height: 0)
 }
 
 // MARK: - Modifier
 
+/// The render/layout-time effect a modifier node applies to its child
+/// subtree, carried in ``NodeKind/modifier(_:)``.
+///
+/// One enum rather than open dispatch keeps the render hot path a switch:
+/// `GraphRenderer.renderModifier` gives every case its drawing meaning, and
+/// layout consults the geometry-affecting cases (`.padding`, `.border`,
+/// `.frame`, `.flexible`) when measuring. Handler-shaped cases carry no
+/// payload — the closure lives on the node or on `FocusEngine`, keeping this
+/// enum free of generic parameters.
 public enum ModifierEffect {
+    /// Sets the foreground (text) color for the subtree's styled cells.
     case foreground(Color)
+    /// Sets the background color for the subtree's styled cells.
     case background(Color)
+    /// Renders the subtree's text bold.
     case bold
+    /// Renders the subtree's text italic.
     case italic
+    /// Renders the subtree's text underlined.
     case underline
+    /// Insets the child's rect by the given cell count on all four sides;
+    /// layout stamps the inset rect, render passes it through unchanged.
     case padding(Int)
+    /// Draws a border ring at the node's outer rect and insets the child
+    /// one cell inside it.
     case border(BorderStyle)
+    /// Clamps the child's rect to the given exact/min/max dimensions and
+    /// places smaller content within the frame by `alignment`; `.infinity`
+    /// maxima opt the axis into stack flex distribution.
     case frame(width: Int?, height: Int?, minWidth: FrameDimension?, maxWidth: FrameDimension?, minHeight: FrameDimension?, maxHeight: FrameDimension?, alignment: Alignment)
     /// `.flexible(_:grow:)` — opt-in flex distribution along `axes`.
     /// Inside a stack on the matching axis, the renderer treats this
@@ -428,15 +492,35 @@ public enum ModifierEffect {
     /// wrapped content into the allocated rect. `grow` weights the
     /// share when multiple flex siblings compete for the remainder.
     case flexible(axes: FrameAxes, grow: Int)
+    /// Splices a user-provided identity (`.id(...)`) into the child's node
+    /// path so state and focus follow the value, not the position. No
+    /// visual effect.
     case explicitID(AnyHashable)
+    /// Renders the base, then the second child on top of it, placed by
+    /// `alignment` within the base view's own frame.
     case overlay(alignment: Alignment)     // child[0] = base, child[1] = overlay content
+    /// Renders the background child first, then the base over it, so the
+    /// base's cells win wherever both draw.
     case backgroundView(alignment: Alignment)  // child[0] = background content, child[1] = base (render bg first)
+    /// Renders the base always; while presented, defers the panel child to
+    /// composite over the full screen after the main walk, trapping focus
+    /// inside it (containment).
     case modal(isPresented: Bool) // child[0] = base, child[1] = modal content (when presented)
+    /// Marks the child able to receive keyboard focus; the focus indicator
+    /// is drawn after the main render pass.
     case focusable   // marks the child as able to receive focus
+    /// Groups focusable descendants under one scope id: arrow navigation
+    /// stays inside the scope, Tab still crosses it. No visual effect.
     case focusScope(String) // groups focusable descendants; arrows stay within
+    /// Attaches a key handler that fires while the subtree holds keyboard
+    /// focus; render is a pass-through.
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
+    /// Fires its action once, when the node first joins the tree.
     case onAppear    // fires action on first graph construction (tracked on node)
+    /// Fires its action when the observed value differs from the last value
+    /// stored on the node.
     case onChange    // fires action when bound value changes (last value stored on node)
+    /// Fires its action when the node leaves the tree.
     case onDisappear // fires action when node is removed from the tree
     /// `.task { }` — async work owned by the node: started when the node
     /// first appears, cancelled when it leaves the tree. The handle lives on
@@ -444,8 +528,14 @@ public enum ModifierEffect {
     /// frame, so a handle captured in the modifier would be a different one
     /// by the time anything came to cancel it.
     case task
+    /// Attaches a mouse-click handler, dispatched with rect-relative
+    /// coordinates when the click lands inside the child's rect.
     case onClick     // attaches click handler (handler stored on FocusEngine)
+    /// Attaches a hover handler fired on cursor enter/leave transitions
+    /// over the child's rect.
     case onHover     // attaches hover handler (handler stored on FocusEngine)
+    /// Attaches a handler for bracketed-paste payloads routed to the
+    /// keyboard-focused subtree.
     case onPaste     // attaches paste handler (handler stored on FocusEngine)
     /// `.actions { ... }` attaches an `ActionScope` to the modifier
     /// node. The runtime's input dispatcher walks the focus chain to
@@ -499,9 +589,11 @@ extension ModifierEffect {
 
 /// Type-erased container for a view body node.
 public final class ViewBodyInfo {
-    /// Name for debugging
+    /// The composite view's Swift type name, for debug output and the
+    /// inspector.
     public var viewTypeName: String
 
+    /// Creates the container recording the view's type name.
     public init(viewTypeName: String) {
         self.viewTypeName = viewTypeName
     }

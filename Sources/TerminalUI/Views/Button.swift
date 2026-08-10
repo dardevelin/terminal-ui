@@ -37,6 +37,8 @@ public struct Button: TerminalView {
     /// `.disabled()` (handler gating + focus skip).
     @TerminalEnvironment(\.isEnabled) var isEnabled
 
+    /// Creates a button.
+    ///
     /// - Parameters:
     ///   - label: Text drawn inside the `[ ]` chrome.
     ///   - action: Called when the focused button is activated.

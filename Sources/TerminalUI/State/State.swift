@@ -42,11 +42,22 @@ public struct TerminalState<Value> {
     private let initialValue: Value
     private let key: String
 
+    /// Creates the wrapper with its initial value. The source-location
+    /// parameters default to the call site and form the storage-slot key —
+    /// callers never pass them explicitly.
     public init(wrappedValue: Value, file: String = #file, line: Int = #line, column: Int = #column) {
         self.initialValue = wrappedValue
         self.key = "\(file):\(line):\(column)"
     }
 
+    /// The current value of the graph-owned slot.
+    ///
+    /// Reads and writes resolve through `GraphContext.currentNode`, which is
+    /// bound only during body evaluation. Outside it — event handlers, timer
+    /// callbacks — reads return the initial value and writes are silently
+    /// dropped. From a handler, mutate through the projected ``Binding``
+    /// (`$value`, projected in `body` and captured into the closure) or hold
+    /// state in an `@Observable` class instead.
     public var wrappedValue: Value {
         get {
             guard let node = GraphContext.currentNode else {
@@ -117,15 +128,38 @@ public struct TerminalState<Value> {
 }
 
 /// A two-way reference to state owned elsewhere.
+///
+/// The value never lives in the binding: every read calls ``get`` and every
+/// write calls ``set``, so the binding stays truthful no matter who mutates
+/// the underlying storage. Controls take bindings for the values they edit.
+/// `@TerminalState`'s projected value (`$count`) produces one; one can also
+/// be built directly over any storage the caller owns:
+///
+/// ```swift
+/// Toggle("Telemetry", isOn: Binding(
+///     get: { model.telemetry }, set: { model.telemetry = $0 }
+/// ))
+/// ```
+///
+/// Hand-built bindings over an `@Observable` model are the reliable choice
+/// inside event-handler closures, where `@TerminalState` has no graph context.
+/// When projecting `$state` bindings, do so in `body` proper — a projection
+/// inside a `GeometryReader { ... }` closure runs outside body evaluation,
+/// captures no node, and yields a binding that swallows writes.
 public struct Binding<Value> {
+    /// Reads the current value from the owning storage.
     public let get: () -> Value
+    /// Writes a new value back to the owning storage.
     public let set: (Value) -> Void
 
+    /// Creates a binding from explicit accessor closures over storage the
+    /// caller owns.
     public init(get: @escaping () -> Value, set: @escaping (Value) -> Void) {
         self.get = get
         self.set = set
     }
 
+    /// The referenced value: reading calls ``get``, assigning calls ``set``.
     public var wrappedValue: Value {
         get { get() }
         nonmutating set { set(newValue) }

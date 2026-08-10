@@ -10,10 +10,24 @@ import TerminalLog
 
 // MARK: - Events
 
+/// Everything the runtime can deliver to `onEvent(_:)` — one enum, one
+/// handler.
+///
+/// Events are produced off the main actor (stdin parser, timer tasks, resize
+/// poller), queued, and drained on the MainActor once per frame. Returning
+/// `false` from `onEvent(_:)` for any event quits the app; view-level
+/// handlers still run for events the app-level handler lets through.
 public enum TerminalEvent: Sendable {
+    /// A key press, already decoded from raw bytes. See ``KeyEvent``.
     case key(KeyEvent)
+    /// A mouse press/release/drag/move/scroll at a cell position. See
+    /// ``MouseEvent``.
     case mouse(MouseEvent)
+    /// The terminal was resized to (columns, rows). The runtime has already
+    /// scheduled a full redraw at the new geometry before the app sees this.
     case resize(Int, Int)
+    /// A named ``TerminalTimer`` fired; the payload is the timer's name, so
+    /// one handler can distinguish multiple timers.
     case timer(String)
     /// Bracketed-paste payload — the bytes between an `ESC[200~ ... ESC[201~`
     /// pair, decoded as UTF-8. Control sequences inside the wrapper are
@@ -53,10 +67,20 @@ final class EventQueue: @unchecked Sendable {
 
 // MARK: - Timer
 
+/// A named repeating tick delivered to the app as `TerminalEvent.timer(name)`.
+///
+/// Declare timers via `TerminalAppProtocol.timers`; the runtime runs each on
+/// its own task and pushes a tick into the event queue every `interval`.
+/// Ticks mark the frame dirty, so a timer is the simplest way to animate
+/// without touching observable state.
 public struct TerminalTimer: Sendable {
+    /// Identifies this timer in the `.timer(String)` events it produces.
     public let name: String
+    /// Time between ticks. Delivery aligns to the frame loop, so effective
+    /// resolution is bounded by the render mode's frame budget.
     public let interval: Duration
 
+    /// Creates a timer that fires `.timer(name)` every `interval`.
     public init(_ name: String, every interval: Duration) {
         self.name = name
         self.interval = interval
@@ -65,6 +89,15 @@ public struct TerminalTimer: Sendable {
 
 // MARK: - Render Mode
 
+/// How the frame loop paces rendering — the CPU/latency trade-off knob.
+///
+/// Set via `TerminalAppProtocol.renderMode` (default `.fps60`). In every
+/// mode, unchanged state costs nothing beyond the pacing check itself: a
+/// frame only does graph work when input arrived or an `@Observable`
+/// property changed. `.capped` sleeps the remaining frame budget; `.onDemand`
+/// drops the frame clock entirely and is the right choice for apps that
+/// should be invisible in `top` while idle. `.uncapped` exists for
+/// benchmarking, not production.
 public enum RenderMode: Sendable {
     /// Render as fast as possible — no sleep between frames.
     case uncapped
@@ -73,14 +106,35 @@ public enum RenderMode: Sendable {
     /// Only render when an event arrives — no frame clock.
     case onDemand
 
-    /// Common presets
+    // Common presets
+    /// Preset for ~30 fps: `.capped(.milliseconds(33))`.
     public static var fps30: RenderMode { .capped(.milliseconds(33)) }
+    /// Preset for ~60 fps: `.capped(.milliseconds(16))`. The default render
+    /// mode.
     public static var fps60: RenderMode { .capped(.milliseconds(16)) }
+    /// Preset for ~120 fps: `.capped(.milliseconds(8))`.
     public static var fps120: RenderMode { .capped(.milliseconds(8)) }
 }
 
 // MARK: - Runtime
 
+/// The event loop behind every TerminalUI app: raw-mode setup, input
+/// parsing, graph reconciliation, delta rendering, and teardown.
+///
+/// Most apps never construct one — conforming to ``TerminalAppProtocol``
+/// gets a runtime built and run by the default `main()`. Instantiate
+/// directly only when you need a custom `@main` (for example, to catch
+/// ``TerminalRuntimeError/rawModeUnavailable`` and fall back to
+/// non-interactive output when stdin isn't a TTY):
+///
+/// ```swift
+/// let runtime = TerminalRuntime(renderMode: .onDemand) { ContentView() }
+/// try await runtime.run()
+/// ```
+///
+/// MainActor-isolated end to end: events are produced on background tasks
+/// but drained and dispatched on the MainActor, which is what lets handlers
+/// touch `@Observable` app state without hops.
 @MainActor
 public final class TerminalRuntime<RootView: TerminalView> {
     private let buildView: () -> RootView
@@ -105,6 +159,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private let debugOverlay = DebugOverlay()
     private let inspector = Inspector()
     private let keyBindings = KeyBindings()
+    /// The runtime's focus engine — one per runtime, alive for the whole run.
+    /// Public so tooling and tests can inspect or drive focus (focused node,
+    /// Tab order, directional moves); apps normally interact with it through
+    /// `.focusable` and the `@FocusState`-style modifiers instead.
     public let focusEngine = FocusEngine()
 
     /// Set to `true` by the framework's default `app.quit` action when
@@ -148,6 +206,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var remoteControl: RemoteControlServer?
     #endif
 
+    /// Creates a runtime for `content` without starting it — call ``run()``
+    /// to take over the terminal.
+    ///
+    /// Defaults mirror ``TerminalAppProtocol``'s: `.fps60` pacing, no timers,
+    /// and an `onEvent` that quits on `q` or Escape (return `false` from your
+    /// own closure to quit). `devTrace` overrides the `.terminalui/` file
+    /// config when non-nil; nil means "use the file config in DEBUG, nothing
+    /// in release."
     public init(
         renderMode: RenderMode = .fps60,
         timers: [TerminalTimer] = [],
@@ -193,6 +259,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #endif
     }
 
+    /// Takes over the terminal and runs the event loop until the app quits.
+    ///
+    /// Entering: raw mode, alternate screen, mouse tracking, bracketed paste,
+    /// and signal-cleanup handlers so escape state never leaks to the parent
+    /// shell. Returns after `onEvent` returns `false` or a quit action fires;
+    /// terminal state is restored on every path, including thrown errors.
+    /// Throws ``TerminalRuntimeError/rawModeUnavailable`` — before touching
+    /// the screen — when stdin isn't a TTY.
     public func run() async throws {
         Terminal.installResizeHandler()
         // Raw-mode setup can fail when stdin isn't a TTY (CI, headless,
@@ -1119,11 +1193,17 @@ extension TerminalRuntime: RemoteControlRuntime {}
 
 // MARK: - Runtime errors
 
-/// Thrown by `TerminalRuntime.run()` when the framework can't bring
-/// the terminal up cleanly. App templates that always run on a TTY
-/// can let it propagate to `@main`; apps that handle non-TTY
-/// environments (CI, headless tests, pipe stdin) catch it and fall
-/// back to a non-interactive mode.
+/// Thrown by ``TerminalRuntime/run()`` when the framework can't bring
+/// the terminal up cleanly.
+///
+/// App templates that always run on a TTY can let it propagate to `@main`;
+/// apps that handle non-TTY environments (CI, headless tests, pipe stdin)
+/// catch it and fall back to a non-interactive mode. It is thrown before
+/// alternate-screen entry, so on failure the terminal is untouched and a
+/// plain error message prints cleanly — the default
+/// ``TerminalAppProtocol/main()`` shim does exactly that (logs and exits 1).
+/// Write a custom `@main` that catches it when you want richer fallback,
+/// e.g. rendering once via `TerminalApp.print(_:width:)` and exiting 0.
 public enum TerminalRuntimeError: Error, Equatable {
     /// `Terminal.enableRawMode()` returned false — `tcgetattr` or
     /// `tcsetattr` failed (typically because stdin isn't a TTY).
@@ -1174,18 +1254,55 @@ func makeFrameworkDefaultsScope(signal: QuitSignal, isPresenting: Bool) -> Actio
 
 // MARK: - @main entry point protocol
 
+/// The app entry point: conform with `@main`, implement `content()`, done.
+///
+/// This is the TerminalUI equivalent of SwiftUI's `App`. Everything except
+/// `content()` has a default — `.fps60` pacing, no timers, quit on `q` or
+/// Escape — so a minimal app is:
+///
+/// ```swift
+/// @main
+/// struct HelloApp: TerminalAppProtocol {
+///     static func content() -> some TerminalView {
+///         Text("Hello, terminal").padding().border()
+///     }
+/// }
+/// ```
+///
+/// Requirements are `static` because `@main` needs a callable `main()`
+/// without an instance; app state belongs in `@Observable` models the views
+/// reference, not on the conforming type. Note the entry point is this
+/// protocol — ``TerminalApp`` is an enum namespace for non-interactive
+/// helpers like `TerminalApp.print(_:width:)`, not something you run.
 public protocol TerminalAppProtocol {
+    /// The root view type, inferred from `content()`'s return type.
     associatedtype Content: TerminalView
+    /// Frame pacing for the runtime. Defaults to `.fps60`; use `.onDemand`
+    /// for zero idle CPU.
     static var renderMode: RenderMode { get }
+    /// Named repeating timers, delivered as `.timer(name)` events. Defaults
+    /// to none.
     static var timers: [TerminalTimer] { get }
+    /// Diagnostic trace configuration. `nil` defers to the `.terminalui/`
+    /// file config; the default provides a trace-enabled config in DEBUG and
+    /// `nil` in release.
     static var devTrace: DevTraceConfig? { get }
+    /// App-level event hook, called before view-level handlers for every
+    /// ``TerminalEvent``. Return `false` to quit the app. The default quits
+    /// on `q` or Escape.
     static func onEvent(_ event: TerminalEvent) -> Bool
+    /// Builds the root view. Re-invoked whenever the runtime needs a
+    /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
 }
 
 extension TerminalAppProtocol {
+    /// Default: `.fps60`.
     public static var renderMode: RenderMode { .fps60 }
+    /// Default: no timers.
     public static var timers: [TerminalTimer] { [] }
+    /// Default: in DEBUG, tracing enabled with a 100-frame limit; in
+    /// release, `nil` (no diagnostic machinery exists in release builds).
     public static var devTrace: DevTraceConfig? {
         #if DEBUG
         var config = DevTraceConfig.default
@@ -1197,12 +1314,19 @@ extension TerminalAppProtocol {
         #endif
     }
 
+    /// Default: quit on `q` or Escape, pass everything else through. Apps
+    /// with text input almost always override this — a typed `q` would
+    /// otherwise end the process.
     public static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let k) = event, k.key == .character("q") { return false }
         if case .key(let k) = event, k.key == .escape { return false }
         return true
     }
 
+    /// The `@main` entry: builds a ``TerminalRuntime`` from the static
+    /// requirements and runs it. On ``TerminalRuntimeError/rawModeUnavailable``
+    /// (stdin not a TTY) it logs to stderr and exits 1; write your own
+    /// `main()` to handle non-TTY environments differently.
     @MainActor public static func main() async {
         let runtime = TerminalRuntime(
             renderMode: renderMode,
@@ -1231,7 +1355,18 @@ extension TerminalAppProtocol {
 
 // MARK: - Inline printing (no event loop)
 
+/// Namespace for rendering views outside the interactive runtime.
+///
+/// This is not the app entry point — apps conform to
+/// `TerminalAppProtocol` with `@main`. `TerminalApp` serves non-render
+/// contexts: one-shot styled output to stdout with no event loop, no raw
+/// mode, no alternate screen.
 public enum TerminalApp {
+    /// Renders `view` once and prints it to stdout as ANSI-styled lines.
+    ///
+    /// `width` `nil` uses the terminal's current column count; height is
+    /// whatever the view measures at that width. Interactive features
+    /// (focus, handlers, timers) are inert here.
     public static func print<V: TerminalView>(_ view: V, width: Int? = nil) {
         let size = Terminal.size()
         let cols = width ?? size.cols

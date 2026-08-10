@@ -28,6 +28,8 @@ public struct BufferView: TerminalView {
     /// The cells to splice into the frame, blitted verbatim.
     public let buffer: CellBuffer
 
+    /// Creates a view over a prerendered buffer.
+    ///
     /// - Parameter buffer: A fully-formed cell grid; the view takes a
     ///   value copy, so later mutations require passing a new buffer.
     public init(_ buffer: CellBuffer) {

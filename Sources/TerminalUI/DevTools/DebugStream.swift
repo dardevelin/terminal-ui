@@ -16,19 +16,30 @@ private let log = Log("TerminalUI")
 
 // MARK: - Debug Protocol
 
-/// Structured debug events emitted by the framework.
-/// Consumed by in-app overlay, file logger, or external tools via socket.
-/// JSON-lines format — one JSON object per line, easy to parse from any language.
+// Structured debug events emitted by the framework.
+// Consumed by in-app overlay, file logger, or external tools via socket.
+// JSON-lines format — one JSON object per line, easy to parse from any language.
 
 #if DEBUG
 
+/// A structured debug event flowing through ``DebugStream`` to every
+/// attached ``DebugSink`` — the in-app panel, file loggers, and the
+/// remote-control socket all consume this one type. Payload structs are
+/// `Codable` so sinks can serialize them as JSON lines.
 public enum DebugEvent: Sendable {
+    /// A frame is about to build; payload carries the previous frame's stats.
     case frameStart(FrameDebugInfo)
+    /// A frame finished; payload carries its measured timings and delta sizes.
     case frameEnd(FrameDebugInfo)
+    /// A single graph node changed — finer-grained than a full ``graphSnapshot(_:)``.
     case nodeUpdate(NodeDebugInfo)
+    /// A parsed input event (key plus modifiers) reached the runtime.
     case inputEvent(InputDebugInfo)
+    /// An observed state property changed, with old and new values stringified.
     case stateChange(StateDebugInfo)
+    /// The terminal was resized; payload is (columns, rows) in cells.
     case resize(Int, Int)
+    /// A full attribute-graph tree dump for one frame — what `swtui ctl tree` shows.
     case graphSnapshot(GraphDebugSnapshot)
     /// Framework-emitted warning about a knowable composition bug or
     /// suspicious modifier pairing. SwiftUI's analog: runtime warnings
@@ -110,14 +121,20 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case navigationNoDestination
 }
 
+/// One emitted framework warning — the payload of
+/// `DebugEvent.frameworkWarning`.
 public struct FrameworkWarningInfo: Sendable, Codable {
+    /// Which misuse fired; see ``FrameworkWarningCode``.
     public var code: FrameworkWarningCode
+    /// Human-readable explanation with the suggested fix.
     public var message: String
     /// Path-formatted node ID (e.g. `"0.1.2"`) so users can grep for a
     /// specific offending view. May be empty when the warning fires
     /// outside graph construction.
     public var nodeID: String
 
+    /// Creates a warning record; `(code, nodeID, message)` is also the
+    /// dedupe key emit uses.
     public init(code: FrameworkWarningCode, message: String, nodeID: String) {
         self.code = code
         self.message = message
@@ -125,55 +142,105 @@ public struct FrameworkWarningInfo: Sendable, Codable {
     }
 }
 
+/// Per-frame performance record carried by ``DebugEvent/frameStart(_:)``
+/// and ``DebugEvent/frameEnd(_:)``.
 public struct FrameDebugInfo: Codable, Sendable {
+    /// Monotonic frame counter since app start.
     public var frameNumber: Int
+    /// When the frame was recorded — process uptime, in seconds.
     public var timestamp: Double
+    /// Time to rebuild the view value, update the graph, and render into
+    /// the cell buffer, in milliseconds.
     public var buildTimeMs: Double
+    /// Time spent writing the frame's delta to the terminal, in milliseconds.
     public var flushTimeMs: Double
+    /// Bytes of ANSI output written for this frame's delta.
     public var bytesWritten: Int
+    /// Cells that differed from the previous frame and were rewritten.
     public var cellsChanged: Int
+    /// Total cells in the grid (columns x rows) — the denominator for ``cellsChanged``.
     public var totalCells: Int
+    /// Measured frames per second at the time of recording.
     public var fps: Double
+    /// Nodes in the attribute graph this frame.
     public var nodeCount: Int
+    /// Graph nodes marked dirty going into this frame — how much of the
+    /// tree the update pass actually had to touch.
     public var dirtyNodeCount: Int
 }
 
+/// Flat serialized record of one graph node, for debug event payloads.
 public struct NodeDebugInfo: Codable, Sendable {
+    /// Path-formatted node ID (e.g. `"0.1.2"`).
     public var id: String
+    /// The node's kind name (`Text`, `VStack`, modifier name…).
     public var kind: String
-    public var rect: [Int]    // [x, y, w, h]
+    /// Laid-out rect as `[x, y, width, height]` in cells.
+    public var rect: [Int]
+    /// Whether the node was marked dirty when recorded.
     public var isDirty: Bool
+    /// Number of direct children.
     public var childCount: Int
-    public var value: String  // text content, progress %, spinner frame, etc.
+    /// Kind-specific payload summary — text content, progress fraction,
+    /// spinner frame…
+    public var value: String
 }
 
+/// One parsed input event, as logged by the debug input trail.
 public struct InputDebugInfo: Codable, Sendable {
+    /// Process uptime when the event arrived, in seconds.
     public var timestamp: Double
+    /// The parsed key's name.
     public var key: String
+    /// Modifier names held with it; empty for a bare key.
     public var modifiers: String
 }
 
+/// One recorded `@TerminalState` mutation, for the debug state trail.
 public struct StateDebugInfo: Codable, Sendable {
+    /// Process uptime at mutation, in seconds.
     public var timestamp: Double
+    /// The mutated property's name.
     public var property: String
+    /// The Swift type name of the view owning the property.
     public var viewType: String
+    /// String rendering of the value before the mutation.
     public var oldValue: String
+    /// String rendering of the value after the mutation.
     public var newValue: String
 }
 
+/// A whole-graph capture at one frame — the payload of
+/// `DebugEvent.graphSnapshot`.
 public struct GraphDebugSnapshot: Codable, Sendable {
+    /// The frame the snapshot was taken on.
     public var frameNumber: Int
+    /// The root-level nodes; each nests its subtree.
     public var nodes: [GraphDebugNode]
 }
 
+/// Serializable snapshot of one attribute-graph node, nested to form the
+/// tree returned by the `query_tree` socket command and shown in the F2
+/// panel's graph view.
 public struct GraphDebugNode: Codable, Sendable {
+    /// Path-formatted node ID (e.g. `"0.1.2"`) — stable across frames while
+    /// the node persists, greppable in warnings and traces.
     public var id: String
+    /// Short kind tag: `"text"`, `"vstack"`, `"padding"`, `"view"`, etc.
     public var kind: String
+    /// Depth in the tree; the root is 0.
     public var depth: Int
+    /// Layout rect as `[x, y, width, height]` in cell coordinates.
     public var rect: [Int]
+    /// Whether the node was marked dirty when the snapshot was taken.
     public var isDirty: Bool
+    /// Number of direct children (same as `children.count`, kept flat for
+    /// consumers that strip the nested array).
     public var childCount: Int
+    /// Kind-specific summary: truncated text content, `"75%"` for progress,
+    /// child count for stacks, modifier argument for modifiers.
     public var value: String
+    /// Child snapshots in layout order.
     public var children: [GraphDebugNode]
 }
 
@@ -181,7 +248,18 @@ public struct GraphDebugNode: Codable, Sendable {
 
 /// Emits debug events to one or more sinks.
 /// Sinks can be: in-memory buffer (for overlay), file, socket.
+///
+/// The hub of the debug pipeline: framework code emits ``DebugEvent``s and
+/// framework warnings into ``shared``, and whatever sinks are attached
+/// receive them synchronously on the render thread. The runtime attaches
+/// the built-in sinks per the `.terminalui/terminalui.toml` config; a
+/// harness or test attaches its own probe via ``addSink(_:)`` (and detaches
+/// it with `removeAllSinks()` between cases). Warnings additionally have a
+/// no-sink fallback — stderr normally, the `warnings.log` file while a live
+/// TUI owns the terminal — plus per-code suppression and per-session
+/// dedupe. In release builds the class is a stub and every call disappears.
 public final class DebugStream: @unchecked Sendable {
+    /// Process-wide instance every framework emit site reports to.
     public static let shared = DebugStream()
 
     private var sinks: [any DebugSink] = []
@@ -206,6 +284,8 @@ public final class DebugStream: @unchecked Sendable {
 
     private init() {}
 
+    /// Attach a sink and enable the stream. Every subsequent event reaches
+    /// this sink until `removeAllSinks()` — there is no per-sink removal.
     public func addSink(_ sink: any DebugSink) {
         lock.lock()
         sinks.append(sink)
@@ -248,6 +328,7 @@ public final class DebugStream: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Whether ``suppressWarning(_:)`` is currently in effect for `code`.
     public func isWarningSuppressed(_ code: FrameworkWarningCode) -> Bool {
         lock.lock()
         defer { lock.unlock() }
@@ -276,6 +357,8 @@ public final class DebugStream: @unchecked Sendable {
         lock.unlock()
     }
 
+    /// Deliver an event synchronously to every attached sink. No-op until
+    /// the first ``addSink(_:)`` enables the stream.
     public func emit(_ event: DebugEvent) {
         guard enabled else { return }
         lock.lock()
@@ -366,14 +449,19 @@ public final class DebugStream: @unchecked Sendable {
 
     // MARK: - Convenience emitters
 
+    /// Shorthand for `emit(.frameStart(info))`.
     public func emitFrameStart(info: FrameDebugInfo) {
         emit(.frameStart(info))
     }
 
+    /// Shorthand for `emit(.frameEnd(info))`.
     public func emitFrameEnd(info: FrameDebugInfo) {
         emit(.frameEnd(info))
     }
 
+    /// Serialize the attribute graph under `root` into ``GraphDebugNode``s
+    /// and emit it as a ``DebugEvent/graphSnapshot(_:)``. No-op when the
+    /// stream is disabled or the graph has no root yet.
     public func emitGraphSnapshot(from root: AttributeNode?, frameNumber: Int) {
         guard enabled, let root else { return }
         let snapshot = GraphDebugSnapshot(
@@ -470,7 +558,19 @@ public final class DebugStream: @unchecked Sendable {
 
 // MARK: - Sink Protocol
 
+/// A consumer of ``DebugEvent``s attached to ``DebugStream`` via
+/// ``DebugStream/addSink(_:)``.
+///
+/// Implement this to capture framework events in a test or harness: the
+/// built-in `MemoryDebugSink` (backs the in-app panel), `FileDebugSink`
+/// (JSON lines for external tools), and `SocketDebugSink` are the shipped
+/// conformances. ``receive(_:)`` is called synchronously on the render
+/// thread for every event, so implementations must be fast and must never
+/// write to the terminal — printing would corrupt the rendered viewport.
+/// Detach test probes with `DebugStream.shared.removeAllSinks()` between
+/// cases so one test's sink doesn't observe the next.
 public protocol DebugSink: AnyObject, Sendable {
+    /// Handle one event. Called on the render thread; do not block.
     func receive(_ event: DebugEvent)
 }
 
@@ -481,12 +581,16 @@ public final class MemoryDebugSink: DebugSink, @unchecked Sendable {
     private var events: [DebugEvent] = []
     private var lastSnapshot: GraphDebugSnapshot?
     private let lock = NSLock()
+    /// Maximum events retained; older events drop off the front.
     public let capacity: Int
 
+    /// Creates an empty ring of at most `capacity` events.
     public init(capacity: Int = 1000) {
         self.capacity = capacity
     }
 
+    /// Appends the event (evicting the oldest past capacity) and caches
+    /// graph snapshots for ``latestSnapshot``.
     public func receive(_ event: DebugEvent) {
         lock.lock()
         events.append(event)
@@ -499,12 +603,15 @@ public final class MemoryDebugSink: DebugSink, @unchecked Sendable {
         lock.unlock()
     }
 
+    /// The most recent graph snapshot seen, or `nil` before the first
+    /// one arrives.
     public var latestSnapshot: GraphDebugSnapshot? {
         lock.lock()
         defer { lock.unlock() }
         return lastSnapshot
     }
 
+    /// The newest 100 retained events, oldest first.
     public var recentEvents: [DebugEvent] {
         lock.lock()
         defer { lock.unlock() }
@@ -517,6 +624,8 @@ public final class FileDebugSink: DebugSink, @unchecked Sendable {
     private let handle: FileHandle
     private let encoder = JSONEncoder()
 
+    /// Opens (truncating/creating) the JSON-lines file at `path`; throws
+    /// when the file cannot be opened for writing.
     public init(path: String) throws {
         _ = FileManager.default.createFile(atPath: path, contents: nil)
         self.handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
@@ -555,6 +664,9 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
     private let encoder = JSONEncoder()
     private let path: String
 
+    /// Binds a listening AF_UNIX socket at `path` (default: the
+    /// process's diagnostic socket path). Bind failure leaves an inert
+    /// sink rather than throwing.
     public init(path: String = DiagPaths.socketPath(useTmp: DiagPaths.loadConfig().useTmp)) {
         self.path = path
         // Socket setup is deferred to avoid blocking
@@ -667,8 +779,11 @@ public final class DebugStream: Sendable {
     @inline(__always) public func isWarningSuppressed(_ code: FrameworkWarningCode) -> Bool { false }
 }
 public protocol DebugSink: AnyObject {}
+/// Release stub — retains nothing.
 public final class MemoryDebugSink: @unchecked Sendable {
+    /// Creates the inert stub; `capacity` is ignored.
     public init(capacity: Int = 1000) {}
+    /// Always `nil` in release builds.
     public var latestSnapshot: Int? { nil }
 }
 

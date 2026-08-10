@@ -26,9 +26,13 @@ public enum SyntaxToken: Sendable, Equatable {
 /// `range` covers the substring of the source line, `token` is the
 /// classification.
 public struct SyntaxSpan: Sendable, Equatable {
+    /// Substring of the tokenized line this span covers. Indices are valid
+    /// only against the exact `String` passed to `tokenize`.
     public let range: Range<String.Index>
+    /// Classification a ``SyntaxTheme`` maps to a color.
     public let token: SyntaxToken
 
+    /// Creates a span pairing a line range with its classification.
     public init(range: Range<String.Index>, token: SyntaxToken) {
         self.range = range
         self.token = token
@@ -53,6 +57,8 @@ public struct TokenizerState: Sendable, Equatable {
     /// `"""…"""` multiline string literal.
     public var isInMultilineString: Bool
 
+    /// Creates carry-state; the no-argument form is the top-of-file state
+    /// (no open comment, no open multiline string).
     public init(isInBlockComment: Bool = false, isInMultilineString: Bool = false) {
         self.isInBlockComment = isInBlockComment
         self.isInMultilineString = isInMultilineString
@@ -74,7 +80,14 @@ public struct TokenizerState: Sendable, Equatable {
 /// or triple-quoted strings) override `tokenize(line:state:)`
 /// directly.
 public protocol SyntaxHighlighter: Sendable {
+    /// Classifies one source line with no cross-line context. Uncovered
+    /// stretches of the line render as ``SyntaxToken/plain``; returning
+    /// `[]` leaves the whole line plain.
     func tokenize(line: String) -> [SyntaxSpan]
+    /// Classifies one source line, reading and updating cross-line carry
+    /// (open block comment, open multiline string). The default
+    /// implementation forwards to `tokenize(line:)` and leaves `state`
+    /// untouched.
     func tokenize(line: String, state: inout TokenizerState) -> [SyntaxSpan]
 }
 
@@ -92,15 +105,26 @@ extension SyntaxHighlighter {
 /// supply a custom theme via `.syntaxTheme(_:)` (Phase B); Phase A
 /// ships `SyntaxTheme.defaultDark` as the only theme.
 public struct SyntaxTheme: Sendable {
+    /// Foreground for ``SyntaxToken/keyword`` spans.
     public let keyword: Color
+    /// Foreground for ``SyntaxToken/string`` spans (delimiters included).
     public let string: Color
+    /// Foreground for ``SyntaxToken/comment`` spans.
     public let comment: Color
+    /// Foreground for ``SyntaxToken/number`` spans.
     public let number: Color
+    /// Foreground for ``SyntaxToken/type`` spans.
     public let type: Color
+    /// Foreground for ``SyntaxToken/function`` spans.
     public let function: Color
+    /// Foreground for ``SyntaxToken/operatorToken`` spans. Named
+    /// `operatorColor` because `operator` is reserved in Swift.
     public let operatorColor: Color
+    /// Foreground for unclassified text; `.default` keeps the terminal's
+    /// own foreground.
     public let plain: Color
 
+    /// Creates a theme from one explicit color per token kind.
     public init(
         keyword: Color,
         string: Color,
@@ -121,6 +145,8 @@ public struct SyntaxTheme: Sendable {
         self.plain = plain
     }
 
+    /// The theme's foreground for a token kind — total over
+    /// ``SyntaxToken``, never falls back.
     public func color(for token: SyntaxToken) -> Color {
         switch token {
         case .keyword:       return keyword
@@ -188,6 +214,8 @@ public struct SwiftSyntaxHighlighter: SyntaxHighlighter {
         "some", "any",
     ]
 
+    /// Creates the tokenizer. Stateless and trivially cheap — safe to
+    /// construct per body evaluation.
     public init() {}
 
     public func tokenize(line: String) -> [SyntaxSpan] {

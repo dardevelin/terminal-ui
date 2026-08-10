@@ -34,6 +34,8 @@ public struct Toggle: TerminalView {
     /// focus skip) ships behaviorally with the .disabled() modifier.
     @TerminalEnvironment(\.isEnabled) var isEnabled
 
+    /// Creates a toggle.
+    ///
     /// - Parameters:
     ///   - label: Text shown beside the checkbox.
     ///   - isOn: The Boolean state the control flips on activation.

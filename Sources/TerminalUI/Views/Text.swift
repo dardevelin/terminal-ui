@@ -28,6 +28,10 @@ public struct TextSpan: Sendable, Equatable {
     /// Underline; `nil` inherits from the render context.
     public var underline: Bool?
 
+    /// Create a span from its text and any attributes it should pin.
+    /// Every attribute defaults to `nil` — "inherit from the render
+    /// context" — so `TextSpan("plain")` is an unstyled run and each
+    /// argument overrides exactly one attribute.
     public init(
         _ text: String,
         foreground: Color? = nil,
@@ -89,6 +93,8 @@ extension TextSpan {
 
 // MARK: - String → TextSpan convenience
 
+/// Span-building sugar on `String` — `"text".styled(...)`, `.fg(_:)`,
+/// `.bg(_:)` produce ``TextSpan``s for mixed-style lines.
 extension String {
     /// Create a styled span from a string literal.
     public func styled(
@@ -133,27 +139,36 @@ extension String {
 /// ```
 @resultBuilder
 public struct SpanBuilder {
+    /// Concatenates the block's per-expression span lists in source order.
     public static func buildBlock(_ components: [TextSpan]...) -> [TextSpan] {
         components.flatMap { $0 }
     }
+    /// Accepts a single styled ``TextSpan`` expression.
     public static func buildExpression(_ span: TextSpan) -> [TextSpan] {
         [span]
     }
+    /// Accepts a bare `String`, promoted to an unstyled span that inherits
+    /// the surrounding style.
     public static func buildExpression(_ text: String) -> [TextSpan] {
         [TextSpan(text)]
     }
+    /// Accepts a prebuilt span array (e.g. from a helper function).
     public static func buildExpression(_ spans: [TextSpan]) -> [TextSpan] {
         spans
     }
+    /// `if` without `else`: `nil` contributes no spans.
     public static func buildOptional(_ component: [TextSpan]?) -> [TextSpan] {
         component ?? []
     }
+    /// The `if` branch of an `if`/`else`.
     public static func buildEither(first: [TextSpan]) -> [TextSpan] {
         first
     }
+    /// The `else` branch of an `if`/`else`.
     public static func buildEither(second: [TextSpan]) -> [TextSpan] {
         second
     }
+    /// Flattens `for` loop iterations into one span list.
     public static func buildArray(_ components: [[TextSpan]]) -> [TextSpan] {
         components.flatMap { $0 }
     }
@@ -183,6 +198,9 @@ public struct SpanBuilder {
 /// ])
 /// ```
 public struct Text: TerminalView {
+    /// The styled runs, concatenated left to right; `\n` inside any span's
+    /// content starts a new row. Plain-string constructors produce a
+    /// single unstyled span.
     public let spans: [TextSpan]
 
     /// Plain text — backward compatible with existing `Text("hello")` usage.

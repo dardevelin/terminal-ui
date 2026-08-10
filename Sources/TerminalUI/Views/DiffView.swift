@@ -21,11 +21,16 @@ public struct DiffLine: Identifiable, Sendable {
 
     /// Classification of a diff line.
     public enum Kind: Sendable {
+        /// Present on both sides — renders undecorated.
         case unchanged
+        /// Present only in the modified file — renders green with `+`.
         case added
+        /// Present only in the original file — renders red with `-`.
         case removed
     }
 
+    /// Creates a diff line; pass `nil` for the side the line does not
+    /// exist on.
     public init(id: Int, kind: Kind, text: String, oldLineNumber: Int?, newLineNumber: Int?) {
         self.id = id
         self.kind = kind

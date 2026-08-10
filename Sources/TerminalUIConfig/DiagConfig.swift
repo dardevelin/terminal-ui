@@ -2,25 +2,44 @@ import Foundation
 
 /// Unified diagnostic configuration for TerminalUI.
 /// Read from `.terminalui/terminalui.toml` at startup, writable by the `swtui` CLI.
+///
+/// The single source of truth for the debug-only diagnostic system: a
+/// debug-build app loads it via `DiagPaths.loadConfig()` at startup and
+/// wires each feature accordingly — `traceEnabled` drives the DevTracer,
+/// `socketEnabled` the remote-control socket, `useTmp` whether output
+/// lands in the per-process `/tmp/terminalui-{hash}-{pid}/` dir (with a
+/// `.terminalui/data` symlink) or inline under `.terminalui/`. Harness
+/// authors normally edit the file with `swtui enable/disable/set` rather
+/// than constructing this type; property names below map 1:1 onto the
+/// TOML `[section] key` pairs noted in the MARK headers.
 public struct DiagConfig: Sendable {
 
     // MARK: - [trace]
 
+    /// `[trace] enabled` — master switch for per-frame trace capture (DevTracer).
     public var traceEnabled: Bool
+    /// `[trace] screenshots` — write a plain-text + ANSI screenshot per traced frame.
     public var captureScreenshots: Bool
+    /// `[trace] events` — record input events in the trace.
     public var captureEvents: Bool
+    /// `[trace] frame_limit` — stop tracing after N frames; nil is unlimited.
     public var frameLimit: Int?
 
     // MARK: - [capture]
 
+    /// `[capture] enabled` — the on-demand frame-capture feature.
     public var captureEnabled: Bool
 
     // MARK: - [output]
 
+    /// `[output] use_tmp` — true routes output to the per-process
+    /// `/tmp` dir (symlinked from `.terminalui/data`); false writes
+    /// inline under `.terminalui/`.
     public var useTmp: Bool
 
     // MARK: - [socket]
 
+    /// `[socket] enabled` — expose the remote-control socket `swtui ctl` talks to.
     public var socketEnabled: Bool
 
     // MARK: - [keybindings]
@@ -30,6 +49,8 @@ public struct DiagConfig: Sendable {
 
     // MARK: - Memberwise init
 
+    /// Memberwise initializer for programmatic configs (tests, harnesses);
+    /// apps normally load from disk via `DiagPaths.loadConfig()` instead.
     public init(
         traceEnabled: Bool,
         captureScreenshots: Bool,
@@ -64,6 +85,8 @@ public struct DiagConfig: Sendable {
 
     // MARK: - Defaults
 
+    /// Baseline when no config file exists: everything off except the
+    /// remote-control socket, output routed through `/tmp`.
     public static let `default` = DiagConfig(
         traceEnabled: false,
         captureScreenshots: true,

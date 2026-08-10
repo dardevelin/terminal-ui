@@ -16,9 +16,12 @@
 /// display a chord: storybook code snippets, future help overlay,
 /// command palette listings, action cheat-sheets.
 public struct KeyChord: Sendable, Hashable {
+    /// The chord's base key.
     public let key: Key
+    /// Modifiers held with the key; empty means the bare key.
     public let modifiers: KeyModifiers
 
+    /// Creates a chord; omit `modifiers` for a bare key.
     public init(_ key: Key, _ modifiers: KeyModifiers = []) {
         self.key = key
         self.modifiers = modifiers

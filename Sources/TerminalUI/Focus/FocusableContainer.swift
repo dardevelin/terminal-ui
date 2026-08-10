@@ -55,11 +55,16 @@ public struct TraversalGeometry: Sendable, Equatable {
     /// Direction(s) the container handles. Arrow events whose axis
     /// doesn't match are bubbled to the parent container.
     public enum Axis: Sendable, Equatable {
+        /// Handles Left/Right; Up/Down bubbles to the parent.
         case horizontal
+        /// Handles Up/Down; Left/Right bubbles to the parent.
         case vertical
+        /// Handles all four arrow directions.
         case both
     }
 
+    /// The direction(s) this container handles; mismatched arrows bubble
+    /// to the parent container.
     public var axis: Axis
 
     /// Whether arrow navigation may leave this container — both across its
@@ -77,6 +82,8 @@ public struct TraversalGeometry: Sendable, Equatable {
     /// is the default that applies when they have expressed no preference.
     public var isPermeable: Bool
 
+    /// Creates a geometry from the container's axis and boundary
+    /// behavior.
     public init(axis: Axis, isPermeable: Bool) {
         self.axis = axis
         self.isPermeable = isPermeable

@@ -17,12 +17,24 @@
 /// listings. Every readout sees the same data, so disabling an action
 /// once propagates everywhere.
 public struct Action: Identifiable, Sendable {
+    /// Stable, process-independent identity — see ``ActionID``.
     public let id: ActionID
+    /// Human-facing name shown by every readout: menu rows, palette
+    /// entries, help-overlay lines.
     public let title: LocalizedString
+    /// Optional longer explanation for readouts with room for one (palette
+    /// detail, help text). Nil when the title says enough.
     public let description: LocalizedString?
+    /// Whether the action may fire. Readouts still list a disabled action;
+    /// the dispatcher skips it, so its bindings go quiet without vanishing.
     public let isEnabled: Bool
+    /// The work itself — parameterless and `@Sendable` so every trigger
+    /// (chord, click, remote control, test harness) invokes it identically.
+    /// Deliberately excluded from `Equatable` comparison.
     public let perform: @Sendable () -> Void
 
+    /// Creates an action. `description` defaults to nil and `isEnabled` to
+    /// true, so the common case reads as id–title–closure.
     public init(
         id: ActionID,
         title: LocalizedString,

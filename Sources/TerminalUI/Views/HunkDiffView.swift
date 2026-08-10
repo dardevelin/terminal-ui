@@ -11,8 +11,11 @@ public enum HunkDiff {
 
     /// The type of a diff line within a hunk.
     public enum LineType: Sendable {
+        /// Line added in the new file — renders green with `+`.
         case add
+        /// Line removed from the old file — renders red with `-`.
         case remove
+        /// Unchanged surrounding line — renders gray.
         case context
     }
 
@@ -27,6 +30,8 @@ public enum HunkDiff {
         /// Line number in the new file (`nil` for removals).
         public let newLineNo: Int?
 
+        /// Creates a hunk line; leave the line number `nil` for the side
+        /// the line does not exist on.
         public init(type: LineType, content: String, oldLineNo: Int? = nil, newLineNo: Int? = nil) {
             self.type = type
             self.content = content
@@ -44,6 +49,8 @@ public enum HunkDiff {
         /// The hunk's lines, in file order.
         public let lines: [Line]
 
+        /// Creates a hunk from its `@@` start coordinates (1-based file
+        /// line numbers) and its lines in file order.
         public init(oldStart: Int, newStart: Int, lines: [Line]) {
             self.oldStart = oldStart
             self.newStart = newStart
@@ -134,6 +141,8 @@ public struct HunkDiffView: TerminalView {
     @TerminalState private var visualAnchor: Int = 0
     @TerminalState private var scrollOffset: Int = 0
 
+    /// Creates a hunk diff viewer.
+    ///
     /// - Parameters:
     ///   - hunks: Diff hunks, in file order.
     ///   - fileName: Path shown in the header row.

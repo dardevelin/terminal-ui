@@ -26,9 +26,16 @@
 ///   still tracks the focused node for input routing; visual feedback is
 ///   entirely the app's responsibility.
 public enum FocusIndicatorStyle: Sendable, Equatable {
+    /// Parent-drawn `▎` bar one cell to the left of the focused view's rect.
     case overlay
+    /// `▎` drawn in the focused view's first column — costs one cell of
+    /// content width but survives rect clipping.
     case bar
+    /// No framework bar; views with a built-in prefix affordance (`List`'s
+    /// `▸ ` row marker) draw their own focus visual.
     case prefix
+    /// No framework-drawn indicator at all; focus is still tracked for
+    /// input routing and the app signals it its own way.
     case none
 }
 

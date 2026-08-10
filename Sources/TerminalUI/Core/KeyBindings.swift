@@ -2,18 +2,34 @@ import TerminalUIConfig
 
 /// Semantic actions that key events can trigger.
 /// Framework-level and developer-level actions share the same system.
+///
+/// `KeyBindings` maps a key-plus-modifiers combination to one of these; the
+/// runtime switches on the action, so remapping a trigger (in
+/// `terminalui.toml`, or via `swtui bind`) changes which key fires it
+/// without touching the behavior. The framework cases drive the debug
+/// tooling and are bound only in debug builds; `.custom` is the extension
+/// point for app-defined actions.
 public enum KeyAction: Hashable, Sendable {
     // Framework debug actions
+    /// Show or hide the debug stats overlay (bound to F1 by default).
     case toggleDebugOverlay
+    /// Show or hide the debug panel (bound to F2 by default).
     case toggleDebugPanel
+    /// Show or hide the cell inspector (bound to F3 by default).
     case toggleInspector
+    /// Write the current frame to the diagnostic capture directory.
     case captureFrame
+    /// Move the inspector's probe cursor up one cell while it is active.
     case inspectorUp
+    /// Move the inspector's probe cursor down one cell while it is active.
     case inspectorDown
+    /// Move the inspector's probe cursor left one cell while it is active.
     case inspectorLeft
+    /// Move the inspector's probe cursor right one cell while it is active.
     case inspectorRight
 
     // Developer actions
+    /// App-defined action, identified by its name string.
     case custom(String)
 
     /// Map from TOML action name to KeyAction.
@@ -41,9 +57,20 @@ public enum KeyAction: Hashable, Sendable {
 
 /// Maps key events to semantic actions.
 /// Reads defaults from DiagConfig keybindings (F-keys), overridable via terminalui.toml.
+///
+/// This is the *debug-tool* binding table — the runtime consults it for
+/// F-key chords like toggle-overlay/panel/inspector before regular
+/// dispatch, and `swtui bind` rewrites the config it loads from. It is not
+/// the app-level shortcut system: app shortcuts belong in `.actions { }`
+/// scopes, which participate in focus-chain dispatch and shadowing. One
+/// action holds at most one binding; rebinding replaces the previous chord.
 public final class KeyBindings {
     private var bindings: [(key: Key, modifiers: KeyModifiers, action: KeyAction)] = []
 
+    /// Creates a table pre-loaded, in DEBUG builds, with the keybindings from
+    /// `.terminalui/terminalui.toml` (falling back to the defaults: F1
+    /// overlay, F2 panel, F3 inspector). In release builds the table starts
+    /// empty.
     public init() {
         #if DEBUG
         let config = DiagPaths.loadConfig()
@@ -93,6 +120,8 @@ public final class KeyBindings {
     }
     #endif
 
+    /// Bind `key` + `modifiers` to `action`, replacing any chord previously
+    /// bound to that action (one binding per action, last write wins).
     public func bind(_ key: Key, modifiers: KeyModifiers = [], to action: KeyAction) {
         // Remove existing binding for this action
         bindings.removeAll { $0.action == action }

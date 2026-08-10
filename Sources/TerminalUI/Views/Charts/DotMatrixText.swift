@@ -37,6 +37,8 @@ public struct DotMatrixText: TerminalView {
         public static let `default`: RenderMode = .bullet(dot: "\u{25CF}", empty: " ")
     }
 
+    /// Creates a dot-matrix text display.
+    ///
     /// - Parameters:
     ///   - text: String to render in dot-matrix glyphs.
     ///   - mode: Rendering mode (default `.bullet` with `●`).

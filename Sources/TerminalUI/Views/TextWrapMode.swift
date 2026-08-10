@@ -14,7 +14,11 @@
 /// Set via `.wrap(.none)` on any view; the setting propagates to descendants
 /// through the environment.
 public enum TextWrapMode: Sendable, Equatable {
+    /// Overflowing lines continue on the next row; measurement counts the
+    /// extra rows. The default.
     case wrap
+    /// One row per logical line, clipped at the container width — for
+    /// fixed-geometry content whose height must not inflate.
     case none
 }
 

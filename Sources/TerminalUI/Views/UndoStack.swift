@@ -29,15 +29,21 @@ public struct UndoStack<Snapshot>: Sendable where Snapshot: Sendable {
     /// when the caller passes the current state to preserve. Cleared
     /// on the next `push` (new edit truncates the redo future).
     private var redoBuffer: [Snapshot]
+    /// Snapshot cap for each buffer; pushes past it drop the oldest entry.
+    /// Clamped to at least 1 at construction.
     public let maxSize: Int
 
+    /// Creates an empty stack holding at most `maxSize` snapshots per
+    /// direction (values below 1 are clamped to 1).
     public init(maxSize: Int = 100) {
         self.undoBuffer = []
         self.redoBuffer = []
         self.maxSize = max(1, maxSize)
     }
 
+    /// `true` when a prior snapshot exists for `undo(now:)` to return.
     public var canUndo: Bool { !undoBuffer.isEmpty }
+    /// `true` when an undone snapshot exists for `redo(now:)` to return.
     public var canRedo: Bool { !redoBuffer.isEmpty }
 
     /// Record a new snapshot of the pre-mutation state. Truncates

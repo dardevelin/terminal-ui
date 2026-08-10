@@ -15,6 +15,12 @@
 // HIG "text field" component); future consumers (TextArea, Text) can
 // opt in by reading `@TerminalEnvironment(\.lineBreakMode)`.
 
+/// How text-input components handle content wider than their field.
+///
+/// The HIG text-field alternatives as a public knob: clip (the default),
+/// wrap at character or word level, or truncate with an ellipsis at head,
+/// middle, or tail. Set via `.lineBreakMode(_:)`; the value propagates
+/// through the environment and is consumed by ``TextInput``.
 public enum LineBreakMode: Sendable, Equatable, CaseIterable {
     /// Clip text at the right edge of the field. Default — matches
     /// HIG's "System clips text extending beyond field bounds."

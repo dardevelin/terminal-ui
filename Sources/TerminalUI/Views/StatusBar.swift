@@ -2,8 +2,11 @@
 
 /// Describes which zone a section occupies in the ``StatusBar``.
 public enum StatusBarAlignment: Sendable {
+    /// Packed against the bar's left edge.
     case left
+    /// Centered in the bar's full width.
     case center
+    /// Packed against the bar's right edge.
     case right
 }
 
@@ -19,6 +22,8 @@ public struct StatusBarSection: Sendable {
     /// The section's styled content, concatenated left to right.
     public let spans: [TextSpan]
 
+    /// Creates a section directly from prebuilt spans.
+    ///
     /// - Parameters:
     ///   - alignment: Zone to occupy.
     ///   - spans: Styled content; `nil` style fields inherit bar colors.
@@ -34,21 +39,28 @@ public struct StatusBarSection: Sendable {
 /// with `if`/`else` and `for` support for conditional sections.
 @resultBuilder
 public struct StatusBarSectionBuilder {
+    /// Collects the block's directly listed sections in source order.
     public static func buildBlock(_ sections: StatusBarSection...) -> [StatusBarSection] {
         sections
     }
+    /// `if` without `else`: `nil` contributes no section.
     public static func buildOptional(_ section: StatusBarSection?) -> [StatusBarSection] {
         section.map { [$0] } ?? []
     }
+    /// The `if` branch of an `if`/`else`.
     public static func buildEither(first: [StatusBarSection]) -> [StatusBarSection] {
         first
     }
+    /// The `else` branch of an `if`/`else`.
     public static func buildEither(second: [StatusBarSection]) -> [StatusBarSection] {
         second
     }
+    /// Flattens `for` loop iterations into one section list.
     public static func buildArray(_ components: [[StatusBarSection]]) -> [StatusBarSection] {
         components.flatMap { $0 }
     }
+    /// Concatenates already-grouped section lists (branch and loop
+    /// results) in source order.
     public static func buildBlock(_ components: [StatusBarSection]...) -> [StatusBarSection] {
         components.flatMap { $0 }
     }

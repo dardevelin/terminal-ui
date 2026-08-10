@@ -22,9 +22,16 @@ public struct TableColumn<Row> {
 
     /// Horizontal placement of a cell's text within its column width.
     public enum ColumnAlignment {
-        case left, center, right
+        /// Pad on the right — text starts at the column's left edge.
+        case left
+        /// Pad both sides evenly.
+        case center
+        /// Pad on the left — text ends at the column's right edge.
+        case right
     }
 
+    /// Creates a column definition.
+    ///
     /// - Parameters:
     ///   - title: Header text.
     ///   - width: Column width in cells (default 15).
@@ -80,6 +87,8 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     /// Whether to render the header row and its `─` rule.
     public let showHeader: Bool
 
+    /// Creates a table over a row collection.
+    ///
     /// - Parameters:
     ///   - data: Rows to render.
     ///   - columns: Column definitions applied to every row.

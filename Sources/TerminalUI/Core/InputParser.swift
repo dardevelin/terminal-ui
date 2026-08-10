@@ -143,6 +143,10 @@ private enum UTF8 {
 /// Tests drive `parseEvent(from:)` directly with an `ArrayByteSource`.
 public enum InputParser {
 
+    /// Read one event from stdin, blocking up to the raw-mode read timeout
+    /// (~100 ms). Returns `nil` on timeout with no input — the runtime's
+    /// input task simply loops. Requires raw mode; under normal terminal
+    /// line-buffering nothing arrives until Enter.
     public static func readEvent() -> TerminalEvent? {
         #if DEBUG
         // When DEBUG + events trace are on, wrap the stdin source so we
@@ -201,6 +205,10 @@ public enum InputParser {
     }
     #endif
 
+    /// Like ``readEvent()`` but keyboard-only: returns `nil` both on timeout
+    /// and when the event read was not a key (a mouse or paste event, which
+    /// is then dropped). For tools that want key input without the full
+    /// event model.
     public static func readKey() -> KeyEvent? {
         guard let event = readEvent() else { return nil }
         if case .key(let keyEvent) = event { return keyEvent }

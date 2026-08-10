@@ -55,9 +55,16 @@
 ///   `DebugStream.shared.suppressWarning(.onHoverWithHoverFollows)`
 ///   if the duplication is intentional.
 public enum MouseFocusPolicy: Sendable, Equatable {
+    /// Click sets keyboard focus; hover only updates the hover target;
+    /// wheel routes to the hover target. The default.
     case clickToLock
+    /// Hover also sets keyboard focus — menu-style, aggressive.
     case hoverFollows
+    /// Like `.clickToLock`, but wheel routes to the keyboard-focused
+    /// view instead of the hover target.
     case clickOnly
+    /// No auto-routing at all; `.onHover`/`.onClick` still fire so the
+    /// app wires focus itself.
     case disabled
 }
 

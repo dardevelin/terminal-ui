@@ -246,6 +246,8 @@ public struct NavigationDestinationModifier<Data: Hashable, Destination: Termina
     public typealias ModifierType = Void
     let build: (Data) -> Destination
 
+    /// Merges this modifier's builder into the inherited destination
+    /// registry — accumulating with, not replacing, ancestors' entries.
     public func apply(to env: inout EnvironmentValues) {
         env.navigationDestinations = env.navigationDestinations.adding(Data.self) { value in
             (value as? Data).map(build)
@@ -295,6 +297,8 @@ public struct NavigationDestinations: @unchecked Sendable {
     // body evaluation, matching the framework's main-thread-by-convention rule.
     private var builders: [ObjectIdentifier: (any Hashable) -> (any TerminalView)?]
 
+    /// Creates an empty registry — no types are pushable until
+    /// `.navigationDestination(for:)` adds builders.
     public init() { builders = [:] }
 
     /// A copy with `type`'s builder added. A later add for a type already
@@ -352,6 +356,8 @@ public struct NavigationLink<Label: TerminalView>: TerminalView {
     @TerminalEnvironment(\.navigationPush) private var push
     @TerminalEnvironment(\.isEnabled) private var isEnabled
 
+    /// Creates a link that pushes `value` when activated.
+    ///
     /// - Parameters:
     ///   - value: Pushed onto the stack's path on activation; its type
     ///     selects the `.navigationDestination(for:)` that builds the screen.
@@ -383,15 +389,22 @@ public struct NavigationLink<Label: TerminalView>: TerminalView {
 /// instead; this backs the form where the stack owns its own path.
 @Observable
 public final class NavigationPathStore {
+    /// The pushed values, root-first; the last element's screen is shown.
+    /// Empty means the stack is at its root content.
     public private(set) var elements: [any Hashable] = []
 
+    /// Creates an empty path — the stack starts at its root content.
     public init() {}
 
+    /// `true` when the stack is at its root (nothing pushed).
     public var isEmpty: Bool { elements.isEmpty }
+    /// Number of pushed screens (0 at the root).
     public var count: Int { elements.count }
     /// The element whose screen is currently shown, or nil at the root.
     public var top: (any Hashable)? { elements.last }
 
+    /// Pushes a value; the stack resolves its screen via the matching
+    /// `.navigationDestination(for:)` registration.
     public func append(_ value: any Hashable) { elements.append(value) }
 
     /// Pop one level. A no-op on an empty path — popping past the root is a

@@ -50,6 +50,8 @@ public struct BrailleCanvas {
     /// Height in dot units
     public var dotHeight: Int { height * 4 }
 
+    /// Creates a blank canvas of `width` x `height` terminal cells — a
+    /// dot grid of `width * 2` x `height * 4`, all dots off.
     public init(width: Int, height: Int) {
         self.width = width
         self.height = height

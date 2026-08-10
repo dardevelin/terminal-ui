@@ -17,14 +17,20 @@ public struct AlphaPattern: Sendable, Equatable {
     /// Row-major 8-element array. `value[row * columns + col]`.
     public var values: [Double]
 
+    /// Sub-pixel columns per cell (2, the braille convention).
     public static let columns = 2
+    /// Sub-pixel rows per cell (4, the braille convention).
     public static let rows = 4
 
+    /// Creates a pattern with every sub-pixel at `uniformValue`
+    /// (0 transparent ... 1 opaque).
     public init(uniformValue: Double) {
         let count = AlphaPattern.columns * AlphaPattern.rows
         self.values = Array(repeating: uniformValue, count: count)
     }
 
+    /// Bounds-checked sub-pixel access (`x` in 0..1, `y` in 0..3):
+    /// out-of-range reads return 0, out-of-range writes are ignored.
     public subscript(x: Int, y: Int) -> Double {
         get {
             guard x >= 0, x < AlphaPattern.columns, y >= 0, y < AlphaPattern.rows else { return 0.0 }

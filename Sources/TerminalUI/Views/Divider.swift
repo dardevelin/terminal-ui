@@ -19,6 +19,8 @@
 /// }
 /// ```
 public struct Divider: TerminalView {
+    /// Creates a divider; orientation comes from the enclosing stack, not
+    /// from any argument.
     public init() {}
     public var body: Never { fatalError() }
 }

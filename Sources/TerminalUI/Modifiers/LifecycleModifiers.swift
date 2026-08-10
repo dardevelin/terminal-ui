@@ -14,9 +14,15 @@ public protocol _OnChangeModifierProtocol {
 /// View modifier that calls a closure when a value changes.
 public struct OnChangeModifier<Value: Equatable>: ViewModifier, _OnChangeModifierProtocol {
     public typealias ModifierType = Value
+    /// The observed value as of this frame's body evaluation.
     public let value: Value
+    /// Called as `action(old, new)` when the value differs from the
+    /// previous frame's.
     public let action: (Value, Value) -> Void
 
+    /// Compares the graph-stored previous value against ``value``, firing
+    /// ``action`` on a change; returns the value to store for next frame.
+    /// `previous == nil` (first observation) records without firing.
     public func compareAndFire(previous: Any?) -> Any {
         guard let prev = previous as? Value else {
             // First observation — record the value but do not fire. Mirrors
@@ -34,24 +40,36 @@ public struct OnChangeModifier<Value: Equatable>: ViewModifier, _OnChangeModifie
 /// View modifier that calls a closure when the view first appears.
 public struct OnAppearModifier: ViewModifier {
     public typealias ModifierType = Bool
+    /// Runs once when the view enters the graph.
     public let action: () -> Void
 }
 
 /// View modifier that calls a closure when the view disappears.
 public struct OnDisappearModifier: ViewModifier {
     public typealias ModifierType = Bool
+    /// Runs when the view leaves the graph (not on app quit).
     public let action: () -> Void
 }
 
 extension TerminalView {
+    /// Call `action(old, new)` when `value` changes between frames. The
+    /// initial value observed on first render does not fire — only
+    /// subsequent changes do, matching SwiftUI's `onChange(of:)`.
     public func onChange<V: Equatable>(of value: V, perform action: @escaping (V, V) -> Void) -> ModifiedView<Self, OnChangeModifier<V>> {
         ModifiedView(content: self, modifier: OnChangeModifier(value: value, action: action))
     }
 
+    /// Call `action` once when the view enters the graph — first render, or
+    /// re-insertion after an `if` branch switch or `.id` change. The place
+    /// for one-shot setup; for async work that should also cancel on
+    /// disappear, prefer `.task { }`.
     public func onAppear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnAppearModifier> {
         ModifiedView(content: self, modifier: OnAppearModifier(action: action))
     }
 
+    /// Call `action` when the view leaves the graph — its branch switched
+    /// away, its `ForEach` row vanished, or its `.id` changed. Not called on
+    /// app quit; teardown that must run at exit belongs in `onEvent(_:)`.
     public func onDisappear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnDisappearModifier> {
         ModifiedView(content: self, modifier: OnDisappearModifier(action: action))
     }
@@ -77,10 +95,17 @@ public protocol _TaskModifierProtocol {
 /// app writes by hand with a detached `Task` that outlives its view.
 public struct TaskModifier<ID: Hashable>: ViewModifier, _TaskModifierProtocol {
     public typealias ModifierType = Bool
+    /// Restart identity: the task cancels and restarts when this changes.
+    /// `nil` (the `.task { }` form) starts once and is left alone.
     public let id: ID?
+    /// Priority the task is spawned with.
     public let priority: TaskPriority
+    /// The async work, MainActor-isolated so it can touch `@Observable`
+    /// models directly.
     public let action: @MainActor () async -> Void
 
+    /// Starts the work on `node` if none is running or its identity
+    /// changed; cancels the outgoing task before replacing it.
     public func startIfNeeded(on node: AttributeNode) {
         let identity = id.map { AnyHashable($0) }
         // Same identity and still running: nothing to do. A `.task` without an

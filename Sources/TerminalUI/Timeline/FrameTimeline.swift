@@ -13,8 +13,12 @@ import Observation
 @Observable
 @MainActor
 public final class FrameTimeline {
+    /// Total frame count; ``currentFrame`` ranges over `0..<frames`.
     public let frames: Int
+    /// Frames advanced per second of clock time.
     public let fps: Int
+    /// `true` wraps the counter; `false` clamps at the last frame and
+    /// finishes.
     public let repeats: Bool
 
     @ObservationIgnored
@@ -28,6 +32,9 @@ public final class FrameTimeline {
 
     private var explicitPhase: AnimationPhase = .idle
 
+    /// Creates a frame-stepped timeline; call ``start()`` to begin.
+    /// `clock` `nil` uses a fresh ``WallClock`` (tests inject a
+    /// deterministic one).
     public init(frames: Int, fps: Int, repeats: Bool = true, clock: (any TimelineClock)? = nil) {
         self.frames = frames
         self.fps = fps
@@ -35,6 +42,8 @@ public final class FrameTimeline {
         self.clock = clock ?? WallClock()
     }
 
+    /// The frame index for the current clock time, computed on demand.
+    /// 0 before ``start()``; wraps or clamps per ``repeats``.
     public var currentFrame: Int {
         guard let startedAt else { return 0 }
         let elapsed = elapsedRunning(referenceStart: startedAt)

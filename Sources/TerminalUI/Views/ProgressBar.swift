@@ -24,6 +24,8 @@ public struct ProgressBar: TerminalView {
     /// Glyph for the remaining portion.
     public let empty: Character
 
+    /// Creates a progress bar.
+    ///
     /// - Parameters:
     ///   - value: Completed fraction; values outside 0...1 are clamped.
     ///   - label: Prefix text before the bar (default none).
@@ -71,6 +73,8 @@ public struct Spinner: TerminalView {
     /// Which glyph cycle to animate through.
     public let style: SpinnerStyle
 
+    /// Creates a spinner showing the glyph for `frame`.
+    ///
     /// - Parameters:
     ///   - frame: App-owned counter, advanced externally per tick.
     ///   - style: Glyph cycle (default `.dots`).

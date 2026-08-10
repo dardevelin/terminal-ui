@@ -8,9 +8,11 @@ public enum SliderGlyph {
     /// Gauge fill and remainder. Distinct from the track: a gauge shows a
     /// quantity, so it reads as a bar rather than a line with a marker.
     public static let fill = "█"
+    /// Gauge remainder — the unfilled portion after ``fill``.
     public static let empty = "░"
-    /// Stepper decrement / increment affordances.
+    /// Stepper decrement affordance.
     public static let decrement = "◂"
+    /// Stepper increment affordance.
     public static let increment = "▸"
 }
 
@@ -56,6 +58,8 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
     @TerminalEnvironment(\.formLabelWidth) private var formLabelWidth
     @TerminalEnvironment(\.formStacksRows) private var formStacksRows
 
+    /// Creates a slider over a closed range.
+    ///
     /// - Parameters:
     ///   - value: The chosen value; clamped into `bounds` on every write.
     ///   - bounds: The range the track spans. Defaults to `0...1`.
@@ -214,6 +218,8 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
         FormLabel.rendered(text: label, width: formLabelWidth, stacks: formStacksRows).count
     }
 
+    /// Creates a stepper over a closed range.
+    ///
     /// - Parameters:
     ///   - label: Text before the affordances; joins the shared column
     ///     inside a ``Form``.
@@ -355,6 +361,8 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
 
     @TerminalEnvironment(\.isEnabled) private var isEnabled
 
+    /// Creates a read-only gauge.
+    ///
     /// - Parameters:
     ///   - value: The value to display; clamped into `bounds` for rendering.
     ///   - bounds: The range the bar spans. Defaults to `0...1`.

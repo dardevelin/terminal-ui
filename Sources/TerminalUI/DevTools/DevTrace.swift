@@ -6,15 +6,32 @@ import TerminalUIConfig
 
 // MARK: - Trace configuration
 
+/// Capture configuration for ``DevTracer``.
+///
+/// Apps rarely build one by hand: the runtime derives it from the
+/// `.terminalui/terminalui.toml` file (via `DiagConfig`) at startup and
+/// passes it to ``DevTracer/configure(_:)``. Build one directly only when a
+/// test or harness wants tracing without a config file — set ``enabled``,
+/// point ``screenshotDir``/``traceDir`` at a scratch location, and cap the
+/// run with ``frameLimit`` so the capture doesn't grow unbounded.
 public struct DevTraceConfig: Sendable {
+    /// Master switch. When false every `DevTracer` call is a cheap early return.
     public var enabled: Bool
+    /// Directory receiving per-frame screenshot files (`frame_NNNN.txt` / `.ansi`).
     public var screenshotDir: String
+    /// Directory receiving per-frame trace files (`frame_NNNN.trace`) and `summary.txt`.
     public var traceDir: String
+    /// Whether ``DevTracer/endFrame(buffer:previousBuffer:)`` writes a screenshot per frame.
     public var captureScreenshots: Bool
+    /// Whether layout/body/state trace points are recorded and written per frame.
     public var captureTrace: Bool
+    /// Whether input events (parsed keys, raw bytes, action dispatches) are recorded.
     public var captureEvents: Bool
+    /// Stop capturing after this many frames; nil captures for the whole session.
     public var frameLimit: Int?  // stop capturing after N frames
 
+    /// Disabled configuration with output directories resolved from the
+    /// `.terminalui/` diagnostic config (per-process dir under `/tmp` by default).
     public static let `default`: DevTraceConfig = {
         #if DEBUG
         let config = DiagPaths.loadConfig()
@@ -43,14 +60,25 @@ public struct DevTraceConfig: Sendable {
 
 // MARK: - Trace entry types
 
+/// One recorded event inside a frame's trace, written by ``DevTracer`` to
+/// the per-frame `.trace` files that `swtui` and the harness read.
 public enum TraceEntry: Sendable {
+    /// Frame began. `timestamp` is process uptime in seconds.
     case renderStart(frame: Int, timestamp: Double)
+    /// Frame finished. `duration` is wall-clock seconds from ``renderStart(frame:timestamp:)``.
     case renderEnd(frame: Int, duration: Double)
+    /// A view's `body` was evaluated this frame — the count per frame is
+    /// the "how much did this state change rebuild?" signal.
     case bodyEvaluated(viewType: String, frame: Int)
+    /// Layout pass proposed a size to a view; `proposed` is `"WxH"` in cells.
     case layoutPropose(viewType: String, proposed: String)
+    /// The view answered the proposal; `result` is `"WxH"` in cells.
     case layoutRespond(viewType: String, result: String)
+    /// The view was placed; `rect` is `"(x,y WxH)"` in cell coordinates.
     case layoutPlace(viewType: String, rect: String)
+    /// Compositor delta for the frame: cells rewritten vs. the grid total.
     case bufferDiff(cellsChanged: Int, totalCells: Int)
+    /// A parsed input event, human-readable (e.g. `"ctrl+c"`, `"F5"`).
     case inputEvent(description: String)
     /// Raw bytes consumed by InputParser to produce ONE TerminalEvent.
     /// Recorded BEFORE the parser interprets them, so we can see e.g.
@@ -62,7 +90,10 @@ public enum TraceEntry: Sendable {
     /// any action matched (by id). HYP-341+ — diagnoses why a
     /// chord didn't fire when the user expected it to.
     case actionDispatch(fromNode: String, binding: String, context: String, matchedActionID: String?)
+    /// An `@Observable` / `@TerminalState` property mutated, naming the
+    /// owning view type — the "why did this frame happen?" record.
     case stateChange(property: String, viewType: String)
+    /// The terminal was resized to `cols` x `rows` cells.
     case resize(cols: Int, rows: Int)
 }
 
@@ -70,7 +101,15 @@ public enum TraceEntry: Sendable {
 
 #if DEBUG
 
+/// File-based frame recorder: writes per-frame screenshots and
+/// ``TraceEntry`` logs to the `.terminalui/` data directory for offline
+/// inspection by `swtui`, the PTY harness, and humans with `cat`.
+///
+/// The runtime calls the `trace*` hooks from inside the render loop; apps
+/// and tests only ever call ``configure(_:)``. Disabled it costs one bool
+/// check per hook; in release builds the whole class compiles to no-ops.
 public final class DevTracer: @unchecked Sendable {
+    /// Process-wide instance the runtime's trace hooks report to.
     public static let shared = DevTracer()
 
     private var config = DevTraceConfig.default
@@ -81,6 +120,8 @@ public final class DevTracer: @unchecked Sendable {
 
     private init() {}
 
+    /// Replace the active configuration; creates the output directories
+    /// when the new configuration enables capture.
     public func configure(_ config: DevTraceConfig) {
         self.config = config
         if config.enabled {
@@ -97,10 +138,12 @@ public final class DevTracer: @unchecked Sendable {
         configure(merged)
     }
 
+    /// Whether capture is currently on — mirrors the configured `enabled` flag.
     public var isEnabled: Bool { config.enabled }
 
     // MARK: - Frame lifecycle
 
+    /// Runtime hook: open a new frame's trace and stamp its start time.
     public func beginFrame() {
         guard config.enabled else { return }
         if let limit = config.frameLimit, frameCount >= limit { return }
@@ -109,6 +152,8 @@ public final class DevTracer: @unchecked Sendable {
         currentFrame.append(.renderStart(frame: frameCount, timestamp: frameStart))
     }
 
+    /// Runtime hook: close the frame's trace, then write its screenshot
+    /// and `.trace` file to disk per the configured capture flags.
     public func endFrame(buffer: CellBuffer, previousBuffer: CellBuffer?) {
         guard config.enabled else { return }
         if let limit = config.frameLimit, frameCount >= limit { return }
@@ -131,21 +176,25 @@ public final class DevTracer: @unchecked Sendable {
 
     // MARK: - Trace points
 
+    /// Graph hook: record that `viewType`'s body was evaluated this frame.
     public func traceBodyEvaluated(_ viewType: String) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.bodyEvaluated(viewType: viewType, frame: frameCount))
     }
 
+    /// Layout hook: record the size (in cells) proposed to `viewType`.
     public func traceLayoutPropose(_ viewType: String, width: Int, height: Int) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.layoutPropose(viewType: viewType, proposed: "\(width)x\(height)"))
     }
 
+    /// Layout hook: record the size (in cells) `viewType` answered with.
     public func traceLayoutRespond(_ viewType: String, width: Int, height: Int) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.layoutRespond(viewType: viewType, result: "\(width)x\(height)"))
     }
 
+    /// Layout hook: record the final rect (cell coordinates) `viewType` was placed in.
     public func traceLayoutPlace(_ viewType: String, rect: Rect) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.layoutPlace(
@@ -154,11 +203,13 @@ public final class DevTracer: @unchecked Sendable {
         ))
     }
 
+    /// Compositor hook: record the frame's delta — cells rewritten out of the grid total.
     public func traceBufferDiff(changed: Int, total: Int) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.bufferDiff(cellsChanged: changed, totalCells: total))
     }
 
+    /// Input hook: record a parsed key event in human-readable form.
     public func traceInput(_ event: KeyEvent) {
         guard config.enabled, config.captureEvents else { return }
         currentFrame.append(.inputEvent(description: describeKey(event)))
@@ -194,11 +245,13 @@ public final class DevTracer: @unchecked Sendable {
         ))
     }
 
+    /// Runtime hook: record a terminal resize to `cols` x `rows` cells.
     public func traceResize(cols: Int, rows: Int) {
         guard config.enabled else { return }
         currentFrame.append(.resize(cols: cols, rows: rows))
     }
 
+    /// State hook: record a property mutation and the view type that owns it.
     public func traceStateChange(property: String, in viewType: String) {
         guard config.enabled, config.captureTrace else { return }
         currentFrame.append(.stateChange(property: property, viewType: viewType))
@@ -271,6 +324,8 @@ public final class DevTracer: @unchecked Sendable {
 
     // MARK: - Summary
 
+    /// Write `summary.txt` — per-frame durations and body-evaluation counts
+    /// for the whole capture. The runtime calls this at shutdown.
     public func writeSummary() {
         guard config.enabled else { return }
         var output = "TerminalUI dev trace summary\n"

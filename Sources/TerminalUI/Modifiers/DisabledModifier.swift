@@ -17,10 +17,13 @@ public struct DisabledModifier: ViewModifier, _AnyEnvironmentModifier {
     /// matches the call-site (`.disabled(true)` writes `disabled=true`).
     public let disabled: Bool
 
+    /// Creates the modifier; `true` disables the subtree.
     public init(disabled: Bool) {
         self.disabled = disabled
     }
 
+    /// ANDs `!disabled` into the inherited `isEnabled` — most restrictive
+    /// wins, so a nested `.disabled(false)` cannot re-enable.
     public func apply(to env: inout EnvironmentValues) {
         env.isEnabled = env.isEnabled && !disabled
     }

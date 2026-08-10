@@ -24,7 +24,7 @@ ratatui, SwiftTUI, asciinema, vhs).
 # Build & test
 swift build                          # debug
 swift build -c release               # release — all #if DEBUG machinery erased
-swift test                           # full suite: 885 tests in 182 suites
+swift test                           # full suite: 1094 tests in 233 suites
 swift test --filter InputParser      # run one suite by name substring
 swift package clean && swift build   # full clean rebuild — must be 0 err / 0 warn
 
@@ -129,7 +129,7 @@ allocation- and cast-free.
 | **Config / CLI** | `TerminalUIConfig/`, `swtui/` | `DiagConfig`, `TOMLParser`, `DiagPaths`; the diagnostic CLI |
 
 Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
-`#expect`) — 885 tests in 182 suites. Graph tests are `@MainActor`.
+`#expect`) — 1094 tests in 233 suites. Graph tests are `@MainActor`.
 
 ### Render modes
 

@@ -23,7 +23,10 @@
 /// `ExpressibleByIntegerLiteral` lets `.frame(maxWidth: 40)` keep
 /// working — the literal lowers to `.fixed(40)`.
 public enum FrameDimension: Sendable, Equatable, ExpressibleByIntegerLiteral {
+    /// An exact cell count on the axis.
     case fixed(Int)
+    /// Expand to fill the remaining space on the axis — opts the view into
+    /// the enclosing stack's flex distribution.
     case infinity
 
     public init(integerLiteral value: Int) { self = .fixed(value) }
@@ -51,8 +54,11 @@ public struct FrameAxes: OptionSet, Sendable, Hashable {
     public let rawValue: Int
     public init(rawValue: Int) { self.rawValue = rawValue }
 
+    /// Flex along the width axis.
     public static let horizontal = FrameAxes(rawValue: 1 << 0)
+    /// Flex along the height axis.
     public static let vertical   = FrameAxes(rawValue: 1 << 1)
+    /// Flex along both axes — `.flexible()`'s default.
     public static let all: FrameAxes = [.horizontal, .vertical]
 }
 
@@ -62,7 +68,10 @@ public struct FrameAxes: OptionSet, Sendable, Hashable {
 /// flexbox's `flex-grow`).
 public struct FlexibleModifier: ViewModifier {
     public typealias ModifierType = (FrameAxes, Int)
+    /// The axes this view flexes on.
     public let axes: FrameAxes
+    /// Share weight when splitting slack with flex siblings; clamped to
+    /// at least 1.
     public let grow: Int
 }
 

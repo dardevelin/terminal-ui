@@ -14,8 +14,12 @@ import Observation
 @Observable
 @MainActor
 public final class CurveTimeline {
+    /// Wall time one full sweep of `progress` 0 → 1 takes.
     public let duration: Duration
+    /// Easing applied to the linear time fraction.
     public let curve: AnimationCurve
+    /// `true` wraps progress back to 0 at each boundary; `false` finishes
+    /// at 1.
     public let repeats: Bool
 
     @ObservationIgnored
@@ -29,6 +33,9 @@ public final class CurveTimeline {
 
     private var explicitPhase: AnimationPhase = .idle
 
+    /// Creates an eased timeline; call ``start()`` to begin. `clock`
+    /// `nil` uses a fresh ``WallClock`` (tests inject a deterministic
+    /// one).
     public init(
         duration: Duration,
         curve: AnimationCurve = .easeInOut,
@@ -41,6 +48,8 @@ public final class CurveTimeline {
         self.clock = clock ?? WallClock()
     }
 
+    /// Eased progress in `0...1`, computed on demand from the clock.
+    /// 0 before ``start()``; repeating timelines wrap at each boundary.
     public var progress: Double {
         guard let startedAt else { return 0.0 }
         let elapsed = elapsedRunning(referenceStart: startedAt).seconds

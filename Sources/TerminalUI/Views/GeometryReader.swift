@@ -31,6 +31,8 @@ public struct GeometryReader<Content: TerminalView>: TerminalView {
     /// surrounding layout shift).
     public let content: (Size) -> Content
 
+    /// Creates a size-reading container.
+    ///
     /// - Parameter content: builds the subtree for a concrete available
     ///   size. Runs at render time, so keep it a pure function of `size`
     ///   and previously captured values.

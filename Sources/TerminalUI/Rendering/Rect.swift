@@ -3,11 +3,16 @@
 /// Terminal backends use `LayoutRect<Int>` (aliased as `Rect` and `CellRect`).
 /// Pixel backends use `LayoutRect<Double>` (aliased as `PixelRect`).
 public struct LayoutRect<C: Coordinate>: Equatable, Sendable, Hashable {
+    /// Left edge, 0-based from the container's left.
     public var x: C
+    /// Top edge, 0-based from the container's top.
     public var y: C
+    /// Horizontal extent; the rect covers `x ..< x + width`.
     public var width: C
+    /// Vertical extent; the rect covers `y ..< y + height`.
     public var height: C
 
+    /// Creates a rect from origin and size.
     public init(x: C, y: C, width: C, height: C) {
         self.x = x
         self.y = y
@@ -15,8 +20,12 @@ public struct LayoutRect<C: Coordinate>: Equatable, Sendable, Hashable {
         self.height = height
     }
 
+    /// `true` when either dimension is zero or negative — the rect covers
+    /// no cells.
     public var isEmpty: Bool { width <= C.zero || height <= C.zero }
 
+    /// A rect shrunk by `amount` on all four edges; dimensions floor at
+    /// zero rather than going negative.
     public func inset(by amount: C) -> LayoutRect<C> {
         LayoutRect(
             x: x + amount,

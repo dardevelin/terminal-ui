@@ -4,11 +4,17 @@ import Glibc
 import Darwin
 #endif
 
-// Decouples InputParser's state machine from stdin. The parser calls
-// `readByte()` synchronously — `nil` means "no byte available right now"
-// (same as `read()` returning 0 under VMIN=0/VTIME=1 raw-mode pacing).
-// Tests inject ArrayByteSource; the runtime uses StdinByteSource.
+/// A synchronous, one-byte-at-a-time input stream for ``InputParser``.
+///
+/// Decouples InputParser's state machine from stdin. The parser calls
+/// `readByte()` synchronously — `nil` means "no byte available right now"
+/// (same as `read()` returning 0 under VMIN=0/VTIME=1 raw-mode pacing).
+/// Tests inject ArrayByteSource; the runtime uses StdinByteSource.
 public protocol ByteSource {
+    /// Returns the next byte, or `nil` when none is available right now —
+    /// a raw-mode read timeout, an exhausted test array, or a shutdown wake.
+    /// `nil` is a pacing signal, not end-of-stream; callers mid-sequence may
+    /// retry.
     mutating func readByte() -> UInt8?
 }
 
@@ -28,8 +34,12 @@ public struct StdinByteSource: ByteSource {
     /// exit. nil when no runtime is active (tests, or before run() starts).
     nonisolated(unsafe) public static var shutdownReadFD: Int32?
 
+    /// Creates the stdin-backed source. Stateless — all state lives in
+    /// the file descriptors it reads.
     public init() {}
 
+    /// One byte from stdin, or `nil` on a poll/read timeout (pacing) or a
+    /// shutdown-pipe wake.
     public mutating func readByte() -> UInt8? {
         if let shutdownFD = Self.shutdownReadFD {
             return readByteWithShutdown(shutdownFD: shutdownFD)
@@ -78,9 +88,13 @@ public struct StdinByteSource: ByteSource {
 /// Generic over the underlying source so it works with both
 /// `StdinByteSource` (runtime) and `ArrayByteSource` (tests).
 public struct RecordingByteSource<Source: ByteSource>: ByteSource {
+    /// The wrapped source every read is forwarded to.
     public var inner: Source
+    /// Every byte returned by `inner` so far, in read order; `nil`
+    /// returns are not recorded.
     public var consumed: [UInt8] = []
 
+    /// Wraps a source with an empty recording.
     public init(_ inner: Source) {
         self.inner = inner
     }
@@ -95,10 +109,23 @@ public struct RecordingByteSource<Source: ByteSource>: ByteSource {
 /// Test source — yields bytes from a pre-seeded array in order.
 /// Returns nil once exhausted, which the parser treats as "no byte available"
 /// (identical to a stdin timeout in raw mode).
+///
+/// This is the seam that makes ``InputParser`` testable without a PTY: seed
+/// the exact byte sequence a terminal would send and drive
+/// `InputParser.parseEvent(from:)` directly.
+///
+/// ```swift
+/// var source = ArrayByteSource([0x1B, 0x5B, 0x41])  // ESC [ A
+/// let event = InputParser.parseEvent(from: &source)  // .key(.up)
+/// ```
 public struct ArrayByteSource: ByteSource {
+    /// The full seeded byte sequence; never mutated by reads.
     public var bytes: [UInt8]
+    /// Index of the next byte `readByte()` will return. Starts at 0; equals
+    /// `bytes.count` once the source is exhausted.
     public var position: Int = 0
 
+    /// Creates a source that replays `bytes` in order, then yields `nil`.
     public init(_ bytes: [UInt8]) {
         self.bytes = bytes
     }

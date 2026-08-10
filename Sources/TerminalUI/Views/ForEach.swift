@@ -23,6 +23,8 @@ public struct ForEach<Data: RandomAccessCollection, Content: TerminalView>: Term
     /// Builds the row view for one element.
     public let content: (Data.Element) -> Content
 
+    /// Creates rows from an `Identifiable` collection.
+    ///
     /// - Parameters:
     ///   - data: Collection whose elements' `id`s provide row identity.
     ///   - content: Row builder, called per element on each update.
@@ -54,6 +56,8 @@ public struct ForEachWithID<Data: RandomAccessCollection, ID: Hashable, Content:
     /// Builds the row view for one element.
     public let content: (Data.Element) -> Content
 
+    /// Creates rows keyed by an explicit id key path.
+    ///
     /// - Parameters:
     ///   - data: Collection to iterate.
     ///   - id: Key path to a `Hashable` value providing row identity.

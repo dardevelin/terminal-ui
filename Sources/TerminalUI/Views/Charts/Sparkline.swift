@@ -35,6 +35,8 @@ public struct Sparkline: TerminalView {
     /// Shade the area under the line.
     public let filled: Bool
 
+    /// Creates a sparkline.
+    ///
     /// - Parameters:
     ///   - data: Samples, left to right.
     ///   - width: Cell width; `nil` fits to container.

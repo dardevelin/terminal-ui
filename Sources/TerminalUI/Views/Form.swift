@@ -82,6 +82,8 @@ public struct Form<Content: TerminalView>: TerminalView {
 
     @TerminalEnvironment(\.terminalSize) private var terminalSize
 
+    /// Creates a form; the shared label column width is computed here,
+    /// once, from the widest label in `content`.
     public init(@TerminalViewBuilder content: () -> Content) {
         let content = content()
         self.content = content
@@ -230,6 +232,8 @@ public struct Section<Header: TerminalView, Content: TerminalView, Footer: Termi
     /// only for labelled rows, so a section of plain `Text` still counts.
     let isEmpty: Bool
 
+    /// Creates a section from row, header, and footer builders.
+    ///
     /// - Parameters:
     ///   - content: The section's rows.
     ///   - header: Rendered uppercase and dim above the rows.
@@ -361,6 +365,8 @@ public struct LabeledContent<Label: TerminalView, Content: TerminalView>: Termin
     let label: Label
     let content: Content
 
+    /// Creates a labeled row from view builders; the label's first `Text`
+    /// joins the form's shared column.
     public init(
         @TerminalViewBuilder content: () -> Content,
         @TerminalViewBuilder label: () -> Label

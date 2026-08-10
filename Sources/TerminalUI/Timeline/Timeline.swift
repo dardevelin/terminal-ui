@@ -26,10 +26,13 @@ public final class WallClock: TimelineClock {
     private let clock = ContinuousClock()
     private let origin: ContinuousClock.Instant
 
+    /// Creates a clock whose origin is the moment of construction —
+    /// `now()` starts at zero.
     public init() {
         self.origin = clock.now
     }
 
+    /// Monotonic elapsed time since this clock was created.
     public func now() -> Duration {
         clock.now - origin
     }
@@ -53,9 +56,13 @@ public enum AnimationPhase: Sendable, Equatable {
 /// (0..1) to eased progress. Names match SwiftUI's defaults so
 /// consumer parity is intuitive.
 public enum AnimationCurve: Sendable, Equatable {
+    /// No easing — progress equals the time fraction.
     case linear
+    /// Quadratic ease-in (`t²`): slow start, fast end.
     case easeIn
+    /// Quadratic ease-out (`1-(1-t)²`): fast start, slow end.
     case easeOut
+    /// Smoothstep (`3t²-2t³`): slow at both ends.
     case easeInOut
 
     /// Apply this curve's easing function to a time fraction in

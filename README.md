@@ -143,7 +143,7 @@ lockfile stops caring about the network.
 ```bash
 git clone https://github.com/dardevelin/terminal-ui
 cd terminal-ui
-swift test                 # 1089 tests
+swift test                 # full suite — 1094 tests
 swift run Storybook        # every public API, one page each
 ```
 
@@ -345,7 +345,7 @@ decoders.
 
 ## Status
 
-v1.0.0. 1084 tests in 229 suites, run on macOS and Linux, plus a PTY-driven
+v1.0.0. 1094 tests in 233 suites, run on macOS and Linux, plus a PTY-driven
 behavioural harness that walks every Storybook page. Builds with zero
 warnings under `-warnings-as-errors`.
 

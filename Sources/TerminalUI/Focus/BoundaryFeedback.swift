@@ -48,10 +48,15 @@ extension TerminalView {
 /// disallowed character) can model those at the app layer; the
 /// framework only ships the universally-meaningful five.
 public enum BoundaryHitReason: Sendable, Hashable {
+    /// Cursor at column 0, user pressed Left.
     case leftEdge
+    /// Cursor past the last column, user pressed Right.
     case rightEdge
+    /// Cursor at row 0, user pressed Up.
     case topEdge
+    /// Cursor at the last row, user pressed Down.
     case bottomEdge
+    /// Fixed-length input full, user typed a character.
     case maxLength
 }
 
@@ -83,10 +88,13 @@ extension TerminalView {
 public struct BoundaryHitCallback: Sendable {
     private let action: @Sendable (BoundaryHitReason) -> Void
 
+    /// Wraps a callback; prefer the `.onBoundaryHit { }` modifier at
+    /// call sites.
     public init(_ action: @escaping @Sendable (BoundaryHitReason) -> Void) {
         self.action = action
     }
 
+    /// Invokes the wrapped callback with the hit reason.
     public func callAsFunction(_ reason: BoundaryHitReason) {
         action(reason)
     }
@@ -119,6 +127,8 @@ public final class BoundaryFeedbackEmitter: @unchecked Sendable {
     /// dispatch.
     public static let shared = BoundaryFeedbackEmitter()
 
+    /// Creates an emitter with no-op sinks; production wires
+    /// ``bellSink``/``bounceSink`` after construction.
     public init() {}
 
     /// Hook for `.bell` mode. Default: no-op. Production runtime
@@ -155,12 +165,18 @@ public final class BoundaryFeedbackEmitter: @unchecked Sendable {
 /// correctness without touching shared state. Hand-rolled so each
 /// test gets isolated counts.
 public final class BoundaryFeedbackProbe: @unchecked Sendable {
+    /// Times `.bell` mode dispatched through this probe.
     public private(set) var bellCount = 0
+    /// Times `.bounce` mode dispatched through this probe.
     public private(set) var bounceCount = 0
+    /// Times the env was `.modal` at emit — counted whether or not a
+    /// callback was registered.
     public private(set) var callbackCount = 0
 
     private let emitter = BoundaryFeedbackEmitter()
 
+    /// Creates an isolated probe with counter sinks pre-wired and all
+    /// counts at zero.
     public init() {
         // Wire counter sinks. Capturing self in @Sendable closures is
         // OK because the probe is class-typed (reference) — the
@@ -169,6 +185,9 @@ public final class BoundaryFeedbackProbe: @unchecked Sendable {
         emitter.bounceSink = { [weak self] _ in self?.bounceCount += 1 }
     }
 
+    /// Dispatches through the probe's private emitter, updating the
+    /// counters — same contract as
+    /// ``BoundaryFeedbackEmitter/emit(reason:env:callback:)``.
     public func emit(reason: BoundaryHitReason,
                      env: EnvironmentValues,
                      callback: BoundaryHitCallback?) {

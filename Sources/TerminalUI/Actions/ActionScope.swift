@@ -11,10 +11,15 @@
 /// - `children` — nested scopes from sub-views (populated by the
 ///   focus walker, not by `@ActionBuilder`).
 public struct ActionScope: Sendable {
+    /// Actions paired with input bindings — the dispatchable set.
     public let boundActions: [BoundAction]
+    /// Actions reachable only by ID — readout-visible, no device
+    /// dispatch.
     public let unboundActions: [Action]
+    /// Nested scopes from sub-views; populated by the focus walker.
     public let children: [ActionScope]
 
+    /// Creates a scope from explicit action lists; all default to empty.
     public init(
         boundActions: [BoundAction] = [],
         unboundActions: [Action] = [],
@@ -112,7 +117,9 @@ public struct ActionScope: Sendable {
 /// by ID, surfaces in readouts, no device dispatch). Internal —
 /// callers see only the result builder, never the fragment type.
 public enum ActionScopeFragment: Sendable {
+    /// An action paired with an input binding — dispatchable.
     case bound(BoundAction)
+    /// A bare action — readout-visible, fired by ID only.
     case unbound(Action)
 }
 
@@ -120,30 +127,39 @@ public enum ActionScopeFragment: Sendable {
 /// `Action` (becomes `.unbound`) and `BoundAction` (becomes `.bound`).
 @resultBuilder
 public enum ActionBuilder {
+    /// Accepts a bare `Action`, collected as `.unbound`.
     public static func buildExpression(_ action: Action) -> [ActionScopeFragment] {
         [.unbound(action)]
     }
 
+    /// Accepts a `BoundAction` (from `Action.bound(to:)`), collected as
+    /// `.bound`.
     public static func buildExpression(_ bound: BoundAction) -> [ActionScopeFragment] {
         [.bound(bound)]
     }
 
+    /// Concatenates the block's per-expression fragment lists in source
+    /// order.
     public static func buildBlock(_ fragments: [ActionScopeFragment]...) -> [ActionScopeFragment] {
         fragments.flatMap { $0 }
     }
 
+    /// Flattens `for` loop iterations into one fragment list.
     public static func buildArray(_ fragments: [[ActionScopeFragment]]) -> [ActionScopeFragment] {
         fragments.flatMap { $0 }
     }
 
+    /// `if` without `else`: `nil` contributes no fragments.
     public static func buildOptional(_ fragments: [ActionScopeFragment]?) -> [ActionScopeFragment] {
         fragments ?? []
     }
 
+    /// The `if` branch of an `if`/`else`.
     public static func buildEither(first: [ActionScopeFragment]) -> [ActionScopeFragment] {
         first
     }
 
+    /// The `else` branch of an `if`/`else`.
     public static func buildEither(second: [ActionScopeFragment]) -> [ActionScopeFragment] {
         second
     }

@@ -12,6 +12,8 @@ public struct TextAreaSnapshot: Equatable, Sendable {
     /// The active selection, if any.
     public let selection: TextAreaSelection?
 
+    /// Captures a restorable editor moment: document, cursor, and
+    /// selection (`nil` when nothing was selected).
     public init(text: String, cursor: TextAreaCursor, selection: TextAreaSelection?) {
         self.text = text
         self.cursor = cursor
@@ -52,6 +54,8 @@ public struct TextAreaState: Equatable, Sendable {
     /// paths — the public-facing edit position is what `==` checks.
     public var undoStack: UndoStack<TextAreaSnapshot> = UndoStack(maxSize: 100)
 
+    /// Creates fresh editor state: cursor at the origin, no scroll, no
+    /// selection, empty 100-entry undo stack.
     public init() {}
 
     public static func == (lhs: TextAreaState, rhs: TextAreaState) -> Bool {
@@ -76,8 +80,10 @@ public struct TextAreaCursor: Equatable, Sendable {
     /// Character offset within the line, `0...line.count`.
     public var col: Int
 
+    /// The document origin — row 0, column 0.
     public static let zero = TextAreaCursor(row: 0, col: 0)
 
+    /// Creates a cursor position; both coordinates default to 0.
     public init(row: Int = 0, col: Int = 0) {
         self.row = row
         self.col = col
@@ -103,8 +109,12 @@ public struct TextAreaSelection: Equatable, Sendable {
         return (end, start)
     }
 
+    /// `true` when anchor and moving edge coincide — zero characters
+    /// selected.
     public var isEmpty: Bool { start == end }
 
+    /// Creates a selection from anchor to moving edge; `end` may precede
+    /// `start` in document order.
     public init(start: TextAreaCursor, end: TextAreaCursor) {
         self.start = start
         self.end = end
@@ -225,6 +235,13 @@ public struct TextArea: TerminalView {
     private static let selectionBg: Color = .blue
     private static let emptyRowMarkerFg: Color = .ansi256(240)
 
+    /// Creates an editor bound to its document and state.
+    ///
+    /// `text` is the document; `state` (cursor/scroll/selection/undo) must
+    /// outlive re-evaluations. `lineNumbers` adds a gutter;
+    /// `visibleHeight` caps the viewport in rows (`nil` sizes to content);
+    /// `highlighter` `nil` renders plain text and `theme` colors its
+    /// spans.
     public init(
         text: Binding<String>,
         state: Binding<TextAreaState>,

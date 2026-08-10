@@ -4,16 +4,23 @@
 /// Toggle with ctrl+i. Arrow keys move the crosshair.
 /// Shows: node type, declared values, resolved rect, modifier chain.
 public final class Inspector {
+    /// Whether the overlay renders; toggled by the inspector keybinding.
     public var active: Bool = false
+    /// Crosshair column, 0-based.
     public var cursorX: Int = 0
+    /// Crosshair row, 0-based.
     public var cursorY: Int = 0
 
+    /// Creates an inactive inspector with the crosshair at the origin.
     public init() {}
 
+    /// Flips ``active`` — show or hide the overlay.
     public func toggle() {
         active = !active
     }
 
+    /// Moves the crosshair by (`dx`, `dy`) cells, clamped inside
+    /// `0..<maxX` x `0..<maxY`.
     public func moveCursor(dx: Int, dy: Int, maxX: Int, maxY: Int) {
         cursorX = max(0, min(maxX - 1, cursorX + dx))
         cursorY = max(0, min(maxY - 1, cursorY + dy))
@@ -134,11 +141,17 @@ public final class Inspector {
 
 #else
 
+/// Release stub — every member is an erased no-op.
 public final class Inspector: Sendable {
+    /// Creates the inert stub.
     public init() {}
+    /// No-op in release builds.
     @inline(__always) public func toggle() {}
+    /// No-op in release builds.
     @inline(__always) public func moveCursor(dx: Int, dy: Int, maxX: Int, maxY: Int) {}
+    /// No-op in release builds.
     @inline(__always) public func render(into buffer: inout CellBuffer, graph: AttributeGraph?) {}
+    /// Always `false` in release builds.
     public var active: Bool { false }
 }
 

@@ -66,9 +66,13 @@ public struct QuadrantMask: OptionSet, Sendable, Equatable, Hashable {
     public let rawValue: UInt8
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
+    /// Upper-left quadrant (alone: U+2598 ▘).
     public static let topLeft     = QuadrantMask(rawValue: 1 << 0)
+    /// Upper-right quadrant (alone: U+259D ▝).
     public static let topRight    = QuadrantMask(rawValue: 1 << 1)
+    /// Lower-left quadrant (alone: U+2596 ▖).
     public static let bottomLeft  = QuadrantMask(rawValue: 1 << 2)
+    /// Lower-right quadrant (alone: U+2597 ▗).
     public static let bottomRight = QuadrantMask(rawValue: 1 << 3)
 
     /// All four quadrants lit (== full block).
@@ -106,14 +110,23 @@ public struct QuadrantMask: OptionSet, Sendable, Equatable, Hashable {
 /// progressive-fill glyphs. Each level maps to a distinct Unicode
 /// code point.
 public enum EighthMask: Sendable, Equatable, Hashable {
+    /// Empty — renders a space.
     case zero
+    /// 1/8 filled (vertical: U+2581 ▁).
     case oneEighth
+    /// 2/8 filled (vertical: U+2582 ▂).
     case twoEighths
+    /// 3/8 filled (vertical: U+2583 ▃).
     case threeEighths
+    /// 4/8 filled — half cell (vertical: U+2584 ▄).
     case fourEighths
+    /// 5/8 filled (vertical: U+2585 ▅).
     case fiveEighths
+    /// 6/8 filled (vertical: U+2586 ▆).
     case sixEighths
+    /// 7/8 filled (vertical: U+2587 ▇).
     case sevenEighths
+    /// Fully filled (U+2588 █).
     case eightEighths
 
     /// Vertical fill from bottom (U+2581..U+2588).
@@ -146,13 +159,21 @@ public struct BrailleDots: OptionSet, Sendable, Equatable, Hashable {
     public let rawValue: UInt8
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
+    /// Left column, row 1 (top).
     public static let dot1 = BrailleDots(rawValue: 1 << 0)
+    /// Left column, row 2.
     public static let dot2 = BrailleDots(rawValue: 1 << 1)
+    /// Left column, row 3.
     public static let dot3 = BrailleDots(rawValue: 1 << 2)
+    /// Right column, row 1 (top).
     public static let dot4 = BrailleDots(rawValue: 1 << 3)
+    /// Right column, row 2.
     public static let dot5 = BrailleDots(rawValue: 1 << 4)
+    /// Right column, row 3.
     public static let dot6 = BrailleDots(rawValue: 1 << 5)
+    /// Left column, row 4 (bottom).
     public static let dot7 = BrailleDots(rawValue: 1 << 6)
+    /// Right column, row 4 (bottom).
     public static let dot8 = BrailleDots(rawValue: 1 << 7)
 
     /// Unicode code point for this dot pattern.
@@ -169,9 +190,12 @@ public struct BrailleDots: OptionSet, Sendable, Equatable, Hashable {
 /// Separate from EighthMask because shades imply uniform partial
 /// fill, not directional fill.
 public enum ShadeLevel: Sendable, Equatable, Hashable {
-    case light    // U+2591 ░ ~25% coverage
-    case medium   // U+2592 ▒ ~50% coverage
-    case dark     // U+2593 ▓ ~75% coverage
+    /// ~25% coverage (U+2591 ░).
+    case light
+    /// ~50% coverage (U+2592 ▒).
+    case medium
+    /// ~75% coverage (U+2593 ▓).
+    case dark
 
     var character: Character {
         switch self {

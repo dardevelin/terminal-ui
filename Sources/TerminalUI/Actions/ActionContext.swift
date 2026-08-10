@@ -18,7 +18,18 @@
 /// Stack of currently-active context names. Bindings can require a
 /// specific context (or any layer of the stack) to be active before
 /// they fire. Empty stack = the "default" context (no requirements).
+///
+/// This is the framework's expression of i3 modes: entering "resize" pushes
+/// that name, and every binding declared `whenContext: "resize"` goes live
+/// while default bindings keep matching their own (empty) requirement. A
+/// stack rather than a single name so modes nest — push a sub-mode inside a
+/// mode, pop to return to the outer one. The live value rides in
+/// `EnvironmentValues.actionContext`; mutate it from an action's `perform`
+/// closure, or install one wholesale with `.environment(\.actionContext, ...)`.
 public struct ActionContext: Sendable, Equatable {
+    /// Context names bottom-to-top; the last element is the active mode.
+    /// Read-only from outside — mutate via ``push(_:)`` / ``pop()`` /
+    /// ``clear()`` so the invariant stays in one place.
     public private(set) var stack: [String]
 
     /// The currently-topmost context name, or nil if no context is
@@ -26,10 +37,13 @@ public struct ActionContext: Sendable, Equatable {
     /// level deep.
     public var current: String? { stack.last }
 
+    /// Creates a context — empty (the default context) unless a starting
+    /// stack is supplied.
     public init(stack: [String] = []) {
         self.stack = stack
     }
 
+    /// Enters a context: `name` becomes the topmost — and thus active — mode.
     public mutating func push(_ name: String) {
         stack.append(name)
     }
@@ -40,6 +54,8 @@ public struct ActionContext: Sendable, Equatable {
         _ = stack.popLast()
     }
 
+    /// Pops every context at once, returning to the default (empty) context —
+    /// the i3 `mode "default"` escape hatch.
     public mutating func clear() {
         stack.removeAll()
     }
@@ -63,7 +79,11 @@ public struct ActionContext: Sendable, Equatable {
 ///   the stack somewhere," letting an outer mode declare bindings
 ///   that survive entry into nested sub-modes.
 public enum ContextRequirement: Sendable, Equatable {
+    /// Matches only while the named context is the stack's topmost entry
+    /// — the i3 `mode "resize"` semantic.
     case equalsTop(String)
+    /// Matches while the named context appears anywhere on the stack,
+    /// including beneath nested sub-modes.
     case containsAny(String)
 
     /// True iff `context` satisfies the predicate.

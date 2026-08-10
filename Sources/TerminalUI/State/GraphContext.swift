@@ -34,10 +34,21 @@
 /// nil — exactly what the old "implicitly cleared" contract intended, but
 /// now compiler-enforced.
 public enum GraphContext {
+    /// The node whose body is currently being evaluated (or rendered); nil
+    /// outside the runtime's `withValue` chain — notably in event handlers,
+    /// which is why `@TerminalState` cannot resolve its slot there.
     @TaskLocal public static var currentNode: AttributeNode?
+    /// The graph owning the current evaluation, so wrappers and modifiers
+    /// can reach reconciliation services without threading a parameter.
     @TaskLocal public static var currentGraph: AttributeGraph?
+    /// Environment in force for the subtree being evaluated, after every
+    /// enclosing `.environment` override. `@TerminalEnvironment` reads it.
     @TaskLocal public static var currentEnvironment: EnvironmentValues?
+    /// The runtime's focus engine, bound during graph update so focus
+    /// modifiers can register focusables and handlers as they build.
     @TaskLocal public static var currentFocusEngine: FocusEngine?
+    /// The size proposal the current measurement or layout pass is
+    /// answering; nil outside layout.
     @TaskLocal public static var currentProposedSize: Size?
     /// The node ID the active key handler was dispatched to. Set by
     /// `FocusEngine.routeKeyEvent(...startingFrom:)` for the duration

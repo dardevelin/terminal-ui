@@ -46,6 +46,8 @@ public struct BarChart: TerminalView {
         /// color with `.foreground(_:)` on the chart.
         public let color: Color?
 
+        /// Creates one bar; `color` defaults to `nil` (chart-wide styling
+        /// applies).
         public init(label: String, value: Double, color: Color? = nil) {
             self.label = label
             self.value = value
@@ -56,6 +58,8 @@ public struct BarChart: TerminalView {
     // 1/8th block chars for sub-cell horizontal resolution
     static let blockChars: [Character] = [" ", "▏", "▎", "▍", "▌", "▋", "▊", "▉", "█"]
 
+    /// Creates a bar chart.
+    ///
     /// - Parameters:
     ///   - items: Bars, top to bottom.
     ///   - barWidth: Bar column width in cells; `nil` fits to container.
