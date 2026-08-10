@@ -6,6 +6,15 @@
 
 <p align="center">A SwiftUI-paradigm framework for building terminal applications in Swift.<br/>macOS and Linux. Zero dependencies.</p>
 
+<p align="center">
+  <a href="https://github.com/dardevelin/terminal-ui/actions/workflows/ci.yml"><img src="https://github.com/dardevelin/terminal-ui/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
+  <a href="https://github.com/dardevelin/terminal-ui/actions/workflows/docs.yml"><img src="https://github.com/dardevelin/terminal-ui/actions/workflows/docs.yml/badge.svg?branch=main" alt="Docs"/></a>
+  <a href="https://github.com/dardevelin/terminal-ui/releases"><img src="https://img.shields.io/github/v/tag/dardevelin/terminal-ui?label=release&color=f2994a" alt="Latest release"/></a>
+  <img src="https://img.shields.io/badge/swift-6.2%2B-orange" alt="Swift 6.2+"/>
+  <img src="https://img.shields.io/badge/platforms-macOS%2015%2B%20%7C%20Linux-blue" alt="Platforms: macOS 15+ and Linux"/>
+  <img src="https://img.shields.io/badge/license-Apache--2.0%20%7C%20MIT%20%7C%20EUPL--1.2-lightgrey" alt="License: Apache-2.0 or MIT or EUPL-1.2"/>
+</p>
+
 ---
 
 ```swift
