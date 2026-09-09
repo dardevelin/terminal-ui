@@ -155,6 +155,12 @@ let package = Package(
             path: "Examples/Chat",
             swiftSettings: strictSettings
         ),
+        .executableTarget(
+            name: "Coder",
+            dependencies: ["TerminalUI"],
+            path: "Examples/Coder",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],

@@ -39,3 +39,9 @@ mempalace.yaml
 # Secondary docs scratch path — used when a live preview holds .build's lock
 **/.build-docs/
 **/.build-*/
+
+# Kanban work tracking — working state, not project truth. The board records
+# what is in flight and what it taught us; anything the repo should remember
+# permanently gets promoted into code, tests, or design/. Script is tracked
+# (tools/scripts/kanban.py), the board itself is not.
+design/board.jsonl
