@@ -238,7 +238,44 @@ public enum GraphMeasurer {
                 }
                 // See the width twin: the gaps are part of the size.
                 return total + info.spacing * max(0, children.count - 1)
-            case .hstack, .zstack:
+            case .hstack:
+                // Each child must be measured against the width it will
+                // actually be placed at, not the stack's full width. A
+                // wrapping `Text` that fits the unspaced width but not the
+                // width left after its siblings and the gaps reports one row
+                // when it will render two, and the parent reserves a row too
+                // few — the wrap's last line is then clipped by the parent's
+                // rect. The allocation is shared with the render walk so the
+                // two passes cannot drift apart.
+                //
+                // A non-positive `proposedWidth` is the "unconstrained,
+                // measure intrinsically" sentinel the scroll-position walk
+                // passes (see `measureFocusedPosition`). There is no width to
+                // apportion then, so the proposal passes through untouched —
+                // splitting zero columns between the children would measure
+                // every one of them at nothing and report a stack of height 0.
+                guard proposedWidth > 0 else {
+                    var maxH = 0
+                    for child in children {
+                        maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
+                    }
+                    return maxH
+                }
+                let childWidths = GraphRenderer.hstackChildWidths(
+                    children, info: info, availableWidth: proposedWidth)
+                var maxH = 0
+                var x = 0
+                for (i, child) in children.enumerated() {
+                    if x >= proposedWidth { break }
+                    let clamped = min(childWidths[i], proposedWidth - x)
+                    maxH = max(maxH, measureHeight(child, proposedWidth: max(1, clamped)))
+                    x += childWidths[i]
+                    if i < children.count - 1 { x += info.spacing }
+                }
+                return maxH
+            case .zstack:
+                // Overlaid children each span the full width, so unlike an
+                // `HStack` the proposal passes through untouched.
                 var maxH = 0
                 for child in children {
                     maxH = max(maxH, measureHeight(child, proposedWidth: proposedWidth))
