@@ -647,26 +647,33 @@ public enum GraphRenderer {
         return 1
     }
 
-    static func renderHStack(_ children: [AttributeNode], info: LayoutInfo,
-                             into buffer: inout CellBuffer, context: RenderContext) {
-        let spacing = info.spacing
-        let gaps = spacing * max(0, children.count - 1)
+    /// Column width an `HStack` allocates to each child, in child order.
+    ///
+    /// Shared by the render walk and by `GraphMeasurer`'s height pass. The
+    /// measurer needs it because a child's height depends on the width it
+    /// is *actually* given: asking a wrapping `Text` how tall it is at the
+    /// stack's full width under-reports it by a row whenever the text fits
+    /// the unspaced width but not the width left after siblings and gaps.
+    /// The parent then reserves one row too few and the wrap's last line is
+    /// clipped. Keeping one implementation is what stops the two passes
+    /// disagreeing again.
+    ///
+    /// Widths are pre-clamp: callers walking left-to-right still have to
+    /// clamp against the space actually remaining, as both do.
+    static func hstackChildWidths(_ children: [AttributeNode], info: LayoutInfo,
+                                  availableWidth: Int) -> [Int] {
+        let gaps = info.spacing * max(0, children.count - 1)
         // Identify flex children + their grow weights. Spacers, scroll
         // views, `.flexible(.horizontal)`, and `.frame(maxWidth: .infinity)`
         // all qualify; only `.flexible(grow:)` carries a non-default weight.
         var flexIndices: [Int] = []
         var flexWeights: [Int] = []
+        var childWidths: [Int] = []
+        var totalContentWidth = 0
         for (i, child) in children.enumerated() {
             if isFlexChild(child) {
                 flexIndices.append(i)
                 flexWeights.append(flexGrow(child))
-            }
-        }
-
-        var childWidths: [Int] = []
-        var totalContentWidth = 0
-        for child in children {
-            if isFlexChild(child) {
                 childWidths.append(0)
             } else {
                 let w = measureWidth(child)
@@ -676,20 +683,26 @@ public enum GraphRenderer {
         }
 
         // See the vertical twin: gaps come out before flex divides the rest.
-        let remaining = max(0, context.rect.width - totalContentWidth - gaps)
+        let remaining = max(0, availableWidth - totalContentWidth - gaps)
         let perFlex = weightedDistribution(weights: flexWeights, available: remaining)
-        // Map flex slot index → allocated width.
-        var flexWidthByIndex: [Int: Int] = [:]
         for (slot, idx) in flexIndices.enumerated() {
-            flexWidthByIndex[idx] = perFlex[slot]
+            childWidths[idx] = perFlex[slot]
         }
+        return childWidths
+    }
+
+    static func renderHStack(_ children: [AttributeNode], info: LayoutInfo,
+                             into buffer: inout CellBuffer, context: RenderContext) {
+        let spacing = info.spacing
+        let childWidths = hstackChildWidths(children, info: info,
+                                            availableWidth: context.rect.width)
 
         let maxX = context.rect.x + context.rect.width
         var x = context.rect.x
         for (i, child) in children.enumerated() {
             if x >= maxX { break }
             if isFlexChild(child) {
-                let flexWidth = flexWidthByIndex[i] ?? 0
+                let flexWidth = childWidths[i]
                 // Spacers just consume space; scroll views and other
                 // flex-marked children render into the allocated rect.
                 if case .primitive(.spacer) = child.kind {
