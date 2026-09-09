@@ -218,7 +218,10 @@ public enum GraphMeasurer {
                 let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
                 switch mode {
                 case .wrap: return countWrappedLines(text, width: proposedWidth)
-                case .none: return countLines(text)
+                // Truncation shortens a logical line rather than spilling it,
+                // so like `.none` the row count is the newline count — the
+                // whole point is that the height cannot inflate.
+                case .none, .truncate: return countLines(text)
                 }
             case .spacer: return 1
             case .divider: return 1

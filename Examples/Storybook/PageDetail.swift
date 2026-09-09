@@ -535,6 +535,13 @@ struct PreviewPane: TerminalView {
             Text(" bordered ").border()
         case .padding:
             Text("padded").padding()
+        case .truncate:
+            VStack {
+                Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.tail))
+                Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.head))
+                Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.middle))
+            }
+            .frame(width: 24)
         case .focusable:
             Text("press Tab to focus me").focusable()
         case .frame:

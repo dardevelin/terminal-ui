@@ -178,6 +178,11 @@ public enum GraphRenderer {
                         // Legacy: clip to rect width, no wrapping.
                         let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
                         chunks = [clipped]
+                    case .truncate(let edge):
+                        // One row, elision marked. Runs through
+                        // `LineBreakMode` so the cell arithmetic that already
+                        // handles wide graphemes is not reimplemented here.
+                        chunks = [edge.lineBreakMode.apply(to: String(line), width: maxWidth)]
                     }
                     for chunk in chunks {
                         let y = context.rect.y + rowOffset
@@ -193,10 +198,22 @@ public enum GraphRenderer {
                     }
                 }
             } else {
-                // Styled path: write each span with its own resolved style
-                buffer.writeSpans(spans, x: context.rect.x, y: context.rect.y,
+                // Styled path: write each span with its own resolved style.
+                // Truncation happens on the run list rather than the joined
+                // string so each surviving run keeps its own color — a status
+                // row's icon, name and detail are three styles on one line.
+                let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
+                var outgoing = spans
+                var wrapSpans = true
+                if case .truncate(let edge) = mode {
+                    outgoing = TextLayout.truncate(spans, width: context.rect.width, edge: edge)
+                    wrapSpans = false
+                } else if case .none = mode {
+                    wrapSpans = false
+                }
+                buffer.writeSpans(outgoing, x: context.rect.x, y: context.rect.y,
                                   maxWidth: context.rect.width, maxHeight: context.rect.height,
-                                  baseStyle: context.style)
+                                  baseStyle: context.style, wrap: wrapSpans)
             }
 
         case .spacer:
