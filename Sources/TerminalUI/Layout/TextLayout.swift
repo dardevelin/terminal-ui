@@ -128,3 +128,129 @@ public enum TextLayout {
         return out.isEmpty ? [""] : out
     }
 }
+
+// MARK: - Span-aware truncation
+
+extension TextLayout {
+
+    /// Shorten a styled run list to `width` cells, marking the elision with
+    /// `…` and preserving each surviving span's own style.
+    ///
+    /// The string-level twin is ``LineBreakMode/apply(to:width:)``; a status
+    /// row like `● gopls  not started` is a span list, not a string, so
+    /// truncating it through the string path would flatten three colors into
+    /// one. Cutting is display-width aware for the same reason wrapping is —
+    /// a 2-cell ideograph at the boundary is dropped whole rather than
+    /// leaving half a cell.
+    ///
+    /// The ellipsis inherits the style of the span it interrupts, so a cut
+    /// through dim trailing detail stays dim rather than jumping to the
+    /// color of whichever run happened to come first.
+    public static func truncate(
+        _ spans: [TextSpan],
+        width: Int,
+        edge: TextTruncationEdge
+    ) -> [TextSpan] {
+        guard width > 0 else { return [] }
+        let total = spans.reduce(0) { $0 + $1.text.displayWidth }
+        guard total > width else { return spans }
+        // No room for anything but the marker itself.
+        guard width > 1 else {
+            return [TextSpan("…", copyingStyleOf: spans.first)]
+        }
+
+        switch edge {
+        case .tail:
+            return prefix(spans, width: width - 1) + [ellipsis(spans, at: width - 1)]
+        case .head:
+            return [ellipsis(spans, at: total - (width - 1))] + suffix(spans, width: width - 1)
+        case .middle:
+            // Odd remainders give the extra cell to the head, matching
+            // `LineBreakMode.byTruncatingMiddle`.
+            let room = width - 1
+            let headWidth = (room + 1) / 2
+            return prefix(spans, width: headWidth)
+                + [ellipsis(spans, at: headWidth)]
+                + suffix(spans, width: room - headWidth)
+        }
+    }
+
+    /// The leading `width` cells of `spans`, cutting the final span mid-run
+    /// when the boundary falls inside it.
+    private static func prefix(_ spans: [TextSpan], width: Int) -> [TextSpan] {
+        guard width > 0 else { return [] }
+        var out: [TextSpan] = []
+        var used = 0
+        for span in spans {
+            let spanWidth = span.text.displayWidth
+            if used + spanWidth <= width {
+                out.append(span)
+                used += spanWidth
+                if used == width { break }
+                continue
+            }
+            var kept = ""
+            for character in span.text {
+                let cellWidth = character.displayWidth
+                if used + cellWidth > width { break }
+                kept.append(character)
+                used += cellWidth
+            }
+            if !kept.isEmpty { out.append(span.replacingText(kept)) }
+            break
+        }
+        return out
+    }
+
+    /// The trailing `width` cells of `spans`, mirroring ``prefix(_:width:)``.
+    private static func suffix(_ spans: [TextSpan], width: Int) -> [TextSpan] {
+        guard width > 0 else { return [] }
+        var out: [TextSpan] = []
+        var used = 0
+        for span in spans.reversed() {
+            let spanWidth = span.text.displayWidth
+            if used + spanWidth <= width {
+                out.insert(span, at: 0)
+                used += spanWidth
+                if used == width { break }
+                continue
+            }
+            var kept = ""
+            for character in span.text.reversed() {
+                let cellWidth = character.displayWidth
+                if used + cellWidth > width { break }
+                kept.insert(character, at: kept.startIndex)
+                used += cellWidth
+            }
+            if !kept.isEmpty { out.insert(span.replacingText(kept), at: 0) }
+            break
+        }
+        return out
+    }
+
+    /// An `…` span wearing the style of whichever span covers cell `offset`,
+    /// which is the run the cut passes through.
+    private static func ellipsis(_ spans: [TextSpan], at offset: Int) -> TextSpan {
+        var seen = 0
+        for span in spans {
+            seen += span.text.displayWidth
+            if seen > offset { return TextSpan("…", copyingStyleOf: span) }
+        }
+        return TextSpan("…", copyingStyleOf: spans.last)
+    }
+}
+
+extension TextSpan {
+    /// Same styling, different text — used when truncation cuts a run.
+    func replacingText(_ newText: String) -> TextSpan {
+        TextSpan(newText, foreground: foreground, background: background,
+                 bold: bold, italic: italic, underline: underline)
+    }
+
+    /// A span carrying `text` with `source`'s styling (unstyled if nil).
+    init(_ text: String, copyingStyleOf source: TextSpan?) {
+        self.init(text,
+                  foreground: source?.foreground, background: source?.background,
+                  bold: source?.bold, italic: source?.italic, underline: source?.underline)
+    }
+}

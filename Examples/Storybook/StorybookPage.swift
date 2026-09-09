@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, border, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -508,6 +508,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .padding: return PageInfo(id: self, category: .modifiers, name: ".padding",
             summary: "Add empty space around the view.",
             code: "Text(\"padded\").padding()")
+        case .truncate: return PageInfo(id: self, category: .modifiers, name: ".wrap(.truncate)",
+            summary: "Keep an over-long line to one row and mark the elision with an ellipsis. .tail keeps the start, .head the end, .middle both. Works across styled spans, so each surviving run keeps its own color.",
+            code: """
+                VStack {
+                    Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.tail))
+                    Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.head))
+                    Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.middle))
+                }
+                .frame(width: 24)
+                """)
         case .focusable: return PageInfo(id: self, category: .modifiers, name: ".focusable",
             summary: "Participate in Tab-order focus navigation.",
             code: "Text(\"press Tab to focus me\").focusable()")
