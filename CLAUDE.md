@@ -13,10 +13,15 @@ paradigm. Modularity comes from good design, not premature backend abstraction.
 The Swift package lives at the repo root: `Package.swift`, `Sources/`, `Tests/`,
 `Examples/`, `tools/`. All commands run from the repo root.
 
-The root also holds the FOSS shell: `README.md`, `CHANGELOG.md`, dual
-`LICENSE-APACHE` + `LICENSE-MIT` (dual-licensed at the user's option), `NOTICE`,
-`assets/` (logo), `logo-concepts/`, and `reference/` (studied prior art —
-ratatui, SwiftTUI, asciinema, vhs).
+The root also holds the FOSS shell: `README.md`, `CHANGELOG.md`, `NOTICE`,
+`assets/` (logo), `logo-concepts/`, and the licence files. Licensing is
+**tri-licensed at the user's option**: `LICENSE-APACHE` (Apache-2.0),
+`LICENSE-MIT`, `LICENSE-EUPL` (EUPL-1.2) — keep `NOTICE` and the README licence
+section in sync when any of them change.
+
+`reference/` (studied prior art — ratatui, SwiftTUI, asciinema, vhs) is
+gitignored: separately-cloned repos kept locally, not part of the project. So
+is `.claude/` (machine-specific hooks) and `CLAUDE.local.md`.
 
 ## Commands
 
@@ -24,7 +29,7 @@ ratatui, SwiftTUI, asciinema, vhs).
 # Build & test
 swift build                          # debug
 swift build -c release               # release — all #if DEBUG machinery erased
-swift test                           # full suite: 1094 tests in 233 suites
+swift test                           # full suite: ~1095 tests in 233 suites
 swift test --filter InputParser      # run one suite by name substring
 swift package clean && swift build   # full clean rebuild — must be 0 err / 0 warn
 
@@ -40,7 +45,16 @@ swift run ComponentsDemo     # component gallery with realistic data
 swift run DotMatrixDemo      # dot-matrix display + Morse ticker
 swift run GitClient          # example: git client TUI
 swift run Chat               # example: chat TUI
+swift run Coder              # agent-chat TUI — the Crush-parity forcing function
 swift run swtui help         # developer CLI for the .terminalui/ diagnostic system
+
+# Single-purpose examples. These double as fixtures for the behavioural
+# harness (tools/scripts/verify_*.py drive them) — keep them runnable.
+swift run Navigation ; swift run AsyncState ; swift run Settings
+
+# Work tracking — board is gitignored working state, the script is tracked
+tools/scripts/kanban.py board
+tools/scripts/kanban.py lessons
 
 # Linux verification (image tag MUST be swift:6.2 — Package.swift requires it;
 # swift:6.0 rejects the manifest)
@@ -50,6 +64,14 @@ docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test
 # PTY-driven visual harness against a Linux build — same coverage as macOS
 tools/scripts/linux_harness.sh                      # walk all Storybook pages
 tools/scripts/linux_harness.sh storybook_smoke.py   # full behavioural suite
+
+# What CI actually gates on, runnable locally (see .github/workflows/ci.yml)
+python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
+python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
+
+# The whole local gate in one command: build → test → smoke. Skips itself when
+# the turn touched no .swift / .py file.
+python3 tools/scripts/verify.py
 ```
 
 The harness builds into `.build-linux/`, not `.build/`: a shared build dir leaves
@@ -57,6 +79,14 @@ Linux ELF binaries where a later macOS run expects Mach-O, and every case dies
 with `Exec format error`. Both harness scripts take an optional build-dir
 argument for this. The `swift:6.2` image ships no Python, which is the only
 reason the harness cannot run inside the container — PTYs work fine there.
+
+**CI runs the same matrix twice, Linux (`swift:6.2` container) and macOS 15**,
+and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
+warnings-as-errors release → `storybook_walk.py` → `storybook_smoke.py`. The PTY
+harness is a merge gate, not a local nicety — a change that renders differently
+fails CI even with a green `swift test`. The Linux leg `apt-get install`s
+python3 first; the macOS leg selects the newest Xcode on the image, because the
+runner default ships Swift 6.1 and the manifest requires 6.2.
 
 ## Constraints (non-negotiable)
 
@@ -117,11 +147,11 @@ allocation- and cast-free.
 |-------|------|-----------|
 | **Core** | `TerminalUI/Core/` | `TerminalApp`, `TerminalView`, `InputParser` (ANSI, SGR 1006 mouse, kitty keyboard, UTF-8; drives off `ByteSource` — stdin or test array), `KeyEvent`, `MouseEvent`, `KeyBindings`, `FrameStats`, `Environment` |
 | **Graph** | `TerminalUI/Graph/` | `AttributeGraph`, `AttributeNode`, `NodeKind` (enum dispatch), `NodeID`, `GraphRenderer`, `GraphMeasurer`, `GraphConformances`, `HitTest` |
-| **Rendering** | `TerminalUI/Rendering/` | `CellBuffer`, `Compositor` (layers + delta), `OutputBuffer` (raw bytes), `Terminal` (raw mode, ANSI modes), `Rect` |
+| **Rendering** | `TerminalUI/Rendering/` | `CellBuffer`, `Compositor` (layers + delta), `OutputBuffer` (raw bytes), `Terminal` (raw mode, ANSI modes), `Rect`, `UnicodeWidth`; `SubCell/` — `AlphaCell`, `SubCellGlyph`, `SubCellRenderer`, `Compositor+Alpha` (half-block/quadrant sub-cell resolution + alpha compositing) |
 | **State** | `TerminalUI/State/` | `@TerminalState`, `Binding<Value>`, `StateStorage`, `GraphContext` (`@TaskLocal`), `EnvironmentValues` |
 | **Focus** | `TerminalUI/Focus/` | `FocusEngine` (dual keyboard/mouse, scope-aware arrows, directional `move()`), `FocusModifiers` (`.focusable`, `.focusScope`), `FocusableContainer`, `FocusGraphIntegration` |
 | **Actions** | `TerminalUI/Actions/` | Action-context stack, scoped key-bindings |
-| **Views** | `TerminalUI/Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar, SplitView, Alert |
+| **Views** | `TerminalUI/Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar, Alert, Form, Picker, Navigation, BufferView, SyntaxHighlighter, UndoStack, BoundedValue(+Controls); `Split/` — SplitNode, SplitState, SplitView, SplitTreeCoding |
 | **Charts** | `TerminalUI/Views/Charts/` | BarChart, Sparkline, HeatMap, BrailleCanvas, DotMatrixText, DotFont, MorseTicker |
 | **Modifiers** | `TerminalUI/Modifiers/` | `ModifiedView`, overlay modifiers + protocols, lifecycle modifiers |
 | **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `BorderStyle`, `Theme`; `Coordinate`; timeline scheduling |
@@ -185,6 +215,42 @@ A typed Python client + PTY runner live in `tools/terminalui/` (`client.py`,
 one-request/one-response JSON lines over an AF_UNIX socket, pumped once per
 frame. Spawn Storybook via PTY only.
 
+## Documentation (DocC → GitHub Pages)
+
+Everything user-facing lives in `Sources/TerminalUI/TerminalUI.docc/`:
+
+| Path | What it holds |
+|------|---------------|
+| `Articles/` | Architecture + history prose — `AttributeGraph`, `Layering`, `ArchitecturalModels`, `Performance`, `GettingStarted`, `KnownIssues` |
+| `Tutorials/` | The guided course: `TerminalUITutorials` (the table of contents) plus per-chapter `.tutorial` files — BuildATaskList, GiveItStructure, AddInputAndTheMouse, NavigateToDetail, ShowTheNumbers, ArchitectForGrowth, MakeItProduction |
+| `Resources/` | Tutorial code steps (`tasks-SS-NN.swift` for chapter 1, `tasks<chapter>-SS-NN.swift` after), chapter cards, and demo GIFs |
+| `Extensions/` | DocC stubs documenting symbols that can't carry doc comments (the `GraphContext` `@TaskLocal` projections) |
+
+```bash
+TUI_BUILD_DOCS=1 swift package generate-documentation   # one-shot build
+tools/scripts/preview_docs.sh                           # local preview, live reload
+tools/scripts/preview_docs.sh 9000 TerminalUIIO         # explicit port / target
+```
+
+Use the wrapper, not the bare plugin: SwiftPM detaches `docc` into its own
+process group, so a plain `kill`/`pkill` (SIGTERM) reaps only the wrapper and
+leaves `docc` squatting the port. The script probes upward for a free port and
+translates INT/TERM/HUP into the SIGINT that actually takes the tree down.
+
+`.github/workflows/docs.yml` deploys to Pages on every push to `main`. It does
+four things beyond `generate-documentation`, all of which break silently if a
+path moves: swaps DocC's 404ing root for `.github/pages/index.html`, injects
+`reference-pane.{js,css}` + `docc-fixes.css` into every SPA bootstrap copy (so
+reference links inside tutorials open in a slide-over instead of navigating
+away), and zips the tutorial's final step — `Resources/tasks-04-01.swift`, the
+single source of truth — into the downloadable sample project. The
+`--hosting-base-path` is derived from the repo name; don't hardcode it.
+
+**The tutorial code steps are real, compiled-by-the-reader code.** Changing a
+public API means updating the affected `Resources/tasks-*.swift` steps and the
+`.tutorial` files that narrate them, or the course teaches an API that no longer
+exists.
+
 ## Code standards
 
 - **Comments** explain research, protocol specs (RFC / ECMA-48 / xterm ctlseqs /
@@ -224,9 +290,37 @@ IPC/hotkey command vocabulary. A parallel SwiftUI API-parity effort is ongoing.
 
 Prefer hardening the core over starting new epics.
 
+## Work tracking (`design/`)
+
+`design/` holds planning that outlives a session but isn't user documentation:
+
+- **`design/crush-parity.md`** — a study of `charmbracelet/crush` against this
+  framework, and the gap ledger driving current work. Read §5 first: the rule is
+  that **the demo is the forcing function**. `Examples/Coder` gets built, and
+  each framework feature is built at the moment the demo actually needs it. The
+  ledger is not a work queue — an item the demo never demands never gets built.
+- **`tools/scripts/kanban.py`** — the board. Cards carry a type (`bug`, `gap`,
+  `feature`, `chore`), a lane, blockers, and a `lessons` list.
+
+  ```bash
+  tools/scripts/kanban.py board            # columns
+  tools/scripts/kanban.py show TUI-4       # one card in full
+  tools/scripts/kanban.py lessons          # every lesson, with the card that earned it
+  tools/scripts/kanban.py move TUI-4 doing
+  ```
+
+The board file (`design/board.jsonl`) is **gitignored** — it is working state,
+not project truth, and its ids must never appear in code, comments, or commit
+messages (see Code standards). Anything the repo should remember permanently
+gets promoted out of the board into code, tests, or a document here; a card is
+done when its lesson has a home that is not the board.
+
 ## Orientation for new sessions
 
 Don't explore the codebase from scratch: start with `git log --oneline -10`
 for what changed recently and `git diff HEAD~N` for what's in flight, and
 read the DocC articles under `Sources/TerminalUI/TerminalUI.docc/Articles/`
 for architecture and performance history.
+
+Commit subjects here are written as prose lines, not `type(scope):` prefixes —
+match the existing style rather than introducing conventional commits.

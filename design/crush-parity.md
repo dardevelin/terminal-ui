@@ -1,0 +1,393 @@
+# Crush parity — what makes Crush look like Crush, and what TerminalUI is missing
+
+A study of `charmbracelet/crush` (Go, Bubble Tea v2 / Lip Gloss v2 / Bubbles v2)
+against TerminalUI, aimed at one deliverable: **a demo app that reads as
+Crush-grade, built on TerminalUI alone.**
+
+Sources studied: `internal/ui/**` (36,652 lines of non-test Go across
+`styles`, `common`, `list`, `dialog`, `chat`, `completions`, `diffview`,
+`logo`, `anim`, `model`, `image`, `exitbanner`, `notification`), plus the
+Charmtone palette from `charmbracelet/x/exp/charmtone`.
+
+---
+
+## 1. The headline finding
+
+Crush's aesthetic is **not** a Bubble Tea capability. Bubble Tea is an Elm loop;
+Lip Gloss is a string decorator. Neither is more capable than TerminalUI's
+retained attribute graph and cell compositor — in render architecture we are
+ahead, not behind.
+
+What Crush actually has that we don't is **design infrastructure**, and it
+decomposes into exactly three things:
+
+1. **A ~30-role semantic palette** (`quickStyleOpts`) resolved from a
+   ~60-color brand palette (Charmtone), with one builder function
+   (`quickStyle()`) that expands it into every widget's styling.
+2. **An exhaustively-specified style surface** — `styles.Styles` is a 704-line
+   struct of named slots (`Tool.JobIconPending`, `Dialog.Sessions.RenamingPlaceholder`,
+   `Messages.ShellBarFocused`). Nothing is styled ad hoc at a call site.
+3. **A small vocabulary of signature devices**, reused everywhere: horizontal
+   gradients, diagonal `╱` fields, left accent bars, section rules, pills,
+   dim/bright focused/blurred pairs, and 40-odd single-glyph status icons.
+
+Our `Theme` protocol has **six** roles: `accent`, `muted`, `success`, `warning`,
+`error`, `border`. That is the gap in one sentence.
+
+The good news: three of the hardest primitives are already ours —
+`TextSpan`/`SpanBuilder` (per-run styling, better than Lip Gloss's
+`StyleRanges` string surgery), truecolor `Color.rgb`, and sub-cell rendering
+with alpha. The missing pieces are mostly small, well-scoped, and additive.
+
+---
+
+## 2. Component inventory
+
+### 2.1 Already shipped — no work needed
+
+Crush's list of *actually used* Bubbles/Lip Gloss widgets is shorter than its
+reputation suggests. These we match or beat:
+
+| Crush | TerminalUI | Note |
+|---|---|---|
+| `bubbles/textinput` | `TextInput` | ✅ |
+| `bubbles/textarea` | `TextArea` | ✅ + undo stack |
+| `bubbles/viewport` | `ScrollView` | ✅ + scroll indicators, boundary feedback |
+| `lipgloss` Join/Align/Place | `VStack`/`HStack`/`ZStack`/`Spacer`/`Alignment` | ✅ |
+| `lipgloss` Border | `.border(_:)` | ⚠️ 4 styles, see §3.4 |
+| `diffview` (unified + split) | `DiffView`, `HunkDiffView` | ✅ |
+| `ui/image` (kitty/sixel/halfblock) | `TerminalUIIO` | ✅ half-block + kitty |
+| `ui/common/capabilities` | `TerminalCapabilities` | ✅ |
+| `ui/common/scrollbar` | `ScrollbarGeometry` | ✅ |
+| `ui/common/button` | `Button` | ✅ |
+| `lipgloss.Compositor.Hit` | `Graph/HitTest` | ✅ retained + typed |
+| Tabs (`question_form`) | `TabView` | ✅ |
+| `ui/model/status` | `StatusBar` | ✅ |
+| Charts (none in Crush) | `BarChart`, `Sparkline`, `HeatMap`, `BrailleCanvas` | ✅ we're ahead |
+| Wordmark letterforms | `DotMatrixText` + `DotFont` | ⚠️ close, see §4.6 |
+
+### 2.2 Missing — framework-level, blocks everything downstream
+
+| # | Gap | Crush equivalent | Impact |
+|---|---|---|---|
+| G1 | **Theme has 6 roles, needs ~30** | `quickStyleOpts` | Blocks all of it |
+| G2 | **No color blending / gradient API** | `lipgloss.Blend1D`, `styles.ForegroundGrad` | The single most "Crush-looking" feature |
+| G3 | **`padding` is a uniform `Int`** | `Padding(0,2)`, `PaddingLeft(2)` | Every dense layout needs asymmetric padding |
+| G4 | **Border colour is inherited from foreground; no per-side borders** | `BorderForeground`, `BorderLeft` | Left accent bars are Crush's core message device |
+| G5 | **No markdown renderer** | `glamour` + `ansi.StyleConfig` | No chat pane without it |
+| G6 | **Syntax highlighting is Swift-only** | `chroma` (300+ lexers) | Code blocks in chat/diffs |
+| G7 | **No fuzzy filter + match highlighting** | `sahilm/fuzzy`, `list/filterable.go` | Every picker/palette in Crush |
+| G8 | **No layered dialog/overlay stack** | `dialog.Overlay` | We have single-level `.modal` only |
+| G9 | **No help/keybinding legend view** | `bubbles/help` | Crush shows it on every screen |
+| G10 | **No spinner / activity indicator** | `ui/anim` | Signature "thinking" animation |
+| G11 | **No ANSI-16 remap for embedded raw output** | `Styles.ANSI [16]color.Color` | Shell output legibility |
+| G12 | **No anchored popup positioning** | Completions above the prompt | Autocomplete |
+| G13 | **No text selection + OSC 52 copy** | `list/highlight.go`, selection drag | Mouse-select in chat |
+| G14 | **No OSC 9/99 desktop notifications** | `ui/notification/osc.go` | Background-task alerts |
+
+### 2.3 Missing — component-level, buildable on top
+
+| Component | Crush file | Notes |
+|---|---|---|
+| Virtualised, height-cached list | `list/list.go` (961 lines) | Ours lacks per-item render caching + `Prewarm`, needed for long chats |
+| Completions popup | `completions/` | Fuzzy + name-priority tiers + anchored |
+| File picker | `bubbles/filepicker` | — |
+| Pills / badges | `model/pills.go` | Bordered chip with gradient icon run |
+| Section rule | `common.Section` | `Title ─────────────` — trivial, high impact |
+| Dialog title rule | `common.DialogTitle` | `Title ╱╱╱╱╱╱` gradient — trivial, high impact |
+| Status row | `common.Status` | icon + title + truncated desc + extra |
+| Sidebar composition | `model/sidebar.go` | — |
+| Exit banner | `exitbanner/` | Prints after TUI teardown |
+| Chat message items | `chat/*.go` (~6k lines) | App-level, but the *shapes* are reusable |
+
+---
+
+## 3. The primitive gaps in detail
+
+### 3.1 (G1) Theme: 6 roles → ~30
+
+Crush's `quickStyleOpts` is the whole design system's input. Transcribed and
+mapped to a proposed TerminalUI `Theme`:
+
+```
+Brand         primary, secondary, accent, keyword
+Foreground    fgBase, fgSubtle, fgMoreSubtle, fgMostSubtle
+Background    bgBase, bgLeastVisible, bgLessVisible, bgMostVisible
+Contrast      onPrimary
+Structure     separator
+Status        destructive, error, warning, warningSubtle, attention, busy,
+              info, infoMoreSubtle, infoMostSubtle,
+              success, successMoreSubtle, successMostSubtle
+Raw output    ansi[16]
+```
+
+The two structural ideas worth stealing:
+
+- **Ramps, not single values.** Three levels of subtlety for foregrounds, three
+  for backgrounds, three for info/success. This is what lets Crush layer six
+  things in one pane and keep them legible.
+- **Contrast pairings.** `onPrimary` exists so "text on a primary-coloured
+  background" is a *theme decision*, not a call-site guess.
+
+What we should **not** copy: the 704-line `Styles` struct. It is Crush's
+technical debt (it already carries `// Deprecated - kept for backward
+compatibility` fields). SwiftUI's answer to the same problem is the environment
+plus per-component style protocols — and we already have the shape of it
+(`PickerStyle`, `FocusIndicatorStyle`, `EnvironmentValues`). Expand the palette;
+resolve it through the environment; add `ButtonStyle`/`ListStyle`-shaped
+protocols where a component genuinely needs multiple looks.
+
+### 3.2 (G2) Gradients — the highest-leverage single feature
+
+Every visually distinctive element in Crush is a horizontal colour ramp over a
+run of glyphs:
+
+- the `CRUSH` wordmark and the compact header logo
+- the `╱╱╱╱╱╱` diagonal fields beside the logo and dialog titles
+- the queue pill's `▶▶▶▶▶` triangles, truncated to the queue count
+- the "thinking" spinner's cycling character band
+
+The mechanism is one function — blend N colours across N grapheme clusters,
+in HCL to stay in gamut (`anim.makeGradientRamp` uses `BlendHcl`; Lip Gloss's
+`Blend1D` does the same). We have `TextSpan`, so the API is natural:
+
+```swift
+Text.gradient("CRUSH", from: .charple, to: .dolly)   // -> [TextSpan]
+```
+
+`Color` needs an Oklab or HCL blend to do this without banding. Pure Swift, no
+dependency, ~80 lines.
+
+### 3.3 (G3) Edge-aware padding
+
+`PaddingModifier` currently carries a single `Int` applied to all four sides.
+Crush uses asymmetric padding constantly (`Padding(0, 2)` for pills,
+`PaddingLeft(2)` for tool-call bodies, `Padding(0, 1, 0, 1)` for the header).
+Proposal:
+
+```swift
+.padding(2)                       // existing, unchanged
+.padding(.horizontal, 2)
+.padding(.leading, 2)
+.padding(EdgeInsets(top: 0, leading: 2, bottom: 0, trailing: 1))
+```
+
+This is SwiftUI's exact API, so it costs no new concepts.
+
+### 3.4 (G4) Borders
+
+Three separate shortfalls:
+
+- **Colour** — `.border(.rounded)` inherits the foreground, so you cannot draw
+  a dim box around bright text. Crush's focused/blurred distinction is almost
+  entirely "same glyph, different border colour". Need `.border(.rounded, color:)`.
+- **Per-side** — Crush's single most-used message device is a *left bar only*
+  (`BorderThick = "▌"`, `BorderThin = "│"`), colour-coded by focus and role.
+  Need `.border(.rounded, edges: .leading)`.
+- **Glyph sets** — we ship 4 styles; Crush composes custom `uv.Border` values
+  per tab state. A `BorderStyle.custom(...)` case covers it.
+
+### 3.5 (G5/G6) Markdown and syntax highlighting
+
+The chat pane is 60% of what a Crush-like demo *is*, and it is markdown with
+fenced code. Two pieces:
+
+- **`MarkdownView`** — a parser for the CommonMark subset that matters
+  (headings, emphasis, lists, block quotes, fenced code, inline code, links,
+  rules, tables) rendering to `TextSpan` runs. Crush leans on Glamour's
+  `ansi.StyleConfig`, which is a per-element style table; ours should be a
+  `MarkdownTheme` resolved from the semantic palette.
+- **More lexers.** `SwiftSyntaxHighlighter` is the only one. The `SyntaxHighlighter`
+  protocol and `SyntaxTheme` are already right — this is additive work
+  (JSON, Bash, Go, Python, JS/TS, Markdown, diff cover most of what a coding
+  agent shows).
+
+Note Crush's `CodespanPadding` trick (`"\u{00a0}\u{fe0e}"`) — a non-breaking
+space tagged with the text-presentation selector, used as inline-code padding
+that survives word wrap and round-trips back to backticks on copy. The comment
+also records a real bug: `U+FE0F` measures 2 cells in `ansi.StringWidth` but
+renders as 1, causing per-frame repaint flicker. Worth knowing before we build
+selection.
+
+---
+
+## 4. Signature devices worth stealing verbatim
+
+These are small, and they carry most of the visual identity.
+
+### 4.1 The section rule
+`common.Section` — title, space, then `─` repeated to fill the remaining width,
+with optional right-aligned info. Two lines of layout, used on every panel.
+
+### 4.2 The dialog title rule
+`common.DialogTitle` — title, space, then `╱` repeated to fill, **gradient-ramped**.
+Same idea, different glyph, and the gradient is what sells it.
+
+### 4.3 The diagonal field
+The logo sits between a 6-column left field of `╱` and a right field that
+*steps down by one column per row*, producing a slanted edge. Pure `╱` repetition,
+no special rendering.
+
+### 4.4 The left accent bar
+Every chat message, shell block and tool call is framed by a single-column left
+border, coloured by role and focus state. `BorderThick "▌"` for emphasis,
+`BorderThin "│"` for quiet. This is the workhorse.
+
+### 4.5 The icon vocabulary
+~40 single-glyph constants with fixed semantics — `✓ ⋯ ⟳ ◇ ◆ → ● × ◉ ○ │ ▌ ─
+• ■ ≡ ▲ ✕ ┃ E W I H`. Cheap to adopt, and consistency here reads as polish.
+
+### 4.6 The wordmark
+Crush hand-codes letterforms as functions (`LetterC`, `LetterR`, …, 419 lines),
+each stretchable horizontally, and stretches **one randomly chosen letter per
+session** so the logo has character without jittering on resize. We have
+`DotMatrixText` + `DotFont`, which is the same idea with a different texture —
+close enough that the demo can use ours and look intentional rather than derivative.
+
+### 4.7 The spinner
+`ui/anim` is more considered than it looks and worth reading before we build ours:
+- a band of random hex-ish glyphs under a colour ramp, cycling at 20fps
+- a **staggered birth schedule** — each column fades in at a deterministic step
+  derived from `hash(id + settingsHash)`, so two spinners on screen don't march
+  in lock-step, but the same spinner is byte-identical across runs
+- prerendered frames cached by settings hash; `Render()` is pure string assembly
+- generation counters so re-arming supersedes an in-flight tick chain instead of
+  double-driving the animation
+
+That determinism discipline maps directly onto our `Timeline` + PTY harness:
+a spinner built this way is **golden-testable**, which ours should also be.
+
+---
+
+## 5. How we work: the demo is the forcing function
+
+**We do not port the inventory in §2.** We build the demo app, and every time it
+hits a wall we build the framework feature that wall demands — properly, as a
+first-class TerminalUI feature with a Storybook page and tests — then carry on.
+
+Rationale: a checklist port builds things the demo never needs, in whatever
+shape Crush happened to choose, and it defers the only proof that matters —
+that TerminalUI can *express* this look. Hitting the wall while building tells
+us the real requirement and its natural API shape.
+
+So §2 and §3 are a **gap ledger**, not a work queue. Items get pulled from it
+when the demo demands them, and an item the demo never demands doesn't get built.
+
+### The demo
+
+`Examples/Coder` — an agent-chat TUI, the shape Crush is:
+
+- header: wordmark + diagonal field + session/context metadata
+- sidebar: session title, cwd, model info, modified files, LSP/MCP/skills status
+- transcript: markdown messages, tool-call cards, left accent bars, diffs
+- prompt: multiline input, mode prompts, completions popup, attachments
+- overlays: command palette, sessions dialog, model picker, permission dialog
+- chrome: pills (todo/queue), status bar, help legend
+
+Built with fixture data — no agent, no network. It is a *look and interaction*
+demo, and it doubles as a PTY-harness fixture like every other example.
+
+### Build order
+
+Driven by what the demo needs to show something on screen at each step, roughly:
+
+1. **Shell** — window, header band, sidebar/transcript split, status bar.
+   *Expect to hit:* theme roles (G1), edge padding (G3), border colour (G4).
+2. **Transcript** — messages with left accent bars, then markdown, then code.
+   *Expect to hit:* markdown (G5), lexers (G6), list caching.
+3. **Prompt + overlays** — input, completions, command palette.
+   *Expect to hit:* fuzzy (G7), dialog stack (G8), anchored popups (G12).
+4. **Identity pass** — gradients, wordmark, pills, section rules, icon set.
+   *Expect to hit:* gradients (G2) — deliberately last, so the structure is
+   sound before the flourish goes on.
+5. **Polish** — help legend (G9), spinner (G10), selection (G13), notifications (G14).
+
+The "expect to hit" column is a prediction, not a commitment. What the demo
+actually demands wins.
+
+### Ledger — closed
+
+**L1. `HStack` height measured children at the wrong width.** *(framework bug)*
+
+The first screen of the demo lost a word. A chat message read "…find out why
+and fix" and its final "it." was simply absent, while the node's rect claimed
+the two rows the wrap needed.
+
+`GraphMeasurer.computeHeight` proposed the stack's *full* width to every child
+of an `HStack`, but a child is placed at that width minus its siblings minus the
+gaps. A body that fit the former and not the latter measured one row short, the
+enclosing `VStack` reserved a row too few, and the parent's rect clipped the
+wrap's last line. It only showed up at the boundary — a 103-column body in a
+104-column stack — which is why nothing in the suite had caught it.
+
+Fixed by giving the measurer the same per-child width allocation the render walk
+uses, extracted as `GraphRenderer.hstackChildWidths` so the two passes cannot
+drift apart again. `.zstack` was split out of the shared case: its children
+genuinely do overlay at full width.
+
+One trap worth recording: `measureFocusedPosition` asks for heights at
+`proposedWidth: 0`, meaning "unconstrained". Apportioning zero columns across
+the children measured every one at nothing, reported height 0, and silently
+disabled keyboard scrolling in `Form`. Both behaviours are now pinned by tests.
+
+**L2. `Text` could not truncate.** *(gap — built)*
+
+The sidebar wrapped `Rendering/Compositor.swift  +14 −6` onto two rows, and the
+second row held nothing but `−6`. In a fixed-height rail the line has to give
+way instead of reflowing the panel.
+
+`LineBreakMode` already had display-width-aware `.byTruncatingHead/Middle/Tail`
+and an `.lineBreakMode(_:)` modifier — but only `TextInput` consumed it. `Text`
+answered to `TextWrapMode`, which offered wrap or silent clip and nothing else.
+
+Added `TextWrapMode.truncate(TextTruncationEdge)` — truncation is a third answer
+to the question that enum already asks. The string path delegates to
+`LineBreakMode` rather than restating its cell arithmetic. The styled path needed
+new work: a status row is three colors on one line, so
+`TextLayout.truncate(spans:width:edge:)` cuts the *run list*, keeps each
+surviving run's style, and gives the ellipsis the style of the run it
+interrupts. Wide graphemes are dropped whole.
+
+Note what did **not** get built: a `.truncationMode(_:)` alias. SwiftUI needs one
+because truncation there is a separate axis from `lineLimit`; here `.truncate`
+already implies one row, so a second spelling would be two ways to say one thing.
+
+### Ledger — open
+
+Still unbuilt, and deliberately so until the demo demands them: G1 (theme roles),
+G2 (gradients), G3 (edge padding), G4 (border color and per-side borders). The
+demo currently works around all four — see the `GAP LEDGER` comments in
+`Examples/Coder/`.
+
+### Ledger discipline
+
+Each gap closed gets: the framework feature, a Storybook page, tests, a
+`storybook_walk` pass, and a line in this doc recording what the demo needed and
+what shape we gave it. That record is the point — it's the difference between a
+framework that grew from real use and one that grew from a competitor's file
+listing.
+
+---
+
+## 6. Constraints this must respect
+
+Non-negotiables from `CLAUDE.md` that shape all of the above:
+
+- **Zero dependencies.** No Glamour, no Chroma, no colour library. Markdown,
+  lexers and Oklab blending are all pure-Swift work.
+- **Swift 6.2, `.v6` language mode, `StrictConcurrency` + `ExistentialAny`.**
+- **0 errors, 0 warnings**, `TUI_WARNINGS_AS_ERRORS=1`.
+- **macOS 15+ / Linux**, Docker-verified.
+- **Enum dispatch on the render hot path** — new modifiers mean new `NodeKind`
+  cases, not `as?` casts.
+- **No magic numbers** — glyph sets and ramp steps go in private enums with a
+  spec or design reference.
+- **CI gates on the PTY harness**, so every new component needs a Storybook page
+  and a `storybook_walk` pass.
+
+Two design cautions:
+
+- Don't port `styles.Styles`. It is a 704-line struct with deprecated fields;
+  the SwiftUI-shaped answer is environment + style protocols.
+- Don't port Lip Gloss's string-surgery model (`StyleRanges`, re-measuring
+  rendered ANSI). `TextSpan` is strictly better and already ours.
