@@ -531,6 +531,12 @@ struct PreviewPane: TerminalView {
                 Text("not bold")
                 Text("is bold").bold()
             }
+        case .theme:
+            VStack {
+                Button("Save") { state.buttonMessage = "themed" }
+                Button("Disabled") {}.disabled()
+            }
+            .environment(\.theme, StorybookLoudTheme())
         case .border:
             Text(" bordered ").border()
         case .borderEdges:
@@ -1010,4 +1016,12 @@ struct AsyncTaskDemo: TerminalView {
             }
         }
     }
+}
+
+
+/// A deliberately loud theme for the `.environment(\.theme)` page — the point
+/// is that nothing on the page names a color, yet everything changes.
+struct StorybookLoudTheme: Theme {
+    var accent: Color = .magenta
+    var foregroundMuted: Color = .rgb(120, 90, 140)
 }

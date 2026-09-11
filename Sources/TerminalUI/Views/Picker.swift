@@ -123,6 +123,8 @@ public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalV
         self.options = PickerOptions.collect(from: content, as: SelectionValue.self)
     }
 
+    @TerminalEnvironment(\.theme) private var theme
+
     public var body: some TerminalView {
         let options = self.options
         let selected = options.firstIndex { $0.value == selection.get() }
@@ -213,6 +215,7 @@ struct PickerCursor {
 /// *values* are not needed here at all, so this takes titles rather than
 /// `PickerOption`s and stays free of the selection generic.
 struct PickerBody: TerminalView {
+    @TerminalEnvironment(\.theme) private var theme
     let label: String
     let titles: [String]
     let selected: Int?
@@ -254,7 +257,7 @@ struct PickerBody: TerminalView {
                 }
             }
         }
-        .foreground(isEnabled ? .default : .gray)
+        .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
     }
 
     // MARK: - Shared row rendering and movement
@@ -341,7 +344,7 @@ struct PickerBody: TerminalView {
                         Text(Self.segmentLabel(entry.element,
                                                isFirst: entry.offset == 0,
                                                isLast: entry.offset == titles.count - 1))
-                            .background(entry.offset == selected ? .blue : .default)
+                            .background(entry.offset == selected ? theme.backgroundSelected : theme.background)
                     }
                 }
                 .focusable()
@@ -411,7 +414,7 @@ struct PickerBody: TerminalView {
             HStack {
                 FormLabel(text: label)
                 Text(selected.map { titles[$0] } ?? rawSelection)
-                    .foreground(selected == nil ? .gray : .default)
+                    .foreground(selected == nil ? theme.foregroundMuted : theme.foreground)
                 Text(" \(PickerGlyph.collapsed)")
             }
             if isOpen {

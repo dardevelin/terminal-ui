@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, borderEdges, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -501,6 +501,20 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Text("not bold")
                     Text("is bold").bold()
                 }
+                """)
+        case .theme: return PageInfo(id: self, category: .modifiers, name: ".environment(\\.theme)",
+            summary: "Components ask the theme for semantic roles — accent, foregroundMuted, error — instead of literal colors, so one swap restyles the lot. Roles come in ramps (five foreground weights, four background steps); a theme states only what it changes and unstated steps follow the ones above them.",
+            code: """
+                struct Loud: Theme {
+                    var accent: Color = .magenta
+                    var foregroundMuted: Color = .rgb(120, 90, 140)
+                }
+
+                VStack {
+                    Button("Save") {}
+                    Button("Disabled") {}.disabled()
+                }
+                .environment(\\.theme, Loud())
                 """)
         case .border: return PageInfo(id: self, category: .modifiers, name: ".border",
             summary: "Draw a border around the view.",

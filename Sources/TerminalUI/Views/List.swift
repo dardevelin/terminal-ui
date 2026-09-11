@@ -70,6 +70,8 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         self.content = content
     }
 
+    @TerminalEnvironment(\.theme) private var theme
+
     public var body: some TerminalView {
         // An explicit `visibleCount` is a declared size: the list is exactly
         // that many rows and measures as such. Only a size-driven list needs
@@ -139,7 +141,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         return VStack {
             if hasUpIndicator {
                 Text("  ▲ \(scrollOffset) more")
-                    .foreground(.gray)
+                    .foreground(theme.foregroundMuted)
             }
 
             ForEach(visibleItems.map { (absoluteIndex, element) in
@@ -151,16 +153,16 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             }) { item in
                 HStack {
                     Text(item.isSelected ? "▸ " : "  ")
-                        .foreground(item.isSelected ? .cyan : .gray)
+                        .foreground(item.isSelected ? theme.accent : theme.foregroundMuted)
                     content(item.element)
                 }
-                .foreground(item.isSelected ? .white : .default)
+                .foreground(item.isSelected ? theme.foregroundEmphasis : theme.foreground)
             }
 
             if hasDownIndicator {
                 let remaining = total - scrollOffset - itemLines
                 Text("  ▼ \(remaining) more")
-                    .foreground(.gray)
+                    .foreground(theme.foregroundMuted)
             }
         }
         .focusable()

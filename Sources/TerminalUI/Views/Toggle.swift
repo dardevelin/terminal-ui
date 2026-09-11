@@ -33,6 +33,7 @@ public struct Toggle: TerminalView {
     /// rendered checkbox + label. Behavioural half (handler gating +
     /// focus skip) ships behaviorally with the .disabled() modifier.
     @TerminalEnvironment(\.isEnabled) var isEnabled
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Creates a toggle.
     ///
@@ -66,7 +67,7 @@ public struct Toggle: TerminalView {
 
     public var body: some TerminalView {
         labelledBody
-            .foreground(isEnabled ? .default : .gray)
+            .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
             .focusable()
             .onKeyPress { [isOn] event in
                 // `.activate` mirrors Enter/Space for click-to-fire — see
