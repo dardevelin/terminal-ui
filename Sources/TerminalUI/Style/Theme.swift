@@ -130,28 +130,61 @@ public protocol Theme: Sendable {
     var destructive: Color { get }
 }
 
+/// How far a derived step travels toward the ground it sits on.
+///
+/// Every amount is deliberately below one half. When an endpoint cannot be
+/// resolved to a value — ``Color/default`` means "whatever the terminal uses",
+/// which no table can answer — ``Color/blended(with:amount:)`` returns the
+/// nearer end. Keeping the travel under half therefore makes an underived
+/// theme fall back to the colour it *did* state, rather than to the unknown
+/// one. That is what lets a theme built entirely on terminal defaults behave
+/// exactly as it did before derivation existed.
+private enum RampStep {
+    /// Secondary content, a short step off body text.
+    static let subtle = 0.25
+    /// Chrome — far enough to read as a different class of thing.
+    static let muted = 0.45
+    /// The quietest legible step, measured from `muted`.
+    static let faint = 0.4
+    /// A status colour stated more quietly, without changing its hue.
+    static let statusSubtle = 0.4
+    /// Surfaces lifting off the ground. Small: a panel that reads as a
+    /// different colour rather than a different height is too far.
+    static let raised = 0.08
+    static let overlay = 0.16
+}
+
 /// Defaults for every role, so a conforming type states only what it changes.
 ///
-/// Each fallback is derived from a role one step stronger in the same ramp
-/// rather than from a literal, which keeps a partially-specified theme
-/// internally consistent: setting ``foregroundMuted`` alone drags
-/// ``foregroundFaint`` with it instead of stranding it at a hue from a
-/// palette the theme never opted into.
+/// Steps are *derived*, not aliased: `foregroundFaint` is `foregroundMuted`
+/// mixed toward the background, so a theme that states one step of a ramp gets
+/// a genuinely quieter one below it instead of a duplicate. This is what makes
+/// the role set authorable — a theme can state five or six colours and get a
+/// coherent twenty-six, which is how Textual's token system stays usable at
+/// this size.
+///
+/// Derivation needs resolvable endpoints, and a theme resting on terminal
+/// defaults has none. Those cases name a literal instead, so the stock palette
+/// keeps the contrast it always had rather than collapsing to one colour.
 extension Theme {
     public var accent: Color { .cyan }
     public var primary: Color { accent }
     public var secondary: Color { accent }
     public var onPrimary: Color { .brightWhite }
 
-    public var foregroundEmphasis: Color { .white }
+    public var foregroundEmphasis: Color {
+        foreground.nominalRGB == nil ? .white : foreground.blended(with: .brightWhite, amount: RampStep.muted)
+    }
     public var foreground: Color { .default }
-    public var foregroundSubtle: Color { foreground }
-    public var foregroundMuted: Color { .gray }
-    public var foregroundFaint: Color { foregroundMuted }
+    public var foregroundSubtle: Color { foreground.blended(with: background, amount: RampStep.subtle) }
+    public var foregroundMuted: Color {
+        foreground.nominalRGB == nil ? .gray : foreground.blended(with: background, amount: RampStep.muted)
+    }
+    public var foregroundFaint: Color { foregroundMuted.blended(with: background, amount: RampStep.faint) }
 
     public var background: Color { .default }
-    public var backgroundRaised: Color { background }
-    public var backgroundOverlay: Color { backgroundRaised }
+    public var backgroundRaised: Color { background.blended(with: foreground, amount: RampStep.raised) }
+    public var backgroundOverlay: Color { background.blended(with: foreground, amount: RampStep.overlay) }
     // Blue rather than a derived step: this is the selection fill the
     // components already drew, and a ramp derived from a `.default`
     // background would resolve to no highlight at all.
@@ -163,13 +196,13 @@ extension Theme {
     public var border: BorderStyle { .rounded }
 
     public var success: Color { .green }
-    public var successSubtle: Color { success }
+    public var successSubtle: Color { success.blended(with: background, amount: RampStep.statusSubtle) }
     public var warning: Color { .yellow }
-    public var warningSubtle: Color { warning }
+    public var warningSubtle: Color { warning.blended(with: background, amount: RampStep.statusSubtle) }
     public var error: Color { .red }
-    public var errorSubtle: Color { error }
+    public var errorSubtle: Color { error.blended(with: background, amount: RampStep.statusSubtle) }
     public var info: Color { .blue }
-    public var infoSubtle: Color { info }
+    public var infoSubtle: Color { info.blended(with: background, amount: RampStep.statusSubtle) }
     public var attention: Color { warning }
     public var busy: Color { accent }
     public var destructive: Color { error }

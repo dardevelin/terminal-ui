@@ -12,14 +12,14 @@ struct Header: TerminalView {
             Text(spans: line(width: size.width))
         }
         .frame(height: 1)
-        .background(theme.bgRaised)
+        .background(theme.backgroundRaised)
     }
 
     private func line(width: Int) -> [TextSpan] {
         // The wordmark is the one place the two brand colours meet, which is
         // what ties the header to the rails and the pills further down.
         let brand: [TextSpan] = [TextSpan(" ")]
-            + Text.gradient("CODER", from: theme.primaryLift, to: theme.secondary)
+            + Text.gradient("CODER", from: theme.primary, to: theme.secondary)
                 .spans.map { $0.bolded() }
             + [TextSpan(" ")]
         let meta = metadata()
@@ -35,13 +35,13 @@ struct Header: TerminalView {
     private func metadata() -> [TextSpan] {
         let separator = TextSpan(" \(Glyph.bullet) ", foreground: theme.separator)
         return [
-            TextSpan(state.workingDirectory, foreground: theme.fgMoreSubtle),
+            TextSpan(state.workingDirectory, foreground: theme.foregroundMuted),
             separator,
-            TextSpan("\(state.contextPercent)%", foreground: theme.fgSubtle),
-            TextSpan(" (\(state.contextLabel))", foreground: theme.fgMostSubtle),
+            TextSpan("\(state.contextPercent)%", foreground: theme.foregroundSubtle),
+            TextSpan(" (\(state.contextLabel))", foreground: theme.foregroundFaint),
             separator,
-            TextSpan("^p", foreground: theme.fgSubtle, bold: true),
-            TextSpan(" palette ", foreground: theme.fgMostSubtle),
+            TextSpan("^p", foreground: theme.foregroundSubtle, bold: true),
+            TextSpan(" palette ", foreground: theme.foregroundFaint),
         ]
     }
 }
@@ -61,24 +61,24 @@ struct Sidebar: TerminalView {
             Spacer()
         }
         .padding(1)
-        .background(theme.bgRaised)
+        .background(theme.backgroundRaised)
     }
 
     private var sessionBlock: some TerminalView {
         VStack(spacing: 0) {
             Text(state.sessionTitle)
-                .foreground(theme.fgBase)
+                .foreground(theme.foreground)
                 .bold()
             Text(state.workingDirectory)
-                .foreground(theme.fgMostSubtle)
+                .foreground(theme.foregroundFaint)
             Text(spans: [
-                TextSpan(Glyph.diamond, foreground: theme.primaryLift),
-                TextSpan(" \(state.modelName)", foreground: theme.fgSubtle),
-                TextSpan(" via \(state.providerName)", foreground: theme.fgMostSubtle),
+                TextSpan(Glyph.diamond, foreground: theme.primary),
+                TextSpan(" \(state.modelName)", foreground: theme.foregroundSubtle),
+                TextSpan(" via \(state.providerName)", foreground: theme.foregroundFaint),
             ])
             Text(spans: [
-                TextSpan("\(state.contextPercent)%", foreground: theme.fgMoreSubtle),
-                TextSpan(" (\(state.contextLabel))", foreground: theme.fgMostSubtle),
+                TextSpan("\(state.contextPercent)%", foreground: theme.foregroundMuted),
+                TextSpan(" (\(state.contextLabel))", foreground: theme.foregroundFaint),
                 TextSpan("  $\(String(format: "%.2f", state.cost))", foreground: theme.success),
             ])
         }
@@ -95,7 +95,7 @@ struct Sidebar: TerminalView {
                 // Head truncation: the basename is what identifies the file,
                 // so the directory prefix is the part that gives way.
                 Text(spans: [
-                    TextSpan(file.path, foreground: theme.fgSubtle),
+                    TextSpan(file.path, foreground: theme.foregroundSubtle),
                     TextSpan("  +\(file.added)", foreground: theme.success),
                     TextSpan(" −\(file.removed)", foreground: theme.error),
                 ])
@@ -157,13 +157,13 @@ struct MessageRow: TerminalView {
         VStack(spacing: 0) {
             Text(spans: [
                 TextSpan(authorLabel, foreground: railColor, bold: true),
-                TextSpan("  \(message.timestamp)", foreground: theme.fgMostSubtle),
+                TextSpan("  \(message.timestamp)", foreground: theme.foregroundFaint),
             ])
             // GAP LEDGER — G5. `body` is markdown in every real agent
             // TUI. Rendered as plain text until the framework has a
             // markdown view.
             Text(message.body)
-                .foreground(theme.fgSubtle)
+                .foreground(theme.foregroundSubtle)
         }
         // GAP LEDGER — G3. Crush sets a single column of breathing room
         // between the rail and the text (BorderLeft + PaddingLeft(1)).
@@ -184,7 +184,7 @@ struct MessageRow: TerminalView {
     private var railColor: Color {
         switch message.author {
         case .user: theme.secondary
-        case .assistant: theme.primaryLift
+        case .assistant: theme.primary
         }
     }
 }
@@ -202,12 +202,12 @@ struct ToolCard: TerminalView {
         VStack(spacing: 0) {
             Text(spans: [
                 TextSpan(badge.glyph, foreground: badge.color),
-                TextSpan(" \(call.name)", foreground: theme.keyword, bold: true),
-                TextSpan("  \(call.summary)", foreground: theme.fgMoreSubtle),
+                TextSpan(" \(call.name)", foreground: theme.secondary, bold: true),
+                TextSpan("  \(call.summary)", foreground: theme.foregroundMuted),
             ])
             if let output = call.output {
                 Text(output)
-                    .foreground(theme.fgMostSubtle)
+                    .foreground(theme.foregroundFaint)
             }
         }
         .border(.rounded, color: theme.separator, edges: .leading)
@@ -233,9 +233,9 @@ struct Prompt: TerminalView {
         VStack(spacing: 0) {
             HStack(spacing: 1) {
                 Text(":::")
-                    .foreground(state.focus == .prompt ? theme.primaryLift : theme.fgMostSubtle)
+                    .foreground(state.focus == .prompt ? theme.primary : theme.foregroundFaint)
                 Text(state.draft.isEmpty ? "Ask anything, or / for commands" : state.draft)
-                    .foreground(state.draft.isEmpty ? theme.fgMostSubtle : theme.fgBase)
+                    .foreground(state.draft.isEmpty ? theme.foregroundFaint : theme.foreground)
             }
             TodoPill(state: state, theme: theme)
         }
@@ -246,7 +246,7 @@ struct Prompt: TerminalView {
             .heavy,
             color: state.focus == .prompt ? theme.borderActive : theme.borderIdle,
             edges: .top)
-        .background(theme.bgRaised)
+        .background(theme.backgroundRaised)
     }
 }
 
@@ -258,9 +258,9 @@ struct TodoPill: TerminalView {
     var body: some TerminalView {
         let current = state.todos.first { if case .inProgress = $0.status { true } else { false } }
         return Text(spans: [
-            TextSpan("To-Do", foreground: theme.fgMoreSubtle),
+            TextSpan("To-Do", foreground: theme.foregroundMuted),
             TextSpan(" \(state.doneTodoCount)/\(state.todos.count)", foreground: theme.accent),
-            TextSpan("  \(current?.title ?? "")", foreground: theme.fgMostSubtle),
+            TextSpan("  \(current?.title ?? "")", foreground: theme.foregroundFaint),
         ])
     }
 }
@@ -292,10 +292,15 @@ struct CoderApp: TerminalView {
                     KeyHint.spans("q", "quit", theme: theme)
                 }
                 StatusBar.Section(.right) {
-                    TextSpan("\(state.modelName) ", foreground: theme.fgMoreSubtle)
+                    TextSpan("\(state.modelName) ", foreground: theme.foregroundMuted)
                 }
             }
         }
-        .background(theme.bgBase)
+        .background(theme.background)
+        // Published so the framework's own components resolve the same
+        // palette the demo's views were handed directly. Without this a
+        // Button dropped into the transcript would still be drawing the
+        // stock cyan-on-gray.
+        .environment(\.theme, theme)
     }
 }

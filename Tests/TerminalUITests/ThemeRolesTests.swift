@@ -170,6 +170,66 @@ import Testing
         #expect(theme.successSubtle == .rgb(6, 6, 6))
     }
 
+    // MARK: - Derivation
+
+    /// The point of deriving rather than aliasing: a theme that states its
+    /// foreground and background gets a genuinely quieter step below it, not a
+    /// duplicate. Five or six stated colours should yield a coherent
+    /// twenty-six, which is what makes a role set this size authorable.
+    @Test func statingGroundAndTextDerivesTheWholeForegroundRamp() {
+        struct Pinned: Theme {
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+        }
+        let theme = Pinned()
+        let steps = [theme.foreground, theme.foregroundSubtle,
+                     theme.foregroundMuted, theme.foregroundFaint]
+        let lightness = steps.map { Int($0.nominalRGB!.red) }
+        #expect(lightness == lightness.sorted(by: >),
+                "each step must be quieter than the one above it, got \(lightness)")
+        // And genuinely distinct, not four names for one colour.
+        #expect(Set(lightness).count == 4)
+    }
+
+    @Test func statusSubtletiesAreQuieterButKeepTheirHue() {
+        struct Pinned: Theme {
+            var background: Color = .rgb(27, 26, 36)
+            var error: Color = .rgb(255, 93, 126)
+        }
+        let theme = Pinned()
+        let base = theme.error.nominalRGB!
+        let subtle = theme.errorSubtle.nominalRGB!
+        #expect(subtle.red < base.red, "the subtle step must be quieter")
+        // Still recognisably red: the red channel stays dominant.
+        #expect(subtle.red > subtle.green && subtle.red > subtle.blue)
+    }
+
+    @Test func raisedSurfacesLiftOffTheGroundWithoutBecomingText() {
+        struct Pinned: Theme {
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+        }
+        let theme = Pinned()
+        let ground = Int(theme.background.nominalRGB!.red)
+        let raised = Int(theme.backgroundRaised.nominalRGB!.red)
+        let overlay = Int(theme.backgroundOverlay.nominalRGB!.red)
+        #expect(raised > ground && overlay > raised)
+        // A surface that travels too far stops reading as a surface.
+        #expect(overlay < 100, "overlay \(overlay) drifted toward the text colour")
+    }
+
+    /// Derivation needs resolvable endpoints. A theme resting on the
+    /// terminal's own colours has none, and must keep the contrast it always
+    /// had rather than collapsing every role onto `.default`.
+    @Test func aThemeOnTerminalDefaultsDoesNotCollapse() {
+        struct Minimal: Theme {}
+        let theme = Minimal()
+        #expect(theme.foreground == .default)
+        #expect(theme.foregroundMuted == .gray)
+        #expect(theme.foregroundEmphasis == .white)
+        #expect(theme.foregroundSubtle == .default)
+    }
+
     /// An empty conformance must still be a complete, usable theme — that is
     /// what makes the roles additive rather than a migration.
     @Test func anEmptyConformanceIsAWholeTheme() {
