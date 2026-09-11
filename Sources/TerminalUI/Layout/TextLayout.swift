@@ -254,3 +254,130 @@ extension TextSpan {
                   bold: source?.bold, italic: source?.italic, underline: source?.underline)
     }
 }
+
+// MARK: - Span-aware wrapping
+
+extension TextLayout {
+
+    /// Wrap a styled run list into rows of at most `width` cells, breaking at
+    /// whitespace like ``wrapWords(_:width:)`` does for a plain string.
+    ///
+    /// The string twin is not enough on its own: a paragraph carrying any
+    /// styling at all is a run list, and re-joining it to wrap would throw
+    /// away which characters were bold or coloured. Breaking per character
+    /// instead — which is what a naive cell-by-cell writer does — reflows the
+    /// same sentence differently depending on whether part of it happens to be
+    /// emphasised, and disagrees with the measurer, which counts word-wrapped
+    /// rows for styled and unstyled text alike.
+    ///
+    /// Embedded newlines start a new row. A word longer than `width` breaks at
+    /// a character boundary so it stays visible rather than vanishing.
+    /// `width <= 0` returns the input as a single row.
+    public static func wrap(_ spans: [TextSpan], width: Int) -> [[TextSpan]] {
+        guard width > 0 else { return [spans] }
+
+        // Characters carry their span index so style survives regrouping.
+        var characters: [(character: Character, span: Int)] = []
+        for (index, span) in spans.enumerated() {
+            for character in span.text {
+                characters.append((character, index))
+            }
+        }
+        guard !characters.isEmpty else { return [[]] }
+
+        var rows: [[(Character, Int)]] = []
+        var row: [(Character, Int)] = []
+        var used = 0
+        var index = 0
+        // Only a break the wrapper itself introduced swallows the space at the
+        // boundary. Leading whitespace the caller wrote — an indent, a padded
+        // list marker — is content and must survive.
+        var justWrapped = false
+
+        func endRow(wrapped: Bool) {
+            rows.append(row)
+            row = []
+            used = 0
+            justWrapped = wrapped
+        }
+
+        while index < characters.count {
+            if characters[index].character == "\n" {
+                endRow(wrapped: false)
+                index += 1
+                continue
+            }
+
+            // Take the next token — a run of spaces, or a run of non-spaces.
+            let isSpace = characters[index].character.isWhitespace
+            var token: [(Character, Int)] = []
+            var tokenWidth = 0
+            while index < characters.count,
+                  characters[index].character != "\n",
+                  characters[index].character.isWhitespace == isSpace {
+                token.append((characters[index].character, characters[index].span))
+                tokenWidth += characters[index].character.displayWidth
+                index += 1
+            }
+
+            if isSpace {
+                // A space run that opens a row only because the wrapper broke
+                // there is dropped; one the caller wrote is kept.
+                if justWrapped && used == 0 {
+                    justWrapped = false
+                    continue
+                }
+                if used + tokenWidth <= width {
+                    row.append(contentsOf: token)
+                    used += tokenWidth
+                }
+                continue
+            }
+            justWrapped = false
+
+            if used + tokenWidth <= width {
+                row.append(contentsOf: token)
+                used += tokenWidth
+                continue
+            }
+
+            if used > 0 { endRow(wrapped: true) }
+
+            // A word wider than the whole column has to break somewhere; a
+            // character boundary keeps it visible, which beats dropping it.
+            for cell in token {
+                let cellWidth = cell.0.displayWidth
+                if used + cellWidth > width, used > 0 { endRow(wrapped: true) }
+                row.append(cell)
+                used += cellWidth
+            }
+        }
+        endRow(wrapped: false)
+
+        return rows.map { regroup($0, from: spans) }
+    }
+
+    /// Rebuild spans from characters, merging neighbours that came from the
+    /// same original run so a wrapped row carries no more spans than it needs.
+    private static func regroup(_ cells: [(Character, Int)], from spans: [TextSpan]) -> [TextSpan] {
+        var out: [TextSpan] = []
+        var text = ""
+        var current: Int?
+
+        func flush() {
+            guard let index = current, !text.isEmpty else { return }
+            out.append(spans[index].replacingText(text))
+            text = ""
+        }
+
+        for (character, index) in cells {
+            if index != current {
+                flush()
+                current = index
+            }
+            text.append(character)
+        }
+        flush()
+        return out
+    }
+}

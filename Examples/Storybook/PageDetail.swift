@@ -602,6 +602,19 @@ struct PreviewPane: TerminalView {
                 }.mouseFocusPolicy(.disabled)
                 Text("(hover both — only the outer reports hover state)").foreground(.gray)
             }
+        case .markdown:
+            MarkdownView("""
+                ## What changed
+
+                1. Give the skip its **own flag**
+                2. Leave `previousBuffer` meaning one thing
+
+                > The buffer carried two meanings.
+
+                ```swift
+                if skippedFrame { return .unchanged }
+                ```
+                """)
         case .bufferView:
             BufferView(buildBufferDemo())
                 .frame(width: 24, height: 4)
