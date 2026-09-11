@@ -53,11 +53,22 @@ enum Fixtures {
             .message(Message(
                 id: 5,
                 author: .assistant,
-                body: "Found it. When the budget is exceeded the frame loop "
-                    + "drops `previousBuffer` to signal a skip, but the "
-                    + "compositor reads that same nil as \"first frame\" and "
-                    + "repaints everything. The skip signal needs its own "
-                    + "flag rather than overloading the buffer.",
+                body: """
+                    Found it. The frame loop drops `previousBuffer` to signal a \
+                    skip, but the compositor reads that same nil as *first \
+                    frame* and repaints everything.
+
+                    ## The fix
+
+                    1. Give the skip its **own flag**
+                    2. Leave `previousBuffer` meaning one thing
+
+                    > The buffer was carrying two meanings. That is the whole bug.
+
+                    ```swift
+                    if skippedFrame { return .unchanged }
+                    ```
+                    """,
                 timestamp: "14:03"
             )),
             .tool(ToolCall(

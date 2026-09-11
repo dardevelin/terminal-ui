@@ -203,17 +203,30 @@ public enum GraphRenderer {
                 // string so each surviving run keeps its own color — a status
                 // row's icon, name and detail are three styles on one line.
                 let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
-                var outgoing = spans
-                var wrapSpans = true
-                if case .truncate(let edge) = mode {
-                    outgoing = TextLayout.truncate(spans, width: context.rect.width, edge: edge)
-                    wrapSpans = false
-                } else if case .none = mode {
-                    wrapSpans = false
+                switch mode {
+                case .truncate(let edge):
+                    buffer.writeSpans(
+                        TextLayout.truncate(spans, width: context.rect.width, edge: edge),
+                        x: context.rect.x, y: context.rect.y,
+                        maxWidth: context.rect.width, maxHeight: context.rect.height,
+                        baseStyle: context.style, wrap: false)
+                case .none:
+                    buffer.writeSpans(spans, x: context.rect.x, y: context.rect.y,
+                                      maxWidth: context.rect.width, maxHeight: context.rect.height,
+                                      baseStyle: context.style, wrap: false)
+                case .wrap:
+                    // Wrapping is decided on the run list, not cell by cell, so
+                    // a styled sentence breaks at the same words an unstyled one
+                    // does — and at the same places the measurer counted.
+                    let rows = TextLayout.wrap(spans, width: context.rect.width)
+                    for (offset, row) in rows.enumerated() {
+                        let y = context.rect.y + offset
+                        guard y < context.rect.y + context.rect.height else { break }
+                        buffer.writeSpans(row, x: context.rect.x, y: y,
+                                          maxWidth: context.rect.width, maxHeight: 1,
+                                          baseStyle: context.style, wrap: false)
+                    }
                 }
-                buffer.writeSpans(outgoing, x: context.rect.x, y: context.rect.y,
-                                  maxWidth: context.rect.width, maxHeight: context.rect.height,
-                                  baseStyle: context.style, wrap: wrapSpans)
             }
 
         case .spacer:

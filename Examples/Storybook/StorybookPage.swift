@@ -42,7 +42,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Input
     case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
-    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView
+    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView, markdown
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
@@ -585,6 +585,22 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Text("inner — disabled")
                 }
                 .mouseFocusPolicy(.disabled)
+                """)
+        case .markdown: return PageInfo(id: self, category: .display, name: "MarkdownView",
+            summary: "Renders a CommonMark subset — headings, lists, fenced code, quotes, emphasis, inline code, links — styled entirely from Theme roles. Quotes take a border rail so the mark covers wrapped lines; list continuations hang under their own text.",
+            code: """
+                MarkdownView(\"""
+                    ## What changed
+
+                    1. Give the skip its **own flag**
+                    2. Leave `previousBuffer` meaning one thing
+
+                    > The buffer carried two meanings.
+
+                    ```swift
+                    if skippedFrame { return .unchanged }
+                    ```
+                    \""")
                 """)
         case .bufferView: return PageInfo(id: self, category: .display, name: "BufferView",
             summary: "Render a pre-populated CellBuffer into the view's rect. SwiftUI analog: Image(decorative:).",

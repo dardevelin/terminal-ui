@@ -159,11 +159,7 @@ struct MessageRow: TerminalView {
                 TextSpan(authorLabel, foreground: railColor, bold: true),
                 TextSpan("  \(message.timestamp)", foreground: theme.foregroundFaint),
             ])
-            // GAP LEDGER — G5. `body` is markdown in every real agent
-            // TUI. Rendered as plain text until the framework has a
-            // markdown view.
-            Text(message.body)
-                .foreground(theme.foregroundSubtle)
+            MarkdownView(message.body)
         }
         // GAP LEDGER — G3. Crush sets a single column of breathing room
         // between the rail and the text (BorderLeft + PaddingLeft(1)).
