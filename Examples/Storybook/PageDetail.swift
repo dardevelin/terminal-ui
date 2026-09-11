@@ -186,6 +186,15 @@ struct PreviewPane: TerminalView {
                 Text("colored").foreground(.green)
                 Text("both").bold().foreground(.red)
             }
+        case .gradient:
+            VStack {
+                Text.gradient("TERMINAL UI", from: .rgb(124, 92, 255), to: .rgb(61, 219, 217)).bold()
+                Text.gradient(String(repeating: "╱", count: 28),
+                              from: .rgb(124, 92, 255), to: .rgb(36, 35, 48))
+                Text.gradient("▶▶▶▶▶▶▶▶▶▶", through: [
+                    .rgb(255, 122, 198), .rgb(124, 92, 255), .rgb(61, 219, 217),
+                ])
+            }
         case .forEach:
             HStack {
                 ForEachWithID(Array(["red", "yellow", "green", "cyan", "magenta"]), id: \.self) { name in

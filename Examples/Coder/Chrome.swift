@@ -116,17 +116,17 @@ enum KeyHint {
 
 /// The run of `╱` that fills space beside the wordmark and dialog titles.
 ///
-/// GAP LEDGER — G2. In Crush this run carries a horizontal color ramp,
-/// which is most of why the header reads as designed rather than drawn.
-/// TerminalUI has no color blending, so this is a flat fill for now. The
-/// framework fix is `Color` blending in Oklab plus a `Text.gradient`
-/// helper producing one span per grapheme.
+/// The ramp is what makes this read as designed rather than drawn: a flat
+/// fill of the same glyph looks like padding, while a sweep from the brand
+/// colour down into the background reads as a deliberate edge. It fades
+/// *away* from the wordmark so the eye is pulled back toward the name.
 enum DiagonalField {
     static func spans(width: Int, theme: CoderTheme) -> [TextSpan] {
         guard width > 0 else { return [] }
-        return [TextSpan(
+        return Text.gradient(
             String(repeating: Glyph.diagonal, count: width),
-            foreground: theme.primaryDim
-        )]
+            from: theme.primary,
+            to: theme.bgOverlay
+        ).spans
     }
 }

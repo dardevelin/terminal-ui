@@ -224,3 +224,57 @@ private func ansi256ToNamed(_ n: UInt8) -> NamedColor {
     }
     return best
 }
+
+// MARK: - Nominal resolution (palette slot → sRGB)
+
+extension InkColor {
+    /// The sRGB triple this color *nominally* stands for, or `nil` when it
+    /// has none.
+    ///
+    /// "Nominal" is load-bearing. `.named` slots and the first sixteen
+    /// `.ansi256` indices are user-themable — what the terminal actually
+    /// paints depends on the emulator's palette, and these values are
+    /// xterm's defaults standing in for it. `.default` has no answer at all,
+    /// because it means "whatever the terminal uses when no color is set".
+    ///
+    /// Exists so callers that need to do arithmetic on color — blending a
+    /// ramp, deriving a subtler shade — have a defined starting point. Those
+    /// callers necessarily leave the user's palette behind: the result is an
+    /// exact triple, not a slot the terminal gets to reinterpret.
+    ///
+    /// The tables are the same ones `rgbToAnsi256` and `ansi256ToNamed`
+    /// search in the other direction, so the two cannot disagree.
+    public var nominalRGB: (red: UInt8, green: UInt8, blue: UInt8)? {
+        switch self {
+        case .default:
+            return nil
+        case .rgb(let r, let g, let b):
+            return (r, g, b)
+        case .named(let name):
+            guard let entry = namedColorRGB.first(where: { $0.0 == name }) else { return nil }
+            return (UInt8(entry.1), UInt8(entry.2), UInt8(entry.3))
+        case .ansi256(let index):
+            return ansi256ToRGB(index)
+        }
+    }
+}
+
+/// Forward mapping for the 256-color palette, mirroring the layout
+/// `rgbToAnsi256` searches: 0-15 the named slots, 16-231 a 6×6×6 cube,
+/// 232-255 a 24-step grayscale ramp (xterm ctlseqs, "256-color support").
+private func ansi256ToRGB(_ index: UInt8) -> (UInt8, UInt8, UInt8) {
+    let n = Int(index)
+    if n < 16 {
+        let entry = namedColorRGB[n]
+        return (UInt8(entry.1), UInt8(entry.2), UInt8(entry.3))
+    }
+    if n < 232 {
+        let offset = n - 16
+        return (UInt8(cubeSteps[offset / 36]),
+                UInt8(cubeSteps[(offset / 6) % 6]),
+                UInt8(cubeSteps[offset % 6]))
+    }
+    // Grayscale ramp: each step is 8 + i*10, matching rgbToAnsi256's search.
+    let level = UInt8(8 + (n - 232) * 10)
+    return (level, level, level)
+}

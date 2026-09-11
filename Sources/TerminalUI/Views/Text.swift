@@ -238,3 +238,54 @@ public struct Text: TerminalView {
 
     public var body: Never { fatalError() }
 }
+
+// MARK: - Gradients
+
+extension Text {
+
+    /// `text` with a colour ramp swept across it, one step per character.
+    ///
+    /// This is the device most terminal UIs use for identity: a wordmark, the
+    /// run of `╱` filling a header, a row of progress triangles. It costs one
+    /// span per character, which is why it belongs on short runs — a heading,
+    /// not a paragraph.
+    ///
+    /// Stepping is per **character**, not per cell. A `Character` in Swift is
+    /// a grapheme cluster, so an emoji or a combining sequence takes one step
+    /// however many cells it occupies. That matches how the eye reads a
+    /// gradient across glyphs, and it keeps the ramp aligned with the text
+    /// rather than with the grid.
+    ///
+    /// Blending happens in Oklab and produces exact colours, so a gradient
+    /// leaves the user's palette behind — see ``Color/blended(with:amount:)``.
+    ///
+    /// ```swift
+    /// Text.gradient("TERMINAL", from: .rgb(124, 92, 255), to: .rgb(61, 219, 217))
+    ///     .bold()
+    /// ```
+    public static func gradient(
+        _ text: String,
+        from start: Color,
+        to end: Color
+    ) -> Text {
+        gradient(text, through: [start, end])
+    }
+
+    /// `text` swept through every stop in order, one step per character.
+    ///
+    /// Use for ramps that need a waypoint — a three-stop sweep whose middle
+    /// colour carries the brand, say. Fewer than two stops paints the run in
+    /// a single colour, and an empty stop list leaves it unstyled.
+    public static func gradient(_ text: String, through stops: [Color]) -> Text {
+        let characters = Array(text)
+        guard !characters.isEmpty else { return Text("") }
+        guard stops.count > 1 else {
+            guard let only = stops.first else { return Text(text) }
+            return Text(TextSpan(text, foreground: only))
+        }
+        let ramp = Color.ramp(through: stops, count: characters.count)
+        return Text(spans: zip(characters, ramp).map { character, color in
+            TextSpan(String(character), foreground: color)
+        })
+    }
+}

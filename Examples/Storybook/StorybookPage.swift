@@ -38,7 +38,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Layout
     case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView, alignment
     // Primitives
-    case text, forEach, subCell, timeline, asyncTask, capabilities
+    case text, gradient, forEach, subCell, timeline, asyncTask, capabilities
     // Input
     case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
@@ -172,6 +172,18 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Text("bold").bold()
                     Text("colored").foreground(.green)
                     Text("both").bold().foreground(.red)
+                }
+                """)
+        case .gradient: return PageInfo(id: self, category: .primitives, name: "Text.gradient",
+            summary: "Sweep a colour ramp across a run of text, one step per character. Blending happens in Oklab so the middle of the ramp stays colourful instead of going grey. Costs one span per character — for wordmarks and rules, not paragraphs.",
+            code: """
+                VStack {
+                    Text.gradient("TERMINAL UI", from: .rgb(124, 92, 255), to: .rgb(61, 219, 217)).bold()
+                    Text.gradient(String(repeating: "╱", count: 28),
+                                  from: .rgb(124, 92, 255), to: .rgb(36, 35, 48))
+                    Text.gradient("▶▶▶▶▶▶▶▶▶▶", through: [
+                        .rgb(255, 122, 198), .rgb(124, 92, 255), .rgb(61, 219, 217),
+                    ])
                 }
                 """)
         case .forEach: return PageInfo(id: self, category: .primitives, name: "ForEach",

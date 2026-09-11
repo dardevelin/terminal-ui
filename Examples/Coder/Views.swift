@@ -3,10 +3,6 @@ import TerminalUI
 // MARK: - Header
 
 /// Top band: wordmark, diagonal field, and session metadata.
-///
-/// GAP LEDGER — the wordmark is flat text. Crush ramps a gradient across
-/// its letterforms and gives the diagonal field a second ramp; both need
-/// G2 (color blending). Structure first, flourish later.
 struct Header: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
@@ -20,10 +16,12 @@ struct Header: TerminalView {
     }
 
     private func line(width: Int) -> [TextSpan] {
-        let brand: [TextSpan] = [
-            TextSpan(" CODER", foreground: theme.primaryLift, bold: true),
-            TextSpan(" "),
-        ]
+        // The wordmark is the one place the two brand colours meet, which is
+        // what ties the header to the rails and the pills further down.
+        let brand: [TextSpan] = [TextSpan(" ")]
+            + Text.gradient("CODER", from: theme.primaryLift, to: theme.secondary)
+                .spans.map { $0.bolded() }
+            + [TextSpan(" ")]
         let meta = metadata()
         let brandWidth = brand.reduce(0) { $0 + $1.text.count }
         let metaWidth = meta.reduce(0) { $0 + $1.text.count }
