@@ -40,7 +40,7 @@ struct SectionRule: TerminalView {
         theme: CoderTheme
     ) -> [TextSpan] {
         var spans: [TextSpan] = [
-            TextSpan(title, foreground: theme.fgSubtle, bold: true),
+            TextSpan(title, foreground: theme.foregroundSubtle, bold: true),
             TextSpan(" "),
         ]
         let trailingWidth = trailing.isEmpty ? 0 : trailing.count + 1
@@ -53,7 +53,7 @@ struct SectionRule: TerminalView {
         }
         if !trailing.isEmpty {
             spans.append(TextSpan(" "))
-            spans.append(TextSpan(trailing, foreground: theme.fgMostSubtle))
+            spans.append(TextSpan(trailing, foreground: theme.foregroundFaint))
         }
         return spans
     }
@@ -80,9 +80,9 @@ struct StatusRow: TerminalView {
         Text(spans: [
             TextSpan(icon, foreground: iconColor),
             TextSpan(" "),
-            TextSpan(name, foreground: theme.fgSubtle),
+            TextSpan(name, foreground: theme.foregroundSubtle),
             TextSpan("  "),
-            TextSpan(detail, foreground: theme.fgMostSubtle),
+            TextSpan(detail, foreground: theme.foregroundFaint),
         ])
         .wrap(.truncate(.tail))
     }
@@ -93,7 +93,7 @@ extension Resource.Health {
         switch self {
         case .online: (Glyph.dot, theme.success)
         case .busy: (Glyph.dot, theme.warning)
-        case .offline: (Glyph.dot, theme.fgMostSubtle)
+        case .offline: (Glyph.dot, theme.foregroundFaint)
         case .failed: (Glyph.cross, theme.error)
         }
     }
@@ -106,8 +106,8 @@ extension Resource.Health {
 enum KeyHint {
     static func spans(_ key: String, _ action: String, theme: CoderTheme) -> [TextSpan] {
         [
-            TextSpan(key, foreground: theme.fgSubtle, bold: true),
-            TextSpan(" \(action)", foreground: theme.fgMostSubtle),
+            TextSpan(key, foreground: theme.foregroundSubtle, bold: true),
+            TextSpan(" \(action)", foreground: theme.foregroundFaint),
         ]
     }
 }
@@ -126,7 +126,7 @@ enum DiagonalField {
         return Text.gradient(
             String(repeating: Glyph.diagonal, count: width),
             from: theme.primary,
-            to: theme.bgOverlay
+            to: theme.backgroundOverlay
         ).spans
     }
 }
