@@ -230,6 +230,109 @@ import Testing
         #expect(theme.foregroundSubtle == .default)
     }
 
+    // MARK: - Overrides beat derivation
+
+    /// The classic Swift trap this could have fallen into: a protocol
+    /// extension member that is *not* a protocol requirement dispatches
+    /// statically, and a conforming type's own version would be ignored
+    /// wherever the value is held as `any Theme` — which is exactly how the
+    /// environment holds it. Every role is a declared requirement precisely
+    /// so this cannot happen, and this pins it through the existential.
+    @Test func aStatedRoleBeatsTheDerivedDefaultThroughTheExistential() {
+        struct Stated: Theme {
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+            // Would otherwise be mixed from the two above.
+            var foregroundMuted: Color = .rgb(1, 2, 3)
+        }
+        let concrete = Stated()
+        let erased: any Theme = Stated()
+        #expect(concrete.foregroundMuted == .rgb(1, 2, 3))
+        #expect(erased.foregroundMuted == .rgb(1, 2, 3),
+                "the override was lost through `any Theme` — static dispatch")
+    }
+
+    /// Overriding a role the ramps are measured *from* moves everything below
+    /// it. This is the property that makes stating a handful of colours worth
+    /// doing at all.
+    @Test func overridingAGroundColourMovesTheWholeRamp() {
+        struct Light: Theme {
+            var foreground: Color = .rgb(20, 20, 20)
+            var background: Color = .rgb(250, 250, 250)
+        }
+        struct Dark: Theme {
+            var foreground: Color = .rgb(240, 240, 240)
+            var background: Color = .rgb(20, 20, 20)
+        }
+        // On a light ground the muted step is lighter than the text; on a
+        // dark one it is darker. Same role, opposite direction.
+        #expect(Light().foregroundMuted.nominalRGB!.red > Light().foreground.nominalRGB!.red)
+        #expect(Dark().foregroundMuted.nominalRGB!.red < Dark().foreground.nominalRGB!.red)
+    }
+
+    // MARK: - Derivation can be switched off
+
+    /// With derivation off the roles still all answer — they borrow the
+    /// nearest stated colour instead of computing one. That is the behaviour
+    /// the defaults had before any colour science existed.
+    @Test func derivationOffBorrowsInsteadOfMixing() {
+        struct Hand: Theme {
+            var derivation: ThemeDerivation = .off
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+        }
+        let theme = Hand()
+        #expect(theme.foregroundSubtle == theme.foreground)
+        #expect(theme.foregroundFaint == theme.foregroundMuted)
+        #expect(theme.backgroundRaised == theme.background)
+        #expect(theme.errorSubtle == theme.error)
+    }
+
+    /// The switch and explicit overrides are orthogonal: turning derivation
+    /// off must not stop a stated role from being used.
+    @Test func derivationOffStillRespectsStatedRoles() {
+        struct Hand: Theme {
+            var derivation: ThemeDerivation = .off
+            var foreground: Color = .rgb(236, 235, 240)
+            var foregroundFaint: Color = .rgb(4, 5, 6)
+        }
+        #expect(Hand().foregroundFaint == .rgb(4, 5, 6))
+    }
+
+    /// With derivation on, the same theme mixes rather than borrowing — the
+    /// point being that the switch is what changed, not the palette.
+    @Test func theSwitchIsWhatChangesNotThePalette() {
+        struct Auto: Theme {
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+        }
+        struct Off: Theme {
+            var derivation: ThemeDerivation = .off
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+        }
+        #expect(Auto().foregroundSubtle != Auto().foreground)
+        #expect(Off().foregroundSubtle == Off().foreground)
+    }
+
+    @Test func derivationDefaultsToAutomatic() {
+        struct Minimal: Theme {}
+        #expect(Minimal().derivation == .automatic)
+        #expect(DefaultTheme().derivation == .automatic)
+    }
+
+    /// A themed component must honour the override, not just the theme value
+    /// in isolation — the whole chain from conformance to rendered cell.
+    @Test func aStatedRoleReachesTheRenderedCells() {
+        struct Stated: Theme {
+            var foreground: Color = .rgb(236, 235, 240)
+            var background: Color = .rgb(27, 26, 36)
+            var foregroundMuted: Color = .rgb(1, 2, 3)
+        }
+        let buffer = render(Button("Save") {}.disabled(), width: 12, height: 1, theme: Stated())
+        #expect(colors(buffer).contains(.rgb(1, 2, 3)))
+    }
+
     /// An empty conformance must still be a complete, usable theme — that is
     /// what makes the roles additive rather than a migration.
     @Test func anEmptyConformanceIsAWholeTheme() {

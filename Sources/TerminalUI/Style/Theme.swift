@@ -49,6 +49,12 @@
 /// about density should state the ramps explicitly.
 public protocol Theme: Sendable {
 
+    // MARK: Derivation
+
+    /// Whether unstated roles are mixed from the ones they sit against, or
+    /// simply borrow them. See ``ThemeDerivation``.
+    var derivation: ThemeDerivation { get }
+
     // MARK: Brand
 
     /// Highlight color for the focused or selected element — cursors,
@@ -130,6 +136,38 @@ public protocol Theme: Sendable {
     var destructive: Color { get }
 }
 
+/// Whether a theme fills in the roles it did not state by mixing colour, or
+/// by borrowing it.
+///
+/// Derivation is a convenience, not a policy. A palette chosen by hand, or
+/// pinned to a brand specification, has values that are the values — mixing
+/// a "quieter" step from them produces a colour nobody signed off on. Such a
+/// theme turns it off and states what it means.
+///
+/// Turning it off never *removes* a role: every one still answers, just by
+/// borrowing the nearest stated colour rather than computing a new one. A
+/// theme with derivation off and no explicit `foregroundFaint` gets its
+/// `foregroundMuted`, which is exactly what the defaults did before any
+/// colour science existed.
+///
+/// Orthogonal to overriding. A role a theme states explicitly always wins,
+/// with derivation on or off — the switch only decides how the *unstated*
+/// ones are filled in.
+///
+/// ```swift
+/// struct BrandTheme: Theme {
+///     var derivation: ThemeDerivation = .off
+///     var foreground: Color = .rgb(0x1D, 0x1D, 0x1F)
+///     var foregroundMuted: Color = .rgb(0x86, 0x86, 0x8B)   // from the spec
+/// }
+/// ```
+public enum ThemeDerivation: Sendable, Equatable {
+    /// Unstated roles are mixed toward the ground they sit against, in Oklab.
+    case automatic
+    /// Unstated roles borrow the nearest stated colour. No colour arithmetic.
+    case off
+}
+
 /// How far a derived step travels toward the ground it sits on.
 ///
 /// Every amount is deliberately below one half. When an endpoint cannot be
@@ -167,24 +205,36 @@ private enum RampStep {
 /// defaults has none. Those cases name a literal instead, so the stock palette
 /// keeps the contrast it always had rather than collapsing to one colour.
 extension Theme {
+    /// `base` mixed toward `ground`, or `base` untouched when the theme has
+    /// turned derivation off. Every derived role goes through here, so the
+    /// switch cannot end up honoured in some ramps and ignored in others.
+    func derived(_ base: Color, toward ground: Color, _ amount: Double) -> Color {
+        switch derivation {
+        case .automatic: base.blended(with: ground, amount: amount)
+        case .off: base
+        }
+    }
+
+    public var derivation: ThemeDerivation { .automatic }
+
     public var accent: Color { .cyan }
     public var primary: Color { accent }
     public var secondary: Color { accent }
     public var onPrimary: Color { .brightWhite }
 
     public var foregroundEmphasis: Color {
-        foreground.nominalRGB == nil ? .white : foreground.blended(with: .brightWhite, amount: RampStep.muted)
+        foreground.nominalRGB == nil ? .white : derived(foreground, toward: .brightWhite, RampStep.muted)
     }
     public var foreground: Color { .default }
-    public var foregroundSubtle: Color { foreground.blended(with: background, amount: RampStep.subtle) }
+    public var foregroundSubtle: Color { derived(foreground, toward: background, RampStep.subtle) }
     public var foregroundMuted: Color {
-        foreground.nominalRGB == nil ? .gray : foreground.blended(with: background, amount: RampStep.muted)
+        foreground.nominalRGB == nil ? .gray : derived(foreground, toward: background, RampStep.muted)
     }
-    public var foregroundFaint: Color { foregroundMuted.blended(with: background, amount: RampStep.faint) }
+    public var foregroundFaint: Color { derived(foregroundMuted, toward: background, RampStep.faint) }
 
     public var background: Color { .default }
-    public var backgroundRaised: Color { background.blended(with: foreground, amount: RampStep.raised) }
-    public var backgroundOverlay: Color { background.blended(with: foreground, amount: RampStep.overlay) }
+    public var backgroundRaised: Color { derived(background, toward: foreground, RampStep.raised) }
+    public var backgroundOverlay: Color { derived(background, toward: foreground, RampStep.overlay) }
     // Blue rather than a derived step: this is the selection fill the
     // components already drew, and a ramp derived from a `.default`
     // background would resolve to no highlight at all.
@@ -196,13 +246,13 @@ extension Theme {
     public var border: BorderStyle { .rounded }
 
     public var success: Color { .green }
-    public var successSubtle: Color { success.blended(with: background, amount: RampStep.statusSubtle) }
+    public var successSubtle: Color { derived(success, toward: background, RampStep.statusSubtle) }
     public var warning: Color { .yellow }
-    public var warningSubtle: Color { warning.blended(with: background, amount: RampStep.statusSubtle) }
+    public var warningSubtle: Color { derived(warning, toward: background, RampStep.statusSubtle) }
     public var error: Color { .red }
-    public var errorSubtle: Color { error.blended(with: background, amount: RampStep.statusSubtle) }
+    public var errorSubtle: Color { derived(error, toward: background, RampStep.statusSubtle) }
     public var info: Color { .blue }
-    public var infoSubtle: Color { info.blended(with: background, amount: RampStep.statusSubtle) }
+    public var infoSubtle: Color { derived(info, toward: background, RampStep.statusSubtle) }
     public var attention: Color { warning }
     public var busy: Color { accent }
     public var destructive: Color { error }
@@ -222,12 +272,22 @@ extension Theme {
 /// MyApp().environment(\.theme, theme)
 /// ```
 ///
+/// Because every role is stored, this theme never derives anything — each
+/// value is already stated. Set ``derivation`` to ``ThemeDerivation/off`` on
+/// a theme that fills in only some roles and wants the rest borrowed rather
+/// than mixed.
+///
 /// The values deliberately reproduce the literals the components used before
 /// they read the theme at all, so adopting it changes nothing until a theme
 /// says otherwise. Backgrounds default to ``Color/default`` — the terminal's
 /// own — because a framework that paints its own ground over every app is a
 /// worse neighbour than one that inherits.
 public struct DefaultTheme: Theme {
+    /// Stored, so the stock theme can be handed to a brand palette with the
+    /// derivation matrix switched off in the same copy-and-mutate step as any
+    /// other role.
+    public var derivation: ThemeDerivation = .automatic
+
     public var accent: Color = .cyan
     public var primary: Color = .cyan
     public var secondary: Color = .blue
