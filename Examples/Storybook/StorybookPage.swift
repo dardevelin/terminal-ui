@@ -515,7 +515,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .theme: return PageInfo(id: self, category: .modifiers, name: ".environment(\\.theme)",
-            summary: "Components ask the theme for semantic roles — accent, foregroundMuted, error — instead of literal colors, so one swap restyles the lot. Roles come in ramps (five foreground weights, four background steps); a theme states only what it changes and unstated steps follow the ones above them.",
+            summary: "Components ask the theme for semantic roles — accent, foregroundMuted, error — instead of literal colors, so one swap restyles the lot. A theme states a handful and the rest are mixed toward the ground they sit on; a role stated explicitly always wins, and derivation: .off borrows instead of mixing for palettes pinned to a spec.",
             code: """
                 struct Loud: Theme {
                     var accent: Color = .magenta
