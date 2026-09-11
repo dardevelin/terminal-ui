@@ -57,9 +57,13 @@ tools/scripts/kanban.py board
 tools/scripts/kanban.py lessons
 
 # Linux verification (image tag MUST be swift:6.2 — Package.swift requires it;
-# swift:6.0 rejects the manifest)
-docker run --rm -v $(pwd):/app -w /app swift:6.2 swift build
-docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test
+# swift:6.0 rejects the manifest). --scratch-path is NOT optional: without it
+# the container writes Linux artifacts into the same .build/ the host uses, and
+# the next command in either direction dies on a module-cache collision
+# ("module 'SwiftShims' is defined in both …", "missing required module
+# 'SwiftOverlayShims'"). Same reason linux_harness.sh uses .build-linux/.
+docker run --rm -v $(pwd):/app -w /app swift:6.2 swift build --scratch-path .build-linux
+docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test  --scratch-path .build-linux
 
 # PTY-driven visual harness against a Linux build — same coverage as macOS
 tools/scripts/linux_harness.sh                      # walk all Storybook pages
