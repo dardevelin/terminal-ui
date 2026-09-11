@@ -139,6 +139,7 @@ public struct TextInput: TerminalView {
     /// has run), the rendered value is dimmed via `.foreground(.gray)`
     /// — the visual half of `.disabled()`.
     @TerminalEnvironment(\.isEnabled) var isEnabled
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Insertion index in `value` (`0...value.count`). Internal
     /// `@TerminalState` so it survives re-renders without leaking
@@ -283,10 +284,10 @@ public struct TextInput: TerminalView {
             // intrinsic height (driven by Text spans' newline count)
             // grow naturally — no fixed-height frame.
             .frame(height: Self.shouldUseFixedHeight(axis: axis, mode: mode) ? 1 : nil)
-            .foreground(isEnabled ? (accent ?? .default) : .gray)
+            .foreground(isEnabled ? (accent ?? theme.foreground) : theme.foregroundMuted)
 
             if let message = validation?.message {
-                Text(message).foreground(accent ?? .gray)
+                Text(message).foreground(accent ?? theme.foregroundMuted)
             }
         }
     }
@@ -486,8 +487,8 @@ public struct TextInput: TerminalView {
         guard let validation else { return nil }
         switch validation.severity {
         case .ok: return nil
-        case .warning: return .yellow
-        case .error: return .red
+        case .warning: return theme.warning
+        case .error: return theme.error
         }
     }
 

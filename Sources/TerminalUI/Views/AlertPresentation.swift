@@ -99,8 +99,8 @@ struct AlertPresentation: TerminalView {
 
     private func color(for role: ButtonRole) -> Color {
         switch role {
-        case .destructive: return theme.error
-        case .cancel, .default: return .default
+        case .destructive: return theme.destructive
+        case .cancel, .default: return theme.foreground
         }
     }
 
@@ -115,7 +115,7 @@ struct AlertPresentation: TerminalView {
         return VStack {
             Text(title).bold()
             if let message {
-                Text(message).foreground(theme.muted)
+                Text(message).foreground(theme.foregroundMuted)
             }
             actionsView
         }

@@ -101,6 +101,8 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
         isEnabled && scale.isValid && !scale.isDegenerate
     }
 
+    @TerminalEnvironment(\.theme) private var theme
+
     public var body: some TerminalView {
         #if DEBUG
         if !scale.isValid {
@@ -128,7 +130,7 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
                 Text(" \(BoundedValueScale.format(scale.clamp(value.get())))")
             }
         }
-        .foreground(isEnabled && scale.isValid ? .default : .gray)
+        .foreground(isEnabled && scale.isValid ? theme.foreground : theme.foregroundMuted)
         .focusable()
         .onClick { relativeX, _ in
             guard interactive else { return }
@@ -263,6 +265,8 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
 
     private var isInteractive: Bool { isEnabled && boundsAreValid && upper > lower }
 
+    @TerminalEnvironment(\.theme) private var theme
+
     public var body: some TerminalView {
         #if DEBUG
         if !boundsAreValid {
@@ -288,12 +292,12 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
 
         return FormRow(label: label) {
             HStack {
-                Text(SliderGlyph.decrement).foreground(atLower ? .gray : .default)
+                Text(SliderGlyph.decrement).foreground(atLower ? theme.foregroundMuted : theme.foreground)
                 Text(" \(current) ")
-                Text(SliderGlyph.increment).foreground(atUpper ? .gray : .default)
+                Text(SliderGlyph.increment).foreground(atUpper ? theme.foregroundMuted : theme.foreground)
             }
         }
-        .foreground(isEnabled && boundsAreValid ? .default : .gray)
+        .foreground(isEnabled && boundsAreValid ? theme.foreground : theme.foregroundMuted)
         .focusable()
         .onClick { relativeX, _ in
             guard interactive else { return }
@@ -373,6 +377,8 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
         self.scale = BoundedValueScale(bounds: bounds)
         self.label = label
     }
+    @TerminalEnvironment(\.theme) private var theme
+
 
     public var body: some TerminalView {
         let fraction = scale.fraction(of: value)
@@ -385,7 +391,7 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
                 Text(" \(BoundedValueScale.format(scale.clamp(value)))")
             }
         }
-        .foreground(isEnabled ? .default : .gray)
+        .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
         // Reports state the app owns, so there is nothing here to operate —
         // but it is still a row, and a cursor that stopped above it would
         // strand whatever a form puts below. Arrows visit it; Tab does not.

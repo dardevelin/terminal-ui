@@ -36,6 +36,7 @@ public struct Button: TerminalView {
     /// is non-interactive. Pairs with the behavioral half of
     /// `.disabled()` (handler gating + focus skip).
     @TerminalEnvironment(\.isEnabled) var isEnabled
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Creates a button.
     ///
@@ -49,7 +50,7 @@ public struct Button: TerminalView {
 
     public var body: some TerminalView {
         Text("[ \(label) ]")
-            .foreground(isEnabled ? .default : .gray)
+            .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
             .focusable()
             .onKeyPress { event in
                 // `.activate` is synthesized by FocusEngine when the
