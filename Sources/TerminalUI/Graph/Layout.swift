@@ -300,11 +300,16 @@ public enum Layout {
         case .padding(let amount):
             return rect.inset(by: amount)
 
-        case .border:
-            // Border occupies the outer ring; child gets the rect
-            // shrunk by 1 on every side. Style-agnostic — every
-            // BorderStyle uses the same 1-cell ring.
-            return rect.inset(by: 1)
+        case .border(_, _, let edges):
+            // Each drawn edge occupies one cell of the outer rect, so the
+            // child shrinks only on the sides that are actually drawn — a
+            // leading-only rail costs one column and no rows. Style-agnostic:
+            // every BorderStyle draws a 1-cell line.
+            return Rect(
+                x: rect.x + (edges.contains(.leading) ? 1 : 0),
+                y: rect.y + (edges.contains(.top) ? 1 : 0),
+                width: max(0, rect.width - edges.horizontalInset),
+                height: max(0, rect.height - edges.verticalInset))
 
         case .frame(let width, let height, let minWidth, let maxWidth, let minHeight, let maxHeight, _):
             var clamped = rect

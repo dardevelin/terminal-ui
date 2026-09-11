@@ -127,13 +127,6 @@ struct Sidebar: TerminalView {
 
 /// The chat log. Each entry is framed by a left accent bar whose color
 /// encodes author and state — the workhorse device of this whole look.
-///
-/// GAP LEDGER — G4. TerminalUI's `.border(_:)` draws all four sides and
-/// takes its color from the inherited foreground, so a one-column colored
-/// rail is not expressible. Every row here fakes it by prefixing a glyph
-/// inside an `HStack`, which means the bar cannot span a wrapped message
-/// body — it marks only the first line. The framework fix is
-/// `.border(_:color:edges:)`.
 struct Transcript: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
@@ -161,21 +154,26 @@ struct MessageRow: TerminalView {
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        HStack(spacing: 1) {
-            Text(Glyph.barThick)
-                .foreground(railColor)
-            VStack(spacing: 0) {
-                Text(spans: [
-                    TextSpan(authorLabel, foreground: railColor, bold: true),
-                    TextSpan("  \(message.timestamp)", foreground: theme.fgMostSubtle),
-                ])
-                // GAP LEDGER — G5. `body` is markdown in every real agent
-                // TUI. Rendered as plain text until the framework has a
-                // markdown view.
-                Text(message.body)
-                    .foreground(theme.fgSubtle)
-            }
+        // The rail is a real border edge, so it runs the full height of the
+        // entry — including the rows a long body wraps onto.
+        VStack(spacing: 0) {
+            Text(spans: [
+                TextSpan(authorLabel, foreground: railColor, bold: true),
+                TextSpan("  \(message.timestamp)", foreground: theme.fgMostSubtle),
+            ])
+            // GAP LEDGER — G5. `body` is markdown in every real agent
+            // TUI. Rendered as plain text until the framework has a
+            // markdown view.
+            Text(message.body)
+                .foreground(theme.fgSubtle)
         }
+        // GAP LEDGER — G3. Crush sets a single column of breathing room
+        // between the rail and the text (BorderLeft + PaddingLeft(1)).
+        // `.padding(1)` is uniform, so it would also open a blank row above
+        // and below every entry. A gap on the first line only — from padding
+        // the spans — would be worse, since the wrapped continuation rows
+        // would not get it. Flush until edge-aware padding lands.
+        .border(.heavy, color: railColor, edges: .leading)
     }
 
     private var authorLabel: String {
@@ -200,21 +198,21 @@ struct ToolCard: TerminalView {
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        HStack(spacing: 1) {
-            Text(Glyph.barThin)
-                .foreground(theme.separator)
-            VStack(spacing: 0) {
-                Text(spans: [
-                    TextSpan(badge.glyph, foreground: badge.color),
-                    TextSpan(" \(call.name)", foreground: theme.keyword, bold: true),
-                    TextSpan("  \(call.summary)", foreground: theme.fgMoreSubtle),
-                ])
-                if let output = call.output {
-                    Text(output)
-                        .foreground(theme.fgMostSubtle)
-                }
+        // Quiet rail: a tool call is subordinate to the message that caused
+        // it, so the frame is thin and the separator colour rather than an
+        // author accent.
+        VStack(spacing: 0) {
+            Text(spans: [
+                TextSpan(badge.glyph, foreground: badge.color),
+                TextSpan(" \(call.name)", foreground: theme.keyword, bold: true),
+                TextSpan("  \(call.summary)", foreground: theme.fgMoreSubtle),
+            ])
+            if let output = call.output {
+                Text(output)
+                    .foreground(theme.fgMostSubtle)
             }
         }
+        .border(.rounded, color: theme.separator, edges: .leading)
     }
 
     private var badge: (glyph: String, color: Color) {
@@ -244,10 +242,12 @@ struct Prompt: TerminalView {
             TodoPill(state: state, theme: theme)
         }
         .padding(1)
-        // GAP LEDGER — G4 again. A focused composer should read as a
-        // tinted frame around dim content; today the border inherits the
-        // foreground, so an explicit `.foreground` here would tint the
-        // draft text too. Left unbordered rather than mis-colored.
+        // Focus reads as a brightened top rule: the frame states focus
+        // without tinting the draft text inside it.
+        .border(
+            .heavy,
+            color: state.focus == .prompt ? theme.borderActive : theme.borderIdle,
+            edges: .top)
         .background(theme.bgRaised)
     }
 }

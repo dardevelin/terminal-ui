@@ -597,8 +597,8 @@ public enum GraphRenderer {
             return inner()
         case .padding(let amount):
             return inner().map { $0 + amount * 2 }
-        case .border:
-            return inner().map { $0 + 2 }
+        case .border(_, _, let edges):
+            return inner().map { $0 + (horizontal ? edges.horizontalInset : edges.verticalInset) }
         case .flexible(let axes, _):
             // Asked for the space rather than a size, so it is not fixed on
             // that axis — but may still be fixed on the other one.
@@ -1316,11 +1316,11 @@ public enum GraphRenderer {
             ctx.rect = child.rect
             render(child, into: &buffer, context: ctx)
 
-        case .border(let style):
-            // Border ring draws at the modifier node's OUTER rect
+        case .border(let style, let color, let edges):
+            // Border edges draw at the modifier node's OUTER rect
             // (`ctx.rect`); the child draws inside the inset rect
             // that Layout already stamped on `child.rect`.
-            renderBorder(style, into: &buffer, context: ctx)
+            renderBorder(style, color: color, edges: edges, into: &buffer, context: ctx)
             ctx.rect = child.rect
             render(child, into: &buffer, context: ctx)
 
@@ -1533,25 +1533,66 @@ public enum GraphRenderer {
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
     }
 
-    static func renderBorder(_ style: BorderStyle, into buffer: inout CellBuffer, context: RenderContext) {
+    static func renderBorder(_ style: BorderStyle, color: Color?, edges: BorderEdges,
+                             into buffer: inout CellBuffer, context: RenderContext) {
         let r = context.rect
-        guard r.width >= 2, r.height >= 2 else { return }
+        guard !edges.isEmpty, r.width >= 1, r.height >= 1 else { return }
+        // A full ring needs room for two opposite edges plus something between;
+        // a single edge only needs the one cell it occupies. Guarding on 2x2
+        // regardless would silently drop every rail in a one-column frame.
+        guard r.width >= edges.horizontalInset, r.height >= edges.verticalInset else { return }
+
+        // A nil colour inherits the surrounding foreground, which is what
+        // `.border()` has always done. A supplied colour states the frame
+        // independently of its content — the whole point of the parameter.
+        var glyphStyle = context.style
+        if let color { glyphStyle.foreground = color }
 
         let rx = r.x, ry = r.y, rw = r.width, rh = r.height
+        let maxX = rx + rw - 1, maxY = ry + rh - 1
 
-        buffer[rx, ry] = Cell(character: style.topLeft, style: context.style)
-        buffer[rx + rw - 1, ry] = Cell(character: style.topRight, style: context.style)
-        buffer[rx, ry + rh - 1] = Cell(character: style.bottomLeft, style: context.style)
-        buffer[rx + rw - 1, ry + rh - 1] = Cell(character: style.bottomRight, style: context.style)
+        let hasTop = edges.contains(.top), hasBottom = edges.contains(.bottom)
+        let hasLeading = edges.contains(.leading), hasTrailing = edges.contains(.trailing)
 
-        for x in (rx + 1)..<(rx + rw - 1) {
-            buffer[x, ry] = Cell(character: style.horizontal, style: context.style)
-            buffer[x, ry + rh - 1] = Cell(character: style.horizontal, style: context.style)
+        // Corners belong to whichever edges meet there. With both present the
+        // corner glyph joins them; with one, that edge simply runs through, so
+        // a lone `.top` is an unbroken rule rather than a rule with corner
+        // pieces stuck on its ends.
+        func corner(_ both: Character, vertical: Bool, horizontal: Bool) -> Character? {
+            switch (vertical, horizontal) {
+            case (true, true): both
+            case (true, false): style.vertical
+            case (false, true): style.horizontal
+            case (false, false): nil
+            }
         }
 
-        for y in (ry + 1)..<(ry + rh - 1) {
-            buffer[rx, y] = Cell(character: style.vertical, style: context.style)
-            buffer[rx + rw - 1, y] = Cell(character: style.vertical, style: context.style)
+        if let glyph = corner(style.topLeft, vertical: hasLeading, horizontal: hasTop) {
+            buffer[rx, ry] = Cell(character: glyph, style: glyphStyle)
+        }
+        if let glyph = corner(style.topRight, vertical: hasTrailing, horizontal: hasTop) {
+            buffer[maxX, ry] = Cell(character: glyph, style: glyphStyle)
+        }
+        if let glyph = corner(style.bottomLeft, vertical: hasLeading, horizontal: hasBottom) {
+            buffer[rx, maxY] = Cell(character: glyph, style: glyphStyle)
+        }
+        if let glyph = corner(style.bottomRight, vertical: hasTrailing, horizontal: hasBottom) {
+            buffer[maxX, maxY] = Cell(character: glyph, style: glyphStyle)
+        }
+
+        // Runs between the corners. The ranges are empty when the rect is only
+        // as wide or tall as its own corners, so no bounds guard is needed.
+        if hasTop || hasBottom {
+            for x in (rx + 1)..<max(rx + 1, maxX) {
+                if hasTop { buffer[x, ry] = Cell(character: style.horizontal, style: glyphStyle) }
+                if hasBottom { buffer[x, maxY] = Cell(character: style.horizontal, style: glyphStyle) }
+            }
+        }
+        if hasLeading || hasTrailing {
+            for y in (ry + 1)..<max(ry + 1, maxY) {
+                if hasLeading { buffer[rx, y] = Cell(character: style.vertical, style: glyphStyle) }
+                if hasTrailing { buffer[maxX, y] = Cell(character: style.vertical, style: glyphStyle) }
+            }
         }
     }
 

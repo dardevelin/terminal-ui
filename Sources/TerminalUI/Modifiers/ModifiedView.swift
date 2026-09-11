@@ -61,11 +61,22 @@ public struct PaddingModifier: ViewModifier {
     public let amount: Int
 }
 
-/// Payload of `.border(_:)` — a one-cell box-drawing frame.
+/// Payload of `.border(_:color:edges:)` — a one-cell box-drawing frame.
 public struct BorderModifier: ViewModifier {
     public typealias ModifierType = BorderStyle
     /// Which box-drawing glyph set the frame uses.
     public let style: BorderStyle
+    /// Colour for the frame glyphs. `nil` inherits the surrounding
+    /// foreground, which is the historical behaviour.
+    public let color: Color?
+    /// Which sides are drawn, and therefore which sides inset the content.
+    public let edges: BorderEdges
+
+    public init(style: BorderStyle, color: Color? = nil, edges: BorderEdges = .all) {
+        self.style = style
+        self.color = color
+        self.edges = edges
+    }
 }
 
 /// Payload of `.frame(...)` — fixed or bounded dimensions for the view's
@@ -152,10 +163,29 @@ extension TerminalView {
     }
 
     /// Draw a one-cell box-drawing border around the view (default
-    /// `.rounded`), adding 2 cells to each axis of its footprint. Apply
-    /// `.padding()` inside the border to keep content off the frame.
-    public func border(_ style: BorderStyle = .rounded) -> ModifiedView<Self, BorderModifier> {
-        ModifiedView(content: self, modifier: BorderModifier(style: style))
+    /// `.rounded`), adding one cell per drawn edge to the view's footprint.
+    /// Apply `.padding()` inside the border to keep content off the frame.
+    ///
+    /// - Parameters:
+    ///   - style: the box-drawing glyph set.
+    ///   - color: colour for the frame glyphs. `nil` inherits the surrounding
+    ///     foreground. Pass a colour to state the frame separately from its
+    ///     content — a dim box around bright text, or a focus ring that
+    ///     brightens without tinting what it encloses, neither of which an
+    ///     inherited foreground can express.
+    ///   - edges: which sides to draw. The default is the full ring; a subset
+    ///     insets only the sides it draws, so `.leading` is a one-column rail
+    ///     that costs one column.
+    ///
+    /// ```swift
+    /// Text(body).border(.heavy, color: focused ? .cyan : .gray, edges: .leading)
+    /// ```
+    public func border(
+        _ style: BorderStyle = .rounded,
+        color: Color? = nil,
+        edges: BorderEdges = .all
+    ) -> ModifiedView<Self, BorderModifier> {
+        ModifiedView(content: self, modifier: BorderModifier(style: style, color: color, edges: edges))
     }
 
     /// Fix the view's size in cells on either or both axes; content larger

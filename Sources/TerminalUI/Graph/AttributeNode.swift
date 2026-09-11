@@ -479,9 +479,10 @@ public enum ModifierEffect {
     /// Insets the child's rect by the given cell count on all four sides;
     /// layout stamps the inset rect, render passes it through unchanged.
     case padding(Int)
-    /// Draws a border ring at the node's outer rect and insets the child
-    /// one cell inside it.
-    case border(BorderStyle)
+    /// Draws the requested border edges at the node's outer rect and insets
+    /// the child one cell per drawn edge. A nil colour inherits the
+    /// surrounding foreground.
+    case border(BorderStyle, Color?, BorderEdges)
     /// Clamps the child's rect to the given exact/min/max dimensions and
     /// places smaller content within the frame by `alignment`; `.infinity`
     /// maxima opt the axis into stack flex distribution.

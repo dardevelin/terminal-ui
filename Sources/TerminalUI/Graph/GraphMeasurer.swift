@@ -189,7 +189,7 @@ public enum GraphMeasurer {
 
             var base = measureWidth(child)
             if case .padding(let n) = effect { base += n * 2 }
-            if case .border = effect { base += 2 }
+            if case .border(_, _, let edges) = effect { base += edges.horizontalInset }
             if case .frame(_, _, let minW, let maxW, _, _, _) = effect {
                 // .infinity contributes nothing to intrinsic measurement —
                 // the renderer expands the rect during stack flex
@@ -333,9 +333,18 @@ public enum GraphMeasurer {
             // number nothing reads.
             if case .frame(_, let height, _, _, _, _, _) = effect, let height { return height }
 
+            // NOTE: the child is measured at the OUTER width, not the width
+            // left after this modifier's own frame. That is wrong in
+            // principle — a wrapping child inside a border reserves a row too
+            // few — but correcting it destabilises the measure/layout feedback
+            // cycle that `PromptInput`'s auto-growing height rides on (its
+            // height policy reads `size.height` back out of its own
+            // GeometryReader, and GR rebuilders fire during layout, not
+            // measurement). Tracked separately; fixing it needs that cycle
+            // addressed first.
             var base = measureHeight(child, proposedWidth: proposedWidth)
             if case .padding(let n) = effect { base += n * 2 }
-            if case .border = effect { base += 2 }
+            if case .border(_, _, let edges) = effect { base += edges.verticalInset }
             if case .frame(_, _, _, _, let minH, let maxH, _) = effect {
                 if let maxH = maxH?.fixedValue { base = min(base, maxH) }
                 if let minH = minH?.fixedValue { base = max(base, minH) }
