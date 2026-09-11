@@ -533,6 +533,13 @@ struct PreviewPane: TerminalView {
             }
         case .border:
             Text(" bordered ").border()
+        case .borderEdges:
+            VStack(spacing: 1) {
+                Text("tinted frame, plain text").border(.rounded, color: .cyan)
+                Text("leading rail").border(.heavy, color: .magenta, edges: .leading)
+                Text("rule above").border(.rounded, color: .green, edges: .top)
+                Text("both rails").border(.rounded, color: .yellow, edges: .horizontal)
+            }
         case .padding:
             Text("padded").padding()
         case .truncate:

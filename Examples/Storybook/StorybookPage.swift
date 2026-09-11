@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, border, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, border, borderEdges, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -505,6 +505,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .border: return PageInfo(id: self, category: .modifiers, name: ".border",
             summary: "Draw a border around the view.",
             code: "Text(\" bordered \").border()")
+        case .borderEdges: return PageInfo(id: self, category: .modifiers, name: ".border(color:edges:)",
+            summary: "State the frame separately from its content, and draw only the sides you want. A drawn edge costs one cell; an undrawn one costs nothing. Corners appear only where two drawn edges meet, so a lone .top is an unbroken rule.",
+            code: """
+                VStack(spacing: 1) {
+                    Text("tinted frame, plain text").border(.rounded, color: .cyan)
+                    Text("leading rail").border(.heavy, color: .magenta, edges: .leading)
+                    Text("rule above").border(.rounded, color: .green, edges: .top)
+                    Text("both rails").border(.rounded, color: .yellow, edges: .horizontal)
+                }
+                """)
         case .padding: return PageInfo(id: self, category: .modifiers, name: ".padding",
             summary: "Add empty space around the view.",
             code: "Text(\"padded\").padding()")

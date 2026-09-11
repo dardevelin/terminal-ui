@@ -119,7 +119,7 @@ public struct HitResult {
             case .italic: values.append(("modifier", "italic"))
             case .underline: values.append(("modifier", "underline"))
             case .padding(let n): values.append(("modifier", "padding(\(n))"))
-            case .border(let s): values.append(("modifier", "border(\(s))"))
+            case .border(let s, _, _): values.append(("modifier", "border(\(s))"))
             case .frame(let w, let h, _, _, _, _, _): values.append(("modifier", "frame(\(w ?? 0)x\(h ?? 0))"))
             case .flexible(let axes, let grow): values.append(("modifier", "flexible(axes:\(axes.rawValue),grow:\(grow))"))
             case .explicitID(let id): values.append(("modifier", "id(\(id))"))
@@ -163,7 +163,7 @@ public struct HitResult {
                 case .italic: return "italic"
                 case .underline: return "underline"
                 case .padding(let n): return "pad(\(n))"
-                case .border(_): return "border"
+                case .border: return "border"
                 case .frame(let w, let h, _, _, _, _, _): return "frame(\(w ?? 0)x\(h ?? 0))"
                 case .flexible(let axes, let grow): return "flexible(axes:\(axes.rawValue),grow:\(grow))"
                 case .explicitID(_): return "id"

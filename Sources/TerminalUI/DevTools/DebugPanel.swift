@@ -395,7 +395,7 @@ public final class DebugPanel {
             case .italic: kind = "I"; detail = ""
             case .underline: kind = "U"; detail = ""
             case .padding(let n): kind = "pad"; detail = "\(n)"
-            case .border(_): kind = "bdr"; detail = ""
+            case .border: kind = "bdr"; detail = ""
             case .frame(let w, let h, _, _, _, _, _): kind = "frm"; detail = "\(w ?? 0)x\(h ?? 0)"
             case .flexible(let axes, let grow):
                 kind = "flex"
