@@ -572,10 +572,28 @@ any panel of another colour.
 The demo's replies now use a Crush-shaped style built from its own roles. Not
 built: a quiet thinking block — the demo has no thinking content yet.
 
+**L13. Side by side, the layout was the difference.** *(demo — built)*
+
+Compared against a Crush screenshot with the text ignored, most of what read as
+"not Crush" was the demo's own choices, now changed to Crush's numbers from
+`generateLayout`: one flat ground with no raised panels; no header band — the
+name lives in the sidebar; a margin of one all round, which the uniform
+`.padding(1)` already expresses exactly; a 32-column sidebar after a two-column
+gap, listing title, directory, model, then Modified Files, LSPs and MCPs as
+quiet sections; messages capped at 120 columns with the scroll bar at the
+column's edge; a borderless three-row `:::` composer; a `key action · key
+action` help line.
+
+Nothing in the framework had to change for any of that. Two things the
+comparison showed did need it, and are recorded rather than faked: Crush's
+three-row block wordmark (no block letterform with a gradient exists), and the
+leading-only padding every message frame uses (G3, below).
+
 ### Ledger — open
 
-- **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
-  the rail and the text (see its `GAP LEDGER` comment). Blocked, not just
+- **G3 — edge-aware padding.** Now the largest visual gap: Crush pads every
+  message on the leading side only — a user message one column past its rail,
+  an assistant message or tool call two columns with no rail. Blocked, not just
   unbuilt — the inset-width measurement fix it depends on (L3) is blocked on
   `GeometryReader` semantics: one node's subtree is rebuilt by several passes at
   different sizes, and the last writer decides the measured height. SwiftUI

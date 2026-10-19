@@ -1,101 +1,57 @@
 import TerminalUI
 
-// MARK: - Header
-
-/// Top band: wordmark, diagonal field, and session metadata.
-struct Header: TerminalView {
-    let state: CoderState
-    var theme = CoderTheme.dark
-
-    var body: some TerminalView {
-        GeometryReader { size in
-            Text(spans: line(width: size.width))
-        }
-        .frame(height: 1)
-        .background(theme.backgroundRaised)
-    }
-
-    private func line(width: Int) -> [TextSpan] {
-        // The wordmark is the one place the two brand colours meet, which is
-        // what ties the header to the rails and the pills further down.
-        let brand: [TextSpan] = [TextSpan(" ")]
-            + Text.gradient("CODER", from: theme.primary, to: theme.secondary)
-                .spans.map { $0.bolded() }
-            + [TextSpan(" ")]
-        let meta = metadata()
-        let brandWidth = brand.reduce(0) { $0 + $1.text.count }
-        let metaWidth = meta.reduce(0) { $0 + $1.text.count }
-        let fill = max(0, width - brandWidth - metaWidth - 1)
-        return brand
-            + DiagonalField.spans(width: fill, theme: theme)
-            + [TextSpan(" ")]
-            + meta
-    }
-
-    private func metadata() -> [TextSpan] {
-        let separator = TextSpan(" \(Glyph.bullet) ", foreground: theme.separator)
-        return [
-            TextSpan(state.workingDirectory, foreground: theme.foregroundMuted),
-            separator,
-            TextSpan("\(state.contextPercent)%", foreground: theme.foregroundSubtle),
-            TextSpan(" (\(state.contextLabel))", foreground: theme.foregroundFaint),
-            separator,
-            TextSpan("^p", foreground: theme.foregroundSubtle, bold: true),
-            TextSpan(" palette ", foreground: theme.foregroundFaint),
-        ]
-    }
-}
-
 // MARK: - Sidebar
 
-/// Right rail: session identity, model, touched files, and resource health.
+/// Right rail: identity, then session, model, and what the session touches.
+/// Laid out the way Crush's is — a fixed wordmark over one quiet column, each
+/// part separated by a blank row rather than boxed.
 struct Sidebar: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
 
+    /// Crush's sidebar width.
+    static let width = 32
+
     var body: some TerminalView {
         VStack(spacing: 1) {
-            sessionBlock
+            Wordmark(width: Self.width, theme: theme)
+            Text(state.sessionTitle)
+                .foreground(theme.foregroundMuted)
+            Text(state.workingDirectory)
+                .foreground(theme.foregroundMuted)
+                .wrap(.truncate(.head))
+            modelBlock
             filesBlock
-            resourcesBlock
+            resourceBlock("LSPs", kind: .lsp)
+            resourceBlock("MCPs", kind: .mcp)
             Spacer()
         }
-        .padding(1)
-        .background(theme.backgroundRaised)
     }
 
-    private var sessionBlock: some TerminalView {
+    private var modelBlock: some TerminalView {
         VStack(spacing: 0) {
-            Text(state.sessionTitle)
-                .foreground(theme.foreground)
-                .bold()
-            Text(state.workingDirectory)
-                .foreground(theme.foregroundFaint)
             Text(spans: [
                 TextSpan(Glyph.diamond, foreground: theme.primary),
                 TextSpan(" \(state.modelName)", foreground: theme.foregroundSubtle),
                 TextSpan(" via \(state.providerName)", foreground: theme.foregroundFaint),
             ])
+            // Indented under the model name, as Crush sets its usage line.
             Text(spans: [
-                TextSpan("\(state.contextPercent)%", foreground: theme.foregroundMuted),
+                TextSpan("  \(state.contextPercent)%", foreground: theme.foregroundMuted),
                 TextSpan(" (\(state.contextLabel))", foreground: theme.foregroundFaint),
-                TextSpan("  $\(String(format: "%.2f", state.cost))", foreground: theme.success),
+                TextSpan("  $\(String(format: "%.2f", state.cost))", foreground: theme.foregroundMuted),
             ])
         }
     }
 
     private var filesBlock: some TerminalView {
         VStack(spacing: 0) {
-            SectionRule(
-                title: "Modified Files",
-                trailing: "\(state.files.count)",
-                theme: theme
-            )
+            SectionRule(title: "Modified Files", trailing: "\(state.files.count)", theme: theme)
             ForEach(state.files) { file in
                 // Head truncation: the basename is what identifies the file,
                 // so the directory prefix is the part that gives way.
                 Text(spans: [
-                    TextSpan(file.path, foreground: theme.foregroundSubtle),
+                    TextSpan(file.path, foreground: theme.foregroundMuted),
                     TextSpan("  +\(file.added)", foreground: theme.success),
                     TextSpan(" −\(file.removed)", foreground: theme.error),
                 ])
@@ -104,10 +60,11 @@ struct Sidebar: TerminalView {
         }
     }
 
-    private var resourcesBlock: some TerminalView {
-        VStack(spacing: 0) {
-            SectionRule(title: "Servers", theme: theme)
-            ForEach(state.resources) { resource in
+    private func resourceBlock(_ title: String, kind: Resource.Kind) -> some TerminalView {
+        let resources = state.resources.filter { $0.kind == kind }
+        return VStack(spacing: 0) {
+            SectionRule(title: title, trailing: "\(resources.count)", theme: theme)
+            ForEach(resources) { resource in
                 let badge = resource.health.icon(theme)
                 StatusRow(
                     icon: badge.glyph,
@@ -129,7 +86,12 @@ struct Transcript: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
 
+    /// Crush's `maxTextWidth`: past this, lines get too long to read.
+    static let maxTextWidth = 120
+
     var body: some TerminalView {
+        // The scroll view spans the column, so its bar sits at the column's
+        // edge; the entries inside stop at a readable width.
         ScrollView {
             VStack(spacing: 1) {
                 ForEach(state.entries) { entry in
@@ -141,8 +103,8 @@ struct Transcript: TerminalView {
                     }
                 }
             }
+            .frame(maxWidth: .fixed(Self.maxTextWidth))
         }
-        .padding(1)
     }
 }
 
@@ -295,30 +257,45 @@ struct ToolExcerpt: TerminalView {
 
 // MARK: - Prompt
 
-/// The composer. A mode glyph, the draft text, and a hint line.
+/// The composer: Crush's borderless editor. Three rows, each led by its
+/// prompt column — `>` on the first while focused, `:::` everywhere else —
+/// with the draft or a placeholder beside the first.
 struct Prompt: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
 
+    /// Crush's `TextareaMinHeight`.
+    static let rows = 3
+
     var body: some TerminalView {
-        VStack(spacing: 0) {
-            HStack(spacing: 1) {
-                Text(":::")
-                    .foreground(state.focus == .prompt ? theme.primary : theme.foregroundFaint)
-                Text(state.draft.isEmpty ? "Ask anything, or / for commands" : state.draft)
-                    .foreground(state.draft.isEmpty ? theme.foregroundFaint : theme.foreground)
+        let focused = state.focus == .prompt
+        let draftLines = state.draft.isEmpty ? [] : state.draft.split(separator: "\n").map(String.init)
+        return VStack(spacing: 0) {
+            ForEach(Array(0..<max(Self.rows, draftLines.count)).map(PromptLine.init)) { line in
+                Text(spans: spans(row: line.id, draft: draftLines, focused: focused))
             }
-            TodoPill(state: state, theme: theme)
         }
-        .padding(1)
-        // Focus reads as a brightened top rule: the frame states focus
-        // without tinting the draft text inside it.
-        .border(
-            .heavy,
-            color: state.focus == .prompt ? theme.borderActive : theme.borderIdle,
-            edges: .top)
-        .background(theme.backgroundRaised)
     }
+
+    private func spans(row: Int, draft: [String], focused: Bool) -> [TextSpan] {
+        let prompt: TextSpan
+        switch (row, focused) {
+        case (0, true): prompt = TextSpan("  > ", foreground: theme.success, bold: true)
+        case (0, false): prompt = TextSpan("::: ", foreground: theme.foregroundMuted)
+        case (_, true): prompt = TextSpan("::: ", foreground: theme.successSubtle)
+        case (_, false): prompt = TextSpan("::: ", foreground: theme.foregroundMuted)
+        }
+        if draft.isEmpty {
+            return row == 0
+                ? [prompt, TextSpan("Ask anything, or / for commands", foreground: theme.foregroundFaint)]
+                : [prompt]
+        }
+        return [prompt, TextSpan(row < draft.count ? draft[row] : "", foreground: theme.foreground)]
+    }
+}
+
+private struct PromptLine: Identifiable {
+    let id: Int
 }
 
 /// Progress chip for the active task list.
@@ -338,34 +315,33 @@ struct TodoPill: TerminalView {
 
 // MARK: - Root
 
-/// The whole window: header, split body, prompt, status bar.
+/// The whole window, on Crush's layout: a margin all round, the transcript
+/// and composer in a column beside a fixed sidebar, the help line beneath.
+/// One flat ground — parts are told apart by space and type, not boxes.
 struct CoderApp: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
         VStack(spacing: 0) {
-            Header(state: state, theme: theme)
-            HStack(spacing: 0) {
-                Transcript(state: state, theme: theme)
-                    .flexible(.horizontal)
+            HStack(spacing: 2) {
+                VStack(spacing: 1) {
+                    Transcript(state: state, theme: theme)
+                        .flexible(.vertical)
+                    TodoPill(state: state, theme: theme)
+                    Prompt(state: state, theme: theme)
+                }
+                .flexible(.horizontal)
                 Sidebar(state: state, theme: theme)
-                    .frame(width: 34)
+                    .frame(width: Sidebar.width)
             }
             .flexible(.vertical)
-            Prompt(state: state, theme: theme)
-            StatusBar(background: Palette.slate, foreground: Palette.ash) {
-                StatusBar.Section(.left) {
-                    KeyHint.spans("tab", "focus", theme: theme)
-                    "   "
-                    KeyHint.spans("^p", "palette", theme: theme)
-                    "   "
-                    KeyHint.spans("q", "quit", theme: theme)
-                }
-                StatusBar.Section(.right) {
-                    TextSpan("\(state.modelName) ", foreground: theme.foregroundMuted)
-                }
-            }
+            .padding(1)
+            Text(spans: [TextSpan(" ")] + HelpLine.spans([
+                ("tab", "focus"),
+                ("^p", "palette"),
+                ("q", "quit"),
+            ], theme: theme))
         }
         .background(theme.background)
         // Published so the framework's own components resolve the same

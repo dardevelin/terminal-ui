@@ -40,7 +40,7 @@ struct SectionRule: TerminalView {
         theme: CoderTheme
     ) -> [TextSpan] {
         var spans: [TextSpan] = [
-            TextSpan(title, foreground: theme.foregroundSubtle, bold: true),
+            TextSpan(title, foreground: theme.foregroundSubtle),
             TextSpan(" "),
         ]
         let trailingWidth = trailing.isEmpty ? 0 : trailing.count + 1
@@ -99,34 +99,59 @@ extension Resource.Health {
     }
 }
 
-// MARK: - Key hint
+// MARK: - Help line
 
-/// A keystroke chip followed by its action, the unit the status bar and
-/// help legend are both built from.
-enum KeyHint {
-    static func spans(_ key: String, _ action: String, theme: CoderTheme) -> [TextSpan] {
-        [
-            TextSpan(key, foreground: theme.foregroundSubtle, bold: true),
-            TextSpan(" \(action)", foreground: theme.foregroundFaint),
-        ]
+/// The bottom row of keystrokes: `key action · key action`. Keys sit one
+/// step brighter than their actions and the separators recede further, so
+/// the eye finds keys first — Crush's help styles, stated in this theme.
+enum HelpLine {
+    static func spans(_ hints: [(key: String, action: String)], theme: CoderTheme) -> [TextSpan] {
+        var spans: [TextSpan] = []
+        for (index, hint) in hints.enumerated() {
+            if index > 0 {
+                spans.append(TextSpan(" \(Glyph.middleDot) ", foreground: theme.separator))
+            }
+            spans.append(TextSpan(hint.key, foreground: theme.foregroundMuted))
+            spans.append(TextSpan(" \(hint.action)", foreground: theme.foregroundFaint))
+        }
+        return spans
     }
 }
 
-// MARK: - Diagonal field
+// MARK: - Wordmark
 
-/// The run of `╱` that fills space beside the wordmark and dialog titles.
+/// The sidebar's identity block, in the shape of Crush's compact logo: a
+/// diagonal field, the label and version, the name in the brand gradient,
+/// and the field again beneath.
 ///
-/// The ramp is what makes this read as designed rather than drawn: a flat
-/// fill of the same glyph looks like padding, while a sweep from the brand
-/// colour down into the background reads as a deliberate edge. It fades
-/// *away* from the wordmark so the eye is pulled back toward the name.
-enum DiagonalField {
-    static func spans(width: Int, theme: CoderTheme) -> [TextSpan] {
-        guard width > 0 else { return [] }
-        return Text.gradient(
-            String(repeating: Glyph.diagonal, count: width),
-            from: theme.primary,
-            to: theme.backgroundOverlay
-        ).spans
+/// GAP LEDGER — Crush sets its name in three-row block letterforms. The
+/// framework's `DotFont` draws dots or braille in one colour, so the name is
+/// a single gradient row until a block letterform with a gradient exists.
+struct Wordmark: TerminalView {
+    let width: Int
+    var theme = CoderTheme.dark
+
+    var body: some TerminalView {
+        VStack(spacing: 0) {
+            Text(field).foreground(theme.primary)
+            Text(field).foreground(theme.primary)
+            Text(spans: metaRow)
+            Text(spans: Text.gradient("CODER", from: theme.secondary, to: theme.primary)
+                .spans.map { $0.bolded() })
+            Text(field).foreground(theme.primary)
+        }
+    }
+
+    private var field: String { String(repeating: Glyph.diagonal, count: width) }
+
+    private var metaRow: [TextSpan] {
+        let label = "TerminalUI"
+        let version = "v0.1"
+        let gap = max(1, width - label.count - version.count)
+        return [
+            TextSpan(label, foreground: theme.secondary),
+            TextSpan(String(repeating: " ", count: gap)),
+            TextSpan(version, foreground: theme.primary),
+        ]
     }
 }

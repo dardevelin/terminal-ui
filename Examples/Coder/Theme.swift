@@ -82,6 +82,8 @@ enum Glyph {
     static let cross = "✕"
     static let dot = "●"
     static let bullet = "•"
+    /// Separates entries in the help line.
+    static let middleDot = "·"
     static let arrowRight = "→"
     static let diamond = "◇"
     static let triangle = "▶"
