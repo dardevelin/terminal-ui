@@ -452,6 +452,32 @@ per word, and the measurer counted word-wrapped rows for both, so a styled
 paragraph could measure one height and render another. Wrapping is now decided
 on the run list.
 
+**L8. A diff inside a card behaved like a control.** *(G1 remainder, partly — built)*
+
+The Edit tool card wanted the change itself, not `+14 −6`. `DiffView` already
+diffs two strings, which is exactly what an edit carries — but dropped into the
+transcript it was the only focusable node on screen: it took focus at boot, the
+transcript auto-scrolled to it so the conversation opened mid-way, Down
+scrolled the edit's first line out of the card, and its focus indicator painted
+over the card's rail. Its green and red were also ANSI literals, so a themed
+transcript showed the terminal's palette in the middle of the app's.
+
+`DiffView` is now focusable **only when it has rows below its viewport**. A diff
+that fits has nothing to scroll, so it is content, not a Tab stop — no new API,
+and the threshold counts rendered rows, so side-by-side's paired rows are
+measured as rows. Colours come from roles: gutters `foregroundMuted`, additions
+`success`, removals `error`, the header path `foregroundEmphasis`, the
+side-by-side divider `separator`. `DefaultTheme`'s values for those roles are
+the literals it drew, so nothing changes for an unthemed app.
+
+`HunkDiffView` was the other candidate and the wrong one: it is a review
+surface whose cursor and selection are the point, so it stays a control.
+
+Not built: line numbers anchored to the file. `DiffEngine` numbers from 1, so
+the card says line 4 for code the Grep card above it placed at 311. Crush shows
+real numbers. Worth a `DiffEngine` starting offset when the demo's next edit
+makes the mismatch matter; not worth an API before then.
+
 ### Ledger — open
 
 - **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
@@ -461,7 +487,9 @@ on the run list.
   different sizes, and the last writer decides the measured height. SwiftUI
   resolves this by making `GeometryReader` greedy, which is a public behaviour
   change and wants a decision before code.
-- **G1 remainder — the literal-drawing components** listed in L4.
+- **G1 remainder — the literal-drawing components** listed in L4, less
+  `DiffView` (L8): `TabView`, `TreeView`, `HunkDiffView`, `StatusBar`,
+  `PromptInput`.
 - **G6 — lexers beyond Swift.** Not yet demanded.
 
 Everything else in §2.2 waits for the demo to reach it.

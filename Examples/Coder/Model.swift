@@ -25,6 +25,8 @@ struct ToolCall: Identifiable, Sendable {
     let state: ToolState
     /// Result body. Rendered in the card when present.
     let output: String?
+    /// The change an editing tool made, shown in place of `output`.
+    var diff: [DiffLine]? = nil
 }
 
 /// One entry in the chat transcript.
@@ -40,8 +42,7 @@ enum Entry: Identifiable, Sendable {
     }
 }
 
-/// A chat message. `body` is markdown; until the framework can render
-/// markdown (gap G5) the views show it as plain text.
+/// A chat message. `body` is markdown, rendered by `MarkdownView`.
 struct Message: Identifiable, Sendable {
     let id: Int
     let author: Author

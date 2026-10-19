@@ -76,7 +76,8 @@ enum Fixtures {
                 name: "Edit",
                 summary: "Compositor.swift — add skippedFrame flag",
                 state: .success,
-                output: "+14 −6"
+                output: nil,
+                diff: DiffEngine.diff(original: compositorBefore, modified: compositorAfter)
             )),
             .tool(ToolCall(
                 id: 7,
@@ -87,6 +88,30 @@ enum Fixtures {
             )),
         ]
     }
+
+    private static let compositorBefore = """
+            private var previousBuffer: CellBuffer?
+
+            func skip() {
+                previousBuffer = nil
+            }
+
+            func flush(_ buffer: CellBuffer) -> FrameResult {
+                guard let previous = previousBuffer else {
+        """
+
+    private static let compositorAfter = """
+            private var previousBuffer: CellBuffer?
+            private var skippedFrame = false
+
+            func skip() {
+                skippedFrame = true
+            }
+
+            func flush(_ buffer: CellBuffer) -> FrameResult {
+                if skippedFrame { return .unchanged }
+                guard let previous = previousBuffer else {
+        """
 
     static func resources() -> [Resource] {
         [
