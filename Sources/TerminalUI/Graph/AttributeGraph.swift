@@ -55,6 +55,13 @@ public final class AttributeGraph: @unchecked Sendable {
     // itself (`bodyReplay`) so `drain` can invoke them without naming
     // the generic view type.
     private var dirtyQueue: [ObjectIdentifier: AttributeNode] = [:]
+    /// The environment bound when the graph was last updated or drained —
+    /// the root's environment, before any modifier in the tree applies.
+    /// Recorded rather than read from `GraphContext` at use, because a reader
+    /// rebuilt during measurement runs with the measurer's modifiers already
+    /// applied to the bound environment, and applying the chain again on top
+    /// would run a `transformEnvironment` edit twice.
+    private(set) var baseEnvironment = EnvironmentValues()
     /// Re-entrancy guard: a markDirty fired *during* a drain (because a
     /// body re-evaluation read+wrote an observable) must enqueue for
     /// the next drain, not corrupt the current iteration.
@@ -81,6 +88,7 @@ public final class AttributeGraph: @unchecked Sendable {
         #if DEBUG
         dirtyDrainCount += 1
         #endif
+        baseEnvironment = GraphContext.currentEnvironment ?? EnvironmentValues()
         draining = true
         defer { draining = false }
 
@@ -93,7 +101,9 @@ public final class AttributeGraph: @unchecked Sendable {
             // Node may have been detached between markDirty and drain
             // (e.g. parent flipped an if/else branch). Skip silently.
             guard node.parent != nil || node === root else { continue }
-            node.bodyReplay?(self, node)
+            GraphContext.$currentEnvironment.withValue(environment(at: node)) {
+                node.bodyReplay?(self, node)
+            }
         }
 
         // Re-stamp `_containsViewBody` — drained composites may have
@@ -164,6 +174,7 @@ public final class AttributeGraph: @unchecked Sendable {
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
         updateGeneration += 1
+        baseEnvironment = GraphContext.currentEnvironment ?? EnvironmentValues()
         #if DEBUG
         rootWalkCount += 1
         #endif
@@ -900,13 +911,19 @@ public final class AttributeGraph: @unchecked Sendable {
                built.width == size.width, built.generation == graph.updateGeneration {
                 return
             }
-            let view = geom.rebuild(with: size)
-            if let existing = parent.children.first {
-                graph.updateAnyView(existing, from: view)
-            } else {
-                let fresh = graph.constructAnyTerminalView(view, id: childID)
-                fresh.parent = parent
-                parent.children = [fresh]
+            // Measurement and layout rebuild a reader outside the walk that
+            // applied the modifiers above it, so its content is built in the
+            // environment those modifiers resolve to, not whatever the caller
+            // happens to have bound.
+            GraphContext.$currentEnvironment.withValue(graph.environment(at: parent)) {
+                let view = geom.rebuild(with: size)
+                if let existing = parent.children.first {
+                    graph.updateAnyView(existing, from: view)
+                } else {
+                    let fresh = graph.constructAnyTerminalView(view, id: childID)
+                    fresh.parent = parent
+                    parent.children = [fresh]
+                }
             }
             parent._readerBuild = (width: size.width, generation: graph.updateGeneration)
         }
@@ -1134,6 +1151,29 @@ public final class AttributeGraph: @unchecked Sendable {
             _ = body()
         }
         return previous
+    }
+
+    /// The environment `node`'s body is evaluated in: ``baseEnvironment`` with
+    /// every environment modifier above `node` applied, outermost first.
+    ///
+    /// The root walk builds this as it descends. A body evaluated outside that
+    /// walk — a drained body re-running after an observable changed, a reader
+    /// rebuilt during layout — must ask for it, or it sees the frame's bare
+    /// environment and draws with the default theme under an app that set one.
+    func environment(at node: AttributeNode) -> EnvironmentValues {
+        var ancestors: [AttributeNode] = []
+        var current = node.parent
+        while let ancestor = current {
+            ancestors.append(ancestor)
+            current = ancestor.parent
+        }
+        var env = baseEnvironment
+        for ancestor in ancestors.reversed() {
+            if case .modifier(.environment(let apply)) = ancestor.kind {
+                apply(&env)
+            }
+        }
+        return env
     }
 
     /// Walk the subtree and record scopeID on every focusable descendant.

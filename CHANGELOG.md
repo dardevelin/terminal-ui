@@ -102,6 +102,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A body rebuilt outside the update walk sees the environment above it.** The
+  walk applies each environment modifier on its way down; the two paths that
+  evaluate a body without it did not. A body re-run in place after an
+  observable changed, and a `GeometryReader`'s content rebuilt during layout,
+  saw the frame's bare environment — under `.environment(\.theme, …)` they drew
+  with the default theme. Both now resolve the environment from the modifiers
+  above them, once.
 - **An app's `.actions` answer keys while nothing is focused.** With no focused
   view, dispatch started from the graph root and walked up — past none of the
   scopes an app declares, which all sit below it — so Escape and Ctrl+C always
