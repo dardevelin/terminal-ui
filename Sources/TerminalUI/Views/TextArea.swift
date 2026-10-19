@@ -199,10 +199,13 @@ public struct TextArea: TerminalView {
     /// (non-cursor, non-selection) characters. Default `nil` keeps
     /// the legacy plain-text rendering — non-breaking.
     public let highlighter: (any SyntaxHighlighter)?
-    /// Theme used to map `SyntaxToken` → `Color`. Ignored when
-    /// `highlighter` is nil. Default `.defaultDark` matches the
-    /// shipping syntax-highlighting palette.
-    public let theme: SyntaxTheme
+    /// Colours for `highlighter`'s tokens, or `nil` to follow the app
+    /// ``Theme``'s ``Theme/syntax`` like every other view that draws code.
+    /// Ignored when `highlighter` is nil.
+    public let theme: SyntaxTheme?
+
+    /// Supplies ``Theme/syntax`` when no `theme` was passed.
+    @TerminalEnvironment(\.theme) private var appTheme
 
     /// Boundary-feedback mode read at body-eval time. Drives the
     /// `BoundaryFeedbackEmitter.shared.emit` calls at the four
@@ -240,8 +243,8 @@ public struct TextArea: TerminalView {
     /// `text` is the document; `state` (cursor/scroll/selection/undo) must
     /// outlive re-evaluations. `lineNumbers` adds a gutter;
     /// `visibleHeight` caps the viewport in rows (`nil` sizes to content);
-    /// `highlighter` `nil` renders plain text and `theme` colors its
-    /// spans.
+    /// `highlighter` `nil` renders plain text; `theme` colours its spans,
+    /// and `nil` takes the colours from the app ``Theme``.
     public init(
         text: Binding<String>,
         state: Binding<TextAreaState>,
@@ -249,7 +252,7 @@ public struct TextArea: TerminalView {
         visibleHeight: Int? = nil,
         arrowMode: TextAreaArrowMode = .logical,
         highlighter: (any SyntaxHighlighter)? = nil,
-        theme: SyntaxTheme = .defaultDark
+        theme: SyntaxTheme? = nil
     ) {
         self.text = text
         self.state = state
@@ -347,7 +350,7 @@ public struct TextArea: TerminalView {
             lineNumbers: lineNumbers,
             wrapWidth: wrapWidth,
             highlighter: highlighter,
-            theme: theme
+            theme: theme ?? appTheme.syntax
         )
         return Text(spans: displaySpans)
             .foreground(isEnabled ? .default : .gray)

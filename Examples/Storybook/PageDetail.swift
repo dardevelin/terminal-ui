@@ -615,6 +615,18 @@ struct PreviewPane: TerminalView {
                 if skippedFrame { return .unchanged }
                 ```
                 """)
+        case .codeView:
+            CodeView("""
+                    /// Present the frame, or nothing when the loop skipped it.
+                    func flush(_ buffer: CellBuffer) -> FrameResult {
+                        if skippedFrame { return .unchanged }
+                        guard let previous = previousBuffer else {
+                            return .fullRepaint(buffer, reason: "first frame, so there is nothing to diff against")
+                        }
+                        return diff(previous, buffer)
+                    }
+                    """, language: "swift", lineNumbers: true, firstLineNumber: 305)
+                .wrap(.truncate(.tail))
         case .bufferView:
             BufferView(buildBufferDemo())
                 .frame(width: 24, height: 4)
@@ -721,6 +733,19 @@ struct PreviewPane: TerminalView {
                 ScrollbarSample(title: ".block", style: .block)
                 ScrollbarSample(title: ".hairline", style: .hairline)
             }
+        case .syntaxHighlighter:
+            MarkdownView("""
+                ```ini
+                ; written by the installer
+                [server]
+                port = 8080
+                ```
+
+                ```swift
+                let port = 8080
+                ```
+                """)
+                .syntaxHighlighter(IniHighlighter(), for: "ini")
         case .boundaryFeedback:
             VStack {
                 Text("Type, then Left/Right past the edges").foreground(.gray)
@@ -1068,6 +1093,28 @@ struct ScrollbarSample: TerminalView {
             .scrollbarStyle(style)
             .frame(width: 12, height: 6)
         }
+    }
+}
+
+/// A lexer for INI files — the `.syntaxHighlighter` page's example of an
+/// app teaching the framework a language. Comments, `[section]` headers and
+/// `key = value` pairs are the whole grammar.
+struct IniHighlighter: SyntaxHighlighter {
+    func tokenize(line: String) -> [SyntaxSpan] {
+        let trimmed = line.drop { $0 == " " }
+        if trimmed.hasPrefix(";") || trimmed.hasPrefix("#") {
+            return [SyntaxSpan(range: trimmed.startIndex..<line.endIndex, token: .comment)]
+        }
+        if trimmed.hasPrefix("[") {
+            return [SyntaxSpan(range: trimmed.startIndex..<line.endIndex, token: .type)]
+        }
+        guard let equals = line.firstIndex(of: "=") else { return [] }
+        let valueStart = line.index(after: equals)
+        return [
+            SyntaxSpan(range: line.startIndex..<equals, token: .keyword),
+            SyntaxSpan(range: equals..<valueStart, token: .operatorToken),
+            SyntaxSpan(range: valueStart..<line.endIndex, token: .string),
+        ]
     }
 }
 

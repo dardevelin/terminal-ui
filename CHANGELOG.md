@@ -24,6 +24,25 @@ All notable changes to TerminalUI are documented here. Format based on
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
   way it does in `onAppear`, with no hop and no wrapper.
+- **`CodeView`** — read-only source, highlighted by language and numbered from
+  any line, so an excerpt keeps the numbering of the file it came from. Long
+  lines follow `.wrap(_:)`; a wrapped line continues under its code, not under
+  the gutter. It takes no focus.
+- **`Theme.syntax`** — code colours are a theme role, like `border`. `CodeView`,
+  `MarkdownView`'s fenced blocks and a highlighting `TextArea` all follow it;
+  the stock value is `SyntaxTheme.defaultDark`, the palette they drew before.
+- **`.syntaxHighlighter(_:for:)` and `SyntaxHighlighters`** — register a lexer
+  for a language, and every view handed that language uses it. Registration
+  adds to what a subtree inherits rather than replacing it. Swift is standard.
+- **`transformEnvironment(_:transform:)`** — edit an inherited environment value
+  for a subtree instead of replacing it. SwiftUI parity.
+- **`SyntaxHighlighter.highlight(lines:theme:)`** — colour a document line by
+  line with tokenizer state carried across lines; stretches a lexer leaves
+  unclassified are drawn plain rather than dropped.
+- **`ScrollbarStyle` and `.scrollbarStyle(_:)`** — the glyphs a scroll view's bar
+  is drawn with, per subtree: `.thin`, `.block`, `.hairline`, or your own. The
+  edge arrows are their own optional `ScrollEdgeMarkers`, so they can go while
+  the bar stays.
 
 ### Changed
 
@@ -33,9 +52,24 @@ All notable changes to TerminalUI are documented here. Format based on
   It is opt-in behind `TUI_BUILD_DOCS=1`, the same shape the strict-warnings
   gate already used. Building documentation is unchanged:
   `TUI_BUILD_DOCS=1 swift package generate-documentation`.
+- **Framework-drawn affordances take theme roles.** The scrollbar thumb and edge
+  arrows use `borderActive`, its track `separator`, the focus bar `accent`, and
+  the read-only and hover bars `foregroundMuted`. The stock theme's values are
+  the colours drawn before. The default scrollbar thumb is now a heavy line
+  (`┃`) rather than a full block; `.scrollbarStyle(.block)` keeps the old one.
+- **`TextArea(theme:)` is optional and follows `Theme.syntax` when omitted.** The
+  stored `theme` property is now `SyntaxTheme?`; passing a theme still wins.
+- **`DiffView` takes focus only when it has rows below its viewport,** and draws
+  in theme roles (`success`, `error`, `foregroundMuted`, `foregroundEmphasis`,
+  `separator`). A diff that fits is content: it no longer becomes a Tab stop
+  that swallows the arrows meant for its container.
 
 ### Fixed
 
+- **A vertical scrollbar no longer covers the content's last column.** Content
+  that overflows is laid out one column narrower so the bar has its own; the
+  last character of a full-width line, or the `…` a truncated line ends on, was
+  being painted over.
 - **A `Divider` still spans a stack that is centred or trailing-aligned.**
   Alignment measures a child so it can place it, and a `Divider` measures one
   cell while drawing across whatever it is given — so it collapsed to a single

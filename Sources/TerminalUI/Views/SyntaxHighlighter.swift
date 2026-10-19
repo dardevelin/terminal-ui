@@ -101,10 +101,13 @@ extension SyntaxHighlighter {
     }
 }
 
-/// Maps each `SyntaxToken` to a foreground `Color`. App authors
-/// supply a custom theme via `.syntaxTheme(_:)` (Phase B); Phase A
-/// ships `SyntaxTheme.defaultDark` as the only theme.
-public struct SyntaxTheme: Sendable {
+/// Maps each `SyntaxToken` to a foreground `Color`.
+///
+/// An app's code colours are part of its ``Theme``: state ``Theme/syntax`` and
+/// every view that highlights code — ``CodeView``, ``MarkdownView``'s fenced
+/// blocks, a highlighting ``TextArea`` — follows it. A view that takes a
+/// `SyntaxTheme` argument directly overrides the theme for that view alone.
+public struct SyntaxTheme: Sendable, Equatable {
     /// Foreground for ``SyntaxToken/keyword`` spans.
     public let keyword: Color
     /// Foreground for ``SyntaxToken/string`` spans (delimiters included).
@@ -175,14 +178,106 @@ public struct SyntaxTheme: Sendable {
     )
 }
 
+// MARK: - Highlighting
+
+extension SyntaxHighlighter {
+    /// Colours `lines` as one document, one run of spans per line.
+    ///
+    /// Tokenizer state carries from each line to the next, so a block comment
+    /// opened on one line colours the lines after it. Stretches no span covers
+    /// are drawn as ``SyntaxTheme/plain`` — the protocol's promise — so no text
+    /// is ever dropped, whatever the tokenizer chose to classify. Spans carry a
+    /// foreground only; background and weight belong to the view placing them.
+    ///
+    /// An empty line yields an empty run. A view that draws one row per line
+    /// must still give that row its height.
+    public func highlight(lines: [String], theme: SyntaxTheme) -> [[TextSpan]] {
+        var state = TokenizerState()
+        return lines.map { line in
+            var runs: [TextSpan] = []
+            var covered = line.startIndex
+            let spans = tokenize(line: line, state: &state)
+                .sorted { $0.range.lowerBound < $1.range.lowerBound }
+            for span in spans where span.range.lowerBound >= covered {
+                if covered < span.range.lowerBound {
+                    runs.append(TextSpan(String(line[covered..<span.range.lowerBound]),
+                                         foreground: theme.plain))
+                }
+                runs.append(TextSpan(String(line[span.range]), foreground: theme.color(for: span.token)))
+                covered = span.range.upperBound
+            }
+            if covered < line.endIndex {
+                runs.append(TextSpan(String(line[covered...]), foreground: theme.plain))
+            }
+            return runs
+        }
+    }
+}
+
+// MARK: - Language registry
+
+/// The lexers a subtree can highlight with, looked up by language name.
+///
+/// Every view that is handed a language — a markdown fence's info string,
+/// ``CodeView``'s `language:` — resolves it here, so a lexer an app registers
+/// once reaches all of them. Names match case-insensitively; Swift is
+/// registered as standard.
+///
+/// ```swift
+/// MyApp()
+///     .syntaxHighlighter(JSONHighlighter(), for: "json")
+///     .syntaxHighlighter(ShellHighlighter(), for: "sh", "bash", "zsh")
+/// ```
+public struct SyntaxHighlighters: Sendable {
+    private var byLanguage: [String: any SyntaxHighlighter] = [:]
+
+    /// An empty registry — nothing highlights.
+    public init() {}
+
+    /// What every app starts with: Swift.
+    public static let standard: SyntaxHighlighters = {
+        var registry = SyntaxHighlighters()
+        registry.register(SwiftSyntaxHighlighter(), for: "swift")
+        return registry
+    }()
+
+    /// The lexer for `language`, or `nil` when none is registered — and for
+    /// a `nil` language, which is what an unlabelled fence carries.
+    public subscript(language: String?) -> (any SyntaxHighlighter)? {
+        guard let language else { return nil }
+        return byLanguage[language.lowercased()]
+    }
+
+    /// Register `highlighter` under each of `languages`, replacing whatever
+    /// those names resolved to before.
+    public mutating func register(_ highlighter: any SyntaxHighlighter, for languages: String...) {
+        register(highlighter, for: languages)
+    }
+
+    mutating func register(_ highlighter: any SyntaxHighlighter, for languages: [String]) {
+        for language in languages {
+            byLanguage[language.lowercased()] = highlighter
+        }
+    }
+}
+
+extension TerminalView {
+    /// Highlight `languages` with `highlighter` everywhere in this subtree,
+    /// adding to the lexers inherited from above rather than replacing them.
+    public func syntaxHighlighter(_ highlighter: any SyntaxHighlighter, for languages: String...)
+        -> ModifiedView<Self, TransformEnvironmentModifier<SyntaxHighlighters>> {
+        transformEnvironment(\.syntaxHighlighters) { $0.register(highlighter, for: languages) }
+    }
+}
+
 // MARK: - SwiftSyntaxHighlighter
 
 /// Naive Swift tokenizer — keyword recognition + string/comment/
-/// number/type categorisation. Per-line stateless: block comments
-/// (`/* … */`) and multi-line string literals (`"""…"""`) are NOT
-/// tracked across lines in Phase A. Apps that need full Swift
-/// syntax can plug in a heavier `SyntaxHighlighter` (e.g. one
-/// driven by SwiftSyntax) without changing the protocol.
+/// number/type categorisation. Block comments (`/* … */`) and
+/// multi-line string literals (`"""…"""`) carry across lines through
+/// `tokenize(line:state:)`. Apps that need full Swift syntax can plug in a
+/// heavier `SyntaxHighlighter` (e.g. one driven by SwiftSyntax) without
+/// changing the protocol.
 ///
 /// Recognises the canonical Swift reserved words plus the visual
 /// 80% of source-code tokens (string literals with `\"` escapes,

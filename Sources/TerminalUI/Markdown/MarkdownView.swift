@@ -52,6 +52,7 @@ public struct MarkdownView: TerminalView {
     private let blocks: [MarkdownBlock]
 
     @TerminalEnvironment(\.theme) private var theme
+    @TerminalEnvironment(\.syntaxHighlighters) private var highlighters
 
     /// Parse and prepare `source` for rendering.
     public init(_ source: String) {
@@ -65,7 +66,8 @@ public struct MarkdownView: TerminalView {
     }
 
     public var body: some TerminalView {
-        let rows = MarkdownFlattener.flatten(blocks, theme: theme)
+        let context = MarkdownFlattener.Context(theme: theme, highlighters: highlighters)
+        let rows = MarkdownFlattener.flatten(blocks, context: context)
             .enumerated()
             .map(IdentifiedRow.init)
         return VStack(spacing: 0) {

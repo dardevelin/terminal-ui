@@ -72,6 +72,7 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``Spacer``
 - ``Divider``
 - ``ScrollView``
+- ``ScrollbarStyle``
 - ``GeometryReader``
 
 ### Primitives
@@ -96,8 +97,16 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``TreeView``
 - ``DiffView``
 - ``HunkDiffView``
+- ``MarkdownView``
 - ``ProgressBar``
 - ``StatusBar``
+
+### Code
+
+- ``CodeView``
+- ``SyntaxHighlighter``
+- ``SyntaxHighlighters``
+- ``SyntaxTheme``
 
 ### Charts
 
