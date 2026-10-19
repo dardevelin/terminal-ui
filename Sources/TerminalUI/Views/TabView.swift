@@ -193,12 +193,12 @@ struct TabBar: TerminalView {
     let onSelect: (Int) -> Void
 
     var body: some TerminalView {
-        GeometryReader { size in
+        WidthReader { width in
             // Build tab label spans with overflow handling
             let barData = Self.computeTabBar(
                 tabs: tabs,
                 selected: selected,
-                availableWidth: size.width
+                availableWidth: width
             )
 
             HStack {

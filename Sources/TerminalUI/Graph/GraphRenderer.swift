@@ -580,9 +580,10 @@ public enum GraphRenderer {
     /// no entry here a stack measured it instead, so it collapsed to its
     /// content's natural size, and any view whose body reads its size through
     /// one (`TreeView`) echoed the parent's extent back as a fixed measure
-    /// and overflowed the stack.
+    /// and overflowed the stack. A `WidthReader` is the opposite on this
+    /// axis: its content decides its height, so a stack measures it.
     private static func isVFlexChild(_ node: AttributeNode) -> Bool {
-        if node.geometryRebuilder != nil { return true }
+        if node.readerSizing == .proposal { return true }
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }

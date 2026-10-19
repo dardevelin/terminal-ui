@@ -22,11 +22,11 @@ struct SectionRule: TerminalView {
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        GeometryReader { size in
+        WidthReader { width in
             Text(spans: Self.spans(
                 title: title,
                 trailing: trailing,
-                width: size.width,
+                width: width,
                 theme: theme
             ))
         }

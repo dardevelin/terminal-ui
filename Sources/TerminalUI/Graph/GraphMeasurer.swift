@@ -200,6 +200,10 @@ public enum GraphMeasurer {
             return base
 
         case .viewBody:
+            // Both readers take the width they are given and claim none of
+            // their own: their content is built for that width, so asking it
+            // how wide it is would be asking the answer for the question.
+            if node.readerSizing != nil { return 0 }
             return node.children.first.map { measureWidth($0) } ?? 0
         }
     }
@@ -352,22 +356,29 @@ public enum GraphMeasurer {
             return base
 
         case .viewBody:
-            // GeometryReader nodes carry a `geometryRebuilder` closure that
-            // synchronises the content subtree with a live size. The seeded
-            // child was built once at graph-construction with `terminalSize`,
-            // so its measurement is only correct when the allocated rect
-            // happens to match the seed. Rebuild with the current proposed
-            // width (height is flexible from the parent's perspective, so
-            // Phase separation: GeometryReader rebuilders fire in
-            // Layout.measureAndPlace, not during measurement.
-            // Measurement reads the seed subtree constructed at build
-            // time. Once a frame's layout pass has run, subsequent
-            // measurement calls see the size-resolved children. This
-            // means `proposedWidth` may not match the GR's eventual
-            // allocated width; PromptInput-style soft-wrap that needs
-            // the true width relies on the layout pass running before
-            // measurement is consulted, which is the runtime path.
-            return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
+            switch node.readerSizing {
+            case .proposal:
+                // Told its height by its container, so it claims none.
+                // Reading its content here was the old contract, and the
+                // content had been built for whatever size the last pass
+                // happened to hold — a different answer depending on which
+                // pass ran last. A container that sizes to its content gives
+                // a GeometryReader nothing; give it a frame or a flexible slot.
+                return 0
+            case .width:
+                // Built for the width being asked about, then measured. The
+                // content depends on width alone, so this is the subtree
+                // layout will draw at that width; asking twice in one update
+                // is a memo hit. A non-positive width is the measurer's
+                // "unconstrained" sentinel; the width last built stands in.
+                let width = proposedWidth > 0 ? proposedWidth : (node._readerBuild?.width ?? 0)
+                if width > 0 {
+                    node.geometryRebuilder?(Size(width: width, height: 0), node)
+                }
+                return node.children.first.map { measureHeight($0, proposedWidth: max(1, width)) } ?? 0
+            case nil:
+                return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
+            }
         }
     }
 

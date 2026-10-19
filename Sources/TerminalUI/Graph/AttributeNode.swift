@@ -224,6 +224,15 @@ public class AttributeNode: @unchecked Sendable {
     /// rebuild (e.g. on the very first render before any seed exists).
     public var geometryRebuilder: ((Size, AttributeNode) -> Void)?
 
+    /// What a reader node takes from its container, or nil for any other
+    /// node. Set alongside ``geometryRebuilder``; the passes read it to decide
+    /// whether the reader is told its height or measures it.
+    public var readerSizing: ReaderSizing?
+
+    /// The width and graph update a reader's content was last built for —
+    /// the memo `WidthReader` rebuilds consult.
+    var _readerBuild: (width: Int, generation: Int)?
+
     /// Creates a node, dirty by default so the first update evaluates it,
     /// and snapshots the focus granularity in force at the construction
     /// site — see ``focusGranularity`` for why render-time reads are too late.

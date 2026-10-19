@@ -74,6 +74,7 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``ScrollView``
 - ``ScrollbarStyle``
 - ``GeometryReader``
+- ``WidthReader``
 
 ### Primitives
 

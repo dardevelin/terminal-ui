@@ -134,6 +134,20 @@ extension GeometryReader: _GraphGeometryReader {
     func rebuild(with size: Size) -> any TerminalView {
         content(size)
     }
+
+    var sizing: ReaderSizing { .proposal }
+}
+
+// MARK: - WidthReader
+
+extension WidthReader: _GraphGeometryReader {
+    /// Only the width reaches the content; the height in `size` is ignored
+    /// because the content is what decides it.
+    func rebuild(with size: Size) -> any TerminalView {
+        content(size.width)
+    }
+
+    var sizing: ReaderSizing { .width }
 }
 
 // MARK: - ModifiedView

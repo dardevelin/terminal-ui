@@ -24,6 +24,10 @@ All notable changes to TerminalUI are documented here. Format based on
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
   way it does in `onAppear`, with no hop and no wrapper.
+- **`WidthReader`** — hands its content the width it is given and is as tall as
+  that content is at that width: the container for text that wraps, rows that
+  truncate, and a prompt that grows. The content receives the width only, so it
+  cannot read back the height it decides.
 - **`@Binding`, `$value.property` and `Binding.constant(_:)`** — `Binding` has
   SwiftUI's shape. A child view that edits a value it does not own declares it
   `@Binding var value`; `$value.field` derives a binding to one property, writing
@@ -69,6 +73,13 @@ All notable changes to TerminalUI are documented here. Format based on
   the read-only and hover bars `foregroundMuted`. The stock theme's values are
   the colours drawn before. The default scrollbar thumb is now a heavy line
   (`┃`) rather than a full block; `.scrollbarStyle(.block)` keeps the old one.
+- **`GeometryReader` is greedy, as in SwiftUI.** It fills what it is offered, and
+  when a container that sizes to its content measures it, it claims nothing.
+  It used to report the height of whatever its content had last been built at,
+  and three passes built it at three sizes, so a parent's measurement depended
+  on which ran last. Content whose height follows from its width belongs in
+  `WidthReader`; `TextInput`, `PromptInput` (`.fixed`/`.unbounded`), `TabView`,
+  `StatusBar` and `BarChart` moved there.
 - **Markdown rows paint only the fills something stated.** Prose no longer
   paints the theme's ground behind its text, so markdown inside a panel of
   another colour shows that panel; a code block's fill now reaches the edge of
