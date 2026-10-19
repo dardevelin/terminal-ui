@@ -550,8 +550,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .padding: return PageInfo(id: self, category: .modifiers, name: ".padding",
-            summary: "Add empty space around the view.",
-            code: "Text(\"padded\").padding()")
+            summary: "Add empty space around the view — on every side, or only the sides you name. Leading-only padding is how a message keeps a column of room beside its rail without blank rows above and below it.",
+            code: """
+                Text("all sides").padding().border()
+                Text("leading only").padding(.leading, 2).border()
+                Text("rail, then room")
+                    .padding(.leading, 1)
+                    .border(.heavy, color: .magenta, edges: .leading)
+                Text("insets").padding(EdgeInsets(top: 0, leading: 3,
+                                                  bottom: 0, trailing: 1)).border()
+                """)
         case .truncate: return PageInfo(id: self, category: .modifiers, name: ".wrap(.truncate)",
             summary: "Keep an over-long line to one row and mark the elision with an ellipsis. .tail keeps the start, .head the end, .middle both. Works across styled spans, so each surviving run keeps its own color.",
             code: """

@@ -304,8 +304,11 @@ public enum Layout {
 
     private static func transformedRect(for effect: ModifierEffect, parentRect rect: Rect) -> Rect {
         switch effect {
-        case .padding(let amount):
-            return rect.inset(by: amount)
+        case .padding(let insets):
+            return Rect(x: rect.x + insets.leading,
+                        y: rect.y + insets.top,
+                        width: max(0, rect.width - insets.horizontal),
+                        height: max(0, rect.height - insets.vertical))
 
         case .border(_, _, let edges):
             // Each drawn edge occupies one cell of the outer rect, so the

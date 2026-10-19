@@ -959,10 +959,14 @@ def storybook_border_wraps_text(app: Client) -> None:
 
 
 def storybook_padding_wraps_text(app: Client) -> None:
-    """`.padding` page: 'padded' label sits inside a blank padding frame."""
+    """`.padding` page: uniform padding still frames its label, leading-only
+    padding opens exactly two columns inside its box, and a rail keeps one
+    column of room before its text."""
     app.goto_page(".padding")
     preview = app.preview_text()
-    assert_true("padded" in preview, ".padding preview missing label")
+    assert_true("all sides" in preview, ".padding preview missing the uniform example")
+    assert_true("│  leading only" in preview, "leading-only padding is not two columns inside its box")
+    assert_true("┃ rail, then room" in preview, "the rail has no column of room before its text")
 
 
 def storybook_frame_sizes_bordered_box(app: Client) -> None:

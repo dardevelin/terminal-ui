@@ -96,34 +96,17 @@ public enum BorderStyle: Sendable {
 /// through. `.top` alone draws an unbroken horizontal rule, not a rule with
 /// two corner pieces stuck on its ends.
 ///
-/// Matches SwiftUI's `Edge.Set` in both names and groupings, so `.horizontal`
-/// is the leading/trailing pair and `.vertical` the top/bottom one.
-public struct BorderEdges: OptionSet, Sendable, Hashable {
-    public let rawValue: UInt8
+/// The same type as SwiftUI-named ``Edge/Set``, so a border and padding name
+/// their sides alike.
+public typealias BorderEdges = Edge.Set
 
-    public init(rawValue: UInt8) {
-        self.rawValue = rawValue
-    }
-
-    public static let top = BorderEdges(rawValue: 1 << 0)
-    public static let leading = BorderEdges(rawValue: 1 << 1)
-    public static let bottom = BorderEdges(rawValue: 1 << 2)
-    public static let trailing = BorderEdges(rawValue: 1 << 3)
-
-    /// The leading and trailing edges — the vertical pair, named for the axis
-    /// they span, as in SwiftUI.
-    public static let horizontal: BorderEdges = [.leading, .trailing]
-    /// The top and bottom edges.
-    public static let vertical: BorderEdges = [.top, .bottom]
-    /// All four — the default, and a full box.
-    public static let all: BorderEdges = [.top, .leading, .bottom, .trailing]
-
-    /// Columns this edge set consumes: one per vertical edge drawn.
+extension Edge.Set {
+    /// Columns this edge set consumes as a border: one per vertical edge drawn.
     var horizontalInset: Int {
         (contains(.leading) ? 1 : 0) + (contains(.trailing) ? 1 : 0)
     }
 
-    /// Rows this edge set consumes: one per horizontal edge drawn.
+    /// Rows this edge set consumes as a border: one per horizontal edge drawn.
     var verticalInset: Int {
         (contains(.top) ? 1 : 0) + (contains(.bottom) ? 1 : 0)
     }

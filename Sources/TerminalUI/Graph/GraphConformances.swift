@@ -160,7 +160,7 @@ extension ModifiedView: _GraphModified {
         case is BoldModifier: .bold
         case is ItalicModifier: .italic
         case is UnderlineModifier: .underline
-        case let pad as PaddingModifier: .padding(pad.amount)
+        case let pad as PaddingModifier: .padding(pad.insets)
         case let bdr as BorderModifier: .border(bdr.style, bdr.color, bdr.edges)
         case let frm as FrameModifier: .frame(width: frm.width, height: frm.height, minWidth: frm.minWidth, maxWidth: frm.maxWidth, minHeight: frm.minHeight, maxHeight: frm.maxHeight, alignment: frm.alignment)
         case let flex as FlexibleModifier: .flexible(axes: flex.axes, grow: flex.grow)

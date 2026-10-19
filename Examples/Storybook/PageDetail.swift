@@ -565,7 +565,14 @@ struct PreviewPane: TerminalView {
                 Text("both rails").border(.rounded, color: .yellow, edges: .horizontal)
             }
         case .padding:
-            Text("padded").padding()
+            VStack(spacing: 0) {
+                Text("all sides").padding().border()
+                Text("leading only").padding(.leading, 2).border()
+                Text("rail, then room")
+                    .padding(.leading, 1)
+                    .border(.heavy, color: .magenta, edges: .leading)
+                Text("insets").padding(EdgeInsets(top: 0, leading: 3, bottom: 0, trailing: 1)).border()
+            }
         case .truncate:
             VStack {
                 Text("Sources/Rendering/Compositor.swift").wrap(.truncate(.tail))

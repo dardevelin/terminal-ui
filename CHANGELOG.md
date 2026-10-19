@@ -24,6 +24,11 @@ All notable changes to TerminalUI are documented here. Format based on
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
   way it does in `onAppear`, with no hop and no wrapper.
+- **`.padding(_ edges:_ length:)`, `.padding(EdgeInsets)`, `Edge` and `Edge.Set`**
+  — padding on the sides you name, in SwiftUI's words. A message keeps a column
+  of room beside its rail without blank rows above and below it.
+  `BorderEdges` is now `Edge.Set`, so borders and padding name their sides
+  alike; existing `.border(edges:)` calls are unchanged.
 - **`WidthReader`** — hands its content the width it is given and is as tall as
   that content is at that width: the container for text that wraps, rows that
   truncate, and a prompt that grows. The content receives the width only, so it
@@ -84,6 +89,8 @@ All notable changes to TerminalUI are documented here. Format based on
   paints the theme's ground behind its text, so markdown inside a panel of
   another colour shows that panel; a code block's fill now reaches the edge of
   its column instead of stopping where its text does.
+- **`PaddingModifier` carries `insets: EdgeInsets`** instead of `amount: Int`.
+  Code that read `amount` reads `insets`; `.padding(n)` itself is unchanged.
 - **`TextArea(theme:)` is optional and follows `Theme.syntax` when omitted.** The
   stored `theme` property is now `SyntaxTheme?`; passing a theme still wins.
 - **`DiffView` takes focus only when it has rows below its viewport,** and draws

@@ -56,9 +56,9 @@ public struct UnderlineModifier: ViewModifier {
 
 /// Payload of `.padding(_:)` — uniform space inside the view's rect.
 public struct PaddingModifier: ViewModifier {
-    public typealias ModifierType = Int
-    /// Blank cells added on all four sides.
-    public let amount: Int
+    public typealias ModifierType = EdgeInsets
+    /// Blank cells added on each side.
+    public let insets: EdgeInsets
 }
 
 /// Payload of `.border(_:color:edges:)` — a one-cell box-drawing frame.
@@ -159,7 +159,26 @@ extension TerminalView {
     /// Cells are ~twice as tall as wide, so equal insets look taller than
     /// they are wide — 1 is usually enough.
     public func padding(_ amount: Int = 1) -> ModifiedView<Self, PaddingModifier> {
-        ModifiedView(content: self, modifier: PaddingModifier(amount: amount))
+        padding(EdgeInsets(.all, amount))
+    }
+
+    /// Inset the view by `length` cells on `edges` only (default 1) — a gap
+    /// beside a rail, room on the sides of a chip without rows above and
+    /// below it. SwiftUI parity: `padding(_:_:)`.
+    ///
+    /// ```swift
+    /// Text(message)
+    ///     .padding(.leading, 1)
+    ///     .border(.heavy, color: accent, edges: .leading)
+    /// ```
+    public func padding(_ edges: Edge.Set, _ length: Int = 1) -> ModifiedView<Self, PaddingModifier> {
+        padding(EdgeInsets(edges, length))
+    }
+
+    /// Inset the view by a different number of cells on each side.
+    /// SwiftUI parity: `padding(_ insets: EdgeInsets)`.
+    public func padding(_ insets: EdgeInsets) -> ModifiedView<Self, PaddingModifier> {
+        ModifiedView(content: self, modifier: PaddingModifier(insets: insets))
     }
 
     /// Draw a one-cell box-drawing border around the view (default
