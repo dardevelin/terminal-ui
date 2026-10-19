@@ -191,7 +191,7 @@ public enum GraphMeasurer {
             if case .frame(let width, _, _, _, _, _, _) = effect, let width { return width }
 
             var base = measureWidth(child)
-            if case .padding(let n) = effect { base += n * 2 }
+            if case .padding(let insets) = effect { base += insets.horizontal }
             if case .border(_, _, let edges) = effect { base += edges.horizontalInset }
             if case .frame(_, _, let minW, let maxW, _, _, _) = effect {
                 // .infinity contributes nothing to intrinsic measurement —
@@ -351,7 +351,7 @@ public enum GraphMeasurer {
                 ? max(1, Layout.childWidth(for: effect, outerWidth: proposedWidth))
                 : proposedWidth
             var base = measureHeight(child, proposedWidth: childWidth)
-            if case .padding(let n) = effect { base += n * 2 }
+            if case .padding(let insets) = effect { base += insets.vertical }
             if case .border(_, _, let edges) = effect { base += edges.verticalInset }
             if case .frame(_, _, _, _, let minH, let maxH, _) = effect {
                 if let maxH = maxH?.fixedValue { base = min(base, maxH) }

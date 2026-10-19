@@ -487,7 +487,7 @@ public enum ModifierEffect {
     case underline
     /// Insets the child's rect by the given cell count on all four sides;
     /// layout stamps the inset rect, render passes it through unchanged.
-    case padding(Int)
+    case padding(EdgeInsets)
     /// Draws the requested border edges at the node's outer rect and insets
     /// the child one cell per drawn edge. A nil colour inherits the
     /// surrounding foreground.

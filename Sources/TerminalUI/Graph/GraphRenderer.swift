@@ -636,8 +636,8 @@ public enum GraphRenderer {
         case .frame(let width, let height, _, _, _, _, _):
             if let explicit = horizontal ? width : height { return explicit }
             return inner()
-        case .padding(let amount):
-            return inner().map { $0 + amount * 2 }
+        case .padding(let insets):
+            return inner().map { $0 + (horizontal ? insets.horizontal : insets.vertical) }
         case .border(_, _, let edges):
             return inner().map { $0 + (horizontal ? edges.horizontalInset : edges.verticalInset) }
         case .flexible(let axes, _):

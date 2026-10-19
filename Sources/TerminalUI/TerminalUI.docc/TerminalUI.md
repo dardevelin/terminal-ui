@@ -75,6 +75,8 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``ScrollbarStyle``
 - ``GeometryReader``
 - ``WidthReader``
+- ``Edge``
+- ``EdgeInsets``
 
 ### Primitives
 
