@@ -154,6 +154,23 @@ public enum GraphRenderer {
 
     // MARK: - Primitives (enum switch = jump table)
 
+    /// Blank the first `count` rows of the context's rect in its inherited
+    /// style — the cells a line of text owns past its last glyph.
+    private static func clearRows(_ count: Int, of context: RenderContext, in buffer: inout CellBuffer) {
+        let rect = context.rect
+        let blank = Cell(character: " ", style: context.style)
+        for y in rect.y..<min(rect.y + count, rect.y + rect.height) {
+            for x in rect.x..<(rect.x + rect.width) {
+                buffer[x, y] = blank
+            }
+        }
+    }
+
+    /// Rows a run list fills when its embedded newlines are the only breaks.
+    private static func logicalLineCount(of spans: [TextSpan]) -> Int {
+        1 + spans.reduce(0) { $0 + $1.text.reduce(0) { $1 == "\n" ? $0 + 1 : $0 } }
+    }
+
     static func renderPrimitive(_ content: PrimitiveContent, into buffer: inout CellBuffer, context: RenderContext) {
         switch content {
         case .text(let spans):
@@ -202,15 +219,24 @@ public enum GraphRenderer {
                 // Truncation happens on the run list rather than the joined
                 // string so each surviving run keeps its own color — a status
                 // row's icon, name and detail are three styles on one line.
+                //
+                // Every row the text occupies is first cleared across the full
+                // rect in the inherited style, as the unstyled path does by
+                // padding each line it writes. Without it a `.background`
+                // behind styled text stopped where the glyphs did, while the
+                // same background behind plain text filled its frame.
                 let mode = GraphContext.currentEnvironment?.textWrap ?? .wrap
                 switch mode {
                 case .truncate(let edge):
+                    let truncated = TextLayout.truncate(spans, width: context.rect.width, edge: edge)
+                    clearRows(logicalLineCount(of: truncated), of: context, in: &buffer)
                     buffer.writeSpans(
-                        TextLayout.truncate(spans, width: context.rect.width, edge: edge),
+                        truncated,
                         x: context.rect.x, y: context.rect.y,
                         maxWidth: context.rect.width, maxHeight: context.rect.height,
                         baseStyle: context.style, wrap: false)
                 case .none:
+                    clearRows(logicalLineCount(of: spans), of: context, in: &buffer)
                     buffer.writeSpans(spans, x: context.rect.x, y: context.rect.y,
                                       maxWidth: context.rect.width, maxHeight: context.rect.height,
                                       baseStyle: context.style, wrap: false)
@@ -219,6 +245,7 @@ public enum GraphRenderer {
                     // a styled sentence breaks at the same words an unstyled one
                     // does — and at the same places the measurer counted.
                     let rows = TextLayout.wrap(spans, width: context.rect.width)
+                    clearRows(rows.count, of: context, in: &buffer)
                     for (offset, row) in rows.enumerated() {
                         let y = context.rect.y + offset
                         guard y < context.rect.y + context.rect.height else { break }

@@ -71,6 +71,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Styled text fills its frame the way plain text does.** A `Text` with any
+  styled run wrote only its glyphs, while plain text padded each line to its
+  frame — so `.background` behind coloured text stopped where the text did.
+  Both now own the rows they write, edge to edge.
 - **A vertical scrollbar no longer covers the content's last column.** Content
   that overflows is laid out one column narrower so the bar has its own; the
   last character of a full-width line, or the `…` a truncated line ends on, was
