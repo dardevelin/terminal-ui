@@ -268,43 +268,34 @@ struct ToolExcerpt: TerminalView {
 
 /// The composer: Crush's borderless editor. Three rows, each led by its
 /// prompt column — `>` on the first while focused, `:::` everywhere else —
-/// with the draft or a placeholder beside the first.
+/// with the draft or a placeholder beside the first. Enter sends the draft.
 struct Prompt: TerminalView {
     let state: CoderState
-    var theme = CoderTheme.dark
 
     /// Crush's `TextareaMinHeight`.
     static let rows = 3
 
+    /// The column Crush's editor draws through its textarea's prompt
+    /// function: green while focused, muted when focus is elsewhere.
+    static let column = PromptPrefix(width: 4) { row in
+        switch (row.index, row.isFocused) {
+        case (0, true): [TextSpan("  > ", foreground: row.theme.success, bold: true)]
+        case (_, true): [TextSpan("::: ", foreground: row.theme.successSubtle)]
+        default: [TextSpan("::: ", foreground: row.theme.foregroundMuted)]
+        }
+    }
+
     var body: some TerminalView {
-        let focused = state.focus == .prompt
-        let draftLines = state.draft.isEmpty ? [] : state.draft.split(separator: "\n").map(String.init)
-        return VStack(spacing: 0) {
-            ForEach(Array(0..<max(Self.rows, draftLines.count)).map(PromptLine.init)) { line in
-                Text(spans: spans(row: line.id, draft: draftLines, focused: focused))
-            }
-        }
+        let state = self.state
+        return PromptInput(
+            text: Binding(get: { state.draft }, set: { state.draft = $0 }),
+            state: Binding(get: { state.promptState }, set: { state.promptState = $0 }),
+            placeholder: "Ask anything, or / for commands",
+            minimumHeight: Self.rows,
+            onSubmit: { state.send($0) }
+        )
+        .promptPrefix(Self.column)
     }
-
-    private func spans(row: Int, draft: [String], focused: Bool) -> [TextSpan] {
-        let prompt: TextSpan
-        switch (row, focused) {
-        case (0, true): prompt = TextSpan("  > ", foreground: theme.success, bold: true)
-        case (0, false): prompt = TextSpan("::: ", foreground: theme.foregroundMuted)
-        case (_, true): prompt = TextSpan("::: ", foreground: theme.successSubtle)
-        case (_, false): prompt = TextSpan("::: ", foreground: theme.foregroundMuted)
-        }
-        if draft.isEmpty {
-            return row == 0
-                ? [prompt, TextSpan("Ask anything, or / for commands", foreground: theme.foregroundFaint)]
-                : [prompt]
-        }
-        return [prompt, TextSpan(row < draft.count ? draft[row] : "", foreground: theme.foreground)]
-    }
-}
-
-private struct PromptLine: Identifiable {
-    let id: Int
 }
 
 /// Progress chip for the active task list.
@@ -338,7 +329,7 @@ struct CoderApp: TerminalView {
                     Transcript(state: state, theme: theme)
                         .flexible(.vertical)
                     TodoPill(state: state, theme: theme)
-                    Prompt(state: state, theme: theme)
+                    Prompt(state: state)
                 }
                 .flexible(.horizontal)
                 Sidebar(state: state, theme: theme)
@@ -347,9 +338,9 @@ struct CoderApp: TerminalView {
             .flexible(.vertical)
             .padding(1)
             Text(spans: [TextSpan(" ")] + HelpLine.spans([
-                ("tab", "focus"),
+                ("enter", "send"),
                 ("^p", "palette"),
-                ("q", "quit"),
+                ("^c", "quit"),
             ], theme: theme))
         }
         .background(theme.background)
@@ -362,5 +353,15 @@ struct CoderApp: TerminalView {
         // from a violet thumb on a graphite track, as Crush draws it.
         .scrollbarStyle(.hairline)
         .markdownStyle(.coder(theme))
+        // The composer's `>` says where keys go; Crush draws no other mark.
+        .focusIndicator(.none)
+        // Escape is the framework's dismiss-or-quit. In Crush it cancels the
+        // request in flight and never closes the session — a reflex press
+        // must not cost the user their conversation. Coder runs no agent, so
+        // there is nothing to cancel yet; the binding is here to own the key.
+        .actions {
+            Action(id: "coder.cancel", title: .literal("Cancel"), perform: {})
+                .bound(to: .keyboard(.escape, []))
+        }
     }
 }

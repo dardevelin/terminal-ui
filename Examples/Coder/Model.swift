@@ -113,11 +113,6 @@ struct Todo: Identifiable, Sendable {
 }
 
 /// Which pane owns the keyboard.
-enum Pane: Sendable {
-    case transcript
-    case prompt
-}
-
 /// Application state. `@Observable` + `final class` so mutations drive
 /// the surgical body-evaluation path. Deliberately *not* `@MainActor`,
 /// matching the Demo / GitClient / Chat convention — type-level
@@ -139,7 +134,8 @@ final class CoderState {
     var todos: [Todo]
 
     var draft: String
-    var focus: Pane = .prompt
+    /// The composer's cursor, scroll and history.
+    var promptState = PromptInputState()
 
     init(
         sessionTitle: String,
@@ -196,6 +192,20 @@ final class CoderState {
     private static func trimZero(_ value: String) -> String {
         value.hasSuffix(".0") ? String(value.dropLast(2)) : value
     }
+
+    /// Add what the user sent to the transcript. Coder runs no agent, so
+    /// nothing answers it.
+    func send(_ text: String) {
+        let id = (entries.map(\.id).max() ?? 0) + 1
+        entries.append(.message(Message(id: id, author: .user, body: text,
+                                        timestamp: Self.clock.string(from: Date()))))
+    }
+
+    private static let clock: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
 
     var doneTodoCount: Int {
         todos.filter { if case .done = $0.status { true } else { false } }.count

@@ -8,18 +8,13 @@ nonisolated(unsafe) let coderState = Fixtures.session()
 
 @main
 struct CoderMain: TerminalAppProtocol {
+    /// Overridden to quit on nothing. The default quits on `q`, and the
+    /// prompt owns every printable key: a quit chord on a letter ends the
+    /// session at the first word that contains it and hands the rest of the
+    /// line to the shell. Ctrl+C is the framework's quit, as it is Crush's;
+    /// Escape is `CoderApp`'s.
     static func onEvent(_ event: TerminalEvent) -> Bool {
-        if case .key(let key) = event {
-            switch key.key {
-            case .character("q"), .escape:
-                return false
-            case .tab:
-                coderState.focus = coderState.focus == .prompt ? .transcript : .prompt
-            default:
-                break
-            }
-        }
-        return true
+        true
     }
 
     static func content() -> some TerminalView {

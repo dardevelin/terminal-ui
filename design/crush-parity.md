@@ -608,19 +608,49 @@ their column of room in the same stroke.
 Not built: per-message focus, which in Crush thickens the focused entry's rail
 to `▌`. The demo has no message selection yet.
 
+**L15. The composer became a control.** *(demo — built, by way of four fixes)*
+
+Run interactively, the demo closed under the user's hands: its composer was a
+drawing, `q` and Escape were quit chords, and the first word with a `q` in it
+ended the session and ran the rest of the line in the shell. Making the
+composer a `PromptInput` that looks like Crush's — `>` on the first row while
+focused, `:::` on the rest, dimmed when focus is elsewhere, three rows when
+empty, a placeholder — took four framework fixes, each on its own:
+
+- With nothing focused, action dispatch started at the graph root and walked up
+  past none of the app's scopes, so an app could not override Escape or Ctrl+C
+  at all. A key with no focused view is now addressed to the window.
+- A body re-run in place after a state change, and a `GeometryReader`'s content
+  rebuilt during layout, saw the frame's bare environment — under
+  `.environment(\.theme, …)` they drew with the default theme. Both now resolve
+  the environment from the modifiers above them.
+- `isFocused` and `focusedID` were documented and never set. A focusable's
+  content now reads whether it holds focus, as in SwiftUI; `@TerminalEnvironment`
+  records what each body read, and a focus change re-runs only the readers.
+- `PromptInput` draws its cursor only while focused, takes its colours from the
+  theme, and gained `placeholder:`, `minimumHeight:` and `PromptPrefix` /
+  `.promptPrefix(_:)` for a per-row column.
+
+Escape is the framework's dismiss-or-quit; in Crush it cancels the request in
+flight, so the demo binds it to a Cancel that has nothing to cancel yet.
+
 ### Ledger — open
 
-- **G3 — edge-aware padding.** Now the largest visual gap: Crush pads every
-  message on the leading side only — a user message one column past its rail,
-  an assistant message or tool call two columns with no rail. Blocked, not just
-  unbuilt — the inset-width measurement fix it depends on (L3) is blocked on
-  `GeometryReader` semantics: one node's subtree is rebuilt by several passes at
-  different sizes, and the last writer decides the measured height. SwiftUI
-  resolves this by making `GeometryReader` greedy, which is a public behaviour
-  change and wants a decision before code.
+- **Environment changes reach only some readers.** The update walk skips a
+  composite whose inputs are unchanged, so a value changed by an
+  `.environment` modifier above it — a theme switch — does not reach it.
+  Focus is invalidated through the reads `@TerminalEnvironment` now records;
+  other values are not yet. Verified by test, not yet fixed.
+- **The transcript does not follow its tail.** Crush opens on the latest
+  message and keeps it in view as entries arrive, until the reader scrolls
+  away. `.scrollPosition(id:)` re-applies its target on every render, which
+  pins rather than follows; SwiftUI's is a two-way binding. A sent message
+  lands below the fold.
+- **`TextInput` and `TextArea` draw their cursor without focus** — the defect
+  `PromptInput` had; the fix is the same, and nothing in the demo uses them yet.
 - **G1 remainder — the literal-drawing components** listed in L4, less
-  `DiffView` (L8): `TabView`, `TreeView`, `HunkDiffView`, `StatusBar`,
-  `PromptInput`. (`ScrollView`'s indicators done in L10.)
+  `DiffView` (L8) and `PromptInput` (L15): `TabView`, `TreeView`,
+  `HunkDiffView`, `StatusBar`. (`ScrollView`'s indicators done in L10.)
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
   demanded will be bash, for the Bash card's command.
 
