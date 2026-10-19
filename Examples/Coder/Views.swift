@@ -108,28 +108,38 @@ struct Transcript: TerminalView {
     }
 }
 
-/// One chat message: an accent rail, an author line, and the body.
+/// One chat message: an author line and the body, framed the way Crush
+/// frames them. What the user said carries a rail; what the agent said does
+/// not, and is indented to start where the user's text starts — the rail
+/// marks the turns that came from outside.
 struct MessageRow: TerminalView {
     let message: Message
     var theme = CoderTheme.dark
 
+    @TerminalViewBuilder
     var body: some TerminalView {
-        // The rail is a real border edge, so it runs the full height of the
-        // entry — including the rows a long body wraps onto.
+        switch message.author {
+        case .user:
+            // A border edge, so the rail runs the full height of the entry —
+            // the rows a long body wraps onto included — with a column of
+            // room before the text on every one of them.
+            content
+                .padding(.leading, 1)
+                .border(.rounded, color: theme.primary, edges: .leading)
+        case .assistant:
+            content
+                .padding(.leading, 2)
+        }
+    }
+
+    private var content: some TerminalView {
         VStack(spacing: 0) {
             Text(spans: [
-                TextSpan(authorLabel, foreground: railColor, bold: true),
+                TextSpan(authorLabel, foreground: authorColor, bold: true),
                 TextSpan("  \(message.timestamp)", foreground: theme.foregroundFaint),
             ])
             MarkdownView(message.body)
         }
-        // GAP LEDGER — G3. Crush sets a single column of breathing room
-        // between the rail and the text (BorderLeft + PaddingLeft(1)).
-        // `.padding(1)` is uniform, so it would also open a blank row above
-        // and below every entry. A gap on the first line only — from padding
-        // the spans — would be worse, since the wrapped continuation rows
-        // would not get it. Flush until edge-aware padding lands.
-        .border(.heavy, color: railColor, edges: .leading)
     }
 
     private var authorLabel: String {
@@ -139,10 +149,10 @@ struct MessageRow: TerminalView {
         }
     }
 
-    private var railColor: Color {
+    private var authorColor: Color {
         switch message.author {
-        case .user: theme.secondary
-        case .assistant: theme.primary
+        case .user: theme.primary
+        case .assistant: theme.secondary
         }
     }
 }
@@ -154,9 +164,8 @@ struct ToolCard: TerminalView {
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        // Quiet rail: a tool call is subordinate to the message that caused
-        // it, so the frame is thin and the separator colour rather than an
-        // author accent.
+        // No rail: a tool call is subordinate to the message that caused it.
+        // It sits two columns in, level with message text, as Crush sets it.
         VStack(spacing: 0) {
             Text(spans: [
                 TextSpan(badge.glyph, foreground: badge.color),
@@ -174,7 +183,7 @@ struct ToolCard: TerminalView {
                     .foreground(theme.foregroundFaint)
             }
         }
-        .border(.rounded, color: theme.separator, edges: .leading)
+        .padding(.leading, 2)
     }
 
     private var badge: (glyph: String, color: Color) {
