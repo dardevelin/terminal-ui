@@ -909,11 +909,13 @@ public enum GraphRenderer {
             }
 
         case .vertical:
-            let contentHeight = measureHeight(contentChild, proposedWidth: viewport.width)
+            let contentWidth = verticalContentWidth(of: contentChild, viewport: viewport,
+                                                    showIndicators: showIndicators)
+            let contentHeight = measureHeight(contentChild, proposedWidth: contentWidth)
             guard contentHeight > 0, viewport.width > 0, viewport.height > 0 else { return }
 
-            var contentBuffer = CellBuffer(width: viewport.width, height: contentHeight)
-            let contentRect = Rect(x: 0, y: 0, width: viewport.width, height: contentHeight)
+            var contentBuffer = CellBuffer(width: contentWidth, height: contentHeight)
+            let contentRect = Rect(x: 0, y: 0, width: contentWidth, height: contentHeight)
             // Re-stamp from local-buffer origin (0, 0); offsetRects
             // below translates back to screen coords.
             Layout.measureAndPlace(graph: contentChild, in: contentRect)
@@ -923,7 +925,7 @@ public enum GraphRenderer {
             let srcStartY = max(0, offset)
             let srcEndY = min(contentHeight, offset + viewport.height)
             for srcY in srcStartY..<srcEndY {
-                for x in 0..<viewport.width {
+                for x in 0..<contentWidth {
                     let dstX = viewport.x + x
                     let dstY = viewport.y + (srcY - offset)
                     let cell = contentBuffer[x, srcY]
@@ -1001,6 +1003,23 @@ public enum GraphRenderer {
                 }
             }
         }
+    }
+
+    /// The width a vertical scroll view lays its content out at.
+    ///
+    /// The scrollbar is painted in the viewport's last column, so content laid
+    /// out across the full width loses that column whenever the bar shows — the
+    /// last character of a full-width line, or the `…` a truncated line ends
+    /// on. The bar shows only when the content overflows, so overflowing content
+    /// gives the bar its column, the way a classic scrollbar does; content that
+    /// fits keeps the full width. Narrowing cannot make overflowing content fit
+    /// (a narrower proposal only wraps more), so the decision is stable.
+    static func verticalContentWidth(of content: AttributeNode, viewport: Rect,
+                                     showIndicators: Bool) -> Int {
+        guard showIndicators, viewport.width > 1,
+              measureHeight(content, proposedWidth: viewport.width) > viewport.height
+        else { return viewport.width }
+        return viewport.width - 1
     }
 
     /// Mark a view that sits flush against the left edge by inverting its
