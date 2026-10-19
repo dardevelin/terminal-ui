@@ -52,6 +52,8 @@ final class StorybookState {
     var promptValue: String = ""
     var promptState: PromptInputState = PromptInputState()
     var promptSubmitted: String = "(nothing yet)"
+    var prefixDraft: String = ""
+    var prefixPromptState: PromptInputState = PromptInputState()
     var treeSelection: Int? = 0
     var hunkFileName: String = "example.swift"
     // Hover/policy demo state

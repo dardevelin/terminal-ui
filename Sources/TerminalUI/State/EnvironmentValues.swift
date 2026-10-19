@@ -88,6 +88,9 @@ public struct EnvironmentValues: Sendable {
     /// pastes with a newline OR over 200 chars collapse to a marker.
     /// Override via `.pasteMode(.inline)` or `.pasteMode(.alwaysPlaceholder)`.
     public var pasteMode: PasteMode = .claudeCode
+    /// What `PromptInput` draws at the start of each row, or nil for its own
+    /// `prompt` glyph. Set via `.promptPrefix(_:)`.
+    public var promptPrefix: PromptPrefix? = nil
 
     /// Whether the "paste again to expand" auto-hint row is visible
     /// beneath the prompt when the cursor is adjacent to a collapsed
