@@ -581,7 +581,10 @@ struct PreviewPane: TerminalView {
             }
             .frame(width: 24)
         case .focusable:
-            Text("press Tab to focus me").focusable()
+            VStack {
+                StorybookChoice(title: "press Tab to focus me").focusable()
+                StorybookChoice(title: "then me").focusable()
+            }
         case .frame:
             Text("x").frame(width: 10, height: 3).border()
         case .flexible:
@@ -1161,4 +1164,16 @@ struct IniHighlighter: SyntaxHighlighter {
 struct StorybookLoudTheme: Theme {
     var accent: Color = .magenta
     var foregroundMuted: Color = .rgb(120, 90, 140)
+}
+
+/// A row that knows when it holds focus — the `.focusable` page's example of
+/// reading `isFocused`.
+struct StorybookChoice: TerminalView {
+    let title: String
+    @TerminalEnvironment(\.isFocused) var isFocused
+
+    var body: some TerminalView {
+        Text((isFocused ? "▸ " : "  ") + title)
+            .foreground(isFocused ? .cyan : .gray)
+    }
 }

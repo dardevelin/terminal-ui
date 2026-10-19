@@ -179,9 +179,9 @@ public enum GraphMeasurer {
 
         case .modifier(let effect):
             guard let child = node.children.first else { return 0 }
-            if case .environment(let apply) = effect {
+            if node.setsEnvironment {
                 var nextEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
-                apply(&nextEnv)
+                node.applyEnvironment(to: &nextEnv)
                 return GraphContext.$currentEnvironment.withValue(nextEnv) {
                     measureWidth(child)
                 }
@@ -326,9 +326,9 @@ public enum GraphMeasurer {
             // render (e.g. `.wrap(.none)` on a Text must stop the measurer
             // from inflating height at narrow widths). Push the modifier's
             // env over the current one, measure, then restore.
-            if case .environment(let apply) = effect {
+            if node.setsEnvironment {
                 var nextEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
-                apply(&nextEnv)
+                node.applyEnvironment(to: &nextEnv)
                 return GraphContext.$currentEnvironment.withValue(nextEnv) {
                     measureHeight(child, proposedWidth: proposedWidth)
                 }

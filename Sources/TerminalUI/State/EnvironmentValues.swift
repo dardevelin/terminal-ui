@@ -37,11 +37,24 @@ public struct EnvironmentValues: Sendable {
     /// runtime lowers it to what the terminal reports so styles degrade
     /// instead of emitting unsupported SGR sequences.
     public var colorSupport: ColorSupport = .trueColor
-    /// Whether the subtree being evaluated sits under the keyboard-focused
-    /// node, letting descendants restyle while their container holds focus.
+    /// Whether the nearest focusable view above this one holds keyboard
+    /// focus — as SwiftUI's `isFocused`. Put `.focusable()` on a view and its
+    /// body reads whether it is focused:
+    ///
+    /// ```swift
+    /// struct Field: TerminalView {
+    ///     @TerminalEnvironment(\.isFocused) var isFocused
+    ///     var body: some TerminalView { Text(isFocused ? "> name" : "  name") }
+    /// }
+    ///
+    /// Field().focusable()
+    /// ```
+    ///
+    /// Only bodies that read it run again when focus moves.
     public var isFocused: Bool = false
     /// Node currently holding keyboard focus, or nil when nothing does —
-    /// the environment's read-only mirror of `FocusEngine.keyboardFocusID`.
+    /// the environment's read-only mirror of `FocusEngine.keyboardFocusID`,
+    /// bound by the runtime for every frame.
     public var focusedID: NodeID? = nil
     /// Keyboard-focus indicator style. Default `.overlay` preserves
     /// pre-visuals (cyan `▎` bar at `rect.x - 1`). Set via
@@ -255,6 +268,7 @@ public struct TerminalEnvironment<Value> {
     /// none is bound (handlers, pre-render reads).
     public var wrappedValue: Value {
         let env = GraphContext.currentEnvironment ?? EnvironmentValues()
+        GraphContext.currentNode?.environmentReads.insert(keyPath)
         return env[keyPath: keyPath]
     }
 }

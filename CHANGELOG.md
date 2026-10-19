@@ -102,6 +102,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A view can read whether it holds focus.** `isFocused` and `focusedID` were
+  documented environment values that nothing ever set, so no view could tell
+  whether keys would reach it. A `.focusable()` view's content now reads
+  `@TerminalEnvironment(\.isFocused)` as in SwiftUI — true while the nearest
+  focusable above it holds focus — and the runtime binds `focusedID` every
+  frame. When focus moves, only the bodies that read either value run again:
+  `@TerminalEnvironment` records what each body read.
 - **A body rebuilt outside the update walk sees the environment above it.** The
   walk applies each environment modifier on its way down; the two paths that
   evaluate a body without it did not. A body re-run in place after an

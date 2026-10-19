@@ -133,6 +133,13 @@ public class AttributeNode: @unchecked Sendable {
     /// value cannot survive an env-modifier change.
     public var _resolvedEnv: EnvironmentValues?
 
+    /// The environment values this node's body read the last time it ran,
+    /// recorded by `@TerminalEnvironment` as it is read. A change to a value
+    /// that is not in here cannot change what the body produces, so it need
+    /// not run again — this is what lets a focus change re-run only the
+    /// bodies that asked whether they are focused.
+    var environmentReads: Set<AnyKeyPath> = []
+
     /// Focus granularity in force where this node was built, or nil when the
     /// author expressed no preference and the container's own shape decides.
     ///
@@ -254,6 +261,25 @@ public class AttributeNode: @unchecked Sendable {
         cachedHeightWidth = nil
         _resolvedEnv = nil
         parent?.markLayoutDirty()
+    }
+
+    /// Writes what this node sets in the environment of the nodes below it:
+    /// an environment modifier's values, and — for a focusable node — whether
+    /// focus is on it, which is what `isFocused` reads in its content.
+    func applyEnvironment(to env: inout EnvironmentValues) {
+        switch kind {
+        case .modifier(.environment(let apply)): apply(&env)
+        case .modifier(.focusable): env.isFocused = env.focusedID == id
+        default: break
+        }
+    }
+
+    /// Whether ``applyEnvironment(to:)`` writes anything.
+    var setsEnvironment: Bool {
+        switch kind {
+        case .modifier(.environment), .modifier(.focusable): true
+        default: false
+        }
     }
 
     /// Mark layout dirty up the tree and invalidate measurement caches.
