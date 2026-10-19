@@ -94,8 +94,8 @@ import Testing
     /// it is a border edge rather than a gutter glyph.
     @Test func aQuotesRailRunsEveryRow() {
         let out = rows(render("> alpha beta gamma", width: 12, height: 3))
-        #expect(out[0] == "┃alpha beta")
-        #expect(out[1] == "┃gamma")
+        #expect(out[0] == "┃ alpha beta")
+        #expect(out[1] == "┃ gamma")
     }
 
     @Test func codeBlocksKeepTheirOwnLineBreaks() {

@@ -132,7 +132,10 @@ private struct MarkdownRowView: TerminalView {
     @TerminalViewBuilder
     private var content: some TerminalView {
         if let rail = row.rail {
-            styledContent.border(.heavy, color: rail, edges: .leading)
+            // A column of room between rail and text, on every row the quote
+            // wraps to — the `│ ` a quote is read as, not a bar touching the
+            // first letter.
+            styledContent.padding(.leading, 1).border(.heavy, color: rail, edges: .leading)
         } else {
             styledContent
         }

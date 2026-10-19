@@ -179,10 +179,8 @@ enum MarkdownFlattener {
             emit(inner, into: &quoted, indent: 0, context: context, separated: true)
             for var row in quoted {
                 // A border edge rather than a glyph, so the rail also covers
-                // the rows a long quoted paragraph wraps onto. The rail sits
-                // flush against the text for now — a column of breathing room
-                // needs leading-only padding, which the framework does not yet
-                // have.
+                // the rows a long quoted paragraph wraps onto. The row view
+                // keeps a column of room between the rail and the text.
                 row.indent += indent
                 row.rail = style.blockQuote.foreground ?? theme.separator
                 rows.append(row)
