@@ -89,6 +89,8 @@ All notable changes to TerminalUI are documented here. Format based on
   paints the theme's ground behind its text, so markdown inside a panel of
   another colour shows that panel; a code block's fill now reaches the edge of
   its column instead of stopping where its text does.
+- **A markdown quote keeps a column of room beside its rail** (`┃ quoted`),
+  on every row it wraps to, instead of the rail touching the text.
 - **`PaddingModifier` carries `insets: EdgeInsets`** instead of `amount: Int`.
   Code that read `amount` reads `insets`; `.padding(n)` itself is unchanged.
 - **`TextArea(theme:)` is optional and follows `Theme.syntax` when omitted.** The
