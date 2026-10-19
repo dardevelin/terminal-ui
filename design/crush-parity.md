@@ -514,6 +514,41 @@ Seen but not built, each waiting for the demo to need it:
 - **Scroll indicator colours.** The thumb and track are cyan and gray literals,
   so the transcript's scrollbar ignores the theme. One more for G1's remainder.
 
+**L10. What the framework drew for an app ignored the app.** *(G1 remainder — built)*
+
+The transcript's scrollbar was a cyan full block whatever the theme; the demo
+had declared the glyphs it wanted and had nowhere to put them, and the only
+control was hiding the bar. The reference look — a hairline track, a coloured
+thumb, no arrows — was not expressible.
+
+Framework-drawn affordances take roles now: the bar's thumb and edge markers
+`borderActive` (the bar stands where a border would; the thumb is its active
+part), the track `separator`, the focus bar `accent`, read-only and hover bars
+`foregroundMuted`. Shape is a `ScrollbarStyle` set per subtree, the way
+`.focusIndicator(_:)` sets the focus bar, with the edge arrows as their own
+optional set: `.thin` (default), `.block` (the old look), `.hairline`. All of
+it is read from the scroll view's own environment, so one pane can differ.
+
+**L11. Code colours and languages were fixed in place.** *(G6 groundwork + a missing view — built)*
+
+The Read card wanted the file text itself — highlighted, numbered from where the
+read began — as Crush's View card shows it. Nothing could draw that: there was
+no read-only code view; `MarkdownView` hard-wired one palette whatever the
+theme; `SyntaxTheme`'s documentation promised a `.syntaxTheme(_:)` that never
+existed; and the language lookup was internal and Swift-only, so a lexer an app
+wrote could not reach a markdown fence.
+
+Code colours are `Theme.syntax`, a declared role like `border`. Lexers register
+through the environment (`.syntaxHighlighter(_:for:)`), built on a new
+`transformEnvironment` so registering one adds to what is inherited. A public
+`highlight(lines:theme:)` carries tokenizer state across lines and draws
+unclassified stretches plain — the protocol's promise, which the markdown path
+had not kept. `CodeView` uses it and so does `MarkdownView`; `TextArea`'s
+syntax theme now follows the theme when not given.
+
+Not built: lexers beyond Swift. The registry is the seam; the demo's excerpts
+are Swift. Bash for the Bash card's command is the likely first.
+
 ### Ledger — open
 
 - **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
@@ -525,9 +560,12 @@ Seen but not built, each waiting for the demo to need it:
   change and wants a decision before code.
 - **G1 remainder — the literal-drawing components** listed in L4, less
   `DiffView` (L8): `TabView`, `TreeView`, `HunkDiffView`, `StatusBar`,
-  `PromptInput`, and `ScrollView`'s indicators (L9).
-- **G6 — lexers beyond Swift.** First demand is the Bash card's command (L9);
-  plain text still reads, so not yet a wall.
+  `PromptInput`. (`ScrollView`'s indicators done in L10.)
+- **Markdown element styles.** `MarkdownView` maps every element to a fixed role;
+  Crush keeps `##` markers, draws inline code as a coloured chip, and gives code
+  blocks no background. Not expressible without a per-element style.
+- **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
+  demanded will be bash, for the Bash card's command.
 
 Everything else in §2.2 waits for the demo to reach it.
 

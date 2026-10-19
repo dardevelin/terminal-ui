@@ -41,14 +41,19 @@ enum Fixtures {
                 name: "Read",
                 summary: "Sources/TerminalUI/Rendering/Compositor.swift",
                 state: .success,
-                output: "482 lines"
+                output: nil,
+                excerpt: FileExcerpt(path: "Sources/TerminalUI/Rendering/Compositor.swift",
+                                     firstLine: 298, code: compositorExcerpt)
             )),
             .tool(ToolCall(
                 id: 4,
                 name: "Grep",
                 summary: "previousBuffer = nil",
                 state: .success,
-                output: "Compositor.swift:311\nCompositor.swift:408"
+                output: """
+                    Compositor.swift:311:        previousBuffer = nil
+                    Compositor.swift:408:        previousBuffer = nil  // reset on resize
+                    """
             )),
             .message(Message(
                 id: 5,
@@ -113,6 +118,27 @@ enum Fixtures {
         ✔ Test cursorTrackingSurvivesASkippedFrame() passed after 0.001 seconds.
         ✔ Suite CompositorDeltaTests passed after 0.011 seconds.
         ✔ Test run with 5 tests in 1 suite passed after 0.012 seconds.
+        """
+
+    /// What the Read call returned: fifteen lines from line 298, so the card
+    /// shows ten and holds five back — among them line 311, where Grep finds
+    /// the nil the bug hangs on.
+    private static let compositorExcerpt = """
+            /// Compute the bytes that turn the last frame into this one.
+            func flush(_ buffer: CellBuffer) -> FrameResult {
+                guard let previous = previousBuffer else {
+                    // No previous frame: everything on screen is new.
+                    previousBuffer = buffer
+                    return .fullRepaint(buffer)
+                }
+                let delta = diff(previous, buffer)
+                previousBuffer = buffer
+                return delta.isEmpty ? .unchanged : .delta(delta)
+            }
+
+            func skip() {
+                previousBuffer = nil
+            }
         """
 
     private static let compositorBefore = """

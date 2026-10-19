@@ -203,6 +203,8 @@ struct ToolCard: TerminalView {
             ])
             if let diff = call.diff {
                 DiffView(lines: diff, visibleHeight: diff.count)
+            } else if let excerpt = call.excerpt {
+                ToolExcerpt(excerpt: excerpt, theme: theme)
             } else if let output = call.output {
                 ToolOutput(text: output, theme: theme)
             } else if call.state == .pending {
@@ -222,29 +224,68 @@ struct ToolCard: TerminalView {
     }
 }
 
+/// How much of a tool's result the transcript gives it — Crush's
+/// `responseContextHeight`.
+enum ResultCap {
+    static let maxLines = 10
+
+    /// Lines to show of `count`. Hiding one line would spend a line saying
+    /// so, so a result one over the cap is shown whole.
+    static func shown(of count: Int) -> Int {
+        count <= maxLines + 1 ? count : maxLines
+    }
+}
+
+/// The note under a capped result, counting what it held back.
+struct HiddenLines: TerminalView {
+    let count: Int
+    var theme = CoderTheme.dark
+
+    var body: some TerminalView {
+        Text(" … (\(count) lines hidden)")
+            .foreground(theme.foregroundFaint)
+    }
+}
+
 /// A tool's plain-text result, the way Crush shows it: a raised block the
-/// width of the card, each line cut to fit rather than wrapped, and a cap on
-/// how many lines a single result may take from the transcript.
+/// width of the card, each line cut to fit rather than wrapped, and capped.
 struct ToolOutput: TerminalView {
     let text: String
     var theme = CoderTheme.dark
 
-    /// Crush's `responseContextHeight`. Hiding one line would spend a line
-    /// saying so, so a result one over the cap is shown whole.
-    private static let maxLines = 10
-
     var body: some TerminalView {
         let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown = lines.count <= Self.maxLines + 1 ? lines.count : Self.maxLines
-        let hidden = lines.count - shown
+        let shown = ResultCap.shown(of: lines.count)
 
         VStack(spacing: 0) {
             Text(lines.prefix(shown).map { " " + $0 }.joined(separator: "\n"))
                 .wrap(.truncate(.tail))
                 .foreground(theme.foregroundMuted)
-            if hidden > 0 {
-                Text(" … (\(hidden) lines hidden)")
-                    .foreground(theme.foregroundFaint)
+            if lines.count > shown {
+                HiddenLines(count: lines.count - shown, theme: theme)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .background(theme.backgroundRaised)
+    }
+}
+
+/// File text a reading tool returned: highlighted by the file's language,
+/// numbered from where the read started, cut to the card's width, capped.
+struct ToolExcerpt: TerminalView {
+    let excerpt: FileExcerpt
+    var theme = CoderTheme.dark
+
+    var body: some TerminalView {
+        let lines = excerpt.code.split(separator: "\n", omittingEmptySubsequences: false)
+        let shown = ResultCap.shown(of: lines.count)
+
+        VStack(spacing: 0) {
+            CodeView(lines.prefix(shown).joined(separator: "\n"), language: excerpt.language,
+                     lineNumbers: true, firstLineNumber: excerpt.firstLine)
+                .wrap(.truncate(.tail))
+            if lines.count > shown {
+                HiddenLines(count: lines.count - shown, theme: theme)
             }
         }
         .frame(maxWidth: .infinity)

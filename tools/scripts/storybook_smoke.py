@@ -1582,16 +1582,25 @@ CODER_DIFF_REMOVED = "-        previousBuffer = nil"
 CODER_DIFF_FIRST = "private var previousBuffer: CellBuffer?"
 
 
-def _coder_scroll_to_edit_card(app: Client) -> str:
-    """The Edit card sits below the fold at 40 rows; wheel the transcript
-    until its diff is on screen and return the frame text."""
-    for _ in range(6):
-        text = app.cells().text()
-        if CODER_DIFF_REMOVED in text:
-            return text
+def _coder_scroll_until(app: Client, needle: str, what: str) -> str:
+    """Wheel the transcript down until `needle` is on screen and return the
+    frame text. Stops when the frame stops changing — the transcript's end —
+    rather than after a guessed number of steps, so a taller transcript does
+    not turn into a false failure."""
+    text = app.cells().text()
+    while needle not in text:
         app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
         app.wait_for_frame(1, timeout=0.5)
-    raise CaseFailed("Edit card's diff never scrolled into view")
+        after = app.cells().text()
+        if after == text:
+            raise CaseFailed(f"{what} never scrolled into view")
+        text = after
+    return text
+
+
+def _coder_scroll_to_edit_card(app: Client) -> str:
+    """The Edit card sits below the fold at 40 rows."""
+    return _coder_scroll_until(app, CODER_DIFF_REMOVED, "Edit card's diff")
 
 
 def coder_renders(app: Client) -> None:
@@ -1626,20 +1635,24 @@ def coder_transcript_diff_takes_no_keys(app: Client) -> None:
     assert_true(after == before, "arrow keys changed the transcript")
 
 
+def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
+    """A Read result shows the file text itself, numbered from where the
+    read started rather than from one, and capped like any tool result."""
+    text = app.cells().text()
+    rows = text.splitlines()
+    first = next((row for row in rows if "/// Compute the bytes" in row), None)
+    assert_true(first is not None, "expected the excerpt's first line")
+    assert_true("298" in first, f"excerpt not numbered from its file line: {first.strip()!r}")
+    assert_true("… (5 lines hidden)" in text, "expected the excerpt's hidden-line count")
+
+
 def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
     """A Bash result shows at most ten lines and says how many it held back;
     a line wider than the card ends in `…`. Regression: the transcript's
     scrollbar was painted over the content's last column, so the ellipsis a
     correctly truncated line ends on was erased and the line read as cut off
     mid-word."""
-    for _ in range(10):
-        text = app.cells().text()
-        if "Waiting for tool response" in text:
-            break
-        app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
-        app.wait_for_frame(1, timeout=0.5)
-    else:
-        raise CaseFailed("pending Bash card never scrolled into view")
+    text = _coder_scroll_until(app, "Waiting for tool response", "pending Bash card")
     rows = text.splitlines()
     assert_true("… (4 lines hidden)" in text, "expected the hidden-line count")
     long_row = next((row for row in rows if "note: previousBuffer" in row), None)
@@ -1736,6 +1749,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
     SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),
+    SmokeCase("coder.read_card_shows_numbered_excerpt", "Coder", coder_read_card_shows_numbered_excerpt),
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
 ]
 
