@@ -9,13 +9,16 @@ public enum GraphMeasurer {
     /// Intrinsic width — cached on the node, recomputed only when dirty.
     /// ViewBody nodes (composite views, GeometryReader) bypass the cache
     /// because their subtree can change between measurement calls — the
-    /// cache key would need a state fingerprint we don't have. Mirrors
-    /// the equivalent skip in `measureHeight`.
+    /// cache key would need a state fingerprint we don't have — and so do
+    /// containers that embed one, exactly as in `measureHeight`. Skipping
+    /// only the viewBody itself left its ancestors answering from a cache
+    /// the viewBody's changes never invalidate: Storybook's detail column
+    /// kept the width of a page it had already left.
     public static func measureWidth(_ node: AttributeNode) -> Int {
         let skipCache: Bool
         switch node.kind {
         case .viewBody: skipCache = true
-        default: skipCache = false
+        default: skipCache = containsViewBody(node)
         }
         if !skipCache, let cached = node.cachedWidth { return cached }
         let result = computeWidth(node)

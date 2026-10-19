@@ -583,33 +583,29 @@ public final class AttributeGraph: @unchecked Sendable {
         node.isDirty = false
     }
 
-    /// Invalidate cached width/height on `node` and any **layout** ancestors
-    /// whose intrinsic size genuinely depends on this child's measurement.
-    /// Stops at the first non-layout ancestor (modifier, viewBody) — those
-    /// either pass through or rebuild from `geometryRebuilder`, so their
-    /// caches don't need invalidation by a leaf Text edit.
+    /// Invalidate cached width/height on `node` and every ancestor, since
+    /// each one's measured size is built from this one's.
     ///
-    /// Originally walked all the way to the root. That over-invalidation
-    /// re-measured the whole Storybook tree on every arrow-press in the
-    /// sidebar — the user saw the Code panel width drift 41 → 27 across
-    /// five keystrokes because some unrelated layout's cache was dropped
-    /// and recomputed from a measurement context that had shifted.
+    /// The walk used to stop at the first non-layout ancestor, on the grounds
+    /// that modifiers pass through. Passing through is exactly why they must
+    /// be invalidated: a modifier's cached size is its child's size. A
+    /// `Text(…).foreground(…)` whose text changed left the foreground node
+    /// answering with the old width, and Storybook's detail column kept the
+    /// width of the page before.
     ///
-    /// PromptInput soft-wrap (the original reason for any walk) still
-    /// works because the GeometryReader's viewBody node bypasses cache
-    /// in measureHeight AND measureWidth, so the GR's parent VStack
-    /// re-derives child measurements every render — no stale path.
+    /// The early stop was itself a workaround. Walking to the root once made
+    /// the Code panel's width drift 41 → 27 across keystrokes — but the drift
+    /// came from GeometryReader content measured at whatever size its last
+    /// rebuild had left, not from invalidating too much. With readers no
+    /// longer measured that way, re-measuring an ancestor gives the same
+    /// answer every time.
     func invalidateMeasurementCache(from node: AttributeNode) {
         var current: AttributeNode? = node
         while let n = current {
             n.cachedWidth = nil
             n.cachedHeight = nil
             n.cachedHeightWidth = nil
-            if let parent = n.parent, case .layout = parent.kind {
-                current = parent
-            } else {
-                current = nil
-            }
+            current = n.parent
         }
     }
 
