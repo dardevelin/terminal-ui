@@ -6,8 +6,9 @@ import Testing
 // `scrollbarThumb(viewport:content:offset:)` returns nil when
 // `content <= viewport` — verified by `ScrollbarGeometryTests`.
 // What this suite pins is the integration: GraphRenderer must NOT
-// paint either the `│` track glyph or the `█` thumb glyph when the
-// rendered content fits inside the viewport.
+// paint either the track glyph or the thumb glyph when the rendered
+// content fits inside the viewport. Glyphs are read from the default
+// `ScrollbarStyle`, so the guard follows the bar if its shape changes.
 //
 // The scenario that surfaced the bug: a ScrollView whose content
 // genuinely fits, but somewhere upstream the measurement reports an
@@ -17,9 +18,11 @@ import Testing
 @MainActor
 struct ScrollbarNoOverflowTests {
 
+    private let glyphs = EnvironmentValues().scrollbarStyle
+
     /// Render a vertical ScrollView whose 3-row content fits inside a
-    /// 10-row viewport. Inspect the rightmost column for `│` track
-    /// glyphs and `█` thumb glyphs — both must be absent.
+    /// 10-row viewport. Inspect the rightmost column for track and thumb
+    /// glyphs — both must be absent.
     @Test("vertical ScrollView with content shorter than viewport has no scrollbar glyphs")
     func verticalNoOverflowNoBar() {
         let view = ScrollView(.vertical) {
@@ -43,13 +46,13 @@ struct ScrollbarNoOverflowTests {
         let rightCol = buffer.width - 1
         for y in 0..<buffer.height {
             let ch = buffer[rightCol, y].character
-            if ch == "│" { trackHits.append(y) }
-            if ch == "█" { thumbHits.append(y) }
+            if ch == glyphs.verticalTrack { trackHits.append(y) }
+            if ch == glyphs.verticalThumb { thumbHits.append(y) }
         }
         #expect(trackHits.isEmpty,
-                "track glyph │ painted at rows \(trackHits) when content fits viewport")
+                "track glyph \(glyphs.verticalTrack) painted at rows \(trackHits) when content fits viewport")
         #expect(thumbHits.isEmpty,
-                "thumb glyph █ painted at rows \(thumbHits) when content fits viewport")
+                "thumb glyph \(glyphs.verticalThumb) painted at rows \(thumbHits) when content fits viewport")
     }
 
     @Test("horizontal ScrollView with content shorter than viewport has no scrollbar glyphs")
@@ -64,20 +67,20 @@ struct ScrollbarNoOverflowTests {
         let ctx = RenderContext(rect: Rect(x: 0, y: 0, width: 20, height: 4))
         GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
 
-        // Walk the bottom row. Neither `─` track nor `█` thumb should
+        // Walk the bottom row. Neither track nor thumb should
         // paint because content (2 cells) fits in viewport (20).
         let bottomRow = buffer.height - 1
         var trackHits: [Int] = []
         var thumbHits: [Int] = []
         for x in 0..<buffer.width {
             let ch = buffer[x, bottomRow].character
-            if ch == "─" { trackHits.append(x) }
-            if ch == "█" { thumbHits.append(x) }
+            if ch == glyphs.horizontalTrack { trackHits.append(x) }
+            if ch == glyphs.horizontalThumb { thumbHits.append(x) }
         }
         #expect(trackHits.isEmpty,
-                "horizontal track ─ painted at cols \(trackHits) when content fits viewport")
+                "horizontal track \(glyphs.horizontalTrack) painted at cols \(trackHits) when content fits viewport")
         #expect(thumbHits.isEmpty,
-                "horizontal thumb █ painted at cols \(thumbHits) when content fits viewport")
+                "horizontal thumb \(glyphs.horizontalThumb) painted at cols \(thumbHits) when content fits viewport")
     }
 
     /// Sanity control: when content DOES overflow, the bar paints.
@@ -101,7 +104,7 @@ struct ScrollbarNoOverflowTests {
         var hasBar = false
         for y in 0..<buffer.height {
             let ch = buffer[rightCol, y].character
-            if ch == "│" || ch == "█" { hasBar = true; break }
+            if ch == glyphs.verticalTrack || ch == glyphs.verticalThumb { hasBar = true; break }
         }
         #expect(hasBar,
                 "vertical ScrollView with 20 content rows in a 5-row viewport must paint the scrollbar")

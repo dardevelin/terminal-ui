@@ -715,6 +715,12 @@ struct PreviewPane: TerminalView {
                     .disabled()
                 Text("counter: \(state.actionFired)").foreground(.gray)
             }
+        case .scrollbarStyle:
+            HStack(spacing: 2) {
+                ScrollbarSample(title: ".thin", style: .thin)
+                ScrollbarSample(title: ".block", style: .block)
+                ScrollbarSample(title: ".hairline", style: .hairline)
+            }
         case .boundaryFeedback:
             VStack {
                 Text("Type, then Left/Right past the edges").foreground(.gray)
@@ -1043,6 +1049,28 @@ struct AsyncTaskDemo: TerminalView {
 
 /// A deliberately loud theme for the `.environment(\.theme)` page — the point
 /// is that nothing on the page names a color, yet everything changes.
+/// One overflowing pane drawn with a given scrollbar style, for the
+/// `.scrollbarStyle` page's side-by-side comparison.
+struct ScrollbarSample: TerminalView {
+    let title: String
+    let style: ScrollbarStyle
+
+    var body: some TerminalView {
+        VStack {
+            Text(title).foreground(.gray)
+            ScrollView(.vertical) {
+                VStack {
+                    ForEachWithID(Array(0..<20), id: \.self) { row in
+                        Text("row \(row)")
+                    }
+                }
+            }
+            .scrollbarStyle(style)
+            .frame(width: 12, height: 6)
+        }
+    }
+}
+
 struct StorybookLoudTheme: Theme {
     var accent: Color = .magenta
     var foregroundMuted: Color = .rgb(120, 90, 140)

@@ -332,5 +332,8 @@ struct CoderApp: TerminalView {
         // Button dropped into the transcript would still be drawing the
         // stock cyan-on-gray.
         .environment(\.theme, theme)
+        // A hairline bar with no arrows: the transcript's position is read
+        // from a violet thumb on a graphite track, as Crush draws it.
+        .scrollbarStyle(.hairline)
     }
 }

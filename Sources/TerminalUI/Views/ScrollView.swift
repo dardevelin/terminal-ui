@@ -75,6 +75,91 @@ public enum ScrollIndicatorVisibility: Sendable, Equatable {
     case hidden
 }
 
+/// The glyphs a `ScrollView` draws its scrollbar with.
+///
+/// Colour is not part of the style: the thumb and the edge markers take the
+/// theme's ``Theme/borderActive`` — the bar sits where a container's border
+/// would, and the thumb is its active part — and the track its
+/// ``Theme/separator``. A theme therefore restyles every scrollbar along with
+/// everything else; the style decides shape only.
+///
+/// Every glyph must be one cell wide; the bar occupies a single column (or
+/// row) and a wide glyph would push into the content beside it.
+///
+/// ```swift
+/// MyApp().scrollbarStyle(.hairline)     // app-wide
+///
+/// ScrollView { … }
+///     .scrollbarStyle(ScrollbarStyle(verticalTrack: " ", verticalThumb: "▐",
+///                                    horizontalTrack: " ", horizontalThumb: "▄",
+///                                    edgeMarkers: nil))
+/// ```
+public struct ScrollbarStyle: Sendable, Equatable {
+    /// Fills the vertical bar's column where the viewport is not.
+    public var verticalTrack: Character
+    /// Marks the viewport's position and extent in the vertical bar.
+    public var verticalThumb: Character
+    /// Fills the horizontal bar's row where the viewport is not.
+    public var horizontalTrack: Character
+    /// Marks the viewport's position and extent in the horizontal bar.
+    public var horizontalThumb: Character
+    /// Glyphs drawn at an edge the content continues past, or `nil` to draw
+    /// none and let the thumb's position say it alone.
+    public var edgeMarkers: ScrollEdgeMarkers?
+
+    /// Creates a glyph set for both axes.
+    public init(verticalTrack: Character, verticalThumb: Character,
+                horizontalTrack: Character, horizontalThumb: Character,
+                edgeMarkers: ScrollEdgeMarkers? = .arrows) {
+        self.verticalTrack = verticalTrack
+        self.verticalThumb = verticalThumb
+        self.horizontalTrack = horizontalTrack
+        self.horizontalThumb = horizontalThumb
+        self.edgeMarkers = edgeMarkers
+    }
+
+    /// A light line with a heavy line for the thumb, and arrows at any edge
+    /// with more beyond it — present without competing with the content
+    /// beside it. The default.
+    public static let thin = ScrollbarStyle(verticalTrack: "│", verticalThumb: "┃",
+                                            horizontalTrack: "─", horizontalThumb: "━")
+
+    /// A full block for the thumb, for when the bar must be found at a glance.
+    public static let block = ScrollbarStyle(verticalTrack: "│", verticalThumb: "█",
+                                             horizontalTrack: "─", horizontalThumb: "█")
+
+    /// One light line for track and thumb alike, and no edge markers: the
+    /// quietest bar there is. The thumb is told apart by colour alone, so pair
+    /// it with a theme whose ``Theme/borderActive`` stands clear of its
+    /// ``Theme/separator``.
+    public static let hairline = ScrollbarStyle(verticalTrack: "│", verticalThumb: "│",
+                                                horizontalTrack: "─", horizontalThumb: "─",
+                                                edgeMarkers: nil)
+}
+
+/// The glyphs a scrollbar draws at an edge its content continues past.
+public struct ScrollEdgeMarkers: Sendable, Equatable {
+    /// Content continues above the viewport.
+    public var up: Character
+    /// Content continues below the viewport.
+    public var down: Character
+    /// Content continues before the viewport's leading edge.
+    public var left: Character
+    /// Content continues past the viewport's trailing edge.
+    public var right: Character
+
+    /// Creates a marker set; each glyph must be one cell wide.
+    public init(up: Character, down: Character, left: Character, right: Character) {
+        self.up = up
+        self.down = down
+        self.left = left
+        self.right = right
+    }
+
+    /// Solid triangles pointing the way the content continues. The default.
+    public static let arrows = ScrollEdgeMarkers(up: "▲", down: "▼", left: "◀", right: "▶")
+}
+
 /// Type-erased identifier carried through the environment by
 /// `.scrollPosition(id:)` to point an enclosing `ScrollView` at a
 /// `.id(_:)`-tagged descendant. Exists as a Sendable wrapper because
@@ -106,6 +191,13 @@ extension TerminalView {
     public func scrollIndicators(_ visibility: ScrollIndicatorVisibility)
         -> ModifiedView<Self, EnvironmentModifier<ScrollIndicatorVisibility>> {
         environment(\.scrollIndicators, visibility)
+    }
+
+    /// Set the glyphs enclosed `ScrollView`s draw their scrollbars with.
+    /// Colour comes from the theme; see ``ScrollbarStyle``.
+    public func scrollbarStyle(_ style: ScrollbarStyle)
+        -> ModifiedView<Self, EnvironmentModifier<ScrollbarStyle>> {
+        environment(\.scrollbarStyle, style)
     }
 
     /// Scroll an enclosing `ScrollView` so the descendant tagged with

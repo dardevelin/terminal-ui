@@ -50,6 +50,9 @@ public struct EnvironmentValues: Sendable {
     /// Whether `ScrollView` paints its edge indicator glyphs (▲▼◀▶) when more
     /// content exists off-viewport. Default `.visible` — drop-in affordance.
     public var scrollIndicators: ScrollIndicatorVisibility = .visible
+    /// Glyphs `ScrollView` draws its scrollbar with. Default `.thin`. Set via
+    /// `.scrollbarStyle(_:)`; colour comes from ``theme``.
+    public var scrollbarStyle: ScrollbarStyle = .thin
 
     /// Explicit scroll target for the nearest enclosing `ScrollView`.
     /// Set via `.scrollPosition(id:)`; the renderer locates the descendant

@@ -816,15 +816,16 @@ def storybook_actioncontext_ctrl_r_enters_resize_mode(app: Client) -> None:
 
 
 def storybook_scrollview_shows_thumb_scrollbar(app: Client) -> None:
-    """ScrollView with overflowing content paints the new thumb-track
-    scrollbar — │ track on the right column with █ thumb segment."""
+    """ScrollView with overflowing content paints the thumb-track
+    scrollbar — │ track on the right column with the default (thin) ┃
+    thumb segment."""
     app.goto_page("ScrollView")
     preview = app.preview_text()
     # Track glyphs: at least one │ on the right edge (anywhere in
     # preview is fine — the smoke harness already pins viewport to
-    # the preview pane). Thumb glyph: at least one █ visible.
+    # the preview pane). Thumb glyph: at least one ┃ visible.
     assert_true("│" in preview, "ScrollView preview missing │ scrollbar track")
-    assert_true("█" in preview, "ScrollView preview missing █ scrollbar thumb")
+    assert_true("┃" in preview, "ScrollView preview missing ┃ scrollbar thumb")
 
 
 def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:

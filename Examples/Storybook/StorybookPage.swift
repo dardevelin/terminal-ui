@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -665,6 +665,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     Button("Live") { fired += 1 }
                     Button("Dead") { fired += 1 }.disabled()
                 }
+                """)
+        case .scrollbarStyle: return PageInfo(id: self, category: .modifiers, name: ".scrollbarStyle",
+            summary: "The glyphs a ScrollView's bar is drawn with, per subtree: .thin (default), .block, .hairline (no edge markers), or your own. Colour comes from the theme — borderActive for the thumb, separator for the track.",
+            code: """
+                ScrollView { rows }.scrollbarStyle(.thin)
+                ScrollView { rows }.scrollbarStyle(.block)
+                ScrollView { rows }.scrollbarStyle(.hairline)
+
+                var quiet = ScrollbarStyle.thin
+                quiet.edgeMarkers = nil   // keep the bar, drop ▲ ▼
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
             summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",

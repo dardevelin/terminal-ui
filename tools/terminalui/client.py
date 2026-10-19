@@ -566,7 +566,8 @@ class Client:
         Used by :py:meth:`goto_page` for resilience checks and by the
         sidebar-order regression test (HYP-323). Skips category headers
         (which sit at column 0), the gap rows between categories, the
-        scrollbar column at the right edge (▎/█/│/▼/▲ glyphs), and the
+        scrollbar column at the right edge (▎ cursor, ┃/█ thumb, │ track,
+        ▼/▲ edge glyphs), and the
         hint lines below the divider (containing ↑↓/→/─ glyphs).
 
         Returns clean page names matching the titles emitted by
@@ -575,9 +576,10 @@ class Client:
         rows: list[str] = []
         for row in slice_.rows:
             # Strip scrollbar/cursor/edge glyphs that bleed in from
-            # the right edge of the sidebar pane: ▎ cursor bar,
-            # █/│ scrollbar track, ▼/▲ scroll edge indicators.
-            text = row.rstrip(" ▎█│▼▲")
+            # the right edge of the sidebar pane: ▎ cursor bar, the
+            # thumb of either stock ScrollbarStyle (┃ thin, █ block),
+            # │ track, ▼/▲ scroll edge indicators.
+            text = row.rstrip(" ▎┃█│▼▲")
             if not text:
                 continue
             # Hint lines below the divider (`────...`) and below
