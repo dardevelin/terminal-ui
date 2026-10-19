@@ -78,8 +78,8 @@ public struct BarChart: TerminalView {
     }
 
     public var body: some TerminalView {
-        GeometryReader { size in
-            Text(self.renderChart(containerWidth: size.width))
+        WidthReader { width in
+            Text(self.renderChart(containerWidth: width))
         }
     }
 

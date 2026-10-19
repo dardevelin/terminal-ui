@@ -1,17 +1,21 @@
-/// Reads the available size and passes it to a content builder.
+/// Takes all the room its container offers, and passes that size to a
+/// content builder.
 ///
-/// The closure is evaluated LAZILY at render time with the actual assigned
-/// rect — not at graph-build time with the root terminal size. A nested
-/// `GeometryReader` inside padding/border/etc. reports the shrunk inner
-/// rect, letting callers (TextInput's virtual scroll, PromptInput soft-wrap,
-/// BarChart flex width) compute against true room available.
+/// As in SwiftUI, a `GeometryReader` is greedy: it fills the space it is
+/// given on both axes, and when a container that sizes itself to its content
+/// asks how big it is, it claims nothing. Give it a size — a flexible slot in
+/// a stack, which it fills, or a `.frame` — rather than expecting it to size
+/// itself. The closure runs with the rect actually assigned, so a reader
+/// inside padding or a border sees the inner rect.
 ///
 /// The reported ``Size`` is in terminal cells — columns wide, rows tall.
-/// Reach for `GeometryReader` when content must adapt to the room it
-/// actually got: wrapping long lines to the container width, sizing a
-/// chart to fill a pane, switching layouts below a width threshold. For
-/// plain positioning, stack `alignment:` and `.frame(alignment:)` do the
-/// job without a size-dependent rebuild.
+/// Reach for `GeometryReader` when content must fill a region and adapt to
+/// it: a chart sized to its pane, a list showing as many rows as fit,
+/// a layout that switches below a width threshold. When the content's height
+/// should follow from its width instead — text that wraps, a row that
+/// truncates, a prompt that grows as it is typed into — use ``WidthReader``,
+/// which is measured by its content. For plain positioning, stack
+/// `alignment:` and `.frame(alignment:)` do the job without a rebuild.
 ///
 /// > Important: Project `@TerminalState` bindings (`$state`) in `body`
 /// > and capture them; a `$` projection written inside the

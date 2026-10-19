@@ -202,13 +202,13 @@ nonisolated(unsafe) let state = AppState()
     }
 
     static func content() -> some TerminalView {
-        GeometryReader { size in
+        WidthReader { width in
             VStack {
                 // Morse signal — the main visual, edge to edge
                 MorseSignal(
                     tape: Morse.encode(state.inputText),
                     scrollOffset: state.scrollOffset,
-                    width: size.width
+                    width: width
                 )
 
                 Text("")

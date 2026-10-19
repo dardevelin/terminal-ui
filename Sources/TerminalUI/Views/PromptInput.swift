@@ -38,6 +38,15 @@ public enum PromptHeightPolicy: Sendable, Equatable {
     /// Grow up to `min(cap, container.height)`. Use inside fixed-frame
     /// parents only.
     case containerCapped(Int)
+
+    /// Whether the policy grows to the height of the room it is given — and
+    /// so needs a reader that is told that height.
+    var readsContainer: Bool {
+        switch self {
+        case .fixed, .unbounded: false
+        case .container, .containerCapped: true
+        }
+    }
 }
 
 /// How `PromptInput` presents pasted content. Drives the threshold +
@@ -461,14 +470,12 @@ public struct PromptInput: TerminalView {
     }
 
     public var body: some TerminalView {
-        // Soft-wrap needs the container width; `GeometryReader` supplies it.
-        // We do NOT apply `.frame(height:)` — the spans emitted by
-        // `buildDisplay` already contain exactly `renderedHeight` newline-
-        // separated display rows, and `Text` sizes itself from span
-        // newlines (TextArea uses the same trick). Wrapping in `.frame`
-        // would force VStack to give us a fixed allocation on the FIRST
-        // frame and then lock that size in, because GR reports last
-        // frame's height.
+        // Soft-wrap needs the container width, which a reader supplies (see
+        // `inputReader`). We do NOT apply `.frame(height:)` — the spans
+        // emitted by `buildDisplay` already contain exactly `renderedHeight`
+        // newline-separated display rows, and `Text` sizes itself from span
+        // newlines (TextArea uses the same trick), so the prompt is as tall
+        // as its wrapped text at the width it is given.
         //
         // Capture boundary-feedback env at body-eval time; the GR
         // closure runs later when GraphContext.currentEnvironment may
@@ -484,73 +491,103 @@ public struct PromptInput: TerminalView {
         let hintLocalizer = localizer
         let st = state.get()
         let cursorAdjacentToCollapsed = Self.isCursorAtCollapsedRightEdge(state: st, expandedText: text.get())
-        let promptInput = GeometryReader { size in
-            let contentWidth = max(1, size.width - Self.promptReservedWidth(self.prompt))
-            let st = self.state.get()
-            // Project the EXPANDED binding text + reference set into
-            // the COLLAPSED display text. Markers replace each
-            // collapsed reference's range with `[Pasted text #N +M
-            // lines]`. The mapping is also used to translate cursor
-            // (row, col) in expanded space → display space.
-            let projection = Self.projectCollapsedDisplay(
-                expandedText: self.text.get(),
-                references: st.references,
-                buffers: st.buffers,
-                localizer: localizer
-            )
-            let lines = Self.splitLines(projection.displayText)
-            let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
-            let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
-            let ceiling = Self.resolveCeiling(
-                policy: self.heightPolicy,
-                legacy: self.maxVisibleLines,
-                containerHeight: size.height,
-                contentRows: totalDisplayRows
-            )
-            let renderedHeight = min(max(1, ceiling), max(1, totalDisplayRows))
-            let spans = self.buildDisplay(
-                lines: lines,
-                wraps: wraps,
-                totalDisplayRows: totalDisplayRows,
-                wrapWidth: contentWidth,
-                visibleLines: renderedHeight,
-                projection: projection
-            )
-            return Text(spans: spans)
-                .focusable()
-                .onKeyPress { [text, state, onSubmit, prompt, arrowMode, boundaryMode, onBoundaryHit] event in
-                    Self.handleKey(
-                        event, text: text, state: state,
-                        onSubmit: onSubmit, promptWidth: prompt.count + 1,
-                        maxVisibleLines: renderedHeight,
-                        wrapWidth: contentWidth,
-                        arrowMode: arrowMode,
-                        boundaryMode: boundaryMode,
-                        onBoundaryHit: onBoundaryHit
-                    )
-                }
-                .onPaste { [text, state, pasteMode] payload in
-                    Self.handlePaste(
-                        payload,
-                        text: text,
-                        state: state,
-                        maxVisibleLines: renderedHeight,
-                        wrapWidth: contentWidth,
-                        pasteMode: pasteMode
-                    )
-                }
-        }
+        // The two families of height policy need different readers. A
+        // `.fixed` or `.unbounded` prompt grows with its text up to a cap, so
+        // its height follows from its width alone — a `WidthReader`, which a
+        // stack measures. `.container` and `.containerCapped` grow to the
+        // room they are given, so they take it from a greedy `GeometryReader`;
+        // their documentation pairs them with a `.frame`, which is that room.
         // Compose the prompt + optional auto-hint row. The hint
         // surfaces "paste again to expand" beneath the input when
         // the cursor sits at the right edge of a collapsed
         // reference. `.pasteHint(.hidden)` opts out per-subtree.
         return VStack {
-            promptInput
+            inputReader(boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
             if hintVisible && cursorAdjacentToCollapsed {
                 Text(hintLocalizer.pasteAgainHint())
                     .foreground(Self.dimColor)
             }
         }
+    }
+
+    /// The reader the input is built inside, chosen by height policy — see
+    /// the comment in `body`.
+    @TerminalViewBuilder
+    private func inputReader(boundaryMode: BoundaryFeedback,
+                             onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
+        if maxVisibleLines == nil, heightPolicy.readsContainer {
+            GeometryReader { size in
+                self.inputField(width: size.width, containerHeight: size.height,
+                                boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
+            }
+        } else {
+            WidthReader { width in
+                self.inputField(width: width, containerHeight: 0,
+                                boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
+            }
+        }
+    }
+
+    /// The input itself — wrapped, projected, and bound to its keys — built for
+    /// a width and, under the policies that read it, the container's height.
+    /// `containerHeight` is 0 when the prompt's policy does not depend on it.
+    private func inputField(width: Int, containerHeight: Int,
+                            boundaryMode: BoundaryFeedback,
+                            onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
+        let contentWidth = max(1, width - Self.promptReservedWidth(self.prompt))
+        let st = self.state.get()
+        // Project the EXPANDED binding text + reference set into
+        // the COLLAPSED display text. Markers replace each
+        // collapsed reference's range with `[Pasted text #N +M
+        // lines]`. The mapping is also used to translate cursor
+        // (row, col) in expanded space → display space.
+        let projection = Self.projectCollapsedDisplay(
+            expandedText: self.text.get(),
+            references: st.references,
+            buffers: st.buffers,
+            localizer: localizer
+        )
+        let lines = Self.splitLines(projection.displayText)
+        let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
+        let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
+        let ceiling = Self.resolveCeiling(
+            policy: self.heightPolicy,
+            legacy: self.maxVisibleLines,
+            containerHeight: containerHeight,
+            contentRows: totalDisplayRows
+        )
+        let renderedHeight = min(max(1, ceiling), max(1, totalDisplayRows))
+        let spans = self.buildDisplay(
+            lines: lines,
+            wraps: wraps,
+            totalDisplayRows: totalDisplayRows,
+            wrapWidth: contentWidth,
+            visibleLines: renderedHeight,
+            projection: projection
+        )
+        return Text(spans: spans)
+            .focusable()
+            .onKeyPress { [text, state, onSubmit, prompt, arrowMode, boundaryMode, onBoundaryHit] event in
+                Self.handleKey(
+                    event, text: text, state: state,
+                    onSubmit: onSubmit, promptWidth: prompt.count + 1,
+                    maxVisibleLines: renderedHeight,
+                    wrapWidth: contentWidth,
+                    arrowMode: arrowMode,
+                    boundaryMode: boundaryMode,
+                    onBoundaryHit: onBoundaryHit
+                )
+            }
+            .onPaste { [text, state, pasteMode] payload in
+                Self.handlePaste(
+                    payload,
+                    text: text,
+                    state: state,
+                    maxVisibleLines: renderedHeight,
+                    wrapWidth: contentWidth,
+                    pasteMode: pasteMode
+                )
+            }
     }
 
     /// Returns true when the cursor sits exactly at the right edge of

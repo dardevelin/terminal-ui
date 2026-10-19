@@ -56,9 +56,9 @@ struct CodeBlock: TerminalView {
     let code: String
 
     var body: some TerminalView {
-        GeometryReader { size in
+        WidthReader { width in
             // Reserve 4 cells for the PageDetail-applied border+padding.
-            let maxWidth = max(20, size.width - 4)
+            let maxWidth = max(20, width - 4)
             let wrapped = wrap(code: code, maxWidth: maxWidth)
             VStack {
                 ForEachWithID(Array(wrapped.enumerated()), id: \.offset) { pair in
@@ -174,6 +174,15 @@ struct PreviewPane: TerminalView {
                     .foreground(.magenta)
             }
             .frame(height: 2)
+        case .widthReader:
+            VStack(spacing: 0) {
+                WidthReader { width in
+                    Text("width \(width): a sentence long enough to wrap onto more than one row, "
+                         + "so the reader's height comes from its content at this width.")
+                        .foreground(.magenta)
+                }
+                Text("— this line follows the wrapped text —").foreground(.gray)
+            }
         case .splitView:
             SplitView(state: state.splitState)
                 .frame(height: 6)

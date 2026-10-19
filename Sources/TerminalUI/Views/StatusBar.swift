@@ -134,8 +134,8 @@ public struct StatusBar: TerminalView {
     }
 
     public var body: some TerminalView {
-        GeometryReader { size in
-            Text(spans: composeLine(width: size.width))
+        WidthReader { width in
+            Text(spans: composeLine(width: width))
         }.frame(height: 1)
     }
 

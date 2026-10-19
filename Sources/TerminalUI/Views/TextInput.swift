@@ -239,7 +239,7 @@ public struct TextInput: TerminalView {
         // Input + optional error row are stacked vertically so callers can
         // just drop `TextInput(... validate:)` and see the full UX.
         return VStack {
-            GeometryReader { size in
+            WidthReader { width in
                 let value = text.get()
                 let showPlaceholder = value.isEmpty && !placeholder.isEmpty
                 // Resolve insertion index. `-1` is the uninitialized
@@ -251,7 +251,7 @@ public struct TextInput: TerminalView {
                 // The whole post-prompt rect is available for value + cursor.
                 // `composeSpans` reserves its own cell for the cursor glyph;
                 // rect-clip keeps any residual writes inside the rect.
-                let available = max(1, size.width - prompt.count)
+                let available = max(1, width - prompt.count)
                 return Text(spans: composeSpans(
                     value: value,
                     cursor: resolvedCursor,

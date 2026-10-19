@@ -211,7 +211,18 @@ See `TerminalAppProtocol` in `Sources/TerminalUI/Core/TerminalApp.swift`.
 `@TerminalState` fails inside handler closures (`GraphContext.currentNode` is nil
 there). Use an `@Observable` class + `Binding`; the `$binding` projected value
 eagerly captures `currentNode` to fix this. Project `$state` in `body`, never
-inside a `GeometryReader { … }` closure (it captures the wrong node).
+inside a `GeometryReader { … }` or `WidthReader { … }` closure (it captures the
+wrong node).
+
+### GeometryReader vs WidthReader
+
+`GeometryReader` is greedy, as in SwiftUI: it fills what it is offered and
+claims nothing when a content-sized parent measures it — give it a flexible
+slot or a `.frame`. When content's height should follow from its width
+(wrapping text, truncating rows, a growing prompt), use `WidthReader`: it is
+handed the width only and measured by building its content for that width.
+Never read a dimension the content itself decides — that was the measure/layout
+cycle the split removed.
 
 ## Diagnostics & remote control (`.terminalui/` + `swtui ctl`)
 

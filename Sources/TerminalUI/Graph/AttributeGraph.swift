@@ -13,6 +13,12 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Set during update() — tracks whether any primitive values actually changed.
     var changed = false
 
+    /// Counts ``update(from:)`` calls. State only changes between updates,
+    /// so a subtree built from the same inputs within one generation is the
+    /// same subtree — what lets a `WidthReader` skip rebuilding at a width it
+    /// already holds.
+    public private(set) var updateGeneration = 0
+
     /// Atomic<Bool> from the Synchronization module — a lock-free boolean
     /// safe to read/write from any thread or signal handler.
     /// Set by Observation onChange callbacks (which fire on the thread that
@@ -157,6 +163,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Returns true if any node values actually changed.
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
+        updateGeneration += 1
         #if DEBUG
         rootWalkCount += 1
         #endif
@@ -421,19 +428,8 @@ public final class AttributeGraph: @unchecked Sendable {
         // each frame; post-it updates the existing child in place
         // rather than replacing it, so identity survives across renders.
         if let geom = view as? any _GraphGeometryReader {
-            weak let weakSelf: AttributeGraph? = self
-            let childID = node.id.appending(.index(0))
-            node.geometryRebuilder = { size, parent in
-                let view = geom.rebuild(with: size)
-                guard let graph = weakSelf else { return }
-                if let existing = parent.children.first {
-                    graph.updateAnyView(existing, from: view)
-                } else {
-                    let fresh = graph.constructAnyTerminalView(view, id: childID)
-                    fresh.parent = parent
-                    parent.children = [fresh]
-                }
-            }
+            node.readerSizing = geom.sizing
+            node.geometryRebuilder = makeGeometryRebuilder(geom, childID: node.id.appending(.index(0)))
             node.isDirty = false
             return
         }
@@ -862,30 +858,11 @@ public final class AttributeGraph: @unchecked Sendable {
     /// view of `Size` in sync with the actual allocated region rather than
     /// the root terminal size.
     func constructGeometryReader(_ geom: any _GraphGeometryReader, id: NodeID) -> AttributeNode {
-        let info = ViewBodyInfo(viewTypeName: "GeometryReader")
+        let info = ViewBodyInfo(viewTypeName: geom.sizing == .width ? "WidthReader" : "GeometryReader")
         let node = AttributeNode(id: id, kind: .viewBody(info))
-
-        // Capture graph + id so the renderer can rebuild without going
-        // through `GraphContext.currentGraph` (which is only scoped during
-        // `graph.update`, not during render).
-        weak let weakSelf: AttributeGraph? = self
+        node.readerSizing = geom.sizing
         let childID = id.appending(.index(0))
-        node.geometryRebuilder = { size, parent in
-            let view = geom.rebuild(with: size)
-            guard let graph = weakSelf else { return }
-            // update existing child in place. Identity (NodeID,
-            // state slots, focus registrations, lifecycle bookkeeping)
-            // survives across renders. Falls back to construction only
-            // when the child is missing (defensive — the seed path
-            // populates children.first during construction).
-            if let existing = parent.children.first {
-                graph.updateAnyView(existing, from: view)
-            } else {
-                let fresh = graph.constructAnyTerminalView(view, id: childID)
-                fresh.parent = parent
-                parent.children = [fresh]
-            }
-        }
+        node.geometryRebuilder = makeGeometryRebuilder(geom, childID: childID)
 
         // Seed with an initial subtree using whatever proposed size is
         // current — allows first-pass measurement without a render. The
@@ -897,7 +874,46 @@ public final class AttributeGraph: @unchecked Sendable {
         let childNode = constructAnyView(seed, id: childID)
         childNode.parent = node
         node.children.append(childNode)
+        node._readerBuild = (width: seedSize.width, generation: updateGeneration)
         return node
+    }
+
+    /// The closure a reader node rebuilds its content with, for whichever
+    /// size a pass settles on.
+    ///
+    /// It captures the graph so the renderer can rebuild without going
+    /// through `GraphContext.currentGraph`, which is only scoped during
+    /// `graph.update`, not during render. The existing child is updated in
+    /// place, so identity — NodeID, state slots, focus registrations,
+    /// lifecycle bookkeeping — survives across rebuilds; construction is the
+    /// fallback for a node with no child yet.
+    ///
+    /// A `WidthReader` skips the rebuild when it already holds a build for
+    /// this width from this update: its content is a function of width and
+    /// state alone, and state does not change within an update. That is what
+    /// lets measurement build it for the width it asks about without paying
+    /// again in layout and render. A `GeometryReader` rebuilds every time, as
+    /// it always has.
+    func makeGeometryRebuilder(_ geom: any _GraphGeometryReader,
+                               childID: NodeID) -> (Size, AttributeNode) -> Void {
+        weak let weakSelf: AttributeGraph? = self
+        let sizing = geom.sizing
+        return { size, parent in
+            guard let graph = weakSelf else { return }
+            if sizing == .width, let built = parent._readerBuild,
+               built.width == size.width, built.generation == graph.updateGeneration {
+                return
+            }
+            let view = geom.rebuild(with: size)
+            if let existing = parent.children.first {
+                graph.updateAnyView(existing, from: view)
+            } else {
+                let fresh = graph.constructAnyTerminalView(view, id: childID)
+                fresh.parent = parent
+                parent.children = [fresh]
+            }
+            parent._readerBuild = (width: size.width, generation: graph.updateGeneration)
+        }
     }
 
     func constructPrimitive<V: TerminalView>(for view: V, id: NodeID) -> AttributeNode? {
@@ -1328,10 +1344,25 @@ protocol _GraphSplitView {
     var state: SplitState { get }
 }
 
-/// Marks `GeometryReader` so the graph can detect it and install its lazy
-/// rebuilder on the constructed node. `rebuild(with:)` is called during
-/// render with the node's actual rect size, NOT at graph-build time.
+/// Marks the size-reading views so the graph can detect them and install
+/// their lazy rebuilder on the constructed node. `rebuild(with:)` is called
+/// with the size a pass has settled on, NOT at graph-build time.
 protocol _GraphGeometryReader {
     func rebuild(with size: Size) -> any TerminalView
+    /// Which dimensions the content is built from.
+    var sizing: ReaderSizing { get }
+}
+
+/// How a reader is sized — the contract that keeps every pass building the
+/// same subtree for the same question.
+public enum ReaderSizing: Sendable, Equatable {
+    /// `GeometryReader`: told its size by its container on both axes, and
+    /// claims nothing when measured. Its content may read either dimension,
+    /// because neither is derived from the content.
+    case proposal
+    /// `WidthReader`: told its width, and as tall as its content is at that
+    /// width. Its content reads the width only, so building it for a width
+    /// always yields the same subtree whichever pass asks.
+    case width
 }
 

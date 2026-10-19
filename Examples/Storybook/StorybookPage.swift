@@ -36,7 +36,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // category group below.
     //
     // Layout
-    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, splitView, alignment
+    case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, widthReader, splitView, alignment
     // Primitives
     case text, gradient, forEach, subCell, timeline, asyncTask, capabilities
     // Input
@@ -134,13 +134,21 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 .frame(height: 6)
                 """)
         case .geometryreader: return PageInfo(id: self, category: .layout, name: "GeometryReader",
-            summary: "Reads its proposed size; lets children adapt to available space.",
+            summary: "Fills the space it is given and hands that size to its content — greedy, as in SwiftUI. Measured by a content-sized parent, it claims nothing: give it a frame or a flexible slot.",
             code: """
                 GeometryReader { size in
                     Text("proposed: \\(size.width)×\\(size.height)")
                         .foreground(.magenta)
                 }
                 .frame(height: 2)
+                """)
+        case .widthReader: return PageInfo(id: self, category: .layout, name: "WidthReader",
+            summary: "Hands its content the width it is given and is as tall as that content turns out to be — for text that wraps, rows that truncate, a prompt that grows. The content cannot read the height it decides.",
+            code: """
+                WidthReader { width in
+                    Text("width \\(width): " + longSentence)
+                }
+                Text("— this line follows the wrapped text —")
                 """)
         case .splitView: return PageInfo(id: self, category: .layout, name: "SplitView",
             summary: "Resizable split-pane container. Tree-as-state — declare a SplitNode tree with per-child ratios; SplitView renders it with a 1-cell divider between siblings (`│` horizontal, `─` vertical). Mutation API + i3 hotkeys ship in later slices.",
