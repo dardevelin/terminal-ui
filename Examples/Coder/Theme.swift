@@ -37,6 +37,20 @@ struct CoderTheme: Theme {
     var borderActive: Color = Palette.violet
     var backgroundSelected: Color = Palette.pewter
 
+    // Code. The brand voices carry the structure — keywords in violet, types
+    // in turquoise — and comments recede to the chrome's own grey, so a read
+    // excerpt sits in the same palette as the transcript around it.
+    var syntax = SyntaxTheme(
+        keyword: Palette.violetLift,
+        string: Palette.jade,
+        comment: Palette.dusk,
+        number: Palette.tangerine,
+        type: Palette.turquoise,
+        function: Palette.azure,
+        operatorColor: Palette.mist,
+        plain: Palette.chalk
+    )
+
     static let dark = CoderTheme()
 }
 

@@ -27,6 +27,21 @@ struct ToolCall: Identifiable, Sendable {
     let output: String?
     /// The change an editing tool made, shown in place of `output`.
     var diff: [DiffLine]? = nil
+    /// The file text a reading tool returned, shown in place of `output`.
+    var excerpt: FileExcerpt? = nil
+}
+
+/// Part of a file, as a reading tool returns it.
+struct FileExcerpt: Sendable {
+    let path: String
+    /// The file's line number for the first line of `code`.
+    let firstLine: Int
+    let code: String
+
+    /// The extension, which is the name lexers are registered under.
+    var language: String? {
+        path.split(separator: ".").last.map { String($0).lowercased() }
+    }
 }
 
 /// One entry in the chat transcript.
