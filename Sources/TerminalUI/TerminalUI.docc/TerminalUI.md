@@ -98,6 +98,7 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``DiffView``
 - ``HunkDiffView``
 - ``MarkdownView``
+- ``MarkdownStyle``
 - ``ProgressBar``
 - ``StatusBar``
 
