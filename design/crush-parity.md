@@ -589,6 +589,25 @@ comparison showed did need it, and are recorded rather than faked: Crush's
 three-row block wordmark (no block letterform with a gradient exists), and the
 leading-only padding every message frame uses (G3, below).
 
+**L14. Messages framed the way Crush frames them.** *(G3 — built, by way of three fixes)*
+
+Crush pads every message on its leading side only: a user message one column
+past a thin rail, an agent reply or tool call two columns with no rail, so all
+text starts in one column and the rail marks the turns that came from outside.
+That needed edge-aware padding, which needed a modifier's child measured at its
+inner width, which needed the GeometryReader measure/layout cycle gone.
+
+So, in order: `GeometryReader` became greedy and `WidthReader` took the
+content-sized case (the cycle cannot exist when content cannot read the
+dimension it decides); two stale measurement caches that readers had been
+hiding were fixed; children of padding, borders and frames are measured at the
+width they are laid out at; and `.padding(_:_:)` / `.padding(EdgeInsets)`
+arrived, with `BorderEdges` becoming SwiftUI's `Edge.Set`. Markdown quotes got
+their column of room in the same stroke.
+
+Not built: per-message focus, which in Crush thickens the focused entry's rail
+to `▌`. The demo has no message selection yet.
+
 ### Ledger — open
 
 - **G3 — edge-aware padding.** Now the largest visual gap: Crush pads every

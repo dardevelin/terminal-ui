@@ -1620,15 +1620,17 @@ def coder_renders(app: Client) -> None:
 
 
 def coder_edit_card_shows_diff(app: Client) -> None:
-    """The Edit card renders its change as a diff, and the card's rail runs
-    down beside it — a focus indicator painted over the rail means the diff
-    took focus it has no use for."""
+    """The Edit card renders its change as a diff with no focus bar beside
+    it — a `▎` there means the diff took focus it has no use for (DiffView
+    was once unconditionally focusable and took boot focus)."""
     text = _coder_scroll_to_edit_card(app)
     rows = text.splitlines()
     removed = next(row for row in rows if CODER_DIFF_REMOVED in row)
     assert_true(CODER_DIFF_ADDED in text, "expected the added line")
-    assert_true(removed.lstrip().startswith("│"),
-                f"card rail missing beside the diff: {removed.strip()!r}")
+    diff_rows = [row for row in rows
+                 if CODER_DIFF_FIRST in row or CODER_DIFF_REMOVED in row or CODER_DIFF_ADDED in row]
+    assert_true(all("▎" not in row for row in diff_rows),
+                f"a focus bar is drawn beside the diff: {removed.strip()!r}")
 
 
 def coder_transcript_diff_takes_no_keys(app: Client) -> None:
