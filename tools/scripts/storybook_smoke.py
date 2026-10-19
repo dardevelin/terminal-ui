@@ -1657,6 +1657,29 @@ def coder_renders(app: Client) -> None:
     assert_true("Read" in full, "expected the Read tool card")
 
 
+def coder_typing_reaches_the_prompt(app: Client) -> None:
+    """What the user types lands in the composer, behind its focused `>`, and
+    neither a `q` nor Escape ends the session. Regression: the composer was
+    a drawing, `q` and Escape were quit chords, and the first word with a
+    `q` in it closed the app and ran the rest of the line in the shell."""
+    app.send_text("quit queue")
+    app.send_key("escape")
+    app.wait_for_frame(1, timeout=0.5)
+    app.ping()
+    assert_true("> quit queue" in app.cells().text(),
+                "the typed text should sit in the composer after its `>`")
+
+
+def coder_enter_sends_the_draft(app: Client) -> None:
+    """Enter sends the draft into the transcript and empties the composer,
+    which shows its placeholder again."""
+    app.send_text("lands at the end")
+    app.send_key("enter")
+    app.wait_for_frame(1, timeout=0.5)
+    _coder_scroll_until(app, "lands at the end", "the sent message")
+    assert_true("Ask anything" in app.cells().text(), "the composer empties after sending")
+
+
 def coder_edit_card_shows_diff(app: Client) -> None:
     """The Edit card renders its change as a diff with no focus bar beside
     it — a `▎` there means the diff took focus it has no use for (DiffView
@@ -1805,6 +1828,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
     SmokeCase("coder.renders", "Coder", coder_renders),
+    SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
+    SmokeCase("coder.enter_sends_the_draft", "Coder", coder_enter_sends_the_draft),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
     SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),
     SmokeCase("coder.reply_keeps_heading_markers_and_chips_code", "Coder", coder_reply_keeps_heading_markers_and_chips_code),
