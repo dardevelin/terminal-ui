@@ -1579,16 +1579,18 @@ def chat_q_in_empty_prompt_quits(app: Client) -> None:
 # Inside the transcript, clear of the sidebar and its scrollbar.
 CODER_TRANSCRIPT_POINT = (40, 15)
 CODER_DIFF_REMOVED = "-        previousBuffer = nil"
+CODER_DIFF_ADDED = "+        skippedFrame = true"
 CODER_DIFF_FIRST = "private var previousBuffer: CellBuffer?"
 
 
-def _coder_scroll_until(app: Client, needle: str, what: str) -> str:
-    """Wheel the transcript down until `needle` is on screen and return the
-    frame text. Stops when the frame stops changing — the transcript's end —
-    rather than after a guessed number of steps, so a taller transcript does
-    not turn into a false failure."""
+def _coder_scroll_until(app: Client, needle: str, what: str, *also: str) -> str:
+    """Wheel the transcript down until `needle` — and every string in `also`
+    — is on screen, and return the frame text. Waiting for everything a case
+    asserts on, rather than for one line and assuming its neighbours came
+    with it, keeps a one-row shift in wrapping from turning into a false
+    failure. Stops when the frame stops changing — the transcript's end."""
     text = app.cells().text()
-    while needle not in text:
+    while not all(part in text for part in (needle, *also)):
         app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
         app.wait_for_frame(1, timeout=0.5)
         after = app.cells().text()
@@ -1599,8 +1601,10 @@ def _coder_scroll_until(app: Client, needle: str, what: str) -> str:
 
 
 def _coder_scroll_to_edit_card(app: Client) -> str:
-    """The Edit card sits below the fold at 40 rows."""
-    return _coder_scroll_until(app, CODER_DIFF_REMOVED, "Edit card's diff")
+    """The Edit card sits below the fold at 40 rows; scroll until its whole
+    change — first line, removal and addition — is on screen."""
+    return _coder_scroll_until(app, CODER_DIFF_FIRST, "Edit card's diff",
+                               CODER_DIFF_REMOVED, CODER_DIFF_ADDED)
 
 
 def coder_renders(app: Client) -> None:
@@ -1618,7 +1622,7 @@ def coder_edit_card_shows_diff(app: Client) -> None:
     text = _coder_scroll_to_edit_card(app)
     rows = text.splitlines()
     removed = next(row for row in rows if CODER_DIFF_REMOVED in row)
-    assert_true("+        skippedFrame = true" in text, "expected the added line")
+    assert_true(CODER_DIFF_ADDED in text, "expected the added line")
     assert_true(removed.lstrip().startswith("│"),
                 f"card rail missing beside the diff: {removed.strip()!r}")
 

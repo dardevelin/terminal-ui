@@ -93,6 +93,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A modifier's child is measured at the width it is laid out at.** Padding, a
+  border's drawn edges and a frame's width all narrow the space a child gets,
+  but its height was measured at the outer width — so wrapped text inside a
+  border reserved too few rows and the box clipped its last line. Measurement
+  now asks the same rule layout uses.
 - **Measurements follow what they measured.** A changed `Text` invalidated
   cached sizes up through layout containers but stopped at the first modifier,
   whose cached size is its child's — so `Text(…).foreground(…)` kept its old

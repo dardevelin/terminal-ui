@@ -340,16 +340,17 @@ public enum GraphMeasurer {
             // number nothing reads.
             if case .frame(_, let height, _, _, _, _, _) = effect, let height { return height }
 
-            // NOTE: the child is measured at the OUTER width, not the width
-            // left after this modifier's own frame. That is wrong in
-            // principle — a wrapping child inside a border reserves a row too
-            // few — but correcting it destabilises the measure/layout feedback
-            // cycle that `PromptInput`'s auto-growing height rides on (its
-            // height policy reads `size.height` back out of its own
-            // GeometryReader, and GR rebuilders fire during layout, not
-            // measurement). Tracked separately; fixing it needs that cycle
-            // addressed first.
-            var base = measureHeight(child, proposedWidth: proposedWidth)
+            // The child is laid out inside whatever this modifier takes off
+            // the width — padding, a border's drawn edges, a frame's width —
+            // so it is measured there, through the same rule layout uses.
+            // Measured at the outer width instead, a wrapping child inside a
+            // border reserved a row too few and the box came out short. A
+            // non-positive width is the "unconstrained" sentinel and passes
+            // through as it is.
+            let childWidth = proposedWidth > 0
+                ? max(1, Layout.childWidth(for: effect, outerWidth: proposedWidth))
+                : proposedWidth
+            var base = measureHeight(child, proposedWidth: childWidth)
             if case .padding(let n) = effect { base += n * 2 }
             if case .border(_, _, let edges) = effect { base += edges.verticalInset }
             if case .frame(_, _, _, _, let minH, let maxH, _) = effect {

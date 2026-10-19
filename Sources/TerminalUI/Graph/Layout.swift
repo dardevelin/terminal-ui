@@ -295,6 +295,13 @@ public enum Layout {
     /// SW-TYPE-ENUM-STATE: explicit switch over `ModifierEffect` so
     /// adding a new effect produces a compile error here, not a
     /// silent layout regression.
+    /// The width a modifier lays its child out at, given its own — the rule
+    /// `transformedRect` applies, so measurement asks a child about the width
+    /// layout will actually hand it. Width never depends on height here.
+    static func childWidth(for effect: ModifierEffect, outerWidth: Int) -> Int {
+        transformedRect(for: effect, parentRect: Rect(x: 0, y: 0, width: outerWidth, height: 0)).width
+    }
+
     private static func transformedRect(for effect: ModifierEffect, parentRect rect: Rect) -> Rect {
         switch effect {
         case .padding(let amount):
