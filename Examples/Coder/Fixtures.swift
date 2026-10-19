@@ -83,11 +83,37 @@ enum Fixtures {
                 id: 7,
                 name: "Bash",
                 summary: "swift test --filter Compositor",
+                state: .success,
+                output: compositorTestRun
+            )),
+            .tool(ToolCall(
+                id: 8,
+                name: "Bash",
+                summary: "swift run -c release Demo --measure-bytes",
                 state: .pending,
                 output: nil
             )),
         ]
     }
+
+    /// Long enough to pass the card's line cap, with one diagnostic wider
+    /// than the transcript so the card has to cut it.
+    private static let compositorTestRun = """
+        Building for debugging...
+        [412/415] Compiling TerminalUI Compositor.swift
+        Sources/TerminalUI/Rendering/Compositor.swift:311:9: note: previousBuffer is now nil only before the first frame; the skip path reads skippedFrame
+        Build complete! (3.41s)
+        ◇ Test run started.
+        ↳ Testing Library Version: 6.2
+        ◇ Suite CompositorDeltaTests started.
+        ✔ Test skippedFrameEmitsNoBytes() passed after 0.002 seconds.
+        ✔ Test firstFrameRepaintsEverything() passed after 0.001 seconds.
+        ✔ Test deltaAgainstPreviousBufferBridgesGaps() passed after 0.003 seconds.
+        ✔ Test missedBudgetSkipsWithoutRepainting() passed after 0.002 seconds.
+        ✔ Test cursorTrackingSurvivesASkippedFrame() passed after 0.001 seconds.
+        ✔ Suite CompositorDeltaTests passed after 0.011 seconds.
+        ✔ Test run with 5 tests in 1 suite passed after 0.012 seconds.
+        """
 
     private static let compositorBefore = """
             private var previousBuffer: CellBuffer?

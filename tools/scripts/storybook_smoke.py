@@ -1625,6 +1625,27 @@ def coder_transcript_diff_takes_no_keys(app: Client) -> None:
     assert_true(after == before, "arrow keys changed the transcript")
 
 
+def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
+    """A Bash result shows at most ten lines and says how many it held back;
+    a line wider than the card ends in `…`. Regression: the transcript's
+    scrollbar was painted over the content's last column, so the ellipsis a
+    correctly truncated line ends on was erased and the line read as cut off
+    mid-word."""
+    for _ in range(10):
+        text = app.cells().text()
+        if "Waiting for tool response" in text:
+            break
+        app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
+        app.wait_for_frame(1, timeout=0.5)
+    else:
+        raise CaseFailed("pending Bash card never scrolled into view")
+    rows = text.splitlines()
+    assert_true("… (4 lines hidden)" in text, "expected the hidden-line count")
+    long_row = next((row for row in rows if "note: previousBuffer" in row), None)
+    assert_true(long_row is not None, "expected the long diagnostic line")
+    assert_true("…" in long_row, f"long line lost its ellipsis: {long_row.rstrip()!r}")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -1714,6 +1735,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
     SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),
+    SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
 ]
 
 
