@@ -571,8 +571,23 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 .frame(width: 24)
                 """)
         case .focusable: return PageInfo(id: self, category: .modifiers, name: ".focusable",
-            summary: "Participate in Tab-order focus navigation.",
-            code: "Text(\"press Tab to focus me\").focusable()")
+            summary: "Participate in Tab-order focus navigation. The view's content reads `isFocused` to know when it holds focus — only bodies that read it run again when focus moves.",
+            code: """
+                struct Choice: TerminalView {
+                    let title: String
+                    @TerminalEnvironment(\\.isFocused) var isFocused
+
+                    var body: some TerminalView {
+                        Text((isFocused ? "▸ " : "  ") + title)
+                            .foreground(isFocused ? .cyan : .gray)
+                    }
+                }
+
+                VStack {
+                    Choice(title: "press Tab to focus me").focusable()
+                    Choice(title: "then me").focusable()
+                }
+                """)
         case .frame: return PageInfo(id: self, category: .modifiers, name: ".frame",
             summary: "Constrain size via width/height/min/max.",
             code: "Text(\"x\").frame(width: 10, height: 3).border()")

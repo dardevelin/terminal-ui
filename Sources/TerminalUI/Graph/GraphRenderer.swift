@@ -1462,9 +1462,16 @@ public enum GraphRenderer {
             render(child, into: &buffer, context: ctx)
 
         case .focusable:
-            // isFocusable is set during graph construction (see below).
-            // Just render the child — focus ring is drawn after main render pass.
-            render(child, into: &buffer, context: ctx)
+            // isFocusable is set during graph construction; the focus ring is
+            // drawn after the main pass. What a focusable sets is whether it
+            // holds focus, which its content's environment snapshot carries.
+            var newEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
+            node.applyEnvironment(to: &newEnv)
+            withUnsafeMutablePointer(to: &buffer) { bufPtr in
+                GraphContext.$currentEnvironment.withValue(newEnv) {
+                    render(child, into: &bufPtr.pointee, context: ctx)
+                }
+            }
 
         case .focusScope:
             // Scope ids are stamped on focusable descendants during construction.
@@ -1512,7 +1519,7 @@ public enum GraphRenderer {
             // node._actionScope during event routing.
             render(child, into: &buffer, context: ctx)
 
-        case .environment(let apply):
+        case .environment:
             // Push a modified EnvironmentValues for the duration of this
             // subtree. Descendants read via `GraphContext.currentEnvironment`
             // (e.g. `GraphMeasurer.computeHeight` consulting `textWrap`).
@@ -1522,7 +1529,7 @@ public enum GraphRenderer {
             // recursive `render` keep its `inout buffer` parameter
             // across the @TaskLocal closure boundary.
             var newEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
-            apply(&newEnv)
+            node.applyEnvironment(to: &newEnv)
             withUnsafeMutablePointer(to: &buffer) { bufPtr in
                 GraphContext.$currentEnvironment.withValue(newEnv) {
                     render(child, into: &bufPtr.pointee, context: ctx)

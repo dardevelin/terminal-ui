@@ -803,8 +803,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // top during graph descent. Wrap the entire frame in nested
         // `withValue` so reads from any callee — body evaluation,
         // measurement, layout, render — observe the same bindings.
+        graph.focusMoved(to: focusEngine.keyboardFocusID)
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
+        env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
                 renderFullFrameBody(buildStart: buildStart)
@@ -886,6 +888,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // External review flagged that the runtime always took
         // path (1). The drain path was tested at the graph level
         // (verified at the graph level) but unreached on the production frame.
+        // Focus moved since the last frame — by a key, a click, a focused
+        // view leaving the tree — so the bodies that read it are due.
+        graph.focusMoved(to: focusEngine.keyboardFocusID)
         let firstFrame = previousBuffer == nil
         let structuralRebuild = firstFrame || needsRender
         let stateOnlyDirty = graph.hasDirtyNodes && !structuralRebuild
@@ -899,6 +904,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // still propagate.
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
+        env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
                 renderDiffFrameBody(
@@ -940,64 +946,28 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 }
             }
 
+            // The first focusable is chosen only once this frame's graph
+            // exists — after its bodies ran in an environment that named no
+            // focus. Re-run the bodies that read focus, and draw, in the
+            // environment that names it, so the first frame already shows it.
+            var drawEnvironment = GraphContext.currentEnvironment ?? EnvironmentValues()
+            if drawEnvironment.focusedID != focusEngine.keyboardFocusID {
+                drawEnvironment.focusedID = focusEngine.keyboardFocusID
+                if graph.focusMoved(to: focusEngine.keyboardFocusID) {
+                    GraphContext.$currentEnvironment.withValue(drawEnvironment) {
+                        graphChanged = graph.drain() || graphChanged
+                    }
+                    if let root = graph.root {
+                        focusEngine.rebuildIndex(root: root)
+                    }
+                }
+            }
+
             // Render if graph changed OR if we were explicitly told to (key press, etc.)
             if graphChanged || previousBuffer == nil || needsRender {
-                // Adjust scroll offsets to keep focused child visible
-                GraphRenderer.adjustScrollForFocus(
-                    root: graph.root, focusedID: focusEngine.keyboardFocusID,
-                    viewportWidth: size.cols, viewportHeight: size.rows
-                )
-                GraphRenderer.adjustScrollForExplicitTarget(
-                    root: graph.root,
-                    viewportWidth: size.cols, viewportHeight: size.rows
-                )
-
-                // Reuse the render buffer across frames. Resize
-                // is a no-op when geometry is stable; clear sets every
-                // cell back to .empty so the renderer paints into a known
-                // baseline. The post-render diff still produces minimal
-                // ANSI output regardless.
-                renderBuffer.resize(width: size.cols, height: size.rows)
-                let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
-                if let root = graph.root {
-                    // Phase separation: layout pass before render so
-                    // GR rebuilders + rect math run outside the render
-                    // walk. Render reads the resolved tree as a pure draw.
-                    Layout.measureAndPlace(graph: root, in: context.rect)
-                    GraphRenderer.render(root, into: &renderBuffer, context: context)
+                GraphContext.$currentEnvironment.withValue(drawEnvironment) {
+                    drawDiffFrame(buildStart: buildStart)
                 }
-
-                // Focus indicators
-                GraphRenderer.renderFocusIndicators(into: &renderBuffer, focusEngine: focusEngine, root: graph.root)
-
-                #if DEBUG
-                debugOverlay.render(into: &renderBuffer, stats: frameStats)
-                debugPanel.render(into: &renderBuffer, graph: graph, stats: frameStats)
-                inspector.render(into: &renderBuffer, graph: graph)
-
-                if captureCurrentFrame {
-                    captureCurrentFrame = false
-                    captureFrame(buffer: renderBuffer)
-                }
-                #endif
-
-                let changedCells = renderBuffer.countDiff(from: previousBuffer)
-                renderBuffer.renderDiff(from: previousBuffer, into: &outputBuffer)
-                let buildEnd = monotonicNanoseconds()
-
-                outputBuffer.flush()
-                let flushEnd = monotonicNanoseconds()
-
-                tracer.endFrame(buffer: renderBuffer, previousBuffer: previousBuffer)
-                frameStats = frameCounter.endFrame(
-                    cellsChanged: changedCells, totalCells: renderBuffer.width * renderBuffer.height,
-                    buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
-                    bytesWritten: outputBuffer.size
-                )
-                #if DEBUG
-                debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
-                #endif
-                previousBuffer = renderBuffer
                 return
             }
         }
@@ -1013,6 +983,67 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #if DEBUG
         debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
         #endif
+    }
+
+    /// Lay out, draw and flush a frame whose graph is settled — the second
+    /// half of ``renderDiffFrameBody(buildStart:structuralRebuild:needsWork:)``.
+    private func drawDiffFrame(buildStart: UInt64) {
+        // Adjust scroll offsets to keep focused child visible
+        GraphRenderer.adjustScrollForFocus(
+            root: graph.root, focusedID: focusEngine.keyboardFocusID,
+            viewportWidth: size.cols, viewportHeight: size.rows
+        )
+        GraphRenderer.adjustScrollForExplicitTarget(
+            root: graph.root,
+            viewportWidth: size.cols, viewportHeight: size.rows
+        )
+
+        // Reuse the render buffer across frames. Resize
+        // is a no-op when geometry is stable; clear sets every
+        // cell back to .empty so the renderer paints into a known
+        // baseline. The post-render diff still produces minimal
+        // ANSI output regardless.
+        renderBuffer.resize(width: size.cols, height: size.rows)
+        let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
+        if let root = graph.root {
+            // Phase separation: layout pass before render so
+            // GR rebuilders + rect math run outside the render
+            // walk. Render reads the resolved tree as a pure draw.
+            Layout.measureAndPlace(graph: root, in: context.rect)
+            GraphRenderer.render(root, into: &renderBuffer, context: context)
+        }
+
+        // Focus indicators
+        GraphRenderer.renderFocusIndicators(into: &renderBuffer, focusEngine: focusEngine, root: graph.root)
+
+        #if DEBUG
+        debugOverlay.render(into: &renderBuffer, stats: frameStats)
+        debugPanel.render(into: &renderBuffer, graph: graph, stats: frameStats)
+        inspector.render(into: &renderBuffer, graph: graph)
+
+        if captureCurrentFrame {
+            captureCurrentFrame = false
+            captureFrame(buffer: renderBuffer)
+        }
+        #endif
+
+        let changedCells = renderBuffer.countDiff(from: previousBuffer)
+        renderBuffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+        let buildEnd = monotonicNanoseconds()
+
+        outputBuffer.flush()
+        let flushEnd = monotonicNanoseconds()
+
+        tracer.endFrame(buffer: renderBuffer, previousBuffer: previousBuffer)
+        frameStats = frameCounter.endFrame(
+            cellsChanged: changedCells, totalCells: renderBuffer.width * renderBuffer.height,
+            buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
+            bytesWritten: outputBuffer.size
+        )
+        #if DEBUG
+        debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
+        #endif
+        previousBuffer = renderBuffer
     }
 
     #if DEBUG

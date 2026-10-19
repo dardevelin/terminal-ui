@@ -178,6 +178,24 @@ def storybook_tab_crosses_to_preview(app: Client) -> None:
     )
 
 
+def storybook_focusable_rows_read_their_focus(app: Client) -> None:
+    """The `.focusable` page's rows read `isFocused`: the focused row draws a
+    `▸`, and Tab moves it. Regression: `isFocused` was never set, so no view
+    could tell it held focus."""
+    app.goto_page(".focusable")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true("▸ press Tab to focus me" in preview,
+                f"the first row should show it holds focus: {preview!r}")
+    assert_true("▸ then me" not in preview, "only the focused row is marked")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true("▸ then me" in preview and "▸ press Tab" not in preview,
+                f"Tab should move the mark to the second row: {preview!r}")
+
+
 def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
@@ -1688,6 +1706,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
+    SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
     SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),

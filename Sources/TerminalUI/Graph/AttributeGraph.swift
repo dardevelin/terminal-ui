@@ -256,6 +256,7 @@ public final class AttributeGraph: @unchecked Sendable {
         // via @TaskLocal. `withValue` restores the prior binding on
         // exit (regardless of throw) and isolates the binding to this
         // task — `Task.detached` callers cannot observe these values.
+        node.environmentReads.removeAll(keepingCapacity: true)
         let body: V.Body = GraphContext.$currentNode.withValue(node) {
             GraphContext.$currentGraph.withValue(self) {
                 withObservationTracking {
@@ -350,7 +351,7 @@ public final class AttributeGraph: @unchecked Sendable {
                 // same env-apply window as constructModifier so
                 // descendant body re-evaluations during update see the
                 // ancestor's environment value, not the default.
-                withEnvironmentApplied(effect: newEffect) {
+                withEnvironmentApplied(of: node) {
                     // Update base child
                     if let child = node.children.first {
                         modified.updateChild(child, graph: self)
@@ -1102,7 +1103,7 @@ public final class AttributeGraph: @unchecked Sendable {
         // resolved against the parent / default value (read-before-apply).
         // Push the mutation, build, then restore — descendants of any
         // sibling subtree are unaffected.
-        let previousEnvironment = withEnvironmentApplied(effect: effect) {
+        let previousEnvironment = withEnvironmentApplied(of: node) {
             // Base view child (child[0])
             let childID = id.appending(.index(0))
             let childNode = modified.constructChildNode(id: childID, graph: self)
@@ -1133,20 +1134,20 @@ public final class AttributeGraph: @unchecked Sendable {
         return node
     }
 
-    /// Run `body` with `GraphContext.currentEnvironment` mutated by `effect`
-    /// when `effect == .environment(apply)`. Restores the previous env on
-    /// return (regardless of throw). Other effects pass through unchanged.
-    /// Returns the prior env so callers can pair it with a manual restore
-    /// in non-scoped paths.
+    /// Run `body` with `GraphContext.currentEnvironment` carrying what `node`
+    /// sets for its descendants (see ``AttributeNode/applyEnvironment(to:)``).
+    /// Restores the previous env on return. Nodes that set nothing pass
+    /// through unchanged. Returns the prior env so callers can pair it with a
+    /// manual restore in non-scoped paths.
     @discardableResult
-    func withEnvironmentApplied<T>(effect: ModifierEffect, _ body: () -> T) -> EnvironmentValues? {
-        guard case .environment(let apply) = effect else {
+    func withEnvironmentApplied<T>(of node: AttributeNode, _ body: () -> T) -> EnvironmentValues? {
+        guard node.setsEnvironment else {
             _ = body()
             return nil
         }
         let previous = GraphContext.currentEnvironment ?? EnvironmentValues()
         var mutated = previous
-        apply(&mutated)
+        node.applyEnvironment(to: &mutated)
         GraphContext.$currentEnvironment.withValue(mutated) {
             _ = body()
         }
@@ -1169,11 +1170,49 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         var env = baseEnvironment
         for ancestor in ancestors.reversed() {
-            if case .modifier(.environment(let apply)) = ancestor.kind {
-                apply(&env)
-            }
+            ancestor.applyEnvironment(to: &env)
         }
         return env
+    }
+
+    /// The node keyboard focus was on when the graph was last told.
+    private(set) var focusedID: NodeID?
+
+    /// Tell the graph keyboard focus is now on `id`, so the bodies that read
+    /// it — `isFocused` under the node that lost or gained it, `focusedID`
+    /// anywhere — run again. Nothing else re-runs: a body that never asked
+    /// cannot draw differently. Returns whether any body was invalidated.
+    @discardableResult
+    func focusMoved(to id: NodeID?) -> Bool {
+        guard id != focusedID else { return false }
+        let previous = focusedID
+        focusedID = id
+        guard let root else { return false }
+        var invalidated = false
+        invalidateFocusReaders(in: root, focusable: nil,
+                               moved: [previous, id].compactMap { $0 },
+                               invalidated: &invalidated)
+        return invalidated
+    }
+
+    /// `focusable` is the nearest focusable node above `node` — the one whose
+    /// focus `isFocused` reports to `node`'s body.
+    private func invalidateFocusReaders(in node: AttributeNode, focusable: NodeID?,
+                                        moved: [NodeID], invalidated: inout Bool) {
+        if case .viewBody = node.kind, !node.environmentReads.isEmpty {
+            let readsOwnFocus = node.environmentReads.contains(\EnvironmentValues.isFocused)
+                && focusable.map(moved.contains) == true
+            if readsOwnFocus || node.environmentReads.contains(\EnvironmentValues.focusedID) {
+                node.markDirty()
+                enqueueDirty(node)
+                invalidated = true
+            }
+        }
+        let below: NodeID?
+        if case .modifier(.focusable) = node.kind { below = node.id } else { below = focusable }
+        for child in node.children {
+            invalidateFocusReaders(in: child, focusable: below, moved: moved, invalidated: &invalidated)
+        }
     }
 
     /// Walk the subtree and record scopeID on every focusable descendant.
@@ -1249,6 +1288,7 @@ public final class AttributeGraph: @unchecked Sendable {
         #endif
         // Bind currentNode + currentGraph for the body-evaluation scope
         // via @TaskLocal. See `evaluateBody` for the contract.
+        node.environmentReads.removeAll(keepingCapacity: true)
         let body: V.Body = GraphContext.$currentNode.withValue(node) {
             GraphContext.$currentGraph.withValue(self) {
                 withObservationTracking {
