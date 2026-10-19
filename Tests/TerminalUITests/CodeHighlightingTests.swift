@@ -139,7 +139,7 @@ struct CodeHighlightingTests {
     }
 
     @Test func textAreaFollowsTheThemeUnlessToldOtherwise() {
-        let source = Binding<String>(get: { "let" }, set: { _ in })
+        let source = Binding.constant("let")
         var themed = TextAreaState()
         let followed = TextArea(text: source, state: Binding(get: { themed }, set: { themed = $0 }),
                                 highlighter: SwiftSyntaxHighlighter())
