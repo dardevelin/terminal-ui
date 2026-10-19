@@ -65,6 +65,4 @@ enum Glyph {
 
     static let radioOn = "◉"
     static let radioOff = "○"
-    static let scrollThumb = "┃"
-    static let scrollTrack = "│"
 }

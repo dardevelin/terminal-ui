@@ -49,8 +49,10 @@ struct ScrollbarGutterTests {
         // under the bar.
         #expect(row(buffer, 0).hasPrefix("aaaa     "))
         #expect(row(buffer, 1).hasPrefix("bbbbb    "))
+        let glyphs = EnvironmentValues().scrollbarStyle
+        let bar: Set<Character> = [glyphs.verticalTrack, glyphs.verticalThumb, "▲", "▼"]
         for y in 0..<buffer.height {
-            #expect("│█▲▼".contains(buffer[9, y].character), "column 9 is the bar's, row \(y)")
+            #expect(bar.contains(buffer[9, y].character), "column 9 is the bar's, row \(y)")
         }
     }
 

@@ -469,7 +469,7 @@ struct FormScrollingTests {
         let view = TallForm(isOn: model.toggleBinding, rows: 3)
 
         let text = renderedText(frame(engine, graph, view))
-        #expect(!text.contains("█"))
+        #expect(!text.contains(EnvironmentValues().scrollbarStyle.verticalThumb))
         #expect(!text.contains("▼"))
     }
 

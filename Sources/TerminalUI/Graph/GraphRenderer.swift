@@ -819,7 +819,8 @@ public enum GraphRenderer {
         guard let contentChild = node.children.first else { return }
         let offset = node.scrollOffset
         let viewport = context.rect
-        let showIndicators = (GraphContext.currentEnvironment?.scrollIndicators ?? .visible) == .visible
+        let affordance = ScrollAffordance(environment: scrollEnvironment(of: node))
+        let showIndicators = affordance.isVisible
         // Claimed below only if a track is actually painted; a pane whose
         // content fits must not swallow clicks meant for what is under it.
         node.scrollAffordanceRect = nil
@@ -868,42 +869,36 @@ public enum GraphRenderer {
                 // ▶ when content extends past the right edge. Painted in the
                 // first/last cell of the viewport's top row for visibility
                 // without stealing a content row.
-                // Indicator glyphs use cyan+bold to match the focus-ring
-                // colour — dim grey was too subtle in live Storybook and
-                // users mistook clipped content for missing content
-                //.
-                let indicatorStyle = Style(foreground: .cyan, background: nil,
-                                           bold: true, italic: false, underline: false)
-                if offset > 0 {
-                    buffer[viewport.x, viewport.y] = Cell(character: "◀", style: indicatorStyle)
-                }
-                if drawnWidth > offset + viewport.width {
-                    buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▶", style: indicatorStyle)
+                if let markers = affordance.glyphs.edgeMarkers {
+                    if offset > 0 {
+                        buffer[viewport.x, viewport.y] = Cell(character: markers.left, style: affordance.edgeStyle)
+                    }
+                    if drawnWidth > offset + viewport.width {
+                        buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: markers.right,
+                                                                                   style: affordance.edgeStyle)
+                    }
                 }
 
-                // Horizontal thumb-track on the bottom row. ─ track
-                // across the full width, █ thumb at the proportional
-                // start. Skipped when content fits (scrollbarThumb
-                // returns nil). Painted last so it overlays the
-                // bottom row's content cells — acceptable since the
-                // content row needed to grow above to leave room for
-                // the scrollbar visual; the user trades one content
-                // row for the affordance.
+                // Horizontal thumb-track on the bottom row: track across the
+                // full width, thumb at the proportional start. Skipped when
+                // content fits (scrollbarThumb returns nil). Painted last so
+                // it overlays the bottom row's content cells — acceptable
+                // since the content row needed to grow above to leave room
+                // for the scrollbar visual; the user trades one content row
+                // for the affordance.
                 if let thumb = scrollbarThumb(viewport: viewport.width,
                                               content: drawnWidth,
                                               offset: offset) {
                     let trackY = viewport.y + viewport.height - 1
                     node.scrollAffordanceRect = Rect(x: viewport.x, y: trackY,
                                                      width: viewport.width, height: 1)
-                    let trackStyle = Style(foreground: .gray, background: nil,
-                                           bold: false, italic: false, underline: false)
-                    let thumbStyle = Style(foreground: .cyan, background: nil,
-                                           bold: true, italic: false, underline: false)
                     for x in 0..<viewport.width {
-                        buffer[viewport.x + x, trackY] = Cell(character: "─", style: trackStyle)
+                        buffer[viewport.x + x, trackY] = Cell(character: affordance.glyphs.horizontalTrack,
+                                                              style: affordance.trackStyle)
                     }
                     for i in 0..<thumb.length {
-                        buffer[viewport.x + thumb.start + i, trackY] = Cell(character: "█", style: thumbStyle)
+                        buffer[viewport.x + thumb.start + i, trackY] = Cell(character: affordance.glyphs.horizontalThumb,
+                                                                            style: affordance.thumbStyle)
                     }
                 }
             }
@@ -951,57 +946,87 @@ public enum GraphRenderer {
                 // top/bottom-right cell of the viewport — right edge keeps
                 // the indicator out of the way of content readers scanning
                 // left-to-right.
-                // Indicator glyphs use cyan+bold to match the focus-ring
-                // colour — dim grey was too subtle in live Storybook and
-                // users mistook clipped content for missing content
-                //.
-                let indicatorStyle = Style(foreground: .cyan, background: nil,
-                                           bold: true, italic: false, underline: false)
-                if offset > 0 {
-                    buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: "▲", style: indicatorStyle)
+                let markers = affordance.glyphs.edgeMarkers
+                let marksTop = markers != nil && offset > 0
+                let marksBottom = markers != nil && drawnHeight > offset + viewport.height
+                if let markers, marksTop {
+                    buffer[viewport.x + viewport.width - 1, viewport.y] = Cell(character: markers.up,
+                                                                               style: affordance.edgeStyle)
                 }
-                if drawnHeight > offset + viewport.height {
-                    buffer[viewport.x + viewport.width - 1, viewport.y + viewport.height - 1] = Cell(character: "▼", style: indicatorStyle)
+                if let markers, marksBottom {
+                    buffer[viewport.x + viewport.width - 1, viewport.y + viewport.height - 1] = Cell(character: markers.down,
+                                                                                                     style: affordance.edgeStyle)
                 }
 
-                // Vertical thumb-track on the rightmost column. │ track
-                // top-to-bottom, █ thumb at the proportional start. Painted
-                // BEFORE the ▲/▼ edge glyphs above so those still win at
-                // the corners; thumb skips its track cells where the
-                // edge-glyph already sits. Skipped when content fits
-                // (scrollbarThumb returns nil).
+                // Vertical thumb-track on the rightmost column: track
+                // top-to-bottom, thumb at the proportional start. Edge
+                // markers above win at the corners; track and thumb skip the
+                // cells they already hold. Without markers the bar runs the
+                // full height. Skipped when content fits (scrollbarThumb
+                // returns nil).
                 if let thumb = scrollbarThumb(viewport: viewport.height,
                                               content: drawnHeight,
                                               offset: offset) {
                     let trackX = viewport.x + viewport.width - 1
                     node.scrollAffordanceRect = Rect(x: trackX, y: viewport.y,
                                                      width: 1, height: viewport.height)
-                    let trackStyle = Style(foreground: .gray, background: nil,
-                                           bold: false, italic: false, underline: false)
-                    let thumbStyle = Style(foreground: .cyan, background: nil,
-                                           bold: true, italic: false, underline: false)
                     for y in 0..<viewport.height {
                         // Don't paint over the ▲/▼ edge glyphs; they
                         // sit at trackY = top/bottom of the column and
                         // were already drawn by the block above.
                         let trackY = viewport.y + y
-                        let isTopGlyph = y == 0 && offset > 0
-                        let isBottomGlyph = y == viewport.height - 1
-                            && drawnHeight > offset + viewport.height
+                        let isTopGlyph = y == 0 && marksTop
+                        let isBottomGlyph = y == viewport.height - 1 && marksBottom
                         if isTopGlyph || isBottomGlyph { continue }
-                        buffer[trackX, trackY] = Cell(character: "│", style: trackStyle)
+                        buffer[trackX, trackY] = Cell(character: affordance.glyphs.verticalTrack,
+                                                      style: affordance.trackStyle)
                     }
                     for i in 0..<thumb.length {
                         let y = thumb.start + i
                         let trackY = viewport.y + y
-                        let isTopGlyph = y == 0 && offset > 0
-                        let isBottomGlyph = y == viewport.height - 1
-                            && drawnHeight > offset + viewport.height
+                        let isTopGlyph = y == 0 && marksTop
+                        let isBottomGlyph = y == viewport.height - 1 && marksBottom
                         if isTopGlyph || isBottomGlyph { continue }
-                        buffer[trackX, trackY] = Cell(character: "█", style: thumbStyle)
+                        buffer[trackX, trackY] = Cell(character: affordance.glyphs.verticalThumb,
+                                                      style: affordance.thumbStyle)
                     }
                 }
             }
+        }
+    }
+
+    /// The environment a scroll view was declared in. Read from the node, so
+    /// `.scrollIndicators`, `.scrollbarStyle` and a theme applied to one pane
+    /// reach that pane rather than only working app-wide — the same rule the
+    /// focus indicators follow.
+    static func scrollEnvironment(of node: AttributeNode) -> EnvironmentValues {
+        node._resolvedEnv ?? GraphContext.currentEnvironment ?? EnvironmentValues()
+    }
+
+    /// Everything a scroll view needs to draw its affordances, resolved once
+    /// per render from its environment.
+    ///
+    /// The thumb and edge markers take the theme's active-border colour — the
+    /// bar stands where a container's border would, and the thumb is its
+    /// active part — and stay bold: a grey indicator was too quiet in use,
+    /// and clipped content got mistaken for missing content. The track
+    /// recedes as a separator.
+    struct ScrollAffordance {
+        let isVisible: Bool
+        let glyphs: ScrollbarStyle
+        let edgeStyle: Style
+        let thumbStyle: Style
+        let trackStyle: Style
+
+        init(environment: EnvironmentValues) {
+            let theme = environment.theme
+            isVisible = environment.scrollIndicators == .visible
+            glyphs = environment.scrollbarStyle
+            edgeStyle = Style(foreground: theme.borderActive, background: nil,
+                              bold: true, italic: false, underline: false)
+            thumbStyle = edgeStyle
+            trackStyle = Style(foreground: theme.separator, background: nil,
+                               bold: false, italic: false, underline: false)
         }
     }
 
@@ -1671,12 +1696,16 @@ public enum GraphRenderer {
         // `_resolvedEnv` rule `allowArrowFocusNavigation` and the boundary
         // policy already follow, for the same reason: the TaskLocal binding is
         // bound during a frame's render walk, and this pass runs after it.
-        let ambient = GraphContext.currentEnvironment?.focusIndicatorStyle ?? .overlay
+        let ambient = GraphContext.currentEnvironment ?? EnvironmentValues()
         func style(for node: AttributeNode) -> FocusIndicatorStyle {
-            node._resolvedEnv?.focusIndicatorStyle ?? ambient
+            node._resolvedEnv?.focusIndicatorStyle ?? ambient.focusIndicatorStyle
+        }
+        // Same rule for colour: the bar belongs to the focused view, so it
+        // wears that view's theme.
+        func theme(for node: AttributeNode) -> any Theme {
+            node._resolvedEnv?.theme ?? ambient.theme
         }
 
-        // Keyboard focus — cyan bar
         if let focusedID = focusEngine.keyboardFocusID,
            let node = focusEngine.findNode(id: focusedID, in: root) {
             // A row you can read but not operate says so in its cursor, and
@@ -1685,17 +1714,19 @@ public enum GraphRenderer {
             // information using color alone"), and this distinction is the
             // only thing telling the user why Enter does nothing here.
             let readOnly = node.isReadOnlyFocus
-            let focusStyle = Style(foreground: readOnly ? .gray : .cyan, background: nil,
-                                   bold: !readOnly, italic: false, underline: false)
+            let palette = theme(for: node)
+            let focusStyle = Style(foreground: readOnly ? palette.foregroundMuted : palette.accent,
+                                   background: nil, bold: !readOnly, italic: false, underline: false)
             drawIndicator(node: node, style: style(for: node), glyph: readOnly ? "┆" : "▎",
                           cellStyle: focusStyle, into: &buffer, skipInScroll: true)
         }
 
-        // Mouse hover — subtle underline bar (only if different from keyboard focus)
+        // Mouse hover — a quieter bar, only where it is not also the focus.
         if let hoverID = focusEngine.mouseHoverID,
            hoverID != focusEngine.keyboardFocusID,
            let node = focusEngine.findNode(id: hoverID, in: root) {
-            let hoverStyle = Style(foreground: .gray, background: nil, bold: false, italic: false, underline: false)
+            let hoverStyle = Style(foreground: theme(for: node).foregroundMuted, background: nil,
+                                   bold: false, italic: false, underline: false)
             drawIndicator(node: node, style: style(for: node), glyph: "▏", cellStyle: hoverStyle,
                           into: &buffer, skipInScroll: true)
         }
