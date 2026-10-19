@@ -1059,16 +1059,40 @@ public final class FocusEngine: @unchecked Sendable {
         return findNodeRecursive(id: id, in: root)
     }
 
-    /// The currently keyboard-focused node, or `nil` if no focusable
-    /// is selected (e.g. the app has no focusables yet, or focus was
-    /// just reset). Falls back to the root when a focused-id is set
-    /// but the node has been detached — the caller can still walk to
-    /// root from the root itself, so action dispatch finds outer
-    /// scopes even with stale focus state.
+    /// The node a key is addressed to: the keyboard-focused node, or — when
+    /// nothing holds focus, or the focused node has been detached — the
+    /// window itself. `nil` only when there is no graph.
+    ///
+    /// The window is stood for by ``windowContent(in:)``, not by the root.
+    /// Action dispatch walks *up* from this node, and every scope an app
+    /// attaches around its content sits below the root; starting there
+    /// skipped all of them, so an app with no focusable view could not
+    /// override the framework's Escape or Ctrl+C at all.
     public func focusedNode(in root: AttributeNode?) -> AttributeNode? {
         guard let root else { return nil }
-        guard let id = keyboardFocusID else { return root }
-        return findNode(id: id, in: root) ?? root
+        guard let id = keyboardFocusID, let node = findNode(id: id, in: root) else {
+            return Self.windowContent(in: root)
+        }
+        return node
+    }
+
+    /// The innermost node that still wraps the whole window: down from the
+    /// root, stopping at the first node that lays out more than one child.
+    /// A modifier's second child is an overlay or background drawn over its
+    /// content, not a part of it, so a modifier is followed into its content.
+    /// Walking up from here meets every modifier applied to the app as a
+    /// whole, and none that belongs to one part of it.
+    static func windowContent(in root: AttributeNode) -> AttributeNode {
+        var node = root
+        while true {
+            if case .modifier = node.kind, let content = node.children.first {
+                node = content
+            } else if node.children.count == 1 {
+                node = node.children[0]
+            } else {
+                return node
+            }
+        }
     }
 
     private func findNodeRecursive(id: NodeID, in node: AttributeNode) -> AttributeNode? {
