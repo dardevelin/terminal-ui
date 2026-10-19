@@ -54,6 +54,24 @@ struct CoderTheme: Theme {
     static let dark = CoderTheme()
 }
 
+extension MarkdownStyle {
+    /// How the transcript draws a reply — Crush's message style, stated in
+    /// this theme's roles. Headings keep their markers, so a reply's structure
+    /// reads at a glance in a column of prose; inline code is a padded chip,
+    /// so an identifier stands apart from the sentence around it.
+    static func coder(_ theme: CoderTheme) -> MarkdownStyle {
+        var style = MarkdownStyle()
+        style.heading = .init(foreground: theme.info, bold: true)
+        style.h2.prefix = "## "
+        style.h3.prefix = "### "
+        style.h4.prefix = "#### "
+        style.inlineCode = .init(foreground: theme.destructive, background: theme.backgroundOverlay,
+                                 prefix: " ", suffix: " ")
+        style.link = .init(foreground: theme.info, underline: true)
+        return style
+    }
+}
+
 /// Single-glyph vocabulary, fixed semantics.
 ///
 /// Consistency here is most of what reads as polish: the same check mark

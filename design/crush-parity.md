@@ -549,6 +549,29 @@ syntax theme now follows the theme when not given.
 Not built: lexers beyond Swift. The registry is the seam; the demo's excerpts
 are Swift. Bash for the Bash card's command is the likely first.
 
+**L12. Markdown could only look one way.** *(G5 follow-on — built)*
+
+Side by side with Crush, a reply read differently for reasons none of which
+were the demo's to fix: Crush keeps `##` markers so structure reads in a column
+of prose, draws inline code as a padded chip, and mutes its thinking on a block
+of its own. Every element here was one fixed role.
+
+`MarkdownStyle` states a look per element — colour, background, weight, prefix,
+suffix — with every field unset by default and an unset field keeping the theme
+default, so an empty style changes nothing. Glamour's precedence (level over
+heading over document over default) and its meaning of background (a chip
+behind a run, a fill under the document) came across unchanged; it is the
+shape Crush's three configurations are written in.
+
+Two framework defects surfaced getting the fills right, both fixed on their
+own: styled `Text` wrote only its glyphs while plain `Text` padded its frame, so
+a background behind coloured text stopped at the text; and markdown rows
+painted the theme's ground behind all prose, which showed as patches inside
+any panel of another colour.
+
+The demo's replies now use a Crush-shaped style built from its own roles. Not
+built: a quiet thinking block — the demo has no thinking content yet.
+
 ### Ledger — open
 
 - **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
@@ -561,9 +584,6 @@ are Swift. Bash for the Bash card's command is the likely first.
 - **G1 remainder — the literal-drawing components** listed in L4, less
   `DiffView` (L8): `TabView`, `TreeView`, `HunkDiffView`, `StatusBar`,
   `PromptInput`. (`ScrollView`'s indicators done in L10.)
-- **Markdown element styles.** `MarkdownView` maps every element to a fixed role;
-  Crush keeps `##` markers, draws inline code as a coloured chip, and gives code
-  blocks no background. Not expressible without a per-element style.
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
   demanded will be bash, for the Bash card's command.
 

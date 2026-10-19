@@ -1635,6 +1635,14 @@ def coder_transcript_diff_takes_no_keys(app: Client) -> None:
     assert_true(after == before, "arrow keys changed the transcript")
 
 
+def coder_reply_keeps_heading_markers_and_chips_code(app: Client) -> None:
+    """The transcript draws replies in the demo's markdown style: headings
+    keep their `##` marker, and inline code is padded into a chip."""
+    text = app.cells().text()
+    assert_true("## The fix" in text, "expected the heading drawn with its marker")
+    assert_true(" previousBuffer  to signal" in text, "expected inline code padded as a chip")
+
+
 def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
     """A Read result shows the file text itself, numbered from where the
     read started rather than from one, and capped like any tool result."""
@@ -1749,6 +1757,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
     SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),
+    SmokeCase("coder.reply_keeps_heading_markers_and_chips_code", "Coder", coder_reply_keeps_heading_markers_and_chips_code),
     SmokeCase("coder.read_card_shows_numbered_excerpt", "Coder", coder_read_card_shows_numbered_excerpt),
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
 ]

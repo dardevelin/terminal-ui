@@ -376,5 +376,6 @@ struct CoderApp: TerminalView {
         // A hairline bar with no arrows: the transcript's position is read
         // from a violet thumb on a graphite track, as Crush draws it.
         .scrollbarStyle(.hairline)
+        .markdownStyle(.coder(theme))
     }
 }
