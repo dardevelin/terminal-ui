@@ -42,11 +42,11 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Input
     case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
-    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView, markdown
+    case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView, markdown, codeView
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -602,6 +602,13 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     ```
                     \""")
                 """)
+        case .codeView: return PageInfo(id: self, category: .display, name: "CodeView",
+            summary: "Read-only source: highlighted by language, numbered from any line so an excerpt keeps its file's numbering. Colours come from Theme.syntax; long lines follow .wrap(_:). Takes no focus.",
+            code: """
+                CodeView(excerpt, language: "swift",
+                         lineNumbers: true, firstLineNumber: 305)
+                    .wrap(.truncate(.tail))
+                """)
         case .bufferView: return PageInfo(id: self, category: .display, name: "BufferView",
             summary: "Render a pre-populated CellBuffer into the view's rect. SwiftUI analog: Image(decorative:).",
             code: """
@@ -675,6 +682,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
                 var quiet = ScrollbarStyle.thin
                 quiet.edgeMarkers = nil   // keep the bar, drop ▲ ▼
+                """)
+        case .syntaxHighlighter: return PageInfo(id: self, category: .modifiers, name: ".syntaxHighlighter",
+            summary: "Register a lexer for a language. Every view handed that language — CodeView, MarkdownView fences — uses it. Adds to the lexers inherited from above: Swift stays highlighted beside the new one.",
+            code: """
+                struct IniHighlighter: SyntaxHighlighter { … }
+
+                MarkdownView(notes)
+                    .syntaxHighlighter(IniHighlighter(), for: "ini")
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
             summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",

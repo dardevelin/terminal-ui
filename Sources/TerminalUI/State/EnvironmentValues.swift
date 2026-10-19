@@ -53,6 +53,10 @@ public struct EnvironmentValues: Sendable {
     /// Glyphs `ScrollView` draws its scrollbar with. Default `.thin`. Set via
     /// `.scrollbarStyle(_:)`; colour comes from ``theme``.
     public var scrollbarStyle: ScrollbarStyle = .thin
+    /// Lexers by language name, for every view that is handed a language.
+    /// Extend with `.syntaxHighlighter(_:for:)`; Swift is registered as
+    /// standard.
+    public var syntaxHighlighters: SyntaxHighlighters = .standard
 
     /// Explicit scroll target for the nearest enclosing `ScrollView`.
     /// Set via `.scrollPosition(id:)`; the renderer locates the descendant
@@ -274,6 +278,21 @@ public struct EnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier 
     }
 }
 
+/// Modifier that edits an inherited environment value for a subtree.
+public struct TransformEnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier {
+    public typealias ModifierType = Value
+    /// The ``EnvironmentValues`` entry this modifier edits.
+    public let keyPath: WritableKeyPath<EnvironmentValues, Value>
+    /// Receives the value the subtree would otherwise inherit, and edits it
+    /// in place.
+    public let transform: (inout Value) -> Void
+
+    /// Runs ``transform`` on the in-flight value at ``keyPath``.
+    public func apply(to env: inout EnvironmentValues) {
+        transform(&env[keyPath: keyPath])
+    }
+}
+
 extension TerminalView {
     /// Set an ``EnvironmentValues`` entry for this view and every
     /// descendant. Descendants read it via `@Environment(\.keyPath)`; a
@@ -281,5 +300,16 @@ extension TerminalView {
     /// own subtree (innermost wins), exactly like SwiftUI.
     public func environment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>, _ value: V) -> ModifiedView<Self, EnvironmentModifier<V>> {
         ModifiedView(content: self, modifier: EnvironmentModifier(keyPath: keyPath, value: value))
+    }
+
+    /// Edit an ``EnvironmentValues`` entry for this view and every descendant,
+    /// starting from the value it would otherwise inherit. Where
+    /// `.environment` replaces, this adds — registering one more lexer
+    /// without discarding the ones already there. SwiftUI parity:
+    /// `View.transformEnvironment(_:transform:)`.
+    public func transformEnvironment<V>(_ keyPath: WritableKeyPath<EnvironmentValues, V>,
+                                        transform: @escaping (inout V) -> Void)
+        -> ModifiedView<Self, TransformEnvironmentModifier<V>> {
+        ModifiedView(content: self, modifier: TransformEnvironmentModifier(keyPath: keyPath, transform: transform))
     }
 }

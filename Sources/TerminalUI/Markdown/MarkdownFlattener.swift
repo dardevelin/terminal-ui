@@ -22,9 +22,17 @@ enum MarkdownFlattener {
         static let rule = "─"
     }
 
-    static func flatten(_ blocks: [MarkdownBlock], theme: any Theme) -> [MarkdownRow] {
+    /// What a flatten styles with, resolved from the environment once and
+    /// carried down the block tree.
+    struct Context {
+        let theme: any Theme
+        /// Lexers for fenced blocks, by the fence's language.
+        let highlighters: SyntaxHighlighters
+    }
+
+    static func flatten(_ blocks: [MarkdownBlock], context: Context) -> [MarkdownRow] {
         var rows: [MarkdownRow] = []
-        emit(blocks, into: &rows, indent: 0, theme: theme, separated: true)
+        emit(blocks, into: &rows, indent: 0, context: context, separated: true)
         return rows
     }
 
@@ -32,7 +40,7 @@ enum MarkdownFlattener {
         _ blocks: [MarkdownBlock],
         into rows: inout [MarkdownRow],
         indent: Int,
-        theme: any Theme,
+        context: Context,
         separated: Bool
     ) {
         for (offset, block) in blocks.enumerated() {
@@ -42,7 +50,7 @@ enum MarkdownFlattener {
             // at all: a bullet and the list nested under it are one thought,
             // and spacing them reads as two.
             if separated && offset > 0 { rows.append(MarkdownRow(indent: indent)) }
-            emit(block, into: &rows, indent: indent, theme: theme)
+            emit(block, into: &rows, indent: indent, context: context)
         }
     }
 
@@ -50,8 +58,9 @@ enum MarkdownFlattener {
         _ block: MarkdownBlock,
         into rows: inout [MarkdownRow],
         indent: Int,
-        theme: any Theme
+        context: Context
     ) {
+        let theme = context.theme
         switch block {
         case .heading(let level, let content):
             // Level drives weight, not size — there is no size in a cell grid.
@@ -68,15 +77,11 @@ enum MarkdownFlattener {
                 content: spans(content, theme: theme, foreground: theme.foreground)))
 
         case .codeBlock(let language, let lines):
-            let highlighter = SyntaxHighlighting.highlighter(for: language)
-            var state = TokenizerState()
-            for line in lines {
-                let content: [TextSpan]
-                if let highlighter {
-                    content = highlighted(line, with: highlighter, state: &state, theme: theme)
-                } else {
-                    content = [TextSpan(line, foreground: theme.foregroundSubtle)]
-                }
+            // A fence whose language has no lexer still reads as code: the
+            // raised fill and a quieter foreground, without token colours.
+            let highlighted = context.highlighters[language]?.highlight(lines: lines, theme: theme.syntax)
+            for (index, line) in lines.enumerated() {
+                let content = highlighted?[index] ?? [TextSpan(line, foreground: theme.foregroundSubtle)]
                 rows.append(MarkdownRow(
                     indent: indent + Indent.code,
                     content: content,
@@ -86,7 +91,7 @@ enum MarkdownFlattener {
 
         case .bulletList(let items):
             for item in items {
-                emitListItem(item, marker: Gutter.bullet, into: &rows, indent: indent, theme: theme)
+                emitListItem(item, marker: Gutter.bullet, into: &rows, indent: indent, context: context)
             }
 
         case .orderedList(let start, let items):
@@ -96,12 +101,12 @@ enum MarkdownFlattener {
             for (offset, item) in items.enumerated() {
                 let number = String(start + offset)
                 let marker = String(repeating: " ", count: widest - number.count) + number + ". "
-                emitListItem(item, marker: marker, into: &rows, indent: indent, theme: theme)
+                emitListItem(item, marker: marker, into: &rows, indent: indent, context: context)
             }
 
         case .blockQuote(let inner):
             var quoted: [MarkdownRow] = []
-            emit(inner, into: &quoted, indent: 0, theme: theme, separated: true)
+            emit(inner, into: &quoted, indent: 0, context: context, separated: true)
             for var row in quoted {
                 // A border edge rather than a glyph, so the rail also covers
                 // the rows a long quoted paragraph wraps onto. The rail sits
@@ -131,10 +136,11 @@ enum MarkdownFlattener {
         marker: String,
         into rows: inout [MarkdownRow],
         indent: Int,
-        theme: any Theme
+        context: Context
     ) {
+        let theme = context.theme
         var itemRows: [MarkdownRow] = []
-        emit(item.blocks, into: &itemRows, indent: 0, theme: theme, separated: false)
+        emit(item.blocks, into: &itemRows, indent: 0, context: context, separated: false)
         guard !itemRows.isEmpty else { return }
 
         for (offset, var row) in itemRows.enumerated() {
@@ -183,32 +189,6 @@ enum MarkdownFlattener {
                 return spans(text, theme: theme, foreground: theme.accent,
                              bold: bold, italic: italic, underline: true)
             }
-        }
-    }
-
-    private static func highlighted(
-        _ line: String,
-        with highlighter: any SyntaxHighlighter,
-        state: inout TokenizerState,
-        theme: any Theme
-    ) -> [TextSpan] {
-        let syntax = SyntaxTheme.defaultDark
-        // Spans carry ranges into the exact line they were tokenised from,
-        // so the text is sliced here rather than carried along.
-        return highlighter.tokenize(line: line, state: &state).map { span in
-            TextSpan(String(line[span.range]),
-                     foreground: syntax.color(for: span.token),
-                     background: theme.backgroundRaised)
-        }
-    }
-}
-
-/// Which lexer, if any, a fence's info string selects.
-enum SyntaxHighlighting {
-    static func highlighter(for language: String?) -> (any SyntaxHighlighter)? {
-        switch language {
-        case "swift": SwiftSyntaxHighlighter()
-        default: nil
         }
     }
 }

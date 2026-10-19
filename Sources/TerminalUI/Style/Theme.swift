@@ -134,6 +134,13 @@ public protocol Theme: Sendable {
     /// Actions that destroy data. Distinct from ``error``, which reports
     /// that something already went wrong.
     var destructive: Color { get }
+
+    // MARK: Code
+
+    /// Colours for highlighted source: ``CodeView``, fenced blocks in
+    /// ``MarkdownView``, a highlighting ``TextArea``. Like ``border``, a theme
+    /// states it once and every view that draws code follows.
+    var syntax: SyntaxTheme { get }
 }
 
 /// Whether a theme fills in the roles it did not state by mixing colour, or
@@ -256,6 +263,8 @@ extension Theme {
     public var attention: Color { warning }
     public var busy: Color { accent }
     public var destructive: Color { error }
+
+    public var syntax: SyntaxTheme { .defaultDark }
 }
 
 /// The stock ``Theme``: cyan accent, gray chrome, green/yellow/red
@@ -320,6 +329,8 @@ public struct DefaultTheme: Theme {
     public var attention: Color = .yellow
     public var busy: Color = .cyan
     public var destructive: Color = .red
+
+    public var syntax: SyntaxTheme = .defaultDark
 
     /// Creates the default palette; every property can be mutated after.
     public init() {}
