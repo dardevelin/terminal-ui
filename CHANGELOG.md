@@ -102,6 +102,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An app's `.actions` answer keys while nothing is focused.** With no focused
+  view, dispatch started from the graph root and walked up — past none of the
+  scopes an app declares, which all sit below it — so Escape and Ctrl+C always
+  reached the framework defaults and an app could not override them. A key with
+  no focused view is now addressed to the window: dispatch starts at the
+  innermost node wrapping all of it, and meets every scope applied to the app
+  as a whole, and none applied to one part.
 - **A modifier's child is measured at the width it is laid out at.** Padding, a
   border's drawn edges and a frame's width all narrow the space a child gets,
   but its height was measured at the outer width — so wrapped text inside a
