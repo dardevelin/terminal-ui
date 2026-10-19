@@ -437,6 +437,7 @@ struct PreviewPane: TerminalView {
                                    set: { state.promptValue = $0 }),
                     state: Binding(get: { state.promptState },
                                     set: { state.promptState = $0 }),
+                    placeholder: "Ask anything",
                     onSubmit: { submitted in
                         state.promptSubmitted = submitted
                         state.promptValue = ""
@@ -772,6 +773,22 @@ struct PreviewPane: TerminalView {
                 MarkdownView("Considering the **cache** first — it is the likely cause.")
                     .markdownStyle(StorybookMarkdown.quiet)
             }
+        case .promptPrefix:
+            PromptInput(
+                text: Binding(get: { state.prefixDraft }, set: { state.prefixDraft = $0 }),
+                state: Binding(get: { state.prefixPromptState }, set: { state.prefixPromptState = $0 }),
+                placeholder: "Ask anything, or / for commands",
+                minimumHeight: 3)
+                .promptPrefix(PromptPrefix(width: 4) { row in
+                    switch (row.index, row.isFocused) {
+                    case (0, true):
+                        [TextSpan("  > ", foreground: row.theme.success, bold: true)]
+                    case (_, true):
+                        [TextSpan("::: ", foreground: row.theme.successSubtle)]
+                    default:
+                        [TextSpan("::: ", foreground: row.theme.foregroundMuted)]
+                    }
+                })
         case .boundaryFeedback:
             VStack {
                 Text("Type, then Left/Right past the edges").foreground(.gray)

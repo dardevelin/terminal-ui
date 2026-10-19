@@ -359,6 +359,26 @@ def storybook_promptinput_submit_clears(app: Client) -> None:
     )
 
 
+def storybook_prompt_prefix_follows_focus(app: Client) -> None:
+    """The `.promptPrefix` page's composer is Crush's: three rows when empty,
+    `:::` on each while focus is elsewhere, `>` on the first once Tab brings
+    focus in, and typed text after it. Regression: the prompt could not tell
+    it held focus, and drew a cursor regardless."""
+    app.goto_page(".promptPrefix")
+    preview = app.preview_text()
+    cells = [row.split("│", 1)[1].strip() for row in preview.splitlines() if "│" in row]
+    rows = [row for row in cells if row.startswith((":::", ">"))]
+    assert_true(len(rows) == 3 and all(row.startswith(":::") for row in rows),
+                f"an unfocused composer should be three ::: rows: {preview!r}")
+    assert_true("Ask anything, or / for commands" in preview, "the placeholder shows while empty")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_text("quit queue")
+    app.wait_for_frame(1, timeout=0.5)
+    preview = app.preview_text()
+    assert_true("> quit queue" in preview, f"focused, the first row reads '> ' then the text: {preview!r}")
+
+
 def storybook_list_selection_advances(app: Client) -> None:
     """List preview shows alpha/beta/gamma/... Down arrow advances the
     selection cursor visibly (▸ glyph moves to next label). Exercises
@@ -1713,6 +1733,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.textinput_validation_colors", "Storybook", storybook_textinput_validation_colors),
     SmokeCase("storybook.promptinput_long_input_soft_wraps", "Storybook", storybook_promptinput_long_input_soft_wraps),
     SmokeCase("storybook.promptinput_submit_clears", "Storybook", storybook_promptinput_submit_clears),
+    SmokeCase("storybook.prompt_prefix_follows_focus", "Storybook", storybook_prompt_prefix_follows_focus),
     SmokeCase("storybook.list_selection_advances", "Storybook", storybook_list_selection_advances),
     SmokeCase("storybook.tabview_cycles_tabs", "Storybook", storybook_tabview_cycles_tabs),
     SmokeCase("storybook.treeview_expand_collapse", "Storybook", storybook_treeview_expand_collapse),

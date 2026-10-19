@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, markdownStyle, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -369,12 +369,13 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .promptInput: return PageInfo(id: self, category: .input, name: "PromptInput",
-            summary: "Chat-style input. Enter submits; Option/Shift+Enter = newline.",
+            summary: "Chat-style input. Enter submits; Option/Shift+Enter = newline. The cursor shows while it holds focus; the placeholder while it is empty.",
             code: """
                 VStack {
                     PromptInput(
                         text: $value,
                         state: $promptState,
+                        placeholder: "Ask anything",
                         onSubmit: { submitted in
                             lastSubmitted = submitted
                             value = ""
@@ -734,6 +735,25 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 var quiet = MarkdownStyle()
                 quiet.text = .init(foreground: .gray, background: .ansi256(235))
                 MarkdownView(thinking).markdownStyle(quiet)
+                """)
+        case .promptPrefix: return PageInfo(id: self, category: .modifiers, name: ".promptPrefix",
+            summary: "Replace a PromptInput's prompt glyph with a column of your own, drawn per row and for focus. Crush's composer: `>` on the first row while focused, `:::` on the rest, dimmed when focus is elsewhere — three rows even when empty.",
+            code: """
+                PromptInput(
+                    text: $draft,
+                    state: $promptState,
+                    placeholder: "Ask anything, or / for commands",
+                    minimumHeight: 3)
+                    .promptPrefix(PromptPrefix(width: 4) { row in
+                        switch (row.index, row.isFocused) {
+                        case (0, true):
+                            [TextSpan("  > ", foreground: row.theme.success, bold: true)]
+                        case (_, true):
+                            [TextSpan("::: ", foreground: row.theme.successSubtle)]
+                        default:
+                            [TextSpan("::: ", foreground: row.theme.foregroundMuted)]
+                        }
+                    })
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
             summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",

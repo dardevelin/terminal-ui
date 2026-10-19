@@ -49,6 +49,98 @@ public enum PromptHeightPolicy: Sendable, Equatable {
     }
 }
 
+/// What ``PromptInput`` draws at the start of each of its rows.
+///
+/// The default is the input's `prompt` glyph on the first row and a blank
+/// indent of the same width beneath — ``glyph(_:)``. An agent composer often
+/// wants a column that says more: Crush draws `>` on the first row while the
+/// prompt is focused and `:::` on every other row, dimmed when focus is
+/// elsewhere. That column is a function of the row and of focus:
+///
+/// ```swift
+/// PromptInput(text: $draft, state: $promptState)
+///     .promptPrefix(PromptPrefix(width: 4) { row in
+///         switch (row.index, row.isFocused) {
+///         case (0, true): [TextSpan("  > ", foreground: row.theme.success, bold: true)]
+///         case (_, true): [TextSpan("::: ", foreground: row.theme.successSubtle)]
+///         default: [TextSpan("::: ", foreground: row.theme.foregroundMuted)]
+///         }
+///     })
+/// ```
+///
+/// Every row's prefix occupies ``width`` columns; the text wraps in what is
+/// left. Rows the prompt reserves past its text (see `minimumHeight`) carry
+/// a prefix too, so a three-row composer reads as three rows when empty.
+public struct PromptPrefix: Sendable {
+    /// One row of the prompt, as its prefix sees it.
+    public struct Row: Sendable {
+        /// The row's position in the wrapped input, 0 for the first. Rows
+        /// scrolled out of view keep their numbers, so the first row's
+        /// prefix scrolls away with the text it begins.
+        public let index: Int
+        /// Whether the prompt holds keyboard focus.
+        public let isFocused: Bool
+        /// The theme in force where the prompt is drawn.
+        public let theme: any Theme
+    }
+
+    /// Columns every row's prefix occupies.
+    public let width: Int
+    private let content: @Sendable (Row) -> [TextSpan]
+
+    /// A prefix `width` columns wide whose spans for each row `content`
+    /// decides. Spans narrower than `width` are padded; wider ones clip.
+    public init(width: Int, _ content: @escaping @Sendable (Row) -> [TextSpan]) {
+        self.width = max(0, width)
+        self.content = content
+    }
+
+    /// `glyph` and a space on the first row in the theme's accent, a blank
+    /// indent of the same width on the rest — ``PromptInput``'s own look.
+    public static func glyph(_ glyph: String) -> PromptPrefix {
+        let width = glyph.displayWidth + 1
+        return PromptPrefix(width: width) { row in
+            row.index == 0
+                ? [TextSpan("\(glyph) ", foreground: row.theme.accent, bold: true)]
+                : [TextSpan(String(repeating: " ", count: width))]
+        }
+    }
+
+    /// The row's spans, exactly ``width`` columns wide.
+    func spans(for row: Row) -> [TextSpan] {
+        var spans: [TextSpan] = []
+        var used = 0
+        for span in content(row) where used < width {
+            let room = width - used
+            var text = ""
+            var taken = 0
+            for character in span.text {
+                let cells = character.displayWidth
+                guard taken + cells <= room else { break }
+                text.append(character)
+                taken += cells
+            }
+            var clipped = span
+            clipped.text = text
+            spans.append(clipped)
+            used += taken
+        }
+        if used < width {
+            spans.append(TextSpan(String(repeating: " ", count: width - used)))
+        }
+        return spans
+    }
+}
+
+extension TerminalView {
+    /// Sets what every ``PromptInput`` in this subtree draws at the start of
+    /// its rows, in place of its `prompt` glyph — see ``PromptPrefix``.
+    public func promptPrefix(_ prefix: PromptPrefix)
+        -> ModifiedView<Self, EnvironmentModifier<PromptPrefix?>> {
+        environment(\.promptPrefix, prefix)
+    }
+}
+
 /// How `PromptInput` presents pasted content. Drives the threshold +
 /// rendering decision at the per-paste level.
 ///
@@ -357,8 +449,15 @@ public struct PromptInputState: Equatable, Sendable {
 /// - Soft-wraps content at the container width; input grows downward up to
 ///   the ``PromptHeightPolicy`` ceiling, then scrolls to keep the cursor
 ///   visible.
-/// - `❯` prompt indicator on the left, continuation rows indent to match.
-/// - Visible block cursor with per-display-row projection.
+/// - `❯` prompt indicator on the left, continuation rows indent to match —
+///   or any per-row column, via ``PromptPrefix`` and `.promptPrefix(_:)`.
+/// - A block cursor with per-display-row projection, drawn while the prompt
+///   holds focus.
+/// - An optional placeholder while the buffer is empty, and an optional
+///   floor on its height (`minimumHeight`).
+/// - Colours from the theme: the accent marks the prompt and cursor,
+///   `foreground` the text, `foregroundMuted` continuation markers and
+///   collapsed pastes, `foregroundFaint` the placeholder.
 /// - Enter submits the trimmed text through `onSubmit` and clears the
 ///   buffer; Shift+Enter / Option+Enter / Ctrl+Enter insert a newline.
 ///   (Shift+Enter detection requires a terminal with kitty keyboard or similar;
@@ -389,8 +488,15 @@ public struct PromptInput: TerminalView {
     /// Cursor, scroll, history, and paste buffers — see ``PromptInputState``.
     public let state: Binding<PromptInputState>
     /// Glyph drawn at the start of the first row; continuation rows indent
-    /// by its width. Defaults to `❯`.
+    /// by its width. Defaults to `❯`. A `.promptPrefix(_:)` set above the
+    /// input replaces it.
     public let prompt: String
+    /// Shown, faint, while the buffer is empty.
+    public let placeholder: String?
+    /// Rows the prompt occupies even when its text needs fewer — the rows
+    /// past the text carry the prefix's continuation, as an agent composer
+    /// that is three rows tall when empty. Defaults to 1.
+    public let minimumHeight: Int
     /// Optional context badge (project name, mode) rendered to the right —
     /// only while the input is a single empty-ish row, so it never overlaps
     /// wrapped content.
@@ -432,29 +538,31 @@ public struct PromptInput: TerminalView {
     /// cursor sits adjacent to a collapsed reference.
     @TerminalEnvironment(\.pasteHint) var pasteHint
 
-    private static let cursorChar: Character = "\u{2588}"  // █
-    private static let promptColor: Color = .cyan
-    private static let cursorColor: Color = .white
-    private static let textColor: Color = .default
-    private static let badgeColor: Color = .ansi256(245)
-    private static let badgeBgColor: Color = .ansi256(237)
-    private static let dimColor: Color = .ansi256(242)
+    /// Replaces the `prompt` glyph when set — see ``PromptPrefix``.
+    @TerminalEnvironment(\.promptPrefix) var promptPrefix
+
+    @TerminalEnvironment(\.theme) var theme
+
+    fileprivate static let cursorChar: Character = "\u{2588}"  // █
 
     /// Creates a prompt bound to its text and state.
     ///
     /// `text` is the live buffer; `state` holds cursor/scroll/history and
     /// must outlive re-evaluations (bind it to `@TerminalState` or an
     /// `@Observable` model). `prompt` is the left indicator glyph
-    /// (default `❯`); `badge` is an optional right-aligned context tag.
-    /// `maxVisibleLines` is a legacy alias for `.fixed(n)` and, when
+    /// (default `❯`); `placeholder` shows, faint, while the buffer is empty;
+    /// `badge` is an optional right-aligned context tag. `minimumHeight` is
+    /// the fewest rows the prompt occupies. `maxVisibleLines` is a legacy alias for `.fixed(n)` and, when
     /// non-nil, overrides `heightPolicy`. Enter fires `onSubmit` with the
     /// trimmed text; Shift/Option/Ctrl+Enter insert a newline.
     public init(
         text: Binding<String>,
         state: Binding<PromptInputState>,
         prompt: String = "\u{276F}",
+        placeholder: String? = nil,
         badge: String? = nil,
         maxVisibleLines: Int? = nil,
+        minimumHeight: Int = 1,
         heightPolicy: PromptHeightPolicy = .fixed(8),
         arrowMode: PromptArrowMode = .display,
         onSubmit: ((String) -> Void)? = nil
@@ -462,6 +570,8 @@ public struct PromptInput: TerminalView {
         self.text = text
         self.state = state
         self.prompt = prompt
+        self.placeholder = placeholder
+        self.minimumHeight = max(1, minimumHeight)
         self.badge = badge
         self.maxVisibleLines = maxVisibleLines
         self.heightPolicy = heightPolicy
@@ -505,7 +615,7 @@ public struct PromptInput: TerminalView {
             inputReader(boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
             if hintVisible && cursorAdjacentToCollapsed {
                 Text(hintLocalizer.pasteAgainHint())
-                    .foreground(Self.dimColor)
+                    .foreground(theme.foregroundMuted)
             }
         }
     }
@@ -534,7 +644,8 @@ public struct PromptInput: TerminalView {
     private func inputField(width: Int, containerHeight: Int,
                             boundaryMode: BoundaryFeedback,
                             onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
-        let contentWidth = max(1, width - Self.promptReservedWidth(self.prompt))
+        let prefix = resolvedPrefix
+        let contentWidth = max(1, width - prefix.width)
         let st = self.state.get()
         // Project the EXPANDED binding text + reference set into
         // the COLLAPSED display text. Markers replace each
@@ -556,21 +667,30 @@ public struct PromptInput: TerminalView {
             containerHeight: containerHeight,
             contentRows: totalDisplayRows
         )
-        let renderedHeight = min(max(1, ceiling), max(1, totalDisplayRows))
-        let spans = self.buildDisplay(
+        let renderedHeight = max(self.minimumHeight, min(max(1, ceiling), max(1, totalDisplayRows)))
+        // The rows read focus, so they are a view of their own under the
+        // focusable — `isFocused` reports to the content *below* the focusable
+        // that holds it. They are handed values, not the bindings: a body that
+        // read the bindings would be re-run alone on the next keystroke, with
+        // this build's wrapping and the new text.
+        let rows = PromptRows(
+            text: self.text.get(),
+            state: st,
+            placeholder: self.placeholder,
+            badge: self.badge,
+            prefix: prefix,
             lines: lines,
             wraps: wraps,
             totalDisplayRows: totalDisplayRows,
-            wrapWidth: contentWidth,
             visibleLines: renderedHeight,
             projection: projection
         )
-        return Text(spans: spans)
+        return rows
             .focusable()
-            .onKeyPress { [text, state, onSubmit, prompt, arrowMode, boundaryMode, onBoundaryHit] event in
+            .onKeyPress { [text, state, onSubmit, arrowMode, boundaryMode, onBoundaryHit] event in
                 Self.handleKey(
                     event, text: text, state: state,
-                    onSubmit: onSubmit, promptWidth: prompt.count + 1,
+                    onSubmit: onSubmit, promptWidth: prefix.width,
                     maxVisibleLines: renderedHeight,
                     wrapWidth: contentWidth,
                     arrowMode: arrowMode,
@@ -609,10 +729,10 @@ public struct PromptInput: TerminalView {
         }
     }
 
-    /// Cells reserved at the start of each display row for the prompt glyph
-    /// and its trailing space. Wrap width for content is `container.width - this`.
-    static func promptReservedWidth(_ prompt: String) -> Int {
-        prompt.count + 1
+    /// What each row begins with: a `.promptPrefix` set above, or the
+    /// `prompt` glyph.
+    var resolvedPrefix: PromptPrefix {
+        promptPrefix ?? .glyph(prompt)
     }
 
     /// Picks the display-row ceiling. Legacy `maxVisibleLines` wins for
@@ -833,36 +953,35 @@ public struct PromptInput: TerminalView {
 
     // MARK: - Display
 
-    private func buildDisplay(
-        lines: [String],
-        wraps: [[String]],
-        totalDisplayRows: Int,
-        wrapWidth: Int,
-        visibleLines: Int,
-        projection: CollapsedProjection
-    ) -> [TextSpan] {
-        let st = state.get()
+    /// The spans for `rows`, drawn for whether the prompt holds focus: the
+    /// prefix on every row, the text, the placeholder when there is none,
+    /// the cursor only while focused, and reserved rows past the text.
+    fileprivate static func buildDisplay(_ rows: PromptRows, isFocused: Bool, theme: any Theme) -> [TextSpan] {
+        let st = rows.state
+        let lines = rows.lines
+        let wraps = rows.wraps
+        let projection = rows.projection
         // Translate cursor from expanded coordinates → display
         // coordinates. Markers shift the column count for any
         // position past their start. Phase A: cursor never lives
         // INSIDE a collapsed range (input handlers snap to edges),
         // so a single-pass delta lookup is sufficient.
-        let expandedLines = Self.splitLines(text.get())
+        let expandedLines = splitLines(rows.text)
         let cursorRowInExpanded = min(st.cursorRow, max(0, expandedLines.count - 1))
         let cursorColInExpanded = min(st.cursorCol, expandedLines[cursorRowInExpanded].count)
         var expandedOffset = 0
         for r in 0..<cursorRowInExpanded { expandedOffset += expandedLines[r].count + 1 }
         expandedOffset += cursorColInExpanded
-        let displayOffset = Self.translateOffset(expandedOffset, deltas: projection.deltas)
-        let (cursorRow, cursorCol) = Self.absoluteOffsetToRowCol(displayOffset, lines: lines)
-        let _ = cursorCol  // silence unused-let if mapping changes
-        let (cursorDisplayRow, cursorDisplayCol) = Self.projectCursor(
+        let displayOffset = translateOffset(expandedOffset, deltas: projection.deltas)
+        let (cursorRow, cursorCol) = absoluteOffsetToRowCol(displayOffset, lines: lines)
+        let (cursorDisplayRow, cursorDisplayCol) = projectCursor(
             logicalRow: cursorRow, logicalCol: cursorCol, wraps: wraps
         )
 
         // Flatten (logicalRow, chunkIndex) pairs for the visible window.
-        let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, totalDisplayRows - visibleLines)))
-        let endDisplayRow = min(totalDisplayRows, startDisplayRow + visibleLines)
+        let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
+        let endDisplayRow = min(rows.totalDisplayRows, startDisplayRow + rows.visibleLines)
+        let cursorStyle = (foreground: theme.foregroundEmphasis, background: theme.accent)
 
         var spans: [TextSpan] = []
         var currentDisplayRow = 0
@@ -878,14 +997,20 @@ public struct PromptInput: TerminalView {
                     spans.append(TextSpan("\n"))
                 }
                 emittedRows += 1
+                spans.append(contentsOf: rows.prefix.spans(for: PromptPrefix.Row(
+                    index: currentDisplayRow, isFocused: isFocused, theme: theme)))
 
-                // Prompt on the first chunk of the first logical line,
-                // dim continuation indent everywhere else.
-                if logicalIdx == 0 && chunkIdx == 0 {
-                    spans.append(TextSpan("\(prompt) ", foreground: Self.promptColor, bold: true))
-                } else {
-                    let indent = String(repeating: " ", count: prompt.count + 1)
-                    spans.append(TextSpan(indent, foreground: Self.dimColor))
+                if rows.text.isEmpty, let placeholder = rows.placeholder, let first = placeholder.first {
+                    // The cursor sits on the placeholder's first character
+                    // rather than pushing the placeholder a column right.
+                    if isFocused {
+                        spans.append(TextSpan(String(first), foreground: cursorStyle.foreground,
+                                              background: cursorStyle.background, bold: true))
+                        spans.append(TextSpan(String(placeholder.dropFirst()), foreground: theme.foregroundFaint))
+                    } else {
+                        spans.append(TextSpan(placeholder, foreground: theme.foregroundFaint))
+                    }
+                    continue
                 }
 
                 // Compute this chunk's start offset in the
@@ -901,75 +1026,89 @@ public struct PromptInput: TerminalView {
                     chunkStartInDisplay += wraps[logicalIdx][c].count
                 }
 
-                let isCursorRow = (currentDisplayRow == cursorDisplayRow)
+                let isCursorRow = isFocused && currentDisplayRow == cursorDisplayRow
                 if isCursorRow {
                     // Split the chunk around the cursor column.
                     let col = min(cursorDisplayCol, chunk.count)
                     if col > 0 {
                         let before = String(chunk.prefix(col))
                         appendStyledChunkSpans(into: &spans,
-                                                chunk: before,
-                                                chunkStartInDisplay: chunkStartInDisplay,
-                                                projection: projection)
+                                               chunk: before,
+                                               chunkStartInDisplay: chunkStartInDisplay,
+                                               projection: projection,
+                                               theme: theme)
                     }
                     if col < chunk.count {
                         let idx = chunk.index(chunk.startIndex, offsetBy: col)
                         let cursorGlyph = chunk[idx]
                         spans.append(TextSpan(
                             String(cursorGlyph),
-                            foreground: Self.cursorColor,
-                            background: Self.promptColor,
+                            foreground: cursorStyle.foreground,
+                            background: cursorStyle.background,
                             bold: true
                         ))
                         if col + 1 < chunk.count {
                             let after = String(chunk.suffix(from: chunk.index(after: idx)))
                             appendStyledChunkSpans(into: &spans,
-                                                    chunk: after,
-                                                    chunkStartInDisplay: chunkStartInDisplay + col + 1,
-                                                    projection: projection)
+                                                   chunk: after,
+                                                   chunkStartInDisplay: chunkStartInDisplay + col + 1,
+                                                   projection: projection,
+                                                   theme: theme)
                         }
                     } else {
                         // Cursor sits past the last character of this chunk —
                         // render the block glyph. `projectCursor` only lands
                         // here for the last chunk of the last logical line
                         // (otherwise it rolls to the next chunk's col 0).
-                        spans.append(TextSpan(String(Self.cursorChar), foreground: Self.promptColor))
+                        spans.append(TextSpan(String(cursorChar), foreground: cursorStyle.background))
                     }
                 } else {
                     appendStyledChunkSpans(into: &spans,
-                                            chunk: chunk,
-                                            chunkStartInDisplay: chunkStartInDisplay,
-                                            projection: projection)
+                                           chunk: chunk,
+                                           chunkStartInDisplay: chunkStartInDisplay,
+                                           projection: projection,
+                                           theme: theme)
                 }
             }
         }
 
-        // Badge only fits cleanly on single-row empty input; otherwise the
-        // render would overlap wrapped content. Wide-screen callers can use
-        // an explicit HStack instead.
-        if let badge, !badge.isEmpty, totalDisplayRows == 1 {
+        // Badge only fits cleanly on single-row input; otherwise the render
+        // would overlap wrapped content. It goes on that row, before any
+        // reserved rows. Wide-screen callers can use an explicit HStack.
+        if let badge = rows.badge, !badge.isEmpty, rows.totalDisplayRows == 1 {
             spans.append(TextSpan("  "))
-            spans.append(TextSpan(" \(badge) ", foreground: Self.badgeColor, background: Self.badgeBgColor))
+            spans.append(TextSpan(" \(badge) ", foreground: theme.foregroundMuted, background: theme.backgroundRaised))
+        }
+
+        // Rows reserved past the text, each with its prefix.
+        while emittedRows < rows.visibleLines {
+            if emittedRows > 0 {
+                spans.append(TextSpan("\n"))
+            }
+            spans.append(contentsOf: rows.prefix.spans(for: PromptPrefix.Row(
+                index: startDisplayRow + emittedRows, isFocused: isFocused, theme: theme)))
+            emittedRows += 1
         }
 
         return spans
     }
 
     /// Emit `chunk` as one or more `TextSpan`s, splitting at marker
-    /// boundaries so collapsed-reference text gets `dimColor` while
-    /// regular content stays in `textColor`. `chunkStartInDisplay`
+    /// boundaries so collapsed-reference text gets `foregroundMuted` while
+    /// regular content stays in the theme's `foreground`. `chunkStartInDisplay`
     /// is the chunk's character offset in the collapsed display text;
     /// the helper intersects it with `projection.markerRanges` to
     /// locate marker segments inside the chunk.
-    private func appendStyledChunkSpans(
+    fileprivate static func appendStyledChunkSpans(
         into spans: inout [TextSpan],
         chunk: String,
         chunkStartInDisplay: Int,
-        projection: CollapsedProjection
+        projection: CollapsedProjection,
+        theme: any Theme
     ) {
         guard !chunk.isEmpty else { return }
         if projection.markerRanges.isEmpty {
-            spans.append(TextSpan(chunk, foreground: Self.textColor))
+            spans.append(TextSpan(chunk, foreground: theme.foreground))
             return
         }
         let chunkEndInDisplay = chunkStartInDisplay + chunk.count
@@ -978,7 +1117,7 @@ public struct PromptInput: TerminalView {
             range.start < chunkEndInDisplay && range.end > chunkStartInDisplay
         }
         if intersecting.isEmpty {
-            spans.append(TextSpan(chunk, foreground: Self.textColor))
+            spans.append(TextSpan(chunk, foreground: theme.foreground))
             return
         }
         // Walk the chunk left-to-right, alternating text-color and
@@ -996,7 +1135,7 @@ public struct PromptInput: TerminalView {
                         ..<
                         chunk.index(chunk.startIndex, offsetBy: preEnd)
                     ])
-                    spans.append(TextSpan(segment, foreground: Self.textColor))
+                    spans.append(TextSpan(segment, foreground: theme.foreground))
                 }
                 cursor = min(range.start, chunkEndInDisplay)
             }
@@ -1009,7 +1148,7 @@ public struct PromptInput: TerminalView {
                     ..<
                     chunk.index(chunk.startIndex, offsetBy: markEnd)
                 ])
-                spans.append(TextSpan(segment, foreground: Self.dimColor, italic: true))
+                spans.append(TextSpan(segment, foreground: theme.foregroundMuted, italic: true))
             }
             cursor = min(range.end, chunkEndInDisplay)
         }
@@ -1021,7 +1160,7 @@ public struct PromptInput: TerminalView {
                 ..<
                 chunk.endIndex
             ])
-            spans.append(TextSpan(segment, foreground: Self.textColor))
+            spans.append(TextSpan(segment, foreground: theme.foreground))
         }
     }
 
@@ -1586,5 +1725,29 @@ public struct PromptInput: TerminalView {
             st.scrollDisplayRow = cursorDisplayRow - maxVisibleLines + 1
         }
         st.scrollDisplayRow = max(0, min(st.scrollDisplayRow, maxScroll))
+    }
+}
+
+/// The rows of a ``PromptInput``, drawn for whether it holds focus. A view of
+/// its own so it can sit under the input's `.focusable()` and read
+/// `isFocused`; it holds the values the input computed for a width, never
+/// the bindings.
+struct PromptRows: TerminalView {
+    let text: String
+    let state: PromptInputState
+    let placeholder: String?
+    let badge: String?
+    let prefix: PromptPrefix
+    let lines: [String]
+    let wraps: [[String]]
+    let totalDisplayRows: Int
+    let visibleLines: Int
+    let projection: PromptInput.CollapsedProjection
+
+    @TerminalEnvironment(\.isFocused) var isFocused
+    @TerminalEnvironment(\.theme) var theme
+
+    var body: some TerminalView {
+        Text(spans: PromptInput.buildDisplay(self, isFocused: isFocused, theme: theme))
     }
 }

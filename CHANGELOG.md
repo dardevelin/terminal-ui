@@ -8,6 +8,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`PromptPrefix` and `.promptPrefix(_:)`** — replace a `PromptInput`'s prompt
+  glyph with a column drawn per row and for focus, such as Crush's composer:
+  `>` on the first row while focused, `:::` on the rest. Every row's prefix is
+  the stated width, and the text wraps in what is left.
+- **`PromptInput(placeholder:)` and `PromptInput(minimumHeight:)`** — a faint
+  placeholder while the buffer is empty, with the cursor on its first
+  character; and a floor on the prompt's height, the rows past the text
+  carrying the prefix's continuation.
 - **`VStack(alignment:spacing:)`, `HStack(alignment:spacing:)`,
   `ZStack(alignment:)`** — with `HorizontalAlignment`, `VerticalAlignment` and
   `Alignment` value types. The defaults are `.leading` / `.top` rather than
@@ -67,6 +75,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **`PromptInput` draws its cursor only while it holds focus, in theme
+  colours.** The cursor was drawn whether or not keys would reach the prompt.
+  Its literal cyan, white and greys are now the theme's `accent` (prompt glyph,
+  cursor), `foregroundEmphasis` (the character under the cursor),
+  `foreground` (text), `foregroundMuted` (collapsed pastes, the paste hint,
+  the badge on `backgroundRaised`) and `foregroundFaint` (placeholder).
 - **Resolving TerminalUI now clones nothing.** `swift-docc-plugin` was declared
   unconditionally, so every consumer fetched it and `swift-docc-symbolkit` to
   build a package that references neither — SwiftPM has no dev-only dependency.
