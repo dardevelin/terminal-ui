@@ -93,6 +93,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Measurements follow what they measured.** A changed `Text` invalidated
+  cached sizes up through layout containers but stopped at the first modifier,
+  whose cached size is its child's — so `Text(…).foreground(…)` kept its old
+  width. And width, unlike height, reused cached answers for containers whose
+  composite-view content can change without marking them dirty. Both now
+  re-measure; a view's width follows its content when it changes.
 - **Styled text fills its frame the way plain text does.** A `Text` with any
   styled run wrote only its glyphs, while plain text padded each line to its
   frame — so `.background` behind coloured text stopped where the text did.
