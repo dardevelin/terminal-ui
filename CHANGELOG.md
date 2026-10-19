@@ -24,6 +24,11 @@ All notable changes to TerminalUI are documented here. Format based on
   appears, cancelled when it leaves, restarted when the id changes. The action
   is `@MainActor`, so an app touches its `@Observable` model inside it the same
   way it does in `onAppear`, with no hop and no wrapper.
+- **`@Binding`, `$value.property` and `Binding.constant(_:)`** — `Binding` has
+  SwiftUI's shape. A child view that edits a value it does not own declares it
+  `@Binding var value`; `$value.field` derives a binding to one property, writing
+  the whole value back; `.constant(x)` reads `x` and ignores writes. Hand-built
+  `Binding(get:set:)` still works.
 - **`CodeView`** — read-only source, highlighted by language and numbered from
   any line, so an excerpt keeps the numbering of the file it came from. Long
   lines follow `.wrap(_:)`; a wrapped line continues under its code, not under

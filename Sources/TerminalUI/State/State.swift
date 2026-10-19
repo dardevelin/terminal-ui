@@ -146,6 +146,24 @@ public struct TerminalState<Value> {
 /// When projecting `$state` bindings, do so in `body` proper — a projection
 /// inside a `GeometryReader { ... }` closure runs outside body evaluation,
 /// captures no node, and yields a binding that swallows writes.
+///
+/// As in SwiftUI, a child view that edits a value it does not own declares it
+/// `@Binding`, a binding to one property of a value is derived with `.`, and
+/// `.constant(_:)` stands in where nothing should change:
+///
+/// ```swift
+/// struct VolumeRow: TerminalView {
+///     @Binding var settings: Settings
+///     var body: some TerminalView {
+///         Toggle("Muted", isOn: $settings.isMuted)
+///     }
+/// }
+///
+/// VolumeRow(settings: $settings)
+/// Toggle("Locked", isOn: .constant(true))
+/// ```
+@propertyWrapper
+@dynamicMemberLookup
 public struct Binding<Value> {
     /// Reads the current value from the owning storage.
     public let get: () -> Value
@@ -159,9 +177,38 @@ public struct Binding<Value> {
         self.set = set
     }
 
+    /// Initialises `@Binding` storage from another binding — what
+    /// `self._value = $value` and the `$value` argument label resolve to.
+    public init(projectedValue: Binding<Value>) {
+        self = projectedValue
+    }
+
     /// The referenced value: reading calls ``get``, assigning calls ``set``.
     public var wrappedValue: Value {
         get { get() }
         nonmutating set { set(newValue) }
+    }
+
+    /// The binding itself, so `$value` on a `@Binding` property passes it on.
+    public var projectedValue: Binding<Value> { self }
+
+    /// A binding to one property of the bound value: reads go through this
+    /// binding, and a write reads the whole value, changes that property, and
+    /// writes the whole value back.
+    public subscript<Subject>(dynamicMember keyPath: WritableKeyPath<Value, Subject>) -> Binding<Subject> {
+        Binding<Subject>(
+            get: { self.get()[keyPath: keyPath] },
+            set: { newValue in
+                var whole = self.get()
+                whole[keyPath: keyPath] = newValue
+                self.set(whole)
+            }
+        )
+    }
+
+    /// A binding that always reads `value` and ignores writes — for a control
+    /// that must show a state it cannot change, a preview, or a test.
+    public static func constant(_ value: Value) -> Binding<Value> {
+        Binding(get: { value }, set: { _ in })
     }
 }
