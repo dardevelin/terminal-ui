@@ -70,6 +70,12 @@ struct Message: Identifiable, Sendable {
 
 /// A status-bearing resource in the sidebar (LSP server, MCP server).
 struct Resource: Identifiable, Sendable {
+    /// Which sidebar section lists it.
+    enum Kind: Sendable {
+        case lsp
+        case mcp
+    }
+
     enum Health: Sendable {
         case online
         case busy
@@ -78,6 +84,7 @@ struct Resource: Identifiable, Sendable {
     }
 
     let id: Int
+    let kind: Kind
     let name: String
     let health: Health
     /// Trailing detail, e.g. "12 tools" or "starting…".

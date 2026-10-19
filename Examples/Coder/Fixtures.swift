@@ -167,11 +167,11 @@ enum Fixtures {
 
     static func resources() -> [Resource] {
         [
-            Resource(id: 1, name: "sourcekit-lsp", health: .online, detail: "ready"),
-            Resource(id: 2, name: "gopls", health: .offline, detail: "not started"),
-            Resource(id: 3, name: "filesystem", health: .online, detail: "12 tools"),
-            Resource(id: 4, name: "github", health: .busy, detail: "starting…"),
-            Resource(id: 5, name: "postgres", health: .failed, detail: "auth failed"),
+            Resource(id: 1, kind: .lsp, name: "sourcekit-lsp", health: .online, detail: "ready"),
+            Resource(id: 2, kind: .lsp, name: "gopls", health: .offline, detail: "not started"),
+            Resource(id: 3, kind: .mcp, name: "filesystem", health: .online, detail: "12 tools"),
+            Resource(id: 4, kind: .mcp, name: "github", health: .busy, detail: "starting…"),
+            Resource(id: 5, kind: .mcp, name: "postgres", health: .failed, detail: "auth failed"),
         ]
     }
 
