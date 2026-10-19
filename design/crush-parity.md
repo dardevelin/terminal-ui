@@ -478,6 +478,42 @@ the card says line 4 for code the Grep card above it placed at 311. Crush shows
 real numbers. Worth a `DiffEngine` starting offset when the demo's next edit
 makes the mismatch matter; not worth an API before then.
 
+**L9. The scrollbar ate the last column.** *(framework bug — fixed)*
+
+The Bash card shows a command's output the way Crush does (`tools.go`,
+`toolOutputPlainContent`): at most ten lines, one over the cap shown whole, a
+`… (N lines hidden)` note, each line cut to the card with `…` on a raised
+block. Everything it needed already existed — `.wrap(.truncate(.tail))` cuts
+per logical line, `.frame(maxWidth: .infinity)` plus `.background` gives the
+full-width block — so the card is app code.
+
+But the one line long enough to truncate read as cut off mid-word: no `…`. The
+truncation was right; the ellipsis sat in the transcript's last column, and a
+vertical `ScrollView` laid content across its full width and then painted the
+scrollbar over that column. Any content there was lost whenever the content
+overflowed — a truncation mark, or the last letter of a line that wrapped to
+the full width. The horizontal axis documents the same trade for a row; the
+vertical one had never decided it.
+
+Overflowing content is now laid out one column narrower, the way a classic
+scrollbar reserves its gutter; content that fits keeps the full width, and
+`.scrollIndicators(.hidden)` gives the column back. Narrowing only ever wraps
+more, so content that overflowed still overflows and the decision cannot
+oscillate. Scroll clamping's first-frame fallback measures at the same width
+the render lays out at, so the two passes cannot disagree about the range.
+
+Seen but not built, each waiting for the demo to need it:
+
+- **Bash highlighting of the command** (G6). Crush lexes the header's command
+  as bash. Plain text reads fine; this is the first place a non-Swift lexer
+  would show.
+- **Expanding a capped result.** Crush's note says "click or space to expand".
+  The transcript has no per-entry interaction yet, so the note only counts.
+- **The body's two-column indent** (G3). Crush pads tool bodies left by 2; the
+  card's rail gives the separation instead until edge padding lands.
+- **Scroll indicator colours.** The thumb and track are cyan and gray literals,
+  so the transcript's scrollbar ignores the theme. One more for G1's remainder.
+
 ### Ledger — open
 
 - **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
@@ -489,8 +525,9 @@ makes the mismatch matter; not worth an API before then.
   change and wants a decision before code.
 - **G1 remainder — the literal-drawing components** listed in L4, less
   `DiffView` (L8): `TabView`, `TreeView`, `HunkDiffView`, `StatusBar`,
-  `PromptInput`.
-- **G6 — lexers beyond Swift.** Not yet demanded.
+  `PromptInput`, and `ScrollView`'s indicators (L9).
+- **G6 — lexers beyond Swift.** First demand is the Bash card's command (L9);
+  plain text still reads, so not yet a wall.
 
 Everything else in §2.2 waits for the demo to reach it.
 
