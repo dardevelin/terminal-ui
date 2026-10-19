@@ -29,7 +29,7 @@ is `.claude/` (machine-specific hooks) and `CLAUDE.local.md`.
 # Build & test
 swift build                          # debug
 swift build -c release               # release — all #if DEBUG machinery erased
-swift test                           # full suite: ~1095 tests in 233 suites
+swift test                           # full suite (Swift Testing)
 swift test --filter InputParser      # run one suite by name substring
 swift package clean && swift build   # full clean rebuild — must be 0 err / 0 warn
 
@@ -62,6 +62,10 @@ tools/scripts/kanban.py lessons
 # the next command in either direction dies on a module-cache collision
 # ("module 'SwiftShims' is defined in both …", "missing required module
 # 'SwiftOverlayShims'"). Same reason linux_harness.sh uses .build-linux/.
+# The same error can ALSO appear intermittently with an isolated scratch path
+# (seen once in six runs, cold build → test, never reproduced on demand). It
+# is not a code defect: re-run and it passes. Don't pipe these through `tail`
+# when judging success — the pipeline reports tail's exit code, not swift's.
 docker run --rm -v $(pwd):/app -w /app swift:6.2 swift build --scratch-path .build-linux
 docker run --rm -v $(pwd):/app -w /app swift:6.2 swift test  --scratch-path .build-linux
 
@@ -157,13 +161,14 @@ allocation- and cast-free.
 | **Actions** | `TerminalUI/Actions/` | Action-context stack, scoped key-bindings |
 | **Views** | `TerminalUI/Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar, Alert, Form, Picker, Navigation, BufferView, SyntaxHighlighter, UndoStack, BoundedValue(+Controls); `Split/` — SplitNode, SplitState, SplitView, SplitTreeCoding |
 | **Charts** | `TerminalUI/Views/Charts/` | BarChart, Sparkline, HeatMap, BrailleCanvas, DotMatrixText, DotFont, MorseTicker |
+| **Markdown** | `TerminalUI/Markdown/` | CommonMark *subset* parsed to a style-free value tree (`MarkdownBlock`, `MarkdownInline`); `MarkdownView` renders it. Scope is what agent output contains — no HTML, images, reference links, setext headings |
 | **Modifiers** | `TerminalUI/Modifiers/` | `ModifiedView`, overlay modifiers + protocols, lifecycle modifiers |
-| **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `BorderStyle`, `Theme`; `Coordinate`; timeline scheduling |
+| **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `ColorBlending` (sRGB↔Oklab), `BorderStyle`, `Theme`; `Coordinate`, text layout; timeline scheduling |
 | **DevTools** | `TerminalUI/DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` |
 | **Config / CLI** | `TerminalUIConfig/`, `swtui/` | `DiagConfig`, `TOMLParser`, `DiagPaths`; the diagnostic CLI |
 
 Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
-`#expect`) — 1094 tests in 233 suites. Graph tests are `@MainActor`.
+`#expect`). Graph tests are `@MainActor`.
 
 ### Render modes
 
@@ -173,6 +178,26 @@ Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
 .capped(.milliseconds(16))  // explicit frame budget
 .onDemand              // zero CPU when idle, render only on events
 ```
+
+### Theming
+
+Components never hardcode colours: they read `@TerminalEnvironment(\.theme)`
+and ask for a semantic *role* (`accent`, `foregroundMuted`, `errorSubtle`, …).
+`Theme` (`Style/Theme.swift`) is a protocol of ~26 roles organised as ramps
+(foreground, background, status + `…Subtle`), each with a default in a protocol
+extension, so a conforming theme states only what it changes.
+
+- Unstated roles are **derived** by mixing toward the ground they sit on, in
+  Oklab (`Style/ColorBlending.swift`). `ThemeDerivation.off` makes them borrow
+  the nearest stated colour instead — for brand palettes where computed shades
+  aren't acceptable. Every derived default must route through the one helper
+  that reads that switch.
+- **Every role must be a declared protocol requirement**, not just an extension
+  member — the environment holds `any Theme`, and a non-requirement would
+  dispatch statically and silently ignore the conforming type's override.
+  `ThemeRolesTests` checks this through the existential.
+- Ramp steps stay below 0.5 so a theme on terminal defaults (`Color.default`,
+  unresolvable) falls back to the colour it stated.
 
 ### App entry point (a known footgun)
 

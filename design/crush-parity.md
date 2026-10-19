@@ -352,12 +352,119 @@ Note what did **not** get built: a `.truncationMode(_:)` alias. SwiftUI needs on
 because truncation there is a separate axis from `lineLimit`; here `.truncate`
 already implies one row, so a second spelling would be two ways to say one thing.
 
+**L3. A border could not have its own colour or draw one side.** *(G4 — built)*
+
+The transcript needs two frames: a dim box around bright text, and a coloured
+rail down the left of a message marking its author. The demo had been faking
+the rail with a glyph, which only ever marked a message's first line.
+
+`.border` now takes `color:` and `edges:` (SwiftUI's `Edge.Set` naming, so
+`.horizontal` is leading + trailing). A drawn edge costs one cell and an undrawn
+one costs nothing in all three passes — measurement, layout inset, render — and
+that agreement is what the tests pin, because content lands a cell out if any
+pass disagrees. Corners resolve from what meets there, so a lone top edge is an
+unbroken rule rather than a rule with corner pieces stuck on.
+
+Not built: `BorderStyle.custom(...)`. The demo hasn't needed a glyph set beyond
+the shipped four.
+
+Surfaced but deferred: modifiers measure their child at the outer width instead
+of inside their own frame. Correcting it broke `PromptInput`'s soft-wrap, whose
+height is a measure/layout feedback cycle through its own `GeometryReader`. That
+cycle is the real defect, and it now blocks G3 — see Ledger — open.
+
+**L4. Theme roles existed and nothing read them.** *(G1 — built)*
+
+The theme carried six roles and exactly one view consulted any of them; every
+other component drew `.gray` / `.cyan` literals. The demo's own palette was
+thirty properties living outside the framework's theming entirely, because
+that theming was useless to it.
+
+Roles went from six to twenty-six, as **ramps** — five foreground weights, four
+background steps, a `…Subtle` partner per status — plus `onPrimary` as a
+contrast pairing. Body-based components were wired to them. The role defaults
+reproduce the literals components already drew, so it was a refactor, not a
+restyle: suite and smoke passed unchanged. (One near miss: `Picker`'s selected
+row would have silently lost its highlight to a role that resolved to nothing.)
+
+Not built: Crush's 704-line `Styles` struct shape. The environment plus roles
+did the job. Also not done: `TabView`, `TreeView`, `DiffView`, `HunkDiffView`,
+`StatusBar` and `PromptInput` still draw literals — their colours live in static
+helpers or literal-defaulted style structs, and theming them changes signatures
+or public API. Left for when the demo puts one on screen.
+
+**L5. Colour had no arithmetic, so nothing could sweep.** *(G2 — built)*
+
+The wordmark and the diagonal header field are colour ramps over a run of
+glyphs, and `Color` was a closed set of values with nothing between them.
+
+`Color.blended(with:amount:)` interpolates in **Oklab**, not sRGB (sRGB's
+blue→yellow dies grey in the middle) and not the HCL Lip Gloss uses (no hue
+channel, so no choosing which way round the wheel to go). `Text.gradient` steps
+per grapheme cluster, so an emoji is one step however many cells it fills.
+TerminalInk gained `nominalRGB`, xterm's default values for the named slots — a
+blend leaves the user's palette behind deliberately, and `Color.default`
+resolves to nothing, so blending from it returns the nearer end instead of
+inventing black.
+
+Pulled earlier than the build order planned (it said identity pass, last),
+because L6 needed it.
+
+**L6. A theme author had to state twenty-six colours.** *(G1 follow-on — built)*
+
+Nominating every role one at a time drifts: nothing holds the quiet steps in
+relation to the loud ones, and the defaults *aliased* (`foregroundFaint` was a
+second name for `foregroundMuted`).
+
+Unstated roles now **derive** by mixing toward the ground they sit on — Textual's
+token shape. Every step travels less than half way, which is load-bearing: an
+unresolvable end (`Color.default`) returns the nearer end, so a theme on terminal
+defaults keeps exactly the contrast it had. `ThemeDerivation.off` lets a brand
+palette decline computed shades and borrow the nearest stated colour instead;
+every derived role reads the switch through one helper. Every role is a declared
+protocol requirement, pinned by a test through `any Theme` — an extension-only
+member would dispatch statically and ignore the conformer's override.
+
+The demo's theme became a real conformance: fourteen stated colours, the rest
+derived, published to the environment so a framework component dropped into
+the transcript resolves the same palette.
+
+**L7. Messages were one long grey line.** *(G5 — built)*
+
+A transcript is markdown and rendered as plain text — heading indistinguishable
+from body, fences shown as backticks, lists run on.
+
+A CommonMark subset parses to a style-free value tree (`MarkdownBlock`,
+`MarkdownInline`); `MarkdownView` flattens it to rows, deciding indentation once
+so a wrapped bullet sits under its text. Streaming shaped the parser more than
+the grammar did: an unterminated fence runs to end of input, an unmatched
+delimiter stays literal, and `_` inside a word never opens emphasis so
+`snake_case` survives. Quotes use L3's leading edge rather than a gutter glyph.
+Every colour is a theme role.
+
+Not built: tables, HTML, images, reference links, setext headings — §3.5
+listed tables, but no agent message in the demo has one. Code fences use the
+existing `SwiftSyntaxHighlighter` and fall back to plain for other languages;
+G6 stays open until the demo shows a non-Swift fence.
+
+Fixed on the way: styled text wrapped per character while plain text wrapped
+per word, and the measurer counted word-wrapped rows for both, so a styled
+paragraph could measure one height and render another. Wrapping is now decided
+on the run list.
+
 ### Ledger — open
 
-Still unbuilt, and deliberately so until the demo demands them: G1 (theme roles),
-G2 (gradients), G3 (edge padding), G4 (border color and per-side borders). The
-demo currently works around all four — see the `GAP LEDGER` comments in
-`Examples/Coder/`.
+- **G3 — edge-aware padding.** Demanded: `MessageRow` wants one column between
+  the rail and the text (see its `GAP LEDGER` comment). Blocked, not just
+  unbuilt — the inset-width measurement fix it depends on (L3) is blocked on
+  `GeometryReader` semantics: one node's subtree is rebuilt by several passes at
+  different sizes, and the last writer decides the measured height. SwiftUI
+  resolves this by making `GeometryReader` greedy, which is a public behaviour
+  change and wants a decision before code.
+- **G1 remainder — the literal-drawing components** listed in L4.
+- **G6 — lexers beyond Swift.** Not yet demanded.
+
+Everything else in §2.2 waits for the demo to reach it.
 
 ### Ledger discipline
 
