@@ -201,7 +201,9 @@ struct ToolCard: TerminalView {
                 TextSpan(" \(call.name)", foreground: theme.secondary, bold: true),
                 TextSpan("  \(call.summary)", foreground: theme.foregroundMuted),
             ])
-            if let output = call.output {
+            if let diff = call.diff {
+                DiffView(lines: diff, visibleHeight: diff.count)
+            } else if let output = call.output {
                 Text(output)
                     .foreground(theme.foregroundFaint)
             }

@@ -1570,6 +1570,61 @@ def chat_q_in_empty_prompt_quits(app: Client) -> None:
     # success signal.
 
 
+# ---- Coder demo --------------------------------------------------------
+# The Crush-parity forcing function (design/crush-parity.md §5). Its
+# transcript embeds framework components inside cards, which is where a
+# component that behaves like a control instead of content shows up.
+
+# Inside the transcript, clear of the sidebar and its scrollbar.
+CODER_TRANSCRIPT_POINT = (40, 15)
+CODER_DIFF_REMOVED = "-        previousBuffer = nil"
+CODER_DIFF_FIRST = "private var previousBuffer: CellBuffer?"
+
+
+def _coder_scroll_to_edit_card(app: Client) -> str:
+    """The Edit card sits below the fold at 40 rows; wheel the transcript
+    until its diff is on screen and return the frame text."""
+    for _ in range(6):
+        text = app.cells().text()
+        if CODER_DIFF_REMOVED in text:
+            return text
+        app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
+        app.wait_for_frame(1, timeout=0.5)
+    raise CaseFailed("Edit card's diff never scrolled into view")
+
+
+def coder_renders(app: Client) -> None:
+    """Boots into the shell: wordmark, a user message, a tool card."""
+    full = app.cells().text()
+    assert_true("CODER" in full, "expected the wordmark in the header")
+    assert_true("You" in full, "expected the user's message in the transcript")
+    assert_true("Read" in full, "expected the Read tool card")
+
+
+def coder_edit_card_shows_diff(app: Client) -> None:
+    """The Edit card renders its change as a diff, and the card's rail runs
+    down beside it — a focus indicator painted over the rail means the diff
+    took focus it has no use for."""
+    text = _coder_scroll_to_edit_card(app)
+    rows = text.splitlines()
+    removed = next(row for row in rows if CODER_DIFF_REMOVED in row)
+    assert_true("+        skippedFrame = true" in text, "expected the added line")
+    assert_true(removed.lstrip().startswith("│"),
+                f"card rail missing beside the diff: {removed.strip()!r}")
+
+
+def coder_transcript_diff_takes_no_keys(app: Client) -> None:
+    """A diff that fits its card has nothing to scroll, so arrow keys must
+    not reach it. Regression: DiffView was unconditionally focusable, took
+    boot focus, and Down scrolled the edit's first line out of the card."""
+    before = _coder_scroll_to_edit_card(app)
+    app.press_many("down", 3)
+    app.wait_for_frame(1, timeout=0.5)
+    after = app.cells().text()
+    assert_true(CODER_DIFF_FIRST in after, "Down scrolled the diff inside its card")
+    assert_true(after == before, "arrow keys changed the transcript")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -1656,6 +1711,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.bot_reply_appears", "Chat", chat_bot_reply_appears),
     SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
+    SmokeCase("coder.renders", "Coder", coder_renders),
+    SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
+    SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),
 ]
 
 

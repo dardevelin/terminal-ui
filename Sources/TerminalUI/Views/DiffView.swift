@@ -23,9 +23,9 @@ public struct DiffLine: Identifiable, Sendable {
     public enum Kind: Sendable {
         /// Present on both sides — renders undecorated.
         case unchanged
-        /// Present only in the modified file — renders green with `+`.
+        /// Present only in the modified file — renders in the theme's success colour with `+`.
         case added
-        /// Present only in the original file — renders red with `-`.
+        /// Present only in the original file — renders in the theme's error colour with `-`.
         case removed
     }
 
@@ -275,13 +275,18 @@ public enum DiffEngine {
 
 /// Displays a line-level diff with colored markers and keyboard scrolling.
 ///
-/// Renders one row per ``DiffLine``: gray line-number gutters on the left,
-/// then `+` lines in green and `-` lines in red. ``DiffMode/unified``
-/// interleaves additions and removals like `git diff`;
-/// ``DiffMode/sideBySide`` pairs them across a `│` divider, old file left,
-/// new file right. The view is focusable — arrows, PageUp/PageDown,
-/// Home/End scroll it — and only `visibleHeight` rows are rendered per
+/// Renders one row per ``DiffLine``: muted line-number gutters on the left,
+/// then `+` lines in the theme's ``Theme/success`` and `-` lines in its
+/// ``Theme/error``. ``DiffMode/unified`` interleaves additions and removals
+/// like `git diff`; ``DiffMode/sideBySide`` pairs them across a `│` divider,
+/// old file left, new file right. Only `visibleHeight` rows are rendered per
 /// frame regardless of diff size.
+///
+/// When the diff has more rows than `visibleHeight`, the view is focusable
+/// and arrows, PageUp/PageDown and Home/End scroll it. A diff that fits its
+/// viewport has nothing to scroll, so it takes no focus and no keys — which
+/// is what lets one sit inside a transcript or a list without becoming a
+/// Tab stop that swallows the arrows meant for its container.
 ///
 /// Reach for `DiffView` to show *what changed between two strings* — it
 /// owns the diffing. ``HunkDiffView`` is the sibling for reviewing
@@ -308,6 +313,7 @@ public struct DiffView: TerminalView {
     public let visibleHeight: Int
 
     @TerminalState private var scrollOffset: Int = 0
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Create from two strings — computes diff automatically.
     /// - Note: This runs the Myers diff algorithm on every parent body evaluation.
@@ -337,9 +343,19 @@ public struct DiffView: TerminalView {
     }
 
     public var body: some TerminalView {
+        if contentRowCount > visibleHeight {
+            content
+                .focusable()
+                .onKeyPress(scrollHandler())
+        } else {
+            content
+        }
+    }
+
+    private var content: some TerminalView {
         let lineNumberWidth = computeLineNumberWidth()
 
-        VStack {
+        return VStack {
             if let header {
                 Text(spans: renderHeader(header))
             }
@@ -351,8 +367,20 @@ public struct DiffView: TerminalView {
                 renderSideBySide(lineNumberWidth: lineNumberWidth)
             }
         }
-        .focusable()
-        .onKeyPress { [lines, $scrollOffset] event in
+    }
+
+    /// Rows the diff occupies below the header — what `visibleHeight` windows.
+    /// Side-by-side folds each removal/addition run into paired rows, so it
+    /// can be shorter than `lines`.
+    private var contentRowCount: Int {
+        switch mode {
+        case .unified: lines.count
+        case .sideBySide: buildSideBySidePairs().count
+        }
+    }
+
+    private func scrollHandler() -> (KeyEvent) -> KeyEventResult {
+        { [lines, $scrollOffset] event in
             let total = lines.count
             let pageSize = 20
 
@@ -385,11 +413,11 @@ public struct DiffView: TerminalView {
 
     private func renderHeader(_ path: String) -> [TextSpan] {
         [
-            TextSpan("--- a/", foreground: .gray),
-            TextSpan(path, foreground: .white, bold: true),
+            TextSpan("--- a/", foreground: theme.foregroundMuted),
+            TextSpan(path, foreground: theme.foregroundEmphasis, bold: true),
             TextSpan("\n"),
-            TextSpan("+++ b/", foreground: .gray),
-            TextSpan(path, foreground: .white, bold: true),
+            TextSpan("+++ b/", foreground: theme.foregroundMuted),
+            TextSpan(path, foreground: theme.foregroundEmphasis, bold: true),
         ]
     }
 
@@ -407,16 +435,14 @@ public struct DiffView: TerminalView {
             let oldNum = formatLineNumber(line.oldLineNumber, width: lineNumberWidth)
             let newNum = formatLineNumber(line.newLineNumber, width: lineNumberWidth)
 
+            spans.append(TextSpan("\(oldNum) \(newNum)  ", foreground: theme.foregroundMuted))
             switch line.kind {
             case .unchanged:
-                spans.append(TextSpan("\(oldNum) \(newNum)  ", foreground: .gray))
-                spans.append(TextSpan(" \(line.text)"))
+                spans.append(TextSpan(" \(line.text)", foreground: theme.foreground))
             case .added:
-                spans.append(TextSpan("\(oldNum) \(newNum)  ", foreground: .gray))
-                spans.append(TextSpan("+\(line.text)", foreground: .green))
+                spans.append(TextSpan("+\(line.text)", foreground: theme.success))
             case .removed:
-                spans.append(TextSpan("\(oldNum) \(newNum)  ", foreground: .gray))
-                spans.append(TextSpan("-\(line.text)", foreground: .red))
+                spans.append(TextSpan("-\(line.text)", foreground: theme.error))
             }
         }
 
@@ -446,33 +472,33 @@ public struct DiffView: TerminalView {
 
             // Left side (original)
             let leftNum = formatLineNumber(pair.leftLineNumber, width: lineNumberWidth)
-            spans.append(TextSpan("\(leftNum) ", foreground: .gray))
+            spans.append(TextSpan("\(leftNum) ", foreground: theme.foregroundMuted))
 
             switch pair.leftKind {
             case .unchanged:
-                spans.append(TextSpan(" \(pair.leftText)"))
+                spans.append(TextSpan(" \(pair.leftText)", foreground: theme.foreground))
             case .removed:
-                spans.append(TextSpan("-\(pair.leftText)", foreground: .red))
+                spans.append(TextSpan("-\(pair.leftText)", foreground: theme.error))
             case .added:
-                spans.append(TextSpan("+\(pair.leftText)", foreground: .green))
+                spans.append(TextSpan("+\(pair.leftText)", foreground: theme.success))
             case .empty:
                 spans.append(TextSpan(" "))
             }
 
             // Separator
-            spans.append(TextSpan(" \u{2502} ", foreground: .gray))
+            spans.append(TextSpan(" \u{2502} ", foreground: theme.separator))
 
             // Right side (modified)
             let rightNum = formatLineNumber(pair.rightLineNumber, width: lineNumberWidth)
-            spans.append(TextSpan("\(rightNum) ", foreground: .gray))
+            spans.append(TextSpan("\(rightNum) ", foreground: theme.foregroundMuted))
 
             switch pair.rightKind {
             case .unchanged:
-                spans.append(TextSpan(" \(pair.rightText)"))
+                spans.append(TextSpan(" \(pair.rightText)", foreground: theme.foreground))
             case .added:
-                spans.append(TextSpan("+\(pair.rightText)", foreground: .green))
+                spans.append(TextSpan("+\(pair.rightText)", foreground: theme.success))
             case .removed:
-                spans.append(TextSpan("-\(pair.rightText)", foreground: .red))
+                spans.append(TextSpan("-\(pair.rightText)", foreground: theme.error))
             case .empty:
                 spans.append(TextSpan(" "))
             }
