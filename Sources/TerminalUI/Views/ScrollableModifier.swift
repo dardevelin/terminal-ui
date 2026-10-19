@@ -104,9 +104,11 @@ public enum _ScrollMath {
     private static func contentExtent(of node: AttributeNode, axis: ScrollAxis) -> Int {
         if let drawn = node.scrollDrawnExtent { return drawn }
         guard let content = node.children.first else { return 0 }
-        return axis == .vertical
-            ? GraphMeasurer.measureHeight(content, proposedWidth: node.rect.width)
-            : GraphMeasurer.measureWidth(content)
+        guard axis == .vertical else { return GraphMeasurer.measureWidth(content) }
+        let showIndicators = (GraphContext.currentEnvironment?.scrollIndicators ?? .visible) == .visible
+        let width = GraphRenderer.verticalContentWidth(of: content, viewport: node.rect,
+                                                       showIndicators: showIndicators)
+        return GraphMeasurer.measureHeight(content, proposedWidth: width)
     }
 
     @discardableResult
