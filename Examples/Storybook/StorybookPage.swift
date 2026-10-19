@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, markdownStyle, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -690,6 +690,19 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
                 MarkdownView(notes)
                     .syntaxHighlighter(IniHighlighter(), for: "ini")
+                """)
+        case .markdownStyle: return PageInfo(id: self, category: .modifiers, name: ".markdownStyle",
+            summary: "Restyle markdown elements per subtree. A MarkdownStyle states only what it changes; unset fields keep the theme default. A level (h2) beats every heading, which beats the document (text), which beats the default.",
+            code: """
+                var style = MarkdownStyle()
+                style.h2.prefix = "## "
+                style.inlineCode = .init(foreground: .red, background: .ansi256(236),
+                                         prefix: " ", suffix: " ")
+                MarkdownView(reply).markdownStyle(style)
+
+                var quiet = MarkdownStyle()
+                quiet.text = .init(foreground: .gray, background: .ansi256(235))
+                MarkdownView(thinking).markdownStyle(quiet)
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
             summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",

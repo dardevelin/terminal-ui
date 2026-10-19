@@ -1,9 +1,10 @@
 // Tree → rows.
 //
 // This is where markdown stops being a document and becomes lines on a grid,
-// and where every styling decision is made. Colours come from ``Theme`` roles
-// only — no literal ever appears here, which is what lets a markdown message
-// restyle with the rest of the app.
+// and where every styling decision is made. Each element's look is its theme
+// default with the app's ``MarkdownStyle`` laid over it — no literal colour
+// appears here, which is what lets a markdown message restyle with the rest of
+// the app, and an app restyle one element without restating the others.
 
 enum MarkdownFlattener {
 
@@ -28,6 +29,65 @@ enum MarkdownFlattener {
         let theme: any Theme
         /// Lexers for fenced blocks, by the fence's language.
         let highlighters: SyntaxHighlighters
+        /// The app's element styles, laid over the theme defaults.
+        let style: MarkdownStyle
+    }
+
+    /// The settled look of a run of text: every attribute decided, from the
+    /// theme default up through whatever the ``MarkdownStyle`` stated.
+    struct RunStyle {
+        var foreground: Color
+        /// `nil` leaves the row's fill showing through.
+        var background: Color? = nil
+        var bold = false
+        var italic = false
+        var underline = false
+        var prefix = ""
+        var suffix = ""
+
+        /// `element`'s stated fields over this style's.
+        func layered(_ element: MarkdownStyle.Element) -> RunStyle {
+            var run = self
+            if let value = element.foreground { run.foreground = value }
+            if let value = element.background { run.background = value }
+            if let value = element.bold { run.bold = value }
+            if let value = element.italic { run.italic = value }
+            if let value = element.underline { run.underline = value }
+            if let value = element.prefix { run.prefix = value }
+            if let value = element.suffix { run.suffix = value }
+            return run
+        }
+
+        /// The document layer contributes colour and weight only: its
+        /// background fills rows rather than sitting behind each run, and its
+        /// prefix and suffix are not drawn.
+        func layered(document: MarkdownStyle.Element) -> RunStyle {
+            var weightOnly = document
+            weightOnly.background = nil
+            weightOnly.prefix = nil
+            weightOnly.suffix = nil
+            return layered(weightOnly)
+        }
+
+        /// What text inside this element inherits — its look, but not its
+        /// prefix and suffix, which belong to the element once.
+        var forChildren: RunStyle {
+            var run = self
+            run.prefix = ""
+            run.suffix = ""
+            return run
+        }
+
+        func span(_ text: String) -> TextSpan {
+            TextSpan(text, foreground: foreground, background: background,
+                     bold: bold, italic: italic, underline: underline)
+        }
+
+        /// `inner` with this element's prefix before it and suffix after,
+        /// drawn in this element's style.
+        func wrapping(_ inner: [TextSpan]) -> [TextSpan] {
+            (prefix.isEmpty ? [] : [span(prefix)]) + inner + (suffix.isEmpty ? [] : [span(suffix)])
+        }
     }
 
     static func flatten(_ blocks: [MarkdownBlock], context: Context) -> [MarkdownRow] {
@@ -61,31 +121,41 @@ enum MarkdownFlattener {
         context: Context
     ) {
         let theme = context.theme
+        let style = context.style
         switch block {
         case .heading(let level, let content):
             // Level drives weight, not size — there is no size in a cell grid.
             // One and two take the accent; deeper ones step down to emphasis
             // so a document does not end up with six shouting colours.
-            let colour = level <= 2 ? theme.accent : theme.foregroundEmphasis
+            let heading = RunStyle(foreground: level <= 2 ? theme.accent : theme.foregroundEmphasis, bold: true)
+                .layered(document: style.text)
+                .layered(style.heading)
+                .layered(style.heading(level: level))
             rows.append(MarkdownRow(
                 indent: indent,
-                content: spans(content, theme: theme, foreground: colour, bold: true)))
+                content: heading.wrapping(spans(content, run: heading.forChildren, context: context))))
 
         case .paragraph(let content):
+            let paragraph = RunStyle(foreground: theme.foreground)
+                .layered(document: style.text)
+                .layered(style.paragraph)
             rows.append(MarkdownRow(
                 indent: indent,
-                content: spans(content, theme: theme, foreground: theme.foreground)))
+                content: paragraph.wrapping(spans(content, run: paragraph.forChildren, context: context))))
 
         case .codeBlock(let language, let lines):
             // A fence whose language has no lexer still reads as code: the
             // raised fill and a quieter foreground, without token colours.
+            let block = RunStyle(foreground: theme.foregroundSubtle, background: theme.backgroundRaised)
+                .layered(document: style.text)
+                .layered(style.codeBlock)
             let highlighted = context.highlighters[language]?.highlight(lines: lines, theme: theme.syntax)
             for (index, line) in lines.enumerated() {
-                let content = highlighted?[index] ?? [TextSpan(line, foreground: theme.foregroundSubtle)]
+                let content = highlighted?[index] ?? [TextSpan(line, foreground: block.foreground)]
                 rows.append(MarkdownRow(
                     indent: indent + Indent.code,
                     content: content,
-                    background: theme.backgroundRaised,
+                    background: block.background,
                     wraps: false))
             }
 
@@ -114,15 +184,15 @@ enum MarkdownFlattener {
                 // needs leading-only padding, which the framework does not yet
                 // have.
                 row.indent += indent
-                row.rail = theme.separator
+                row.rail = style.blockQuote.foreground ?? theme.separator
                 rows.append(row)
             }
 
         case .thematicBreak:
+            let rule = RunStyle(foreground: theme.separator).layered(style.rule)
             rows.append(MarkdownRow(
                 indent: indent,
-                content: [TextSpan(String(repeating: Gutter.rule, count: ruleWidth),
-                                   foreground: theme.separator)],
+                content: [rule.span(String(repeating: Gutter.rule, count: ruleWidth))],
                 wraps: false))
         }
     }
@@ -138,7 +208,9 @@ enum MarkdownFlattener {
         indent: Int,
         context: Context
     ) {
-        let theme = context.theme
+        let markerStyle = RunStyle(foreground: context.theme.foregroundMuted)
+            .layered(document: context.style.text)
+            .layered(context.style.listMarker)
         var itemRows: [MarkdownRow] = []
         emit(item.blocks, into: &itemRows, indent: 0, context: context, separated: false)
         guard !itemRows.isEmpty else { return }
@@ -148,7 +220,7 @@ enum MarkdownFlattener {
             if offset == 0 {
                 // Only the first row wears the marker; the rest align under
                 // the text because the content column starts past it.
-                row.gutter = [TextSpan(marker, foreground: theme.foregroundMuted)] + row.gutter
+                row.gutter = [markerStyle.span(marker)] + row.gutter
             }
             rows.append(row)
         }
@@ -156,38 +228,42 @@ enum MarkdownFlattener {
 
     // MARK: - Inline styling
 
-    /// Flatten inline nodes into spans, carrying emphasis down through nesting.
-    private static func spans(
-        _ inlines: [MarkdownInline],
-        theme: any Theme,
-        foreground: Color,
-        bold: Bool = false,
-        italic: Bool = false,
-        underline: Bool = false
-    ) -> [TextSpan] {
-        inlines.flatMap { inline -> [TextSpan] in
+    /// Flatten inline nodes into spans, carrying the enclosing run's look down
+    /// through nesting and laying each inline element's style over it.
+    private static func spans(_ inlines: [MarkdownInline], run: RunStyle, context: Context) -> [TextSpan] {
+        let theme = context.theme
+        let style = context.style
+        return inlines.flatMap { inline -> [TextSpan] in
             switch inline {
             case .text(let value):
-                return [TextSpan(value, foreground: foreground, bold: bold,
-                                 italic: italic, underline: underline)]
+                return [run.span(value)]
             case .strong(let inner):
-                return spans(inner, theme: theme, foreground: foreground,
-                             bold: true, italic: italic, underline: underline)
+                var strong = run
+                strong.bold = true
+                strong = strong.layered(style.strong)
+                return strong.wrapping(spans(inner, run: strong.forChildren, context: context))
             case .emphasis(let inner):
-                return spans(inner, theme: theme, foreground: foreground,
-                             bold: bold, italic: true, underline: underline)
+                var emphasis = run
+                emphasis.italic = true
+                emphasis = emphasis.layered(style.emphasis)
+                return emphasis.wrapping(spans(inner, run: emphasis.forChildren, context: context))
             case .code(let value):
-                // Code keeps its own colour whatever it is nested inside —
-                // it is a different kind of thing, not emphasised prose.
-                return [TextSpan(value, foreground: theme.secondary,
-                                 background: theme.backgroundRaised)]
+                // Code keeps its own look whatever it is nested inside — it is
+                // a different kind of thing, not emphasised prose. Its prefix
+                // and suffix share its span, so a padded chip is one run.
+                let code = RunStyle(foreground: theme.secondary, background: theme.backgroundRaised)
+                    .layered(style.inlineCode)
+                return [code.span(code.prefix + value + code.suffix)]
             case .link(let content, let destination):
                 // The destination is dropped rather than appended. A terminal
                 // cannot follow it, and printing every URL inline is what
                 // makes rendered markdown unreadable in a narrow column.
                 let text = content.isEmpty ? [MarkdownInline.text(destination)] : content
-                return spans(text, theme: theme, foreground: theme.accent,
-                             bold: bold, italic: italic, underline: true)
+                var link = run
+                link.foreground = theme.accent
+                link.underline = true
+                link = link.layered(style.link)
+                return link.wrapping(spans(text, run: link.forChildren, context: context))
             }
         }
     }

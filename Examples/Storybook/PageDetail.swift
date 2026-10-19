@@ -746,6 +746,13 @@ struct PreviewPane: TerminalView {
                 ```
                 """)
                 .syntaxHighlighter(IniHighlighter(), for: "ini")
+        case .markdownStyle:
+            VStack(spacing: 1) {
+                MarkdownView("## Kept marker\nRun `swift test` before you push.")
+                    .markdownStyle(StorybookMarkdown.marked)
+                MarkdownView("Considering the **cache** first — it is the likely cause.")
+                    .markdownStyle(StorybookMarkdown.quiet)
+            }
         case .boundaryFeedback:
             VStack {
                 Text("Type, then Left/Right past the edges").foreground(.gray)
@@ -1094,6 +1101,23 @@ struct ScrollbarSample: TerminalView {
             .frame(width: 12, height: 6)
         }
     }
+}
+
+/// The two looks the `.markdownStyle` page shows side by side: a reply that
+/// keeps its heading markers and chips its code, and a muted thinking block.
+enum StorybookMarkdown {
+    static let marked: MarkdownStyle = {
+        var style = MarkdownStyle()
+        style.h2.prefix = "## "
+        style.inlineCode = .init(foreground: .red, background: .ansi256(236), prefix: " ", suffix: " ")
+        return style
+    }()
+
+    static let quiet: MarkdownStyle = {
+        var style = MarkdownStyle()
+        style.text = .init(foreground: .gray, background: .ansi256(235))
+        return style
+    }()
 }
 
 /// A lexer for INI files — the `.syntaxHighlighter` page's example of an

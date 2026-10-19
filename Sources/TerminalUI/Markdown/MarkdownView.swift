@@ -37,7 +37,12 @@ struct MarkdownRow {
 /// Colours come from semantic roles rather than literals, so a markdown
 /// message restyles with the rest of the app: headings take the accent, code
 /// sits on a raised surface, quotes take a separator-coloured rail, links take
-/// the accent underlined.
+/// the accent underlined. Fenced code is highlighted with the environment's
+/// lexers in ``Theme/syntax``.
+///
+/// Any element can be restyled with `.markdownStyle(_:)` — keep heading
+/// markers, draw inline code as a chip, mute a whole block. A
+/// ``MarkdownStyle`` states only what it changes.
 ///
 /// ```swift
 /// MarkdownView("""
@@ -53,6 +58,7 @@ public struct MarkdownView: TerminalView {
 
     @TerminalEnvironment(\.theme) private var theme
     @TerminalEnvironment(\.syntaxHighlighters) private var highlighters
+    @TerminalEnvironment(\.markdownStyle) private var style
 
     /// Parse and prepare `source` for rendering.
     public init(_ source: String) {
@@ -66,13 +72,16 @@ public struct MarkdownView: TerminalView {
     }
 
     public var body: some TerminalView {
-        let context = MarkdownFlattener.Context(theme: theme, highlighters: highlighters)
+        let context = MarkdownFlattener.Context(theme: theme, highlighters: highlighters, style: style)
         let rows = MarkdownFlattener.flatten(blocks, context: context)
             .enumerated()
             .map(IdentifiedRow.init)
         return VStack(spacing: 0) {
             ForEach(rows) { identified in
-                MarkdownRowView(row: identified.row, fallbackBackground: theme.background)
+                // The document's fill, when a style states one, runs under
+                // every row — blank separators included — so the block reads
+                // as one shape.
+                MarkdownRowView(row: identified.row, documentFill: style.text.background)
             }
         }
     }
@@ -89,11 +98,26 @@ private struct IdentifiedRow: Identifiable {
 }
 
 /// One row: margin, gutter, then the text column that wraps within itself.
+///
+/// A row paints only the fills something stated — the document's across the
+/// whole row, a code block's across its column — and both run to the edge, so
+/// a block reads as a block rather than as a highlight stopping where its text
+/// does. A row that states none paints nothing, and whatever it sits on shows
+/// through.
 private struct MarkdownRowView: TerminalView {
     let row: MarkdownRow
-    let fallbackBackground: Color
+    let documentFill: Color?
 
+    @TerminalViewBuilder
     var body: some TerminalView {
+        if let documentFill {
+            line.frame(maxWidth: .infinity).background(documentFill)
+        } else {
+            line
+        }
+    }
+
+    private var line: some TerminalView {
         HStack(spacing: 0) {
             if row.indent > 0 {
                 Text(String(repeating: " ", count: row.indent))
@@ -114,11 +138,19 @@ private struct MarkdownRowView: TerminalView {
         }
     }
 
+    @TerminalViewBuilder
     private var styledContent: some TerminalView {
+        if let fill = row.background {
+            text.frame(maxWidth: .infinity).background(fill)
+        } else {
+            text
+        }
+    }
+
+    private var text: some TerminalView {
         // A blank row still has to occupy one, so an empty span list would
         // measure as no height at all and the gap would vanish.
         Text(spans: row.content.isEmpty ? [TextSpan(" ")] : row.content)
             .wrap(row.wraps ? .wrap : .truncate(.tail))
-            .background(row.background ?? fallbackBackground)
     }
 }

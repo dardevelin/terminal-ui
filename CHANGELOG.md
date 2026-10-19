@@ -29,6 +29,13 @@ All notable changes to TerminalUI are documented here. Format based on
   `@Binding var value`; `$value.field` derives a binding to one property, writing
   the whole value back; `.constant(x)` reads `x` and ignores writes. Hand-built
   `Binding(get:set:)` still works.
+- **`MarkdownStyle` and `.markdownStyle(_:)`** — restyle any markdown element
+  per subtree: colour, background, weight, and a prefix and suffix, so headings
+  can keep their `##` markers and inline code can be a padded chip. Every field
+  starts unset and an unset field keeps the theme default, so a style states only
+  what it changes. A heading level beats every heading, which beats the whole
+  document (`text`), which beats the default; `text.background` fills the whole
+  document, blank rows included.
 - **`CodeView`** — read-only source, highlighted by language and numbered from
   any line, so an excerpt keeps the numbering of the file it came from. Long
   lines follow `.wrap(_:)`; a wrapped line continues under its code, not under
@@ -62,6 +69,10 @@ All notable changes to TerminalUI are documented here. Format based on
   the read-only and hover bars `foregroundMuted`. The stock theme's values are
   the colours drawn before. The default scrollbar thumb is now a heavy line
   (`┃`) rather than a full block; `.scrollbarStyle(.block)` keeps the old one.
+- **Markdown rows paint only the fills something stated.** Prose no longer
+  paints the theme's ground behind its text, so markdown inside a panel of
+  another colour shows that panel; a code block's fill now reaches the edge of
+  its column instead of stopping where its text does.
 - **`TextArea(theme:)` is optional and follows `Theme.syntax` when omitted.** The
   stored `theme` property is now `SyntaxTheme?`; passing a theme still wins.
 - **`DiffView` takes focus only when it has rows below its viewport,** and draws

@@ -57,6 +57,10 @@ public struct EnvironmentValues: Sendable {
     /// Extend with `.syntaxHighlighter(_:for:)`; Swift is registered as
     /// standard.
     public var syntaxHighlighters: SyntaxHighlighters = .standard
+    /// How enclosed `MarkdownView`s draw each element. Default: an empty
+    /// style, which draws everything from the theme. Set via
+    /// `.markdownStyle(_:)`.
+    public var markdownStyle: MarkdownStyle = MarkdownStyle()
 
     /// Explicit scroll target for the nearest enclosing `ScrollView`.
     /// Set via `.scrollPosition(id:)`; the renderer locates the descendant
