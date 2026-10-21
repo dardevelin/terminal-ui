@@ -25,6 +25,7 @@ import shutil
 import signal
 import struct
 import subprocess
+import tempfile
 import termios
 import threading
 import time
@@ -57,6 +58,37 @@ _MOUSE_OFF = (
     b"\x1b[?1002l"
     b"\x1b[?1000l"
 )
+
+# Signals a TerminalUI app may die on without having crashed: its handler for
+# these restores the terminal and re-raises, so the parent sees the death by
+# the signal it sent (a shell reports it as 128 + signal). Any other signal
+# is a crash, and whether the terminal was restored is checked separately.
+_STOP_SIGNALS = {signal.SIGTERM, signal.SIGINT, signal.SIGHUP}
+
+# How long a case that kills the app on purpose waits for it to die. A
+# sanitized build symbolizes a report before it lets the process go, which
+# takes seconds.
+_EXPECTED_DEATH_TIMEOUT = 20.0
+
+# DEC private modes the framework turns on (`ANSIMode` in Terminal.swift),
+# each with the final byte that turns it on. The last time the app's output
+# sets one of them it must turn it off: otherwise the shell inherits it, and
+# a mouse mode left on types coordinates at the prompt.
+_MODES_TO_RESTORE = {
+    1049: b"h",  # alternate screen
+    1000: b"h", 1002: b"h", 1003: b"h", 1006: b"h",  # mouse tracking
+    2004: b"h",  # bracketed paste
+    25: b"l",    # cursor hidden
+}
+
+
+class AppExitedBadly(RemoteError):
+    """The case's assertions passed, but the app did not end the way a
+    TerminalUI app must: it crashed, ignored SIGTERM, left the terminal in a
+    mode it turned on, or a sanitizer reported on it. Raised on leaving
+    ``spawn_and_connect``, so every harness that spawns an app checks this
+    without asking for it."""
+
 
 # Optional observer for tests that want to verify what the runner posted
 # to the master PTY before close. Production smoke runs leave this None.
@@ -136,6 +168,19 @@ def spawn_and_connect(target: str,
     env_full["COLUMNS"] = str(cols)
     env_full["LINES"] = str(rows)
     env_full["TERM"] = env_full.get("TERM") or "xterm-256color"
+    # A sanitizer prints to stderr, which the PTY would bury under the app's
+    # frames. Send its reports to files the verdict reads instead. Builds
+    # without a sanitizer ignore these variables.
+    sanitizer_dir = tempfile.mkdtemp(prefix="terminalui-sanitizer-")
+    for variable in ("TSAN_OPTIONS", "ASAN_OPTIONS"):
+        options = env_full.get(variable, "")
+        env_full[variable] = f"{options} log_path={sanitizer_dir}/report".strip()
+    # Swift's backtracer holds a crashed process open: on a terminal it
+    # counts down 30s offering a debugger, and even non-interactive it kept
+    # a crashed Coder alive past 90s. The harness discards stderr, where the
+    # backtrace goes, so it has nothing to give here; without it a crash
+    # ends at once and the exit check sees it.
+    env_full.setdefault("SWIFT_BACKTRACE", "enable=no")
 
     # Spawn under a PTY so `Terminal.size()` (ioctl TIOCGWINSZ) returns the
     # geometry we want. Piping stdout to /dev/null makes ioctl fall back to
@@ -182,6 +227,8 @@ def spawn_and_connect(target: str,
     drain_thread.start()
 
     diag_dir: Optional[str] = None
+    client: Optional[Client] = None
+    case_failed = False
     try:
         # Resolve the child's PID-isolated diag dir by globbing the
         # framework-default shape. The cwd-hash component is stable
@@ -199,21 +246,39 @@ def spawn_and_connect(target: str,
         client.attach_pty(master)
         client.pid = proc.pid
         client.pty_output = _output
+
+        def _wait_for_exit(timeout: float) -> Optional[int]:
+            try:
+                return proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return None
+        client.wait_for_exit = _wait_for_exit
         yield proc, client
+    except BaseException:
+        case_failed = True
+        raise
     finally:
-        try:
+        if client is not None:
             client.close()
-        except Exception:
-            pass
         # Post mouse-mode disable BEFORE closing the master FD so the
         # bytes actually reach the kernel buffer. Order matters: close
         # first and the write is silently dropped.
         _post_pty_cleanup(master)
-        _terminate(proc)
+        if client is not None and client.expected_exit_signal is not None:
+            try:
+                proc.wait(timeout=_EXPECTED_DEATH_TIMEOUT)
+            except subprocess.TimeoutExpired:
+                pass
+        had_to_kill = _terminate(proc)
+        # The child's exit closes the last slave descriptor, so the drain
+        # reads to the end of what the app wrote and then stops.
+        drain_thread.join(timeout=2.0)
         try:
             os.close(master)
         except OSError:
             pass
+        sanitizer_reports = _read_sanitizer_reports(sanitizer_dir)
+        shutil.rmtree(sanitizer_dir, ignore_errors=True)
         # Best-effort: remove the child's PID-isolated dir so /tmp
         # doesn't accumulate one entry per smoke case. SIGTERM doesn't
         # run Swift defer blocks, so the framework's atexit hook
@@ -221,6 +286,77 @@ def spawn_and_connect(target: str,
         # reap` is the safety net for crashes that bypass even this.
         if diag_dir is not None:
             shutil.rmtree(diag_dir, ignore_errors=True)
+        # A failing case already says what went wrong; this verdict is for
+        # the cases that passed while the app crashed or raced underneath.
+        if not case_failed and client is not None:
+            problems = _exit_problems(
+                returncode=proc.returncode,
+                had_to_kill=had_to_kill,
+                output=_output(),
+                sanitizer_reports=sanitizer_reports,
+                expected_signal=client.expected_exit_signal,
+            )
+            if problems:
+                raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
+
+
+def _signal_name(signum: int) -> str:
+    try:
+        return signal.Signals(signum).name
+    except ValueError:
+        return f"signal {signum}"
+
+
+def _exit_problems(returncode: Optional[int],
+                   had_to_kill: bool,
+                   output: bytes,
+                   sanitizer_reports: list[str],
+                   expected_signal: Optional[int]) -> list[str]:
+    """Everything wrong with how an app ended, as sentences for a case
+    failure; empty when it ended cleanly."""
+    problems: list[str] = []
+    # A deliberate kill makes the sanitizer report the signal itself; that
+    # report is the case working, not a finding. The sanitizer then ends the
+    # process with abort(), so the death the parent sees is SIGABRT.
+    expected_report = (f"Sanitizer: {_signal_name(expected_signal)[3:]} "
+                       if expected_signal is not None else None)
+    sanitizer_took_the_signal = expected_report is not None and any(
+        expected_report in summary for summary in sanitizer_reports)
+    if expected_signal is not None:
+        if sanitizer_took_the_signal and returncode == -signal.SIGABRT:
+            pass
+        elif returncode != -expected_signal:
+            problems.append(f"expected to die on {_signal_name(expected_signal)}, "
+                            f"but its exit status was {returncode}")
+    elif had_to_kill:
+        problems.append("ignored SIGTERM and had to be killed")
+    elif returncode is not None and returncode < 0:
+        if -returncode not in _STOP_SIGNALS:
+            problems.append(f"crashed on {_signal_name(-returncode)}")
+    elif returncode != 0:
+        problems.append(f"exited with status {returncode}")
+
+    for mode, on in _MODES_TO_RESTORE.items():
+        off = b"l" if on == b"h" else b"h"
+        turned_on = output.rfind(b"\x1b[?%d" % mode + on)
+        if turned_on > output.rfind(b"\x1b[?%d" % mode + off):
+            problems.append(f"left DEC mode {mode} {'on' if on == b'h' else 'off'}")
+
+    for summary in sanitizer_reports:
+        if expected_report is None or expected_report not in summary:
+            problems.append(summary)
+    return problems
+
+
+def _read_sanitizer_reports(directory: str) -> list[str]:
+    """The SUMMARY line of every report a sanitizer wrote to ``directory``,
+    one per finding, deduplicated."""
+    summaries: list[str] = []
+    for report in sorted(Path(directory).glob("report*")):
+        for line in report.read_text(errors="replace").splitlines():
+            if line.startswith("SUMMARY:") and line not in summaries:
+                summaries.append(line)
+    return summaries
 
 
 def _wait_for_diag_dir(pid: int, timeout: float) -> str:
@@ -271,20 +407,26 @@ def _wait_for_client(pid: int,
     return client
 
 
-def _terminate(proc: subprocess.Popen, grace: float = 0.5) -> None:
+def _terminate(proc: subprocess.Popen, grace: float = 2.0) -> bool:
+    """Stop the app, and say whether it had to be killed. The grace is
+    generous because a sanitized build exits slowly, and an app that takes
+    it all is reported, not just stopped."""
     if proc.poll() is not None:
-        return
+        return False
     # Polite shutdown first; some apps drain their debug trace buffers on
     # SIGTERM. Escalate to SIGKILL if the app ignores us.
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     except ProcessLookupError:
-        return
+        proc.wait()
+        return False
     try:
         proc.wait(timeout=grace)
+        return False
     except subprocess.TimeoutExpired:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except ProcessLookupError:
             pass
         proc.wait(timeout=grace)
+        return True

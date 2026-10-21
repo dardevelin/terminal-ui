@@ -211,6 +211,13 @@ class Client:
         # dies, which no socket call can report.
         self.pid: Optional[int] = None
         self.pty_output: Callable[[], bytes] = lambda: b""
+        # The runner fails any app that dies on a signal. A case that kills
+        # the app on purpose names the signal here, and the runner then
+        # requires that death instead of a clean exit.
+        self.expected_exit_signal: Optional[int] = None
+        # Set by the runner: waits up to the given seconds for the app to
+        # exit and returns its status, or None if it is still running.
+        self.wait_for_exit: Callable[[float], Optional[int]] = lambda _timeout: None
 
     # -- connection --
 
