@@ -78,8 +78,17 @@ python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
 python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
 
 # The whole local gate in one command: build → test → smoke. Skips itself when
-# the turn touched no .swift / .py file.
+# the turn touched no .swift / .py file. Builds into .build-automation/.
 python3 tools/scripts/verify.py
+
+# Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
+# locks a build directory for the length of a build or test, so sharing .build
+# left the developer's `swift run Coder` waiting on "Another instance of
+# SwiftPM is already running". TERMINALUI_BUILD_DIR points every harness
+# script, and the swtui they call, at the automation build.
+swift build --scratch-path .build-automation
+swift test  --scratch-path .build-automation
+TERMINALUI_BUILD_DIR=.build-automation/debug python3 tools/scripts/storybook_smoke.py
 
 # Thread Sanitizer: run before merging anything that touches a lock, a
 # Sendable conformance, a signal handler or a task. Its own scratch path.

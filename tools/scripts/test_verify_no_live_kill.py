@@ -37,7 +37,7 @@ from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from terminalui.runner import spawn_and_connect  # noqa: E402
+from terminalui.runner import build_dir_path, spawn_and_connect  # noqa: E402
 
 # Import the script-as-module so we can call its public surface
 # directly. This is the right test seam: black-box at the function
@@ -194,7 +194,7 @@ CASES = [
 
 
 def main() -> int:
-    swtui = REPO_ROOT / ".build" / "debug" / "swtui"
+    swtui = build_dir_path() / "swtui"
     if not swtui.exists():
         print(f"[SKIP] {swtui} not found — run `swift build` first")
         return 0

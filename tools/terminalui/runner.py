@@ -36,7 +36,18 @@ from typing import Callable, Iterator, Optional, Sequence, Tuple
 from .client import Client, RemoteError, default_socket_path
 
 
-DEFAULT_BUILD_DIR = ".build/debug"
+# Where the binaries under test live. `TERMINALUI_BUILD_DIR` points automation
+# (verify.py, an agent) at its own scratch path: SwiftPM locks a build
+# directory while it builds, so automation sharing `.build` made a human's
+# `swift run Coder` wait on every verify run.
+DEFAULT_BUILD_DIR = os.environ.get("TERMINALUI_BUILD_DIR") or ".build/debug"
+
+
+def build_dir_path() -> Path:
+    """The default build directory, absolute, for scripts that run a binary
+    such as ``swtui`` directly instead of through ``spawn_and_connect``."""
+    path = Path(DEFAULT_BUILD_DIR)
+    return path if path.is_absolute() else _repo_root() / path
 
 # Per-process diag-dir isolation is the framework's default — every
 # TerminalUI process writes to /tmp/terminalui-{cwd-hash}-{pid}/. The

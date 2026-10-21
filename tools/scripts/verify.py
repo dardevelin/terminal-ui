@@ -24,7 +24,15 @@ from pathlib import Path
 # hardcoded: an absolute path silently stops matching when the package moves
 # or the checkout lives elsewhere, and the hook would then skip every turn.
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SMOKE_TIMEOUT_SECONDS = 240
+# Automation builds apart from `.build`. SwiftPM locks a build directory for
+# the length of a build or test run, and this hook runs on every turn: sharing
+# `.build` made a human's `swift run Coder` sit on "Another instance of SwiftPM
+# is already running" until it finished.
+SCRATCH_PATH = ".build-automation"
+BUILD_DIR = REPO_ROOT / SCRATCH_PATH / "debug"
+# The suite runs its cases one after another and took 304s at 100 cases; 240s
+# cut it off mid-run and reported the cutoff as a smoke regression.
+SMOKE_TIMEOUT_SECONDS = 600
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
 
@@ -63,7 +71,7 @@ def reap_dead_sockets() -> None:
     plus the explicit-PID `kill` verb make that impossible by
     construction; this function uses the safe verb.
     """
-    swtui = REPO_ROOT / ".build" / "debug" / "swtui"
+    swtui = BUILD_DIR / "swtui"
     if not swtui.exists():
         return
     # Reap every dir matching /tmp/terminalui-*/remote — each
@@ -131,11 +139,13 @@ def main() -> int:
 
     reap_dead_sockets()
 
-    rc, out = step("swift build", ["swift", "build"], BUILD_TIMEOUT_SECONDS)
+    rc, out = step("swift build", ["swift", "build", "--scratch-path", SCRATCH_PATH],
+                   BUILD_TIMEOUT_SECONDS)
     if rc != 0:
         return fail("swift build failed", out)
 
-    rc, out = step("swift test", ["swift", "test"], TEST_TIMEOUT_SECONDS)
+    rc, out = step("swift test", ["swift", "test", "--scratch-path", SCRATCH_PATH],
+                   TEST_TIMEOUT_SECONDS)
     test_summary = next(
         (ln for ln in out.splitlines() if ln.lstrip().startswith("✔ Test run with")),
         "",
@@ -147,7 +157,7 @@ def main() -> int:
 
     rc, out = step(
         "storybook smoke",
-        [sys.executable, "tools/scripts/storybook_smoke.py"],
+        [sys.executable, "tools/scripts/storybook_smoke.py", str(BUILD_DIR)],
         SMOKE_TIMEOUT_SECONDS,
     )
     if out.strip():

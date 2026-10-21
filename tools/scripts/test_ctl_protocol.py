@@ -40,11 +40,11 @@ from typing import Callable, List
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from terminalui.runner import spawn_and_connect  # noqa: E402
+from terminalui.runner import build_dir_path, spawn_and_connect  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SWTUI_BIN = REPO_ROOT / ".build" / "debug" / "swtui"
+SWTUI_BIN = build_dir_path() / "swtui"
 
 
 @dataclass
