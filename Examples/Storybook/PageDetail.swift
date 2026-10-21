@@ -771,6 +771,25 @@ struct PreviewPane: TerminalView {
                 .frame(width: 24, height: 5)
                 Text("wheel up to stay put, back down to follow").foreground(.gray)
             }
+        case .scrollPosition:
+            VStack {
+                HStack(spacing: 2) {
+                    Button("Jump to row 25") { state.positionedRow = 25 }
+                    Button("Back to the top") { state.positionedRow = 0 }
+                }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(Array(0..<30), id: \.self) { row in
+                            Text("row \(row)").id(row)
+                        }
+                    }
+                }
+                .scrollPosition(id: Binding(get: { state.positionedRow },
+                                            set: { state.positionedRow = $0 }),
+                                anchor: .top)
+                .frame(width: 24, height: 5)
+                Text("position: \(state.positionedRow.map(String.init) ?? "none")").foreground(.gray)
+            }
         case .syntaxHighlighter:
             MarkdownView("""
                 ```ini

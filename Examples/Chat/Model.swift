@@ -25,9 +25,8 @@ enum MessageKind: String, Sendable, Equatable {
 }
 
 /// One message in the conversation. `id` is monotonic — the message
-/// list is append-only, ids never reorder, so we can hand the id out
-/// as the `.id(_:)` tag for the latest row and `.scrollPosition(id:)`
-/// will pin the viewport to it.
+/// list is append-only and ids never reorder, so each row can be tagged
+/// `.id(_:)` with it.
 struct Message: Identifiable, Sendable, Equatable {
     let id: Int
     let kind: MessageKind
@@ -90,13 +89,6 @@ final class ChatState {
             timestamp: nowHHMM(),
             body: reply
         ))
-    }
-
-    /// Latest message id — the `.scrollPosition(id:)` target. Nil
-    /// when the message list is empty (shouldn't happen in normal
-    /// usage; the fixture seeds 12 messages).
-    var latestID: Int? {
-        messages.last?.id
     }
 }
 

@@ -1255,7 +1255,7 @@ public enum GraphRenderer {
            let contentChild = node.children.first
         {
             // Find the descendant whose subtree was tagged with .id(targetID).
-            if let targetNode = findExplicitlyIDedNode(in: contentChild, matching: targetID) {
+            if let targetNode = findExplicitlyIDedNode(in: contentChild, matching: targetID.id) {
                 let focusedPosition = measureFocusedPosition(
                     in: contentChild, focusedID: targetNode.id, axis: axis
                 )
@@ -1275,6 +1275,17 @@ public enum GraphRenderer {
                 }
             }
         }
+        if case .layout(let info) = node.kind,
+           case .scroll(let axis) = info.kind,
+           let position = currentEnv.scrollPosition,
+           let contentChild = node.children.first
+        {
+            let viewportSize = axis == .horizontal
+                ? (node.rect.width > 0 ? node.rect.width : viewportWidth)
+                : (node.rect.height > 0 ? node.rect.height : viewportHeight)
+            followScrollPosition(position, of: node, axis: axis, content: contentChild,
+                                 viewportSize: viewportSize)
+        }
         // Recurse — nested ScrollViews may each have their own target.
         for child in node.children {
             adjustScrollForExplicitTargetWalk(child,
@@ -1289,8 +1300,8 @@ public enum GraphRenderer {
     /// whose position the renderer can compute against the scroll axis.
     /// `nil` when no matching tag exists.
     private static func findExplicitlyIDedNode(in subtree: AttributeNode,
-                                                matching targetID: ScrollTargetID) -> AttributeNode? {
-        if case .modifier(.explicitID(let id)) = subtree.kind, id == targetID.id {
+                                                matching targetID: AnyHashable) -> AttributeNode? {
+        if case .modifier(.explicitID(let id)) = subtree.kind, id == targetID {
             // .id() wraps a single child — that's the node whose
             // position we want to bring into view.
             return subtree.children.first ?? subtree
@@ -1301,6 +1312,95 @@ public enum GraphRenderer {
             }
         }
         return nil
+    }
+
+    /// Keep a scroll node and its `.scrollPosition(id:anchor:)` binding in
+    /// agreement, in whichever direction the last change ran.
+    ///
+    /// A bound id other than the one last agreed on was set by the app: the
+    /// view it names is scrolled to. Otherwise an offset other than the one
+    /// last agreed on was set by the reader — a wheel, a key, the scrollbar,
+    /// focus moving — and the id of the view now at the anchor is written
+    /// back. Neither changed, nothing moves: the binding is not re-applied,
+    /// which is what lets a reader scroll away from the view it names.
+    private static func followScrollPosition(_ position: ScrollPositionBinding, of node: AttributeNode,
+                                             axis: ScrollAxis, content: AttributeNode,
+                                             viewportSize: Int) {
+        let bound = position.get()
+        if let seen = node.scrollPositionSeen, seen.id == bound {
+            guard node.scrollOffset != seen.offset else { return }
+            let reported = taggedID(at: node.scrollOffset, anchor: position.anchor, axis: axis,
+                                    content: content, viewportSize: viewportSize)
+            node.scrollPositionSeen = (reported, node.scrollOffset)
+            if reported != bound { position.set(reported) }
+            return
+        }
+        if let bound, let target = findExplicitlyIDedNode(in: content, matching: bound),
+           let (start, size) = measureFocusedPosition(in: content, focusedID: target.id, axis: axis) {
+            if let anchor = position.anchor {
+                // Where the view sits in the viewport is where an anchor places
+                // a view of its size there — the alignment arithmetic layout
+                // uses, run backwards to an offset.
+                let inset = axis == .horizontal
+                    ? anchor.horizontal.offset(for: size, in: viewportSize)
+                    : anchor.vertical.offset(for: size, in: viewportSize)
+                let total = axis == .horizontal
+                    ? measureWidth(content)
+                    : measureHeight(content, proposedWidth: 0)
+                node.scrollOffset = max(0, min(start - inset, total - viewportSize))
+            } else {
+                adjustScrollOffset(node: node, axis: axis, focusedStart: start, focusedSize: size,
+                                   viewportSize: viewportSize)
+            }
+        }
+        node.scrollPositionSeen = (bound, node.scrollOffset)
+    }
+
+    /// The id of the tagged view at `anchor` in a viewport scrolled to
+    /// `offset` — the top without an anchor. The innermost tag covering that
+    /// row wins; where none covers it (a header between tagged rows), the
+    /// next tagged view after it, then the last before it.
+    private static func taggedID(at offset: Int, anchor: Alignment?, axis: ScrollAxis,
+                                 content: AttributeNode, viewportSize: Int) -> AnyHashable? {
+        let inset = anchor.map { anchor in
+            axis == .horizontal
+                ? anchor.horizontal.offset(for: 1, in: viewportSize)
+                : anchor.vertical.offset(for: 1, in: viewportSize)
+        } ?? 0
+        let point = offset + inset
+        var extents: [(id: AnyHashable, start: Int, end: Int)] = []
+        collectTaggedExtents(in: content, axis: axis, start: 0, into: &extents)
+        if let covering = extents.last(where: { $0.start <= point && point < $0.end }) {
+            return covering.id
+        }
+        return extents.first(where: { $0.start > point })?.id ?? extents.last?.id
+    }
+
+    /// Every `.id(_:)`-tagged view under `node`, in order, with where it
+    /// starts and ends along `axis` — positions found the way
+    /// ``measureFocusedPosition(in:focusedID:axis:)`` finds one.
+    private static func collectTaggedExtents(in node: AttributeNode, axis: ScrollAxis, start: Int,
+                                             into extents: inout [(id: AnyHashable, start: Int, end: Int)]) {
+        if case .modifier(.explicitID(let id)) = node.kind {
+            let size = axis == .horizontal ? measureWidth(node) : measureHeight(node, proposedWidth: 0)
+            extents.append((id, start, start + size))
+        }
+        if case .layout(let info) = node.kind {
+            switch (info.kind, axis) {
+            case (.hstack, .horizontal), (.vstack, .vertical):
+                var position = start
+                for child in effectiveChildren(of: node) {
+                    collectTaggedExtents(in: child, axis: axis, start: position, into: &extents)
+                    position += axis == .horizontal ? measureWidth(child) : measureHeight(child, proposedWidth: 0)
+                }
+                return
+            default:
+                break
+            }
+        }
+        for child in node.children {
+            collectTaggedExtents(in: child, axis: axis, start: start, into: &extents)
+        }
     }
 
     /// Compute the position and size of the focused node within a content subtree.

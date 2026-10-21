@@ -17,8 +17,9 @@
 ///   is nothing for Tab to land on; add `.scrollable()` so the scroll
 ///   view itself takes focus and arrows / PageUp / PageDown / Home / End
 ///   drive the offset.
-/// - **Programmatic.** `.scrollPosition(id:)` keeps a `.id(_:)`-tagged
-///   descendant visible without touching keyboard focus.
+/// - **Programmatic.** `.scrollPosition(id:anchor:)` binds the offset to
+///   the `.id(_:)` of a descendant, both ways, without touching keyboard
+///   focus.
 /// - **Anchored.** `.defaultScrollAnchor(.bottom)` opens on the end and
 ///   follows it as content grows, while the reader leaves it there — a chat
 ///   transcript's tail.
@@ -189,6 +190,26 @@ public struct ScrollTargetID: Equatable, @unchecked Sendable {
     }
 }
 
+/// A `.scrollPosition(id:anchor:)` binding, erased so it can travel through
+/// the environment to the scroll view it positions.
+///
+/// `@unchecked Sendable` on the same footing as ``ScrollTargetID``: the
+/// binding is read and written on the main actor, by the render loop.
+public struct ScrollPositionBinding: @unchecked Sendable {
+    let get: () -> AnyHashable?
+    let set: (AnyHashable?) -> Void
+    /// Where in the viewport the identified view is placed, and which view
+    /// a scroll reports: the one at this point. `nil` scrolls only as far as
+    /// it takes to bring the view into sight, and reports the view at the top.
+    let anchor: Alignment?
+
+    init<ID: Hashable>(_ binding: Binding<ID?>, anchor: Alignment?) {
+        get = { binding.get().map { AnyHashable($0) } }
+        set = { binding.set($0?.base as? ID) }
+        self.anchor = anchor
+    }
+}
+
 extension TerminalView {
     /// Show or hide the scroll-indicator glyphs on enclosed `ScrollView`s.
     public func scrollIndicators(_ visibility: ScrollIndicatorVisibility)
@@ -222,6 +243,28 @@ extension TerminalView {
         environment(\.scrollAnchor, anchor)
     }
 
+    /// Bind an enclosing `ScrollView`'s position to the `.id(_:)` of the view
+    /// in it, both ways.
+    ///
+    /// Set the binding and the scroll view brings that view into sight — at
+    /// `anchor`, or by the least movement that shows it when `anchor` is
+    /// `nil`. Scroll it, by wheel, key or scrollbar, and the binding is set
+    /// to the id of the view now at the anchor (the top, without one). The
+    /// view is moved only when the bound id changes, so a reader is free to
+    /// scroll away from it, and setting it again brings it back.
+    ///
+    /// Keep the position apart from a selection: a reader's scroll writes to
+    /// it. To keep a moving selection in sight, set the position whenever the
+    /// selection changes. To follow a transcript's tail, use
+    /// ``defaultScrollAnchor(_:)``.
+    ///
+    /// SwiftUI parity: `View.scrollPosition(id:anchor:)` (iOS 17+ / macOS
+    /// 14+), with `Alignment` standing in for `UnitPoint`.
+    public func scrollPosition<ID: Hashable>(id: Binding<ID?>, anchor: Alignment? = nil)
+        -> ModifiedView<Self, EnvironmentModifier<ScrollPositionBinding?>> {
+        environment(\.scrollPosition, ScrollPositionBinding(id, anchor: anchor))
+    }
+
     /// Scroll an enclosing `ScrollView` so the descendant tagged with
     /// `.id(id)` stays visible. Independent of keyboard focus — the
     /// runtime adjusts the ScrollView's offset on every render so the
@@ -234,6 +277,11 @@ extension TerminalView {
     /// surprise the keyboard-focus location.
     ///
     /// Pass `nil` to clear an inherited target.
+    @available(*, deprecated, message: """
+        Re-applied every frame, so a reader cannot scroll away from the view. \
+        Bind the position with scrollPosition(id:anchor:) and a Binding, or \
+        follow a tail with defaultScrollAnchor(.bottom).
+        """)
     public func scrollPosition<ID: Hashable>(id: ID?)
         -> ModifiedView<Self, EnvironmentModifier<ScrollTargetID?>> {
         environment(\.scrollTargetID, id.map { ScrollTargetID($0) })
