@@ -670,7 +670,9 @@ in L15)*
 
 `TextInput` and `TextArea` had the cursor defect `PromptInput` had, and took
 the same fix: their rows became a view of their own under the focusable,
-handed values, drawing the cursor only while focused.
+handed values, drawing the cursor only while focused. `TextArea`'s cursor,
+selection, gutter and `~` rows were literal colours too; they are theme roles
+now, as `PromptInput`'s are.
 
 ### Ledger — open
 
