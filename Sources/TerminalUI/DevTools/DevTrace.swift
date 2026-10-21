@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import TerminalUIConfig
 
 // Development-only instrumentation.
@@ -105,27 +106,47 @@ public enum TraceEntry: Sendable {
 /// ``TraceEntry`` logs to the `.terminalui/` data directory for offline
 /// inspection by `swtui`, the PTY harness, and humans with `cat`.
 ///
-/// The runtime calls the `trace*` hooks from inside the render loop; apps
-/// and tests only ever call ``configure(_:)``. Disabled it costs one bool
-/// check per hook; in release builds the whole class compiles to no-ops.
-public final class DevTracer: @unchecked Sendable {
+/// The runtime calls the `trace*` hooks from inside the render loop, and the
+/// input task calls the input hooks from its own thread as it parses; apps
+/// and tests only ever call ``configure(_:)``. The recording is one value
+/// behind a lock, so every hook is safe from any thread. Disabled it costs
+/// one locked bool check per hook; in release builds the whole class
+/// compiles to no-ops.
+public final class DevTracer: Sendable {
     /// Process-wide instance the runtime's trace hooks report to.
     public static let shared = DevTracer()
 
-    private var config = DevTraceConfig.default
-    private var frameCount = 0
-    private var traces: [[TraceEntry]] = []
-    private var currentFrame: [TraceEntry] = []
-    private var frameStart: Double = 0
+    private struct Recording {
+        var config = DevTraceConfig.default
+        var frameCount = 0
+        var traces: [[TraceEntry]] = []
+        /// Entries for the frame being drawn — and, between frames, for the
+        /// next one: input parsed while no frame is open is what that frame
+        /// will draw.
+        var currentFrame: [TraceEntry] = []
+        var frameStart: Double = 0
 
-    private init() {}
+        /// Whether capture is on and the frame limit not yet reached — past
+        /// it nothing closes the open frame, so nothing may be added to it.
+        var isCapturing: Bool {
+            guard config.enabled else { return false }
+            if let limit = config.frameLimit, frameCount >= limit { return false }
+            return true
+        }
+    }
+
+    /// The input task and the render loop record concurrently; unguarded,
+    /// a burst of wheel events crashed in the array's reallocation.
+    private let recording = Mutex(Recording())
+
+    init() {}
 
     /// Replace the active configuration; creates the output directories
     /// when the new configuration enables capture.
     public func configure(_ config: DevTraceConfig) {
-        self.config = config
+        recording.withLock { $0.config = config }
         if config.enabled {
-            setupDirectories()
+            setupDirectories(config)
         }
     }
 
@@ -139,127 +160,136 @@ public final class DevTracer: @unchecked Sendable {
     }
 
     /// Whether capture is currently on — mirrors the configured `enabled` flag.
-    public var isEnabled: Bool { config.enabled }
+    public var isEnabled: Bool { recording.withLock { $0.config.enabled } }
+
+    /// Every frame recorded so far, the open one last.
+    func recordedFrames() -> [[TraceEntry]] {
+        recording.withLock { $0.traces + [$0.currentFrame] }
+    }
 
     // MARK: - Frame lifecycle
 
     /// Runtime hook: open a new frame's trace and stamp its start time.
     public func beginFrame() {
-        guard config.enabled else { return }
-        if let limit = config.frameLimit, frameCount >= limit { return }
-        currentFrame = []
-        frameStart = timestamp()
-        currentFrame.append(.renderStart(frame: frameCount, timestamp: frameStart))
+        let now = timestamp()
+        recording.withLock { recording in
+            guard recording.isCapturing else { return }
+            recording.frameStart = now
+            recording.currentFrame.insert(.renderStart(frame: recording.frameCount, timestamp: now), at: 0)
+        }
     }
 
     /// Runtime hook: close the frame's trace, then write its screenshot
     /// and `.trace` file to disk per the configured capture flags.
     public func endFrame(buffer: CellBuffer, previousBuffer: CellBuffer?) {
-        guard config.enabled else { return }
-        if let limit = config.frameLimit, frameCount >= limit { return }
-
-        let duration = timestamp() - frameStart
-        currentFrame.append(.renderEnd(frame: frameCount, duration: duration))
-        traces.append(currentFrame)
-
-        if config.captureScreenshots {
-            captureScreenshot(buffer: buffer, frame: frameCount)
+        let now = timestamp()
+        let closed: (config: DevTraceConfig, frame: Int, entries: [TraceEntry])? = recording.withLock { recording in
+            guard recording.isCapturing else { return nil }
+            let frame = recording.frameCount
+            recording.currentFrame.append(.renderEnd(frame: frame, duration: now - recording.frameStart))
+            let entries = recording.currentFrame
+            recording.traces.append(entries)
+            recording.frameCount += 1
+            recording.currentFrame = []
+            return (recording.config, frame, entries)
         }
-
-        if config.captureTrace {
-            writeFrameTrace(frame: frameCount)
+        // Files are written after the lock is let go: the input task should
+        // not wait on the disk to record a keystroke.
+        guard let closed else { return }
+        if closed.config.captureScreenshots {
+            captureScreenshot(buffer: buffer, frame: closed.frame, config: closed.config)
         }
-
-        frameCount += 1
-        currentFrame = []
+        if closed.config.captureTrace {
+            writeFrameTrace(closed.entries, frame: closed.frame, config: closed.config)
+        }
     }
 
     // MARK: - Trace points
 
+    /// Append `entry` to the open frame when `wanted` says the configuration
+    /// records it; `entry` is built only then.
+    private func record(when wanted: (DevTraceConfig) -> Bool, _ entry: () -> TraceEntry) {
+        recording.withLock { recording in
+            guard recording.isCapturing, wanted(recording.config) else { return }
+            recording.currentFrame.append(entry())
+        }
+    }
+
     /// Graph hook: record that `viewType`'s body was evaluated this frame.
     public func traceBodyEvaluated(_ viewType: String) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.bodyEvaluated(viewType: viewType, frame: frameCount))
+        recording.withLock { recording in
+            guard recording.isCapturing, recording.config.captureTrace else { return }
+            recording.currentFrame.append(.bodyEvaluated(viewType: viewType, frame: recording.frameCount))
+        }
     }
 
     /// Layout hook: record the size (in cells) proposed to `viewType`.
     public func traceLayoutPropose(_ viewType: String, width: Int, height: Int) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.layoutPropose(viewType: viewType, proposed: "\(width)x\(height)"))
+        record(when: \.captureTrace) { .layoutPropose(viewType: viewType, proposed: "\(width)x\(height)") }
     }
 
     /// Layout hook: record the size (in cells) `viewType` answered with.
     public func traceLayoutRespond(_ viewType: String, width: Int, height: Int) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.layoutRespond(viewType: viewType, result: "\(width)x\(height)"))
+        record(when: \.captureTrace) { .layoutRespond(viewType: viewType, result: "\(width)x\(height)") }
     }
 
     /// Layout hook: record the final rect (cell coordinates) `viewType` was placed in.
     public func traceLayoutPlace(_ viewType: String, rect: Rect) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.layoutPlace(
-            viewType: viewType,
-            rect: "(\(rect.x),\(rect.y) \(rect.width)x\(rect.height))"
-        ))
+        record(when: \.captureTrace) {
+            .layoutPlace(viewType: viewType, rect: "(\(rect.x),\(rect.y) \(rect.width)x\(rect.height))")
+        }
     }
 
     /// Compositor hook: record the frame's delta — cells rewritten out of the grid total.
     public func traceBufferDiff(changed: Int, total: Int) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.bufferDiff(cellsChanged: changed, totalCells: total))
+        record(when: \.captureTrace) { .bufferDiff(cellsChanged: changed, totalCells: total) }
     }
 
     /// Input hook: record a parsed key event in human-readable form.
     public func traceInput(_ event: KeyEvent) {
-        guard config.enabled, config.captureEvents else { return }
-        currentFrame.append(.inputEvent(description: describeKey(event)))
+        record(when: \.captureEvents) { .inputEvent(description: Self.describeKey(event)) }
     }
 
     /// Raw input-byte trace. `bytes` is the exact byte sequence the
     /// parser consumed to produce ONE TerminalEvent; `decoded` is the
-    /// human-readable form of the resulting event.
-    /// HYP-337 — added so terminal-key bugs can be diagnosed at the
-    /// byte level (not just the parsed-event level).
+    /// human-readable form of the resulting event — so terminal-key bugs
+    /// can be diagnosed at the byte level, not just the parsed-event level.
+    /// Called from the input task.
     public func traceInputBytes(_ bytes: [UInt8], decoded: String) {
-        guard config.enabled, config.captureEvents else { return }
-        let hex = bytes.map { String(format: "%02x", $0) }.joined(separator: " ")
-        currentFrame.append(.inputBytes(hex: hex, decoded: decoded))
+        record(when: \.captureEvents) {
+            .inputBytes(hex: bytes.map { String(format: "%02x", $0) }.joined(separator: " "), decoded: decoded)
+        }
     }
 
     /// Record one `ActionDispatch.dispatch` attempt. Lets the trace
     /// show whether a chord was matched and against which action ID,
-    /// or — when matchedActionID is nil — that the dispatch missed.
-    /// Diagnoses HYP-341+ ("why didn't my binding fire?").
+    /// or — when matchedActionID is nil — that the dispatch missed
+    /// ("why didn't my binding fire?").
     public func traceActionDispatch(
         fromNode: String,
         binding: String,
         context: String,
         matchedActionID: String?
     ) {
-        guard config.enabled, config.captureEvents else { return }
-        currentFrame.append(.actionDispatch(
-            fromNode: fromNode,
-            binding: binding,
-            context: context,
-            matchedActionID: matchedActionID
-        ))
+        record(when: \.captureEvents) {
+            .actionDispatch(fromNode: fromNode, binding: binding, context: context,
+                            matchedActionID: matchedActionID)
+        }
     }
 
     /// Runtime hook: record a terminal resize to `cols` x `rows` cells.
     public func traceResize(cols: Int, rows: Int) {
-        guard config.enabled else { return }
-        currentFrame.append(.resize(cols: cols, rows: rows))
+        record(when: { _ in true }) { .resize(cols: cols, rows: rows) }
     }
 
     /// State hook: record a property mutation and the view type that owns it.
     public func traceStateChange(property: String, in viewType: String) {
-        guard config.enabled, config.captureTrace else { return }
-        currentFrame.append(.stateChange(property: property, viewType: viewType))
+        record(when: \.captureTrace) { .stateChange(property: property, viewType: viewType) }
     }
 
     // MARK: - Screenshot capture
 
-    func captureScreenshot(buffer: CellBuffer, frame: Int) {
+    private func captureScreenshot(buffer: CellBuffer, frame: Int, config: DevTraceConfig) {
         // Plain text representation — readable by humans and AI
         var output = "frame: \(frame)\n"
         output += "size: \(buffer.width)x\(buffer.height)\n"
@@ -283,8 +313,7 @@ public final class DevTracer: @unchecked Sendable {
 
     // MARK: - Trace output
 
-    func writeFrameTrace(frame: Int) {
-        guard let entries = traces.last else { return }
+    private func writeFrameTrace(_ entries: [TraceEntry], frame: Int, config: DevTraceConfig) {
         var output = ""
 
         for entry in entries {
@@ -327,6 +356,7 @@ public final class DevTracer: @unchecked Sendable {
     /// Write `summary.txt` — per-frame durations and body-evaluation counts
     /// for the whole capture. The runtime calls this at shutdown.
     public func writeSummary() {
+        let (config, frameCount, traces) = recording.withLock { ($0.config, $0.frameCount, $0.traces) }
         guard config.enabled else { return }
         var output = "TerminalUI dev trace summary\n"
         output += "============================\n"
@@ -353,17 +383,17 @@ public final class DevTracer: @unchecked Sendable {
 
     // MARK: - Utilities
 
-    func setupDirectories() {
+    private func setupDirectories(_ config: DevTraceConfig) {
         let fm = FileManager.default
         try? fm.createDirectory(atPath: config.screenshotDir, withIntermediateDirectories: true)
         try? fm.createDirectory(atPath: config.traceDir, withIntermediateDirectories: true)
     }
 
-    func timestamp() -> Double {
+    private func timestamp() -> Double {
         ProcessInfo.processInfo.systemUptime
     }
 
-    func describeKey(_ event: KeyEvent) -> String {
+    static func describeKey(_ event: KeyEvent) -> String {
         var parts: [String] = []
         if event.modifiers.contains(.ctrl) { parts.append("ctrl") }
         if event.modifiers.contains(.alt) { parts.append("alt") }

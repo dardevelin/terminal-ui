@@ -1826,6 +1826,24 @@ def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
     assert_true("… (5 lines hidden)" in text, "expected the excerpt's hidden-line count")
 
 
+def coder_wheel_burst_keeps_running(app: Client) -> None:
+    """A burst of real wheel reports — raw SGR 1006 bytes through the PTY,
+    as a trackpad sends them — leaves the app running. Regression: debug
+    builds trace their first frames, and the input task recorded each
+    event's bytes into the same unguarded array the render loop was
+    recycling; scrolling Coder crashed it with SIGSEGV."""
+    # Spread over a couple of seconds, as a real scroll is, so parsing and
+    # drawing overlap; one instant burst is parsed before a frame starts.
+    x, y = CODER_TRANSCRIPT_POINT
+    for step in range(80):
+        direction = 64 if (step // 10) % 2 == 0 else 65
+        app.write_raw(f"\x1b[<{direction};{x + 1};{y + 1}M".encode() * 20)
+        time.sleep(0.02)
+    app.wait_for_frame(2, timeout=1.0)
+    app.ping()
+    assert_true("CODER" in app.cells().text(), "the app should still be drawing")
+
+
 def coder_crash_restores_the_terminal(app: Client) -> None:
     """A crash leaves the terminal as the app found it: mouse reporting off,
     the alternate screen left, the cursor shown. Regression: only SIGINT,
@@ -1964,6 +1982,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.reply_keeps_heading_markers_and_chips_code", "Coder", coder_reply_keeps_heading_markers_and_chips_code),
     SmokeCase("coder.read_card_shows_numbered_excerpt", "Coder", coder_read_card_shows_numbered_excerpt),
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
+    SmokeCase("coder.wheel_burst_keeps_running", "Coder", coder_wheel_burst_keeps_running),
     SmokeCase("coder.crash_restores_the_terminal", "Coder", coder_crash_restores_the_terminal),
 ]
 
