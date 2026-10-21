@@ -134,11 +134,18 @@ public class AttributeNode: @unchecked Sendable {
     public var _resolvedEnv: EnvironmentValues?
 
     /// The environment values this node's body read the last time it ran,
-    /// recorded by `@TerminalEnvironment` as it is read. A change to a value
-    /// that is not in here cannot change what the body produces, so it need
-    /// not run again — this is what lets a focus change re-run only the
-    /// bodies that asked whether they are focused.
-    var environmentReads: Set<AnyKeyPath> = []
+    /// and what each was, recorded by `@TerminalEnvironment` as it is read.
+    /// A change to a value that is not in here cannot change what the body
+    /// produces, so it need not run again — this is what lets a focus change
+    /// re-run only the bodies that asked whether they are focused, and a
+    /// theme switch re-run only the bodies that drew with the theme.
+    /// Each entry answers whether an environment still holds the value read.
+    var environmentReads: [AnyKeyPath: (EnvironmentValues) -> Bool] = [:]
+
+    /// Whether any value this body read is different in `environment`.
+    func environmentReadsDiffer(from environment: EnvironmentValues) -> Bool {
+        environmentReads.values.contains { holdsValueRead in !holdsValueRead(environment) }
+    }
 
     /// Focus granularity in force where this node was built, or nil when the
     /// author expressed no preference and the container's own shape decides.
@@ -209,6 +216,12 @@ public class AttributeNode: @unchecked Sendable {
     /// a lazy descendant walk that fills the cache and returns the
     /// correct answer either way.
     public var _containsViewBody: Bool?
+
+    /// Memoised alongside `_containsViewBody`: true iff this node or a
+    /// descendant read the environment, or might without the walk knowing —
+    /// a reader's content is rebuilt during layout, after the stamp. Nil
+    /// before the first stamp, which counts as true.
+    var _readsEnvironmentBelow: Bool?
 
     /// Last `Size` `geometryRebuilder` was invoked at by the layout
     /// phase. Render reads this to confirm the GR's child subtree is

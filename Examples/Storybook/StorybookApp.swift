@@ -30,6 +30,7 @@ final class StorybookState {
     var buttonMessage: String = "(nothing yet)"
     var textInputValue: String = ""
     var toggleValue: Bool = false
+    var loudTheme: Bool = false
     var pickerTheme: StorybookTheme = .dark
     var sliderVolume: Double = 40
     var stepperTabWidth: Int = 4

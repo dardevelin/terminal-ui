@@ -531,11 +531,21 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     var foregroundMuted: Color = .rgb(120, 90, 140)
                 }
 
+                struct Swatch: TerminalView {
+                    @TerminalEnvironment(\\.theme) var theme
+                    var body: some TerminalView {
+                        Text("■ accent is \\(theme.accent)")
+                            .foreground(theme.accent)
+                    }
+                }
+
                 VStack {
+                    Toggle("loud", isOn: $loud)
                     Button("Save") {}
                     Button("Disabled") {}.disabled()
+                    Swatch()
                 }
-                .environment(\\.theme, Loud())
+                .environment(\\.theme, loud ? Loud() as any Theme : DefaultTheme())
                 """)
         case .border: return PageInfo(id: self, category: .modifiers, name: ".border",
             summary: "Draw a border around the view.",

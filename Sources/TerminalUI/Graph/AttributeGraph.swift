@@ -1,3 +1,8 @@
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 import Observation
 import Synchronization
 
@@ -106,11 +111,11 @@ public final class AttributeGraph: @unchecked Sendable {
             }
         }
 
-        // Re-stamp `_containsViewBody` — drained composites may have
-        // grown or shrunk `.viewBody` descendants while their bodies
-        // re-evaluated. Same rationale as `update(from:)`.
+        // Re-stamp — drained composites may have grown or shrunk
+        // `.viewBody` descendants, and changed what they read, while their
+        // bodies re-evaluated. Same rationale as `update(from:)`.
         if let r = root {
-            _ = stampContainsViewBody(r)
+            stampSubtree(r)
         }
 
         hasDirtyNodes = !dirtyQueue.isEmpty
@@ -196,33 +201,32 @@ public final class AttributeGraph: @unchecked Sendable {
         // or removed `.viewBody` descendants — the structure is now settled
         // for the upcoming render walk, so this is the right moment to refresh.
         if let r = root {
-            _ = stampContainsViewBody(r)
+            stampSubtree(r)
         }
         return result
     }
 
-    /// Recompute and store `_containsViewBody` for `node` and every
-    /// descendant. Bottom-up so a parent's value reflects freshly
-    /// computed children. Called once per `update(from:)` after
-    /// reconciliation completes; cheap because every descendant write
-    /// is `Bool? = ...`. Returns the value stamped on `node` for the
-    /// caller's convenience.
+    /// Recompute and store `_containsViewBody` and `_readsEnvironmentBelow`
+    /// for `node` and every descendant. Bottom-up so a parent's value
+    /// reflects freshly computed children. Called once per `update(from:)`
+    /// and `drain()` after reconciliation completes; cheap because every
+    /// descendant write is `Bool? = ...`.
     @discardableResult
-    private func stampContainsViewBody(_ node: AttributeNode) -> Bool {
-        var result: Bool
+    private func stampSubtree(_ node: AttributeNode) -> (containsViewBody: Bool, readsEnvironment: Bool) {
+        var containsViewBody = false
+        var readsEnvironment = !node.environmentReads.isEmpty || node.geometryRebuilder != nil
         if case .viewBody = node.kind {
-            result = true
-        } else {
-            result = false
+            containsViewBody = true
         }
         for child in node.children {
-            if stampContainsViewBody(child) {
-                result = true
-                // Don't break — every descendant still needs stamping.
-            }
+            // Don't stop early — every descendant still needs stamping.
+            let below = stampSubtree(child)
+            containsViewBody = containsViewBody || below.containsViewBody
+            readsEnvironment = readsEnvironment || below.readsEnvironment
         }
-        node._containsViewBody = result
-        return result
+        node._containsViewBody = containsViewBody
+        node._readsEnvironmentBelow = readsEnvironment
+        return (containsViewBody, readsEnvironment)
     }
 
     // MARK: - Body Evaluation with Observation
@@ -475,6 +479,11 @@ public final class AttributeGraph: @unchecked Sendable {
         //   2. Else → Mirror-based field-wise compare via reflectiveEqual.
         //   3. Either way: !isDirty AND !subtreeIsDirty AND !children.isEmpty
         //      → skip body.
+        //
+        // Equal inputs say nothing about the environment, which reaches a
+        // body without passing through them. A skipped body whose own reads
+        // changed runs anyway, and the bodies below it whose reads changed
+        // run in place (`refreshEnvironmentReaders`).
         if !(V.Body.self == Never.self) {
             var inputsEqual = false
             if let eq = view as? any _EquatableTerminalView {
@@ -487,7 +496,11 @@ public final class AttributeGraph: @unchecked Sendable {
             }
             node.lastInputView = view
             if inputsEqual && !node.isDirty && !subtreeIsDirty(node) && !node.children.isEmpty {
-                return
+                let environment = GraphContext.currentEnvironment ?? EnvironmentValues()
+                if !node.environmentReadsDiffer(from: environment) {
+                    refreshEnvironmentReaders(below: node, in: environment)
+                    return
+                }
             }
             evaluateBody(node: node, view: view)
             return
@@ -621,6 +634,32 @@ public final class AttributeGraph: @unchecked Sendable {
         }
     }
 
+    /// Re-run the bodies under `node` whose environment reads no longer match
+    /// the environment they now sit in, and none of the others.
+    ///
+    /// `environment` is the one `node` sits in; what each descendant sits in
+    /// is worked out going down, through the same modifiers the walk would
+    /// have applied. Those are unchanged — a skipped body's subtree is what
+    /// it built last time — but they are applied rather than assumed, since a
+    /// `transformEnvironment` makes the value a reader sees differ from the
+    /// value at the skipped view. A re-run body updates its own subtree, so
+    /// the search stops there.
+    private func refreshEnvironmentReaders(below node: AttributeNode, in environment: EnvironmentValues) {
+        guard node._readsEnvironmentBelow != false else { return }
+        var inner = environment
+        node.applyEnvironment(to: &inner)
+        for child in node.children {
+            if case .viewBody = child.kind, let replay = child.bodyReplay,
+               child.environmentReadsDiffer(from: inner) {
+                GraphContext.$currentEnvironment.withValue(inner) {
+                    replay(self, child)
+                }
+                continue
+            }
+            refreshEnvironmentReaders(below: child, in: inner)
+        }
+    }
+
     /// True iff any **composite** descendant of `node` has `isDirty
     /// == true`. Used by the skip-condition in `updateNode` to ensure
     /// we don't skip a body re-evaluation when an inner composite
@@ -718,6 +757,47 @@ public final class AttributeGraph: @unchecked Sendable {
             if !_reflectiveValueEqual(lc.value, rc.value) { return false }
         }
         return true
+    }
+
+    /// Whether an environment value is the one a body read.
+    ///
+    /// Nearly always it is the very value, copied: the environment is
+    /// rebuilt each frame from the same stored values, and a copy of a value
+    /// is its bytes — inline fields, and the references to whatever it keeps
+    /// out of line. Identical bytes settle it in a fraction of a microsecond,
+    /// where comparing a theme field by field costs tens of microseconds —
+    /// more than re-running the body it would spare, and it is asked once
+    /// per reader. Bytes that differ prove nothing (a string rebuilt with the
+    /// same characters, a padding byte), so those go to the compare inputs
+    /// get, ``reflectiveEqual(_:_:)``.
+    ///
+    /// One consequence: a reference is the same value while it points at the
+    /// same object, as in SwiftUI. What an observable object holds is tracked
+    /// by observation, not here.
+    static func sameEnvironmentValue<Value>(_ current: Value, _ read: Value) -> Bool {
+        identicalBytes(current, read) || reflectiveEqual(current, read)
+    }
+
+    /// Compares the concrete values, not their containers: a value held as
+    /// `any Theme` too large for the existential's inline buffer lives in a
+    /// box, and the buffer words the box pointer leaves unused are not
+    /// copied, so two containers for one value differ in bytes. Opening the
+    /// value itself is not enough when `Value` is that existential — erasing
+    /// it to `Any` wraps the container rather than what is in it — so the
+    /// dynamic type is opened and both values are cast out to it.
+    private static func identicalBytes<Value>(_ lhs: Value, _ rhs: Value) -> Bool {
+        func compare<Concrete>(_: Concrete.Type) -> Bool {
+            guard var lhs = lhs as? Concrete, var rhs = rhs as? Concrete else { return false }
+            return withUnsafeBytes(of: &lhs) { lhsBytes in
+                withUnsafeBytes(of: &rhs) { rhsBytes in
+                    guard let lhsBase = lhsBytes.baseAddress, let rhsBase = rhsBytes.baseAddress else {
+                        return true
+                    }
+                    return memcmp(lhsBase, rhsBase, lhsBytes.count) == 0
+                }
+            }
+        }
+        return _openExistential(type(of: lhs as Any), do: compare)
     }
 
     /// Open the existential to call `==` on a value whose static type
@@ -1200,9 +1280,9 @@ public final class AttributeGraph: @unchecked Sendable {
     private func invalidateFocusReaders(in node: AttributeNode, focusable: NodeID?,
                                         moved: [NodeID], invalidated: inout Bool) {
         if case .viewBody = node.kind, !node.environmentReads.isEmpty {
-            let readsOwnFocus = node.environmentReads.contains(\EnvironmentValues.isFocused)
+            let readsOwnFocus = node.environmentReads[\EnvironmentValues.isFocused] != nil
                 && focusable.map(moved.contains) == true
-            if readsOwnFocus || node.environmentReads.contains(\EnvironmentValues.focusedID) {
+            if readsOwnFocus || node.environmentReads[\EnvironmentValues.focusedID] != nil {
                 node.markDirty()
                 enqueueDirty(node)
                 invalidated = true

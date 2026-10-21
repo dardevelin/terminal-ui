@@ -552,10 +552,14 @@ struct PreviewPane: TerminalView {
             }
         case .theme:
             VStack {
+                Toggle("loud",
+                       isOn: Binding(get: { state.loudTheme },
+                                      set: { state.loudTheme = $0 }))
                 Button("Save") { state.buttonMessage = "themed" }
                 Button("Disabled") {}.disabled()
+                StorybookSwatch()
             }
-            .environment(\.theme, StorybookLoudTheme())
+            .environment(\.theme, state.loudTheme ? StorybookLoudTheme() as any Theme : DefaultTheme())
         case .border:
             Text(" bordered ").border()
         case .borderEdges:
@@ -1181,6 +1185,17 @@ struct IniHighlighter: SyntaxHighlighter {
 struct StorybookLoudTheme: Theme {
     var accent: Color = .magenta
     var foregroundMuted: Color = .rgb(120, 90, 140)
+}
+
+/// Draws with the theme and takes nothing else, so nothing but the theme can
+/// make it draw differently — the `.environment(\.theme)` page's proof that a
+/// switch reaches a view whose inputs never change.
+struct StorybookSwatch: TerminalView {
+    @TerminalEnvironment(\.theme) var theme
+
+    var body: some TerminalView {
+        Text("■ accent is \(theme.accent)").foreground(theme.accent)
+    }
 }
 
 /// A row that knows when it holds focus — the `.focusable` page's example of

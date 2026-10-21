@@ -271,8 +271,14 @@ public struct TerminalEnvironment<Value> {
     /// none is bound (handlers, pre-render reads).
     public var wrappedValue: Value {
         let env = GraphContext.currentEnvironment ?? EnvironmentValues()
-        GraphContext.currentNode?.environmentReads.insert(keyPath)
-        return env[keyPath: keyPath]
+        let value = env[keyPath: keyPath]
+        if let node = GraphContext.currentNode {
+            let keyPath = keyPath
+            node.environmentReads[keyPath] = { environment in
+                AttributeGraph.sameEnvironmentValue(environment[keyPath: keyPath], value)
+            }
+        }
+        return value
     }
 }
 
