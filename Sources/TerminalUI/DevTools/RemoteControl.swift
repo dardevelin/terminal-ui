@@ -424,7 +424,7 @@ public final class RemoteControlServer: @unchecked Sendable {
             let base = buf.baseAddress!
             let total = buf.count
             while sent < total {
-                let n = posixWrite(fd, base + sent, total - sent)
+                let n = socketWrite(fd, base + sent, total - sent)
                 if n > 0 {
                     sent += n
                 } else if errno == EAGAIN || errno == EINTR {
