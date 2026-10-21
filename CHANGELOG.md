@@ -116,6 +116,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Content that gains children is measured again.** A `ForEach` that gained
+  elements — and a stack whose children were rebuilt, a split re-laid, an
+  overlay or modal added or removed — left the cached sizes above it in place.
+  A scroll view sizes its content by measuring it, so a line appended to a log
+  was built and never drawn.
 - **An environment change reaches views whose inputs did not change.** The
   update walk skips a view whose inputs compare equal, and everything under it —
   so a theme switched by `.environment(\.theme, …)` above an unchanged view never

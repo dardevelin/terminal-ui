@@ -375,12 +375,14 @@ public final class AttributeGraph: @unchecked Sendable {
                             // Add new extra child (e.g., modal just became presented)
                             extraChild.parent = node
                             node.children.append(extraChild)
+                            invalidateMeasurementCache(from: node)
                             changed = true
                         }
                     } else if hadExtra {
                         // Remove extra child (e.g., modal dismissed)
                         fireDisappear(on: node.children[1])
                         node.children.removeLast()
+                        invalidateMeasurementCache(from: node)
                         changed = true
                     }
                 }
@@ -588,6 +590,7 @@ public final class AttributeGraph: @unchecked Sendable {
                     let childNode = constructAnyView(newChild, id: childID)
                     childNode.parent = node
                     node.children[i] = childNode
+                    invalidateMeasurementCache(from: node)
                     changed = true
                 }
             }
@@ -603,6 +606,7 @@ public final class AttributeGraph: @unchecked Sendable {
                 childNode.parent = node
                 node.children.append(childNode)
             }
+            invalidateMeasurementCache(from: node)
             changed = true
         }
         node.isDirty = false
@@ -610,6 +614,11 @@ public final class AttributeGraph: @unchecked Sendable {
 
     /// Invalidate cached width/height on `node` and every ancestor, since
     /// each one's measured size is built from this one's.
+    ///
+    /// Owed by every change to what a node measures: its text, and the
+    /// children it holds. A `ForEach` that gained an element without this
+    /// kept its old height, and a scroll view, which sizes its content by
+    /// measuring it, drew the log without the line appended to it.
     ///
     /// The walk used to stop at the first non-layout ancestor, on the grounds
     /// that modifiers pass through. Passing through is exactly why they must
@@ -1147,6 +1156,7 @@ public final class AttributeGraph: @unchecked Sendable {
             childNode.parent = node
             node.children.append(childNode)
         }
+        invalidateMeasurementCache(from: node)
         changed = true
     }
 

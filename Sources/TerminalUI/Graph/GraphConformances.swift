@@ -380,7 +380,10 @@ extension ForEach: _GraphForEach {
         }
 
         if newChildren.count != node.children.count { didChange = true }
-        if didChange { graph.changed = true }
+        if didChange {
+            graph.changed = true
+            graph.invalidateMeasurementCache(from: node)
+        }
         node.children = newChildren
     }
 }
@@ -431,7 +434,10 @@ extension ForEachWithID: _GraphForEach {
         }
 
         if newChildren.count != node.children.count { didChange = true }
-        if didChange { graph.changed = true }
+        if didChange {
+            graph.changed = true
+            graph.invalidateMeasurementCache(from: node)
+        }
         node.children = newChildren
     }
 }
