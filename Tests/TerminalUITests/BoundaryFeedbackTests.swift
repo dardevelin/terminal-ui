@@ -2,23 +2,19 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// Boundary feedback: input components fire a feedback emitter when
-// their internal cursor / maxLength logic hits a wall. The emitter
-// reads the active `BoundaryFeedback` env value and routes:
+// Boundary feedback: TextInput, TextArea and PromptInput call the
+// environment's `boundaryHit` action when their cursor or maxLength logic
+// hits a wall. It reads the subtree's `BoundaryFeedback` mode and routes:
 //
-//   .bell    → emits ASCII BEL (\x07) to OutputBuffer
-//   .bounce  → cursor animates briefly (per-component visual)
+//   .bell    → rings the environment's `BellAction` (BEL in a running app)
+//   .bounce  → the shared emitter's `bounceSink`, a no-op until installed
 //   .modal   → invokes the .onBoundaryHit callback if registered
 //   .none    → silent
 //
-// Input components (TextInput, TextArea, PromptInput) call into the
-// emitter at their boundary-hit sites; the wiring per component
-// happens incrementally. The API surface ships here; TextInput is
-// the canary consumer.
-//
 // Public API:
 //
-//   .onBoundaryHit { reason in ... }
+//   .boundaryFeedback(_:), .onBoundaryHit { reason in ... }
+//   @TerminalEnvironment(\.boundaryHit), @TerminalEnvironment(\.bell)
 //   BoundaryHitReason = .leftEdge / .rightEdge / .topEdge / .bottomEdge / .maxLength
 
 @Suite("BoundaryHitReason — five canonical reasons")

@@ -12,7 +12,6 @@ Sources/TerminalUI/Focus/FocusEngine.swift FocusEngine Mutated only by the @Main
 Sources/TerminalUI/Graph/AttributeGraph.swift AttributeGraph One thread per graph: the runtime's on the main actor, a TerminalApp.print graph on its caller's. Observation's onChange, which runs on the changing thread, captures only the checked-Sendable InvalidationInbox, never the graph.
 Sources/TerminalUI/Graph/AttributeNode.swift AttributeNode Belongs to its graph's thread; a change on another thread only posts it to the InvalidationInbox, which holds it without touching it, and the graph's thread marks it.
 Sources/TerminalUI/DevTools/RemoteControl.swift RemoteControlServer pump() and everything it reaches is @MainActor; created and released by the @MainActor runtime.
-Sources/TerminalUI/Focus/BoundaryFeedback.swift BoundaryFeedbackEmitter Its public sink closures are written only by @MainActor tests, and emit runs from key handlers on main; nothing enforces it.
 
 # Immutable after init; unchecked only because a stored value is not Sendable.
 Sources/TerminalUI/Graph/NodeID.swift PathComponent Immutable enum; the AnyHashable payload is the only non-Sendable part.

@@ -836,6 +836,11 @@ struct PreviewPane: TerminalView {
                         recordBoundaryHit(reason)
                     }
                 Text("→ \(state.boundaryHitMessage)").foreground(.gray)
+                Text("Same walls under .bell — the terminal beeps or flashes").foreground(.gray)
+                TextInput(text: Binding(get: { state.boundaryBellValue },
+                                         set: { state.boundaryBellValue = $0 }),
+                          placeholder: "arrow past an edge...")
+                    .boundaryFeedback(.bell)
             }
         case .modal:
             VStack {

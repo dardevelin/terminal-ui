@@ -511,15 +511,10 @@ public struct PromptInput: TerminalView {
     /// before this runs; empty or whitespace-only input never fires it.
     public let onSubmit: ((String) -> Void)?
 
-    /// Boundary-feedback mode read at body-eval time. Drives the
-    /// `BoundaryFeedbackEmitter.shared.emit` calls at the four
-    /// buffer-edge walls in `handleKey`. PromptInput's Up/Down walls
-    /// are history-aware: emit only when arrow movement was blocked
-    /// AND no history entry was available to recall.
-    @TerminalEnvironment(\.boundaryFeedback) var boundaryFeedback
-
-    /// Optional `.onBoundaryHit { reason in ... }` callback.
-    @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
+    /// callback and the bell. Read at body-eval time for the handlers, which
+    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.boundaryHit) var boundaryHit
 
     /// Paste presentation mode. Default `.claudeCode` collapses
     /// pastes with newlines or > 200 chars into a marker. Override
@@ -587,8 +582,7 @@ public struct PromptInput: TerminalView {
         // Capture boundary-feedback env at body-eval time; the GR
         // closure runs later when GraphContext.currentEnvironment may
         // be nil (`feedback_bindings_in_geometryreader.md`).
-        let boundaryMode = boundaryFeedback
-        let onBoundaryHit = self.onBoundaryHit
+        let boundaryHit = self.boundaryHit
         // Capture the hint visibility + localizer up-front so the
         // VStack body sees a stable value (the GR closure inside
         // would re-read env at rebuild time, which is later than
@@ -609,7 +603,7 @@ public struct PromptInput: TerminalView {
         // the cursor sits at the right edge of a collapsed
         // reference. `.pasteHint(.hidden)` opts out per-subtree.
         return VStack {
-            inputReader(boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
+            inputReader(boundaryHit: boundaryHit)
             if hintVisible && cursorAdjacentToCollapsed {
                 Text(hintLocalizer.pasteAgainHint())
                     .foreground(theme.foregroundMuted)
@@ -620,17 +614,16 @@ public struct PromptInput: TerminalView {
     /// The reader the input is built inside, chosen by height policy — see
     /// the comment in `body`.
     @TerminalViewBuilder
-    private func inputReader(boundaryMode: BoundaryFeedback,
-                             onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
+    private func inputReader(boundaryHit: BoundaryHitAction) -> some TerminalView {
         if maxVisibleLines == nil, heightPolicy.readsContainer {
             GeometryReader { size in
                 self.inputField(width: size.width, containerHeight: size.height,
-                                boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
+                                boundaryHit: boundaryHit)
             }
         } else {
             WidthReader { width in
                 self.inputField(width: width, containerHeight: 0,
-                                boundaryMode: boundaryMode, onBoundaryHit: onBoundaryHit)
+                                boundaryHit: boundaryHit)
             }
         }
     }
@@ -639,8 +632,7 @@ public struct PromptInput: TerminalView {
     /// a width and, under the policies that read it, the container's height.
     /// `containerHeight` is 0 when the prompt's policy does not depend on it.
     private func inputField(width: Int, containerHeight: Int,
-                            boundaryMode: BoundaryFeedback,
-                            onBoundaryHit: BoundaryHitCallback?) -> some TerminalView {
+                            boundaryHit: BoundaryHitAction) -> some TerminalView {
         let prefix = resolvedPrefix
         let contentWidth = max(1, width - prefix.width)
         let st = self.state.get()
@@ -684,15 +676,14 @@ public struct PromptInput: TerminalView {
         )
         return rows
             .focusable()
-            .onKeyPress { [text, state, onSubmit, arrowMode, boundaryMode, onBoundaryHit] event in
+            .onKeyPress { [text, state, onSubmit, arrowMode, boundaryHit] event in
                 Self.handleKey(
                     event, text: text, state: state,
                     onSubmit: onSubmit, promptWidth: prefix.width,
                     maxVisibleLines: renderedHeight,
                     wrapWidth: contentWidth,
                     arrowMode: arrowMode,
-                    boundaryMode: boundaryMode,
-                    onBoundaryHit: onBoundaryHit
+                    boundaryHit: boundaryHit
                 )
             }
             .onPaste { [text, state, pasteMode] payload in
@@ -1319,8 +1310,7 @@ public struct PromptInput: TerminalView {
         maxVisibleLines: Int,
         wrapWidth: Int = .max,
         arrowMode: PromptArrowMode = .display,
-        boundaryMode: BoundaryFeedback = .bounce,
-        onBoundaryHit: BoundaryHitCallback? = nil
+        boundaryHit: BoundaryHitAction = EnvironmentValues().boundaryHit
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
@@ -1331,10 +1321,6 @@ public struct PromptInput: TerminalView {
         st.cursorRow = min(st.cursorRow, lineCount - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
 
-        // Synthesize emit env slice — same pattern as TextInput/TextArea.
-        var emitEnv = EnvironmentValues()
-        emitEnv.boundaryFeedback = boundaryMode
-        emitEnv.onBoundaryHit = onBoundaryHit
 
         switch event.key {
         // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
@@ -1483,8 +1469,7 @@ public struct PromptInput: TerminalView {
                 st.cursorCol = lines[st.cursorRow].count
             } else {
                 // Wall: cursor at (0, 0).
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .leftEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.leftEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -1499,8 +1484,7 @@ public struct PromptInput: TerminalView {
                 st.cursorCol = 0
             } else {
                 // Wall: cursor at end of last logical row.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .rightEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.rightEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -1534,8 +1518,7 @@ public struct PromptInput: TerminalView {
             }
             if !moved && !recalled {
                 // Wall: arrow couldn't navigate AND no older history.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .topEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.topEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -1564,8 +1547,7 @@ public struct PromptInput: TerminalView {
             }
             if !moved && !advanced {
                 // Wall: arrow couldn't navigate AND no newer history.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .bottomEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.bottomEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)

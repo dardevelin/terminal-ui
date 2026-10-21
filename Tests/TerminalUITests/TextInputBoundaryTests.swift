@@ -13,32 +13,28 @@ import Testing
 // parameter — the .maxLength wall is exercised by TextInputMaxLengthTests
 // once the parameter exists. Excluded from this suite.
 
-/// Replace the shared emitter's sinks with counter closures bound to
-/// a class-typed box. Returns the box so the test can read
-/// per-reason counts; calls `restore()` on cleanup to put the
-/// previous sinks back so test ordering doesn't leak counters.
-/// Recorder for the shared boundary emitter. Counters are protected
-/// by `nonisolated(unsafe)` because every emit on the shared sink
-/// happens on the same actor (MainActor) where the test driver runs
-/// — the @Sendable hop is purely a type-system gate, not a real
-/// concurrency hazard.
+/// Counts what a wall hit does: rings of the bell a test puts in the
+/// environment, and hits on the shared `.bounce` hook, which `restore()`
+/// puts back. Every hit happens on the MainActor the test drives from, so
+/// the counters need no lock.
 private final class SharedEmitterRecorder: @unchecked Sendable {
     nonisolated(unsafe) var bell = 0
     nonisolated(unsafe) var bounce: [BoundaryHitReason] = []
-    private let savedBell: @Sendable () -> Void
     private let savedBounce: @Sendable (BoundaryHitReason) -> Void
 
     init() {
-        savedBell = BoundaryFeedbackEmitter.shared.bellSink
         savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bellSink = { [weak self] in self?.bell += 1 }
         BoundaryFeedbackEmitter.shared.bounceSink = { [weak self] reason in
             self?.bounce.append(reason)
         }
     }
 
+    /// The bell to put in the environment a test drives, counting rings.
+    var bellAction: BellAction {
+        BellAction { [weak self] in self?.bell += 1 }
+    }
+
     func restore() {
-        BoundaryFeedbackEmitter.shared.bellSink = savedBell
         BoundaryFeedbackEmitter.shared.bounceSink = savedBounce
     }
 }
@@ -77,6 +73,7 @@ struct TextInputBoundaryEmitTests {
         var value = "abc"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         // Cursor starts at end (3). Send Home to reach cursor=0, then
@@ -97,6 +94,7 @@ struct TextInputBoundaryEmitTests {
         var value = "abc"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         // Cursor at end already. Right is the wall.
@@ -113,6 +111,7 @@ struct TextInputBoundaryEmitTests {
         var value = "abcdef"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         // Home gets cursor to 0, then 3 Rights move it to position 3
@@ -131,6 +130,7 @@ struct TextInputBoundaryEmitTests {
         var value = ""
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bell
 
         // Empty value: cursor at 0, both Left and Right are walls.
@@ -155,6 +155,7 @@ struct TextInputBoundaryEmitTests {
         var value = "x"
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .modal
         env.onBoundaryHit = BoundaryHitCallback { reason in
             captured.reasons.append(reason)
@@ -178,6 +179,7 @@ struct TextInputBoundaryEmitTests {
         var value = ""
         let textBinding = Binding(get: { value }, set: { value = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .none
 
         _ = driveTextInput(text: textBinding, env: env,

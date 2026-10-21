@@ -77,6 +77,7 @@ final class StorybookState {
     // captures the most recent boundary reason for visual confirmation.
     var boundaryHitValue: String = ""
     var boundaryHitMessage: String = "(no boundary hit yet)"
+    var boundaryBellValue: String = ""
     // Modal demo: toggled by the page's own focusable trigger. Presenting
     // confines Tab to the dialog, so the page doubles as the live check
     // that focus containment holds.

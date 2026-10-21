@@ -18,20 +18,21 @@ import Testing
 private final class SharedEmitterRecorder: @unchecked Sendable {
     nonisolated(unsafe) var bell = 0
     nonisolated(unsafe) var bounce: [BoundaryHitReason] = []
-    private let savedBell: @Sendable () -> Void
     private let savedBounce: @Sendable (BoundaryHitReason) -> Void
 
     init() {
-        savedBell = BoundaryFeedbackEmitter.shared.bellSink
         savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bellSink = { [weak self] in self?.bell += 1 }
         BoundaryFeedbackEmitter.shared.bounceSink = { [weak self] reason in
             self?.bounce.append(reason)
         }
     }
 
+    /// The bell to put in the environment a test drives, counting rings.
+    var bellAction: BellAction {
+        BellAction { [weak self] in self?.bell += 1 }
+    }
+
     func restore() {
-        BoundaryFeedbackEmitter.shared.bellSink = savedBell
         BoundaryFeedbackEmitter.shared.bounceSink = savedBounce
     }
 }
@@ -71,6 +72,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -89,6 +91,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -107,6 +110,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -125,6 +129,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -143,6 +148,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -161,6 +167,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -205,6 +212,7 @@ struct TextAreaBoundaryEmitTests {
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
         var env = EnvironmentValues()
+        env.bell = recorder.bellAction
         env.boundaryFeedback = .none
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,

@@ -150,11 +150,15 @@ public struct EnvironmentValues: Sendable {
     public var overflowAllowed: Bool = false
 
     /// Callback registered via `.onBoundaryHit { reason in ... }`.
-    /// Invoked by `BoundaryFeedbackEmitter` when the active
-    /// `boundaryFeedback` mode is `.modal` and an input component
-    /// hits a wall. Nil = no callback registered (modal mode is
-    /// silent in that case, same as `.none`).
+    /// Invoked by ``boundaryHit`` when the active `boundaryFeedback`
+    /// mode is `.modal` and an input component hits a wall. Nil = no
+    /// callback registered (modal mode is silent in that case, same as
+    /// `.none`).
     public var onBoundaryHit: BoundaryHitCallback? = nil
+
+    /// The terminal's bell — see ``BellAction``. Silent until a running
+    /// app supplies its own, for every frame it draws.
+    public var bell = BellAction {}
 
     /// Whether interactive subtrees are live. Default `true`.
     /// `.disabled(_)` writes `false`, which gates handler registration
