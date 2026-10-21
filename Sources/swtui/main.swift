@@ -367,6 +367,34 @@ func ctlCommand(args: [String]) {
     } else {
         socketDirs = DiagPaths.clientRemoteDirs()
     }
+    // These act on the socket directories, not on one app, and `reap` exists
+    // for when no app is alive: resolving a live socket first made all three
+    // fail with "no running debug app" on a machine with none running.
+    switch subcommand {
+    case "list":
+        // Read-only enumeration of running debug apps. No filesystem
+        // mutation: dead sockets are reported as dead but NOT unlinked.
+        // Use `swtui ctl reap` to clean those up.
+        ctlList(socketDirs: socketDirs)
+        return
+    case "reap":
+        // Unlink stale sockets whose owning PID is dead. Never sends
+        // `quit`. Live processes are always preserved. This is the
+        // verb automation calls; humans use `kill --pid <N>` when
+        // they know exactly what they're killing.
+        ctlReap(socketDirs: socketDirs)
+        return
+    case "kill":
+        // Send `quit` to a single explicit PID. The legacy `kill all`
+        // dragnet is gone — too easy to send `quit` to the user's
+        // live session by accident. Bare `kill` (no --pid) is a
+        // usage error that exits non-zero.
+        ctlKill(socketDirs: socketDirs, explicitPID: explicitPID, positional: positional)
+        return
+    default:
+        break
+    }
+
     let socketPath: String
     if let explicitSocket {
         socketPath = explicitSocket
@@ -467,26 +495,6 @@ func ctlCommand(args: [String]) {
         payload = ["id": 1, "cmd": "screenshot"]
     case "quit":
         payload = ["id": 1, "cmd": "quit"]
-    case "list":
-        // Read-only enumeration of running debug apps. No filesystem
-        // mutation: dead sockets are reported as dead but NOT unlinked.
-        // Use `swtui ctl reap` to clean those up.
-        ctlList(socketDirs: socketDirs)
-        return
-    case "reap":
-        // Unlink stale sockets whose owning PID is dead. Never sends
-        // `quit`. Live processes are always preserved. This is the
-        // verb automation calls; humans use `kill --pid <N>` when
-        // they know exactly what they're killing.
-        ctlReap(socketDirs: socketDirs)
-        return
-    case "kill":
-        // Send `quit` to a single explicit PID. The legacy `kill all`
-        // dragnet is gone — too easy to send `quit` to the user's
-        // live session by accident. Bare `kill` (no --pid) is a
-        // usage error that exits non-zero.
-        ctlKill(socketDirs: socketDirs, explicitPID: explicitPID, positional: positional)
-        return
     default:
         log.error("unknown ctl subcommand: \(subcommand)")
         printCtlUsage()
