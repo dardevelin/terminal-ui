@@ -145,6 +145,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A control client that hangs up no longer kills the app.** `swtui ctl kill`
+  sends its quit and disconnects without reading the reply; the reply then went
+  to a closed socket, SIGPIPE ended the app inside the write, and nothing
+  restored the terminal, which was left in raw mode with mouse tracking on.
+  Socket writes now pass `MSG_NOSIGNAL`, so a gone peer is an `EPIPE` the
+  server handles, and SIGPIPE stays the app's to decide.
 - **Scrolling no longer crashes debug builds.** The input task records each
   event's bytes in the dev trace while the render loop opens and closes frames
   on another thread, and both wrote one unguarded array — a burst of wheel

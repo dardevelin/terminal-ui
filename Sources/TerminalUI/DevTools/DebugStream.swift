@@ -730,7 +730,7 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
         guard var data = try? encoder.encode(value) else { return }
         data.append(0x0A) // newline
         let result = data.withUnsafeBytes { buf in
-            posixWrite(clientFd, buf.baseAddress!, buf.count)
+            socketWrite(clientFd, buf.baseAddress!, buf.count)
         }
         if result <= 0 {
             close(clientFd)

@@ -114,6 +114,25 @@ def storybook_arrow_navigation(app: Client) -> None:
     )
 
 
+def storybook_a_client_that_hangs_up_leaves_the_app_running(app: Client) -> None:
+    """A control client that sends a request and disconnects before the reply
+    leaves the app running, and its terminal intact. Regression: the reply
+    went to the closed socket, SIGPIPE ended the app inside the write, and
+    nothing restored the terminal — `swtui ctl kill` hangs up this way, so
+    every kill left the shell in raw mode with mouse tracking on."""
+    import socket as socketlib
+
+    for _ in range(3):
+        hang_up = socketlib.socket(socketlib.AF_UNIX, socketlib.SOCK_STREAM)
+        hang_up.connect(app._path)
+        hang_up.sendall(b'{"id": 1, "cmd": "query_tree"}\n')
+        hang_up.close()
+        # The server answers both connections in one pump, the closed one
+        # first; this ping is answered only if that reply did not end it.
+        app.ping()
+    assert_contains(app.cells(), "Storybook", "the app should still be drawing")
+
+
 def storybook_sidebar_order_matches_navigation(app: Client) -> None:
     """Walking Down through every page must visit each visible
     sidebar row in the same order the sidebar displays them.
@@ -1889,6 +1908,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
+    SmokeCase("storybook.a_client_that_hangs_up_leaves_the_app_running", "Storybook",
+              storybook_a_client_that_hangs_up_leaves_the_app_running),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),

@@ -51,6 +51,23 @@ internal func posixWrite(_ fd: Int32, _ buf: UnsafeRawPointer, _ count: Int) -> 
     #endif
 }
 
+/// `write` for a socket whose peer may already have gone. A plain `write` to
+/// a stream socket the peer closed raises SIGPIPE, and its default action
+/// ends the process inside the call: no handler runs, so the terminal stays
+/// in raw mode on the alternate screen with mouse tracking on. A client that
+/// hangs up before reading its reply is ordinary (`swtui ctl kill` does), so
+/// the failure has to come back as `EPIPE` instead. `MSG_NOSIGNAL` does that
+/// per call (POSIX.1-2008 `send`, defined by both Glibc and Darwin), without taking
+/// SIGPIPE away from the app that owns the process.
+@inline(__always)
+internal func socketWrite(_ fd: Int32, _ buf: UnsafeRawPointer, _ count: Int) -> Int {
+    #if canImport(Glibc)
+    return Glibc.send(fd, buf, count, Int32(MSG_NOSIGNAL))
+    #elseif canImport(Darwin)
+    return Darwin.send(fd, buf, count, MSG_NOSIGNAL)
+    #endif
+}
+
 /// Atomic flag set by SIGWINCH handler, polled by resize task.
 /// Atomic<Bool> is async-signal-safe and eliminates TOCTOU races
 /// between the signal handler (any thread) and the main loop polling.
