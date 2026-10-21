@@ -196,6 +196,24 @@ def storybook_focusable_rows_read_their_focus(app: Client) -> None:
                 f"Tab should move the mark to the second row: {preview!r}")
 
 
+def storybook_theme_switch_reaches_unchanged_views(app: Client) -> None:
+    """The `.environment(\\.theme)` page's swatch takes no inputs and draws
+    with the theme, so only the theme can change it. Regression: the update
+    walk skipped a view whose inputs compared equal and everything under it,
+    so a theme switched above it never reached it."""
+    app.goto_page(".environment(\\.theme)")
+    preview = app.preview_text()
+    assert_true("accent is cyan" in preview, f"the default theme's accent: {preview!r}")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key(" ")
+    assert_true(app.wait_until(lambda c: "accent is magenta" in c.preview_text(), timeout=1.0),
+                f"switching to the loud theme should reach the swatch: {app.preview_text()!r}")
+    app.send_key(" ")
+    assert_true(app.wait_until(lambda c: "accent is cyan" in c.preview_text(), timeout=1.0),
+                f"switching back should too: {app.preview_text()!r}")
+
+
 def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
@@ -1750,6 +1768,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
+    SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
     SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),

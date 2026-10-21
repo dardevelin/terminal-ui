@@ -634,13 +634,23 @@ empty, a placeholder — took four framework fixes, each on its own:
 Escape is the framework's dismiss-or-quit; in Crush it cancels the request in
 flight, so the demo binds it to a Cancel that has nothing to cancel yet.
 
+**L16. An environment change reaches every reader.** *(bug, found while
+building L15)*
+
+The update walk skips a view whose inputs compare equal, and with it everything
+below — so a theme switched above an unchanged view never reached it.
+`@TerminalEnvironment` now records, with each key a body reads, the value it
+read; a skipped view still re-runs its own body if one of those changed, and
+re-runs in place the bodies below it whose values changed, and no others. What
+a reader sees is worked out at the reader, through the modifiers between, so a
+`transformEnvironment` below the skip still applies. A copy of an unchanged
+value is its bytes, so most checks are a `memcmp` of the concrete value; only a
+real change pays the field-by-field compare. Storybook's
+`.environment(\.theme)` page switches themes live under a view that takes no
+inputs.
+
 ### Ledger — open
 
-- **Environment changes reach only some readers.** The update walk skips a
-  composite whose inputs are unchanged, so a value changed by an
-  `.environment` modifier above it — a theme switch — does not reach it.
-  Focus is invalidated through the reads `@TerminalEnvironment` now records;
-  other values are not yet. Verified by test, not yet fixed.
 - **The transcript does not follow its tail.** Crush opens on the latest
   message and keeps it in view as entries arrive, until the reader scrolls
   away. `.scrollPosition(id:)` re-applies its target on every render, which

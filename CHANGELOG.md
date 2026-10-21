@@ -116,6 +116,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An environment change reaches views whose inputs did not change.** The
+  update walk skips a view whose inputs compare equal, and everything under it —
+  so a theme switched by `.environment(\.theme, …)` above an unchanged view never
+  reached the views below. `@TerminalEnvironment` now records the value each
+  body read, and the bodies whose values changed run again, wherever they sit
+  under the skipped view; the others still do not.
 - **A view can read whether it holds focus.** `isFocused` and `focusedID` were
   documented environment values that nothing ever set, so no view could tell
   whether keys would reach it. A `.focusable()` view's content now reads
