@@ -40,12 +40,13 @@ struct SplitViewTests {
     @Test("SplitAxis is exhaustive — .horizontal and .vertical")
     func splitAxisIsExhaustive() {
         // Compile-only check: switch must be exhaustive for SW-TYPE-ENUM-STATE.
-        let axis: SplitAxis = .horizontal
-        switch axis {
-        case .horizontal:
-            #expect(true)
-        case .vertical:
-            #expect(true)
+        for axis in [SplitAxis.horizontal, .vertical] {
+            switch axis {
+            case .horizontal:
+                #expect(true)
+            case .vertical:
+                #expect(true)
+            }
         }
     }
 

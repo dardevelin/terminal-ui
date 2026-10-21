@@ -34,7 +34,7 @@ struct GraphContextIsolationTests {
         // Pre-condition: outside the scope, no node bound.
         #expect(GraphContext.currentNode == nil)
 
-        await GraphContext.$currentNode.withValue(node) {
+        GraphContext.$currentNode.withValue(node) {
             #expect(GraphContext.currentNode === node,
                     "currentNode must be the bound node inside withValue")
         }
@@ -81,9 +81,9 @@ struct GraphContextIsolationTests {
         let outer = AttributeNode(id: NodeID.root, kind: .primitive(.empty))
         let inner = AttributeNode(id: NodeID.root.appending(.index(0)), kind: .primitive(.empty))
 
-        await GraphContext.$currentNode.withValue(outer) {
+        GraphContext.$currentNode.withValue(outer) {
             #expect(GraphContext.currentNode === outer)
-            await GraphContext.$currentNode.withValue(inner) {
+            GraphContext.$currentNode.withValue(inner) {
                 #expect(GraphContext.currentNode === inner,
                         "Inner scope shadows outer binding")
             }

@@ -84,8 +84,6 @@ struct PasteRoutingTests {
 
     @Test("Focused node without .onPaste → drop on the floor")
     func focusedButNoPasteHandler() {
-        var text = ""
-        let binding = Binding(get: { text }, set: { text = $0 })
         // TextInput is focusable but has its own .onPaste; wrap a plain
         // .focusable() to prove the no-handler fallback path.
         let view = Text("typing").focusable()
@@ -94,7 +92,6 @@ struct PasteRoutingTests {
         let claimed = engine.routePasteEvent("ignored", root: graph.root)
 
         #expect(!claimed, "focusable without .onPaste → no claim")
-        #expect(text == "", "binding stays untouched")
     }
 }
 
