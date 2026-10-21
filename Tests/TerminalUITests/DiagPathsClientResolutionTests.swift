@@ -25,7 +25,7 @@ struct DiagPathsClientResolutionTests {
         let remote = "\(root)/terminalui-\(DiagPaths.cwdHash)-\(pid)/remote"
         try FileManager.default.createDirectory(atPath: remote, withIntermediateDirectories: true)
         for name in sockets {
-            FileManager.default.createFile(atPath: "\(remote)/\(name)", contents: Data())
+            #expect(FileManager.default.createFile(atPath: "\(remote)/\(name)", contents: Data()))
         }
         return remote
     }
