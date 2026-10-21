@@ -59,10 +59,10 @@ public enum TextInputAxis: Sendable, Equatable {
 /// An editable single-line text field with insertion-index cursor.
 ///
 /// Renders as one terminal row: an optional dim prompt, then the value with
-/// the cursor glyph (`│`) at the insertion point. When the value outgrows
-/// the available width, a virtual window slides over it — and only when the
-/// cursor would clip an edge, so arrowing around mid-buffer does not
-/// recentre the view. Left/Right move the cursor by one character clamped
+/// the cursor glyph (`│`) at the insertion point while the field holds
+/// focus. When the value outgrows the available width, a virtual window
+/// slides over it — and only when the cursor would clip an edge, so
+/// arrowing around mid-buffer does not recentre the view. Left/Right move the cursor by one character clamped
 /// to `[0, value.count]`; Home/End jump to the extremes. Character
 /// insertion + backspace operate at the cursor index, not the tail.
 ///
@@ -252,14 +252,15 @@ public struct TextInput: TerminalView {
                 // `composeSpans` reserves its own cell for the cursor glyph;
                 // rect-clip keeps any residual writes inside the rect.
                 let available = max(1, width - prompt.count)
-                return Text(spans: composeSpans(
+                let composed = composeSpans(
                     value: value,
                     cursor: resolvedCursor,
                     showPlaceholder: showPlaceholder,
                     maxValueWidth: available,
                     mode: mode,
                     axis: axis,
-                    windowStart: windowStartBinding))
+                    windowStart: windowStartBinding)
+                return TextInputRow(spans: composed.spans, caret: composed.caret)
                     .focusable()
                     .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] event in
                         Self.handleKey(event,
@@ -507,26 +508,31 @@ public struct TextInput: TerminalView {
     ///
     /// - `axis == .vertical` with clip/truncation modes: still
     ///   single-row (clipping is inherently single-line).
+    ///
+    /// `caret` is the index in `spans` of the cursor glyph's own span, which
+    /// the row drops while the field does not hold focus.
     private func composeSpans(value: String, cursor: Int,
                                showPlaceholder: Bool,
                                maxValueWidth: Int,
                                mode: LineBreakMode,
                                axis: TextInputAxis,
-                               windowStart: Binding<Int>) -> [TextSpan] {
+                               windowStart: Binding<Int>) -> (spans: [TextSpan], caret: Int?) {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
             spans.append(TextSpan(prompt, foreground: .gray))
         }
         if showPlaceholder {
             // When field is empty, cursor at left then placeholder clipped to fit.
+            let caret = spans.count
             spans.append(TextSpan("│", foreground: .default))
             let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
             spans.append(TextSpan(clipped, foreground: .gray))
-            return spans
+            return (spans, caret)
         }
         if value.isEmpty {
+            let caret = spans.count
             spans.append(TextSpan("│", foreground: .default))
-            return spans
+            return (spans, caret)
         }
         // Reserve 1 cell for the cursor glyph so the visible value
         // fits in `valueRoom` cells.
@@ -545,11 +551,10 @@ public struct TextInput: TerminalView {
                 for (i, chunk) in chunks.enumerated() {
                     if i > 0 { spans.append(TextSpan("\n")) }
                     spans.append(TextSpan(chunk))
-                    if i == chunks.count - 1 {
-                        spans.append(TextSpan("│"))
-                    }
                 }
-                return spans
+                let caret = spans.count
+                spans.append(TextSpan("│"))
+                return (spans, caret)
             case .byClipping, .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
                 // Fall through to single-row path below — clipping
                 // and truncation are inherently single-line.
@@ -576,9 +581,10 @@ public struct TextInput: TerminalView {
             if result.windowStart != windowStart.get() {
                 windowStart.set(result.windowStart)
             }
-            Self.appendWithCursor(into: &spans,
-                                   text: result.visible,
-                                   cursorIndex: result.cursorOffset)
+            let caret = Self.appendWithCursor(into: &spans,
+                                              text: result.visible,
+                                              cursorIndex: result.cursorOffset)
+            return (spans, caret)
         case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
             // Truncation modes: apply to fit the value into
             // `valueRoom`, then drop the cursor at the matching
@@ -588,11 +594,11 @@ public struct TextInput: TerminalView {
             // one — which is a HIG-acceptable trade-off.
             let visible = mode.apply(to: value, width: valueRoom)
             let visibleCursor = min(cursor, visible.count)
-            Self.appendWithCursor(into: &spans,
-                                   text: visible,
-                                   cursorIndex: visibleCursor)
+            let caret = Self.appendWithCursor(into: &spans,
+                                              text: visible,
+                                              cursorIndex: visibleCursor)
+            return (spans, caret)
         }
-        return spans
     }
 
     /// Slide a fixed-width window of `room` chars over `value` so
@@ -663,13 +669,14 @@ public struct TextInput: TerminalView {
     /// Emit `text` as a span, inserting the cursor glyph `│` at
     /// `cursorIndex` (an offset within `text`). Splits the run when
     /// the cursor is mid-buffer; appends the glyph at the tail
-    /// otherwise.
-    static func appendWithCursor(into spans: inout [TextSpan], text: String, cursorIndex: Int) {
+    /// otherwise. Returns the index of the glyph's span.
+    @discardableResult
+    static func appendWithCursor(into spans: inout [TextSpan], text: String, cursorIndex: Int) -> Int {
         let clamped = max(0, min(cursorIndex, text.count))
         if clamped >= text.count {
             spans.append(TextSpan(text))
             spans.append(TextSpan("│"))
-            return
+            return spans.count - 1
         }
         let splitIdx = text.index(text.startIndex, offsetBy: clamped)
         let head = String(text[text.startIndex..<splitIdx])
@@ -677,9 +684,31 @@ public struct TextInput: TerminalView {
         if !head.isEmpty {
             spans.append(TextSpan(head))
         }
+        let caret = spans.count
         spans.append(TextSpan("│"))
         if !tail.isEmpty {
             spans.append(TextSpan(tail))
         }
+        return caret
+    }
+}
+
+/// A text field's row, drawn as a view of its own under the field's
+/// focusable so it can ask whether it holds focus — `isFocused` reports to
+/// the content below the focusable — and drop the caret while it does not.
+/// Handed the composed spans, not the bindings, for the reason `PromptRows`
+/// gives.
+struct TextInputRow: TerminalView {
+    let spans: [TextSpan]
+    let caret: Int?
+
+    @TerminalEnvironment(\.isFocused) var isFocused
+
+    var body: some TerminalView {
+        var visible = spans
+        if !isFocused, let caret {
+            visible.remove(at: caret)
+        }
+        return Text(spans: visible)
     }
 }

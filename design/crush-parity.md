@@ -665,13 +665,18 @@ element left the cached sizes above it in place, and a scroll view sizes its
 content by measuring it — the appended message was laid out and never drawn.
 Every structural change now invalidates the measurements above it.
 
+**L18. Every text field draws its cursor only while focused.** *(bug, found
+in L15)*
+
+`TextInput` and `TextArea` had the cursor defect `PromptInput` had, and took
+the same fix: their rows became a view of their own under the focusable,
+handed values, drawing the cursor only while focused.
+
 ### Ledger — open
 
 - **`.scrollPosition(id:)` takes a value, not a binding.** It re-applies its
   target every frame, so a reader cannot scroll away from it; SwiftUI's is
   two-way, and a user scroll writes back. Nothing in the demo needs it yet.
-- **`TextInput` and `TextArea` draw their cursor without focus** — the defect
-  `PromptInput` had; the fix is the same, and nothing in the demo uses them yet.
 - **G1 remainder — the literal-drawing components** listed in L4, less
   `DiffView` (L8) and `PromptInput` (L15): `TabView`, `TreeView`,
   `HunkDiffView`, `StatusBar`. (`ScrollView`'s indicators done in L10.)
