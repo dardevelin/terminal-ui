@@ -1,0 +1,39 @@
+#if canImport(Glibc)
+import Glibc
+#else
+import Darwin
+#endif
+import Testing
+@testable import TerminalUI
+
+// Quitting writes one byte to the shutdown pipe to wake the input task, and
+// the runtime then waits for that task before it closes the pipe. The task
+// may be part-way through an escape sequence whose parser retries on nil, so
+// the wake has to hold for every read that follows, not only the first: the
+// byte stays in the pipe. Reading it away left each retry waiting out a full
+// 100ms poll of stdin.
+
+@Suite("A shutdown wake holds for every read that follows")
+struct ShutdownWakeTests {
+
+    @Test func everyReadAfterTheWakeReturnsNilAtOnce() {
+        var pipeFDs: [Int32] = [-1, -1]
+        #expect(pipe(&pipeFDs) == 0)
+        defer {
+            StdinByteSource.shutdownReadFD = nil
+            close(pipeFDs[0])
+            close(pipeFDs[1])
+        }
+        StdinByteSource.shutdownReadFD = pipeFDs[0]
+        var wake: UInt8 = 1
+        #expect(write(pipeFDs[1], &wake, 1) == 1)
+
+        var source = StdinByteSource()
+        for _ in 0..<5 {
+            #expect(source.readByte() == nil)
+        }
+
+        var stillWaking = pollfd(fd: pipeFDs[0], events: Int16(POLLIN), revents: 0)
+        #expect(poll(&stillWaking, 1, 0) == 1, "the wake byte must stay in the pipe")
+    }
+}
