@@ -111,12 +111,13 @@ fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the
 runner default ships Swift 6.1 and the manifest requires 6.2.
 
-**Thread Sanitizer** (the commands above) catches what a crash-based test
-only sometimes does: the trace recorder's race crashed one smoke run in three,
-and TSan reports it on every run. It is not a CI gate yet, because the SIGTERM
-handler restores the terminal from inside the handler: under TSan, a SIGTERM
-that lands while the app is in `free` aborts in TSan's own lock, which fails
-one or two teardowns per smoke run.
+A third CI job runs `swift test` and the smoke suite against a **Thread
+Sanitizer** build. It catches what a crash-based test only sometimes does: the
+trace recorder's race crashed one smoke run in three, and TSan reports it on
+every run. Signal handlers must be installed with `sigaction` (see
+`installSignalDisposition` in Terminal.swift), never `signal()`: TSan
+intercepts only `sigaction`, and a handler it does not know about runs inside
+whatever the thread was doing — in `free`, it aborted on TSan's own lock.
 
 **Every app the harness spawns is checked on the way out**, in
 `tools/terminalui/runner.py`: a case fails, even with every assertion green,
