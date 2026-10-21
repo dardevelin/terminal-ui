@@ -13,7 +13,7 @@ import Testing
 // byte stays in the pipe. Reading it away left each retry waiting out a full
 // 100ms poll of stdin.
 
-@Suite("A shutdown wake holds for every read that follows")
+@Suite("A shutdown wake holds for every read that follows", .serialized)
 struct ShutdownWakeTests {
 
     @Test func everyReadAfterTheWakeReturnsNilAtOnce() {
@@ -35,5 +35,27 @@ struct ShutdownWakeTests {
 
         var stillWaking = pollfd(fd: pipeFDs[0], events: Int16(POLLIN), revents: 0)
         #expect(poll(&stillWaking, 1, 0) == 1, "the wake byte must stay in the pipe")
+    }
+
+    // A hang-up part-way through an escape sequence ends the read early, and
+    // the parser makes a key of what it had: one nobody pressed. The read
+    // says the terminal hung up, so the input task drops that key.
+    @Test func aReadThatFindsTheTerminalHungUpSaysSo() throws {
+        var pipeFDs: [Int32] = [-1, -1]
+        #expect(pipe(&pipeFDs) == 0)
+        let terminal = try #require(PseudoTerminal())
+        defer {
+            StdinByteSource.shutdownReadFD = nil
+            StdinByteSource.inputHungUp = false
+            terminal.closeReplica()
+            close(pipeFDs[0])
+            close(pipeFDs[1])
+        }
+        StdinByteSource.shutdownReadFD = pipeFDs[0]
+        terminal.hangUp()
+
+        var source = StdinByteSource(input: terminal.replica)
+        #expect(source.readByte() == nil)
+        #expect(StdinByteSource.inputHungUp)
     }
 }

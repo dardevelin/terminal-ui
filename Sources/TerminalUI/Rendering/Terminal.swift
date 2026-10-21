@@ -130,11 +130,18 @@ private let _terminationSignal = Atomic<Int32>(0)
 /// async-signal-safe, and most of it is not. A second signal, or one with no
 /// runtime to ask, restores the terminal and dies at once: an app that does
 /// not answer must still be stoppable.
+/// Records `signum` as the reason to quit unless one is recorded already:
+/// the first signal, or hang-up, wins. A lock-free compare-and-swap, so a
+/// signal handler may call it.
+private func claimTermination(_ signum: Int32) -> Bool {
+    _terminationSignal.compareExchange(expected: 0, desired: signum,
+                                       ordering: .acquiringAndReleasing).exchanged
+}
+
 @_cdecl("_terminalSignalHandler")
 internal func _terminalSignalHandler(signum: Int32) {
     let wakeFD = _terminateWakeFD.load(ordering: .acquiring)
-    if wakeFD >= 0,
-       _terminationSignal.compareExchange(expected: 0, desired: signum, ordering: .acquiringAndReleasing).exchanged {
+    if wakeFD >= 0, claimTermination(signum) {
         // The interrupted code may be about to read errno.
         let savedErrno = errno
         SelfPipe.signal(writeEnd: wakeFD)
@@ -565,17 +572,33 @@ public enum Terminal {
         return signum == 0 ? nil : signum
     }
 
-    /// Die of the signal the runtime quit for, now that it has torn down:
-    /// the parent sees 143 for SIGTERM, as it would have before. Does
-    /// nothing when no signal asked.
-    static func endIfTerminatedBySignal() {
-        guard let signum = terminationSignal else { return }
+    /// Record that the terminal hung up, as its SIGHUP would have: the kernel
+    /// signals only a terminal's controlling process, so an app started
+    /// without one — under a harness, a multiplexer's detached pane — hears
+    /// of it from its input alone. A signal already recorded stands.
+    static func recordHangUp() {
+        _ = claimTermination(SIGHUP)
+    }
+
+    /// Die of `signum`, now that the runtime has torn down, so the parent
+    /// sees it — 143 for SIGTERM — as it would have without the runtime.
+    static func end(bySignal signum: Int32) -> Never {
         installSignalDisposition(signum, SIG_DFL)
+        // `raise` sends to the calling thread, and the thread `main()` resumes
+        // on may block the signals the app handles — on Linux it does, and
+        // the signal stayed pending while the process exited 0.
+        var unblocked = sigset_t()
+        sigemptyset(&unblocked)
+        sigaddset(&unblocked, signum)
+        pthread_sigmask(SIG_UNBLOCK, &unblocked, nil)
         #if canImport(Darwin)
         _ = Darwin.raise(signum)
         #elseif canImport(Glibc)
         _ = Glibc.raise(signum)
         #endif
+        // Reached only if the signal is blocked on this thread: the status a
+        // shell reports for death by signal (POSIX `sh`, Exit Status).
+        exit(128 + signum)
     }
 
     #if DEBUG

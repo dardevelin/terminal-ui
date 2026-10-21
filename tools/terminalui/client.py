@@ -208,6 +208,9 @@ class Client:
         # Set by the runner: waits up to the given seconds for the app to
         # exit and returns its status, or None if it is still running.
         self.wait_for_exit: Callable[[float], Optional[int]] = lambda _timeout: None
+        # Set by the runner: closes the app's terminal, as closing its window
+        # does. Nothing more is read from it afterwards.
+        self.hang_up: Callable[[], None] = lambda: None
 
     # -- connection --
 
@@ -307,6 +310,11 @@ class Client:
         The runner calls this after spawn; tests invoking ``Client``
         without the runner (rare) can pass their own FD."""
         self._master_fd = master_fd
+
+    def forget_pty(self) -> None:
+        """Drop the master FD once the terminal has hung up: its number may
+        already belong to another file."""
+        self._master_fd = None
 
     def paste(self, text: str) -> None:
         """Simulate a bracketed-paste at the OS level by writing

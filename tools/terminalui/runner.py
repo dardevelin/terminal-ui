@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import pty
+import select
 import shutil
 import signal
 import subprocess
@@ -215,10 +216,22 @@ def spawn_and_connect(target: str,
     # crashing app leaves it in.
     output = bytearray()
     output_lock = threading.Lock()
+    # Closing the master hangs the terminal up, as closing its window does.
+    # Only the drain thread closes it, between reads: closed under a read in
+    # progress, the descriptor number could be reused by the next open and
+    # the read would land in someone else's file. A byte on this pipe asks it
+    # to, and wakes it from a quiet terminal.
+    hang_up_read, hang_up_write = os.pipe()
+    hung_up = threading.Event()
 
     def _drain(fd: int) -> None:
         try:
             while True:
+                readable, _, _ = select.select([fd, hang_up_read], [], [])
+                if hang_up_read in readable:
+                    os.close(fd)
+                    hung_up.set()
+                    return
                 data = os.read(fd, 4096)
                 if not data:
                     return
@@ -226,6 +239,23 @@ def spawn_and_connect(target: str,
                     output.extend(data)
         except OSError:
             return
+
+    def _hang_up() -> None:
+        os.write(hang_up_write, b"\x00")
+        if not hung_up.wait(timeout=2.0):
+            raise RuntimeError("the PTY master was not closed")
+        client.forget_pty()
+
+    def _release_master() -> None:
+        # Mouse reporting off before the close, or the bytes are dropped.
+        if not hung_up.is_set():
+            _post_pty_cleanup(master)
+            try:
+                os.close(master)
+            except OSError:
+                pass
+        os.close(hang_up_read)
+        os.close(hang_up_write)
 
     def _output() -> bytes:
         with output_lock:
@@ -253,6 +283,7 @@ def spawn_and_connect(target: str,
         client.attach_pty(master)
         client.pid = proc.pid
         client.pty_output = _output
+        client.hang_up = _hang_up
 
         def _wait_for_exit(timeout: float) -> Optional[int]:
             try:
@@ -267,23 +298,17 @@ def spawn_and_connect(target: str,
     finally:
         if client is not None:
             client.close()
-        # Post mouse-mode disable BEFORE closing the master FD so the
-        # bytes actually reach the kernel buffer. Order matters: close
-        # first and the write is silently dropped.
-        _post_pty_cleanup(master)
         if client is not None and client.expected_exit_signal is not None:
             try:
                 proc.wait(timeout=_EXPECTED_DEATH_TIMEOUT)
             except subprocess.TimeoutExpired:
                 pass
-        had_to_kill = _terminate(proc)
+        stop = _terminate(proc)
+        had_to_kill = stop == _KILLED
         # The child's exit closes the last slave descriptor, so the drain
         # reads to the end of what the app wrote and then stops.
         drain_thread.join(timeout=2.0)
-        try:
-            os.close(master)
-        except OSError:
-            pass
+        _release_master()
         sanitizer_reports = _read_sanitizer_reports(sanitizer_dir)
         shutil.rmtree(sanitizer_dir, ignore_errors=True)
         # An app asked to stop — SIGTERM, how this runner ends every app —
@@ -300,10 +325,12 @@ def spawn_and_connect(target: str,
             problems = _exit_problems(
                 returncode=proc.returncode,
                 had_to_kill=had_to_kill,
+                stopped_by_sigterm=stop == _STOPPED,
                 output=_output(),
                 sanitizer_reports=sanitizer_reports,
                 expected_signal=client.expected_exit_signal,
                 leftover_dir=leftover_dir,
+                terminal_gone=hung_up.is_set(),
             )
             if problems:
                 raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
@@ -318,10 +345,12 @@ def _signal_name(signum: int) -> str:
 
 def _exit_problems(returncode: Optional[int],
                    had_to_kill: bool,
+                   stopped_by_sigterm: bool,
                    output: bytes,
                    sanitizer_reports: list[str],
                    expected_signal: Optional[int],
-                   leftover_dir: Optional[str] = None) -> list[str]:
+                   leftover_dir: Optional[str] = None,
+                   terminal_gone: bool = False) -> list[str]:
     """Everything wrong with how an app ended, as sentences for a case
     failure; empty when it ended cleanly."""
     problems: list[str] = []
@@ -345,16 +374,26 @@ def _exit_problems(returncode: Optional[int],
             problems.append(f"crashed on {_signal_name(-returncode)}")
     elif returncode != 0:
         problems.append(f"exited with status {returncode}")
-    # Stopped or quit, the app tears down; only a crash leaves its dir.
-    if leftover_dir is not None and expected_signal is None and not had_to_kill and (
+    elif stopped_by_sigterm:
+        # It tore down, then exited 0 rather than dying of the signal, so its
+        # parent cannot tell it was stopped. On Linux the re-raised signal
+        # stayed pending on a thread that blocked it.
+        problems.append("exited 0 on SIGTERM instead of dying by it")
+    # Stopped or quit, the app tears down — on purpose too, as when a case
+    # hangs its terminal up; only a crash leaves its dir.
+    stop_expected = expected_signal is None or expected_signal in _STOP_SIGNALS
+    if leftover_dir is not None and stop_expected and not had_to_kill and (
             returncode == 0 or (returncode is not None and -returncode in _STOP_SIGNALS)):
         problems.append(f"left its data dir {leftover_dir}")
 
-    for mode, on in _MODES_TO_RESTORE.items():
-        off = b"l" if on == b"h" else b"h"
-        turned_on = output.rfind(b"\x1b[?%d" % mode + on)
-        if turned_on > output.rfind(b"\x1b[?%d" % mode + off):
-            problems.append(f"left DEC mode {mode} {'on' if on == b'h' else 'off'}")
+    # After a hang-up there is no terminal to restore, and what the app wrote
+    # to it on the way out was never read.
+    if not terminal_gone:
+        for mode, on in _MODES_TO_RESTORE.items():
+            off = b"l" if on == b"h" else b"h"
+            turned_on = output.rfind(b"\x1b[?%d" % mode + on)
+            if turned_on > output.rfind(b"\x1b[?%d" % mode + off):
+                problems.append(f"left DEC mode {mode} {'on' if on == b'h' else 'off'}")
 
     for summary in sanitizer_reports:
         if expected_report is None or expected_report not in summary:
@@ -419,26 +458,33 @@ def _wait_for_client(pid: int,
     return client
 
 
-def _terminate(proc: subprocess.Popen, grace: float = 2.0) -> bool:
-    """Stop the app, and say whether it had to be killed. The grace is
-    generous because a sanitized build exits slowly, and an app that takes
-    it all is reported, not just stopped."""
+# How an app came to stop, as `_terminate` saw it.
+_ENDED_ON_ITS_OWN = "ended on its own"
+_STOPPED = "stopped by SIGTERM"
+_KILLED = "killed"
+
+
+def _terminate(proc: subprocess.Popen, grace: float = 2.0) -> str:
+    """Stop the app, and say how it came to stop: on its own before it was
+    asked, on SIGTERM, or only on SIGKILL. The grace is generous because a
+    sanitized build exits slowly, and an app that takes it all is reported,
+    not just stopped."""
     if proc.poll() is not None:
-        return False
+        return _ENDED_ON_ITS_OWN
     # Polite shutdown first; some apps drain their debug trace buffers on
     # SIGTERM. Escalate to SIGKILL if the app ignores us.
     try:
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     except ProcessLookupError:
         proc.wait()
-        return False
+        return _ENDED_ON_ITS_OWN
     try:
         proc.wait(timeout=grace)
-        return False
+        return _STOPPED
     except subprocess.TimeoutExpired:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         except ProcessLookupError:
             pass
         proc.wait(timeout=grace)
-        return True
+        return _KILLED

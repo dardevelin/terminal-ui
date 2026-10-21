@@ -66,7 +66,7 @@ struct IdleWakeTests {
     }
 }
 
-@Suite("The input task blocks until there is input, a resize or a shutdown")
+@Suite("The input task blocks until there is input, a resize, a hang-up or a shutdown")
 struct InputActivityTests {
 
     private struct Pipes {
@@ -82,8 +82,8 @@ struct InputActivityTests {
             shutdown = try SelfPipe()
         }
 
-        func wait() -> InputActivity {
-            StdinByteSource.waitForActivity(input: input.read, resize: resize.read,
+        func wait(input: Int32? = nil) -> InputActivity {
+            StdinByteSource.waitForActivity(input: input ?? self.input.read, resize: resize.read,
                                             terminate: terminate.read, shutdown: shutdown.read)
         }
 
@@ -93,6 +93,30 @@ struct InputActivityTests {
             terminate.close()
             shutdown.close()
         }
+    }
+
+    // macOS reports a hung-up terminal readable as well as hung up, and a
+    // read of it returns nothing: taken for input, it woke the task at once,
+    // forever.
+    @Test func aHungUpTerminalIsAHangUpNotInput() throws {
+        let pipes = try Pipes()
+        defer { pipes.close() }
+        let terminal = try #require(PseudoTerminal())
+        defer { terminal.closeReplica() }
+        terminal.hangUp()
+        #expect(pipes.wait(input: terminal.replica) == .hangUp)
+    }
+
+    @Test func aLiveTerminalWithALineToReadIsInput() throws {
+        let pipes = try Pipes()
+        defer { pipes.close() }
+        let terminal = try #require(PseudoTerminal())
+        defer {
+            terminal.hangUp()
+            terminal.closeReplica()
+        }
+        terminal.typeLine("x")
+        #expect(pipes.wait(input: terminal.replica) == .input)
     }
 
     @Test func withNothingToReadItWaitsPastAnyTimeout() async throws {
