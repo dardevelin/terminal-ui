@@ -161,6 +161,11 @@ public class AttributeNode: @unchecked Sendable {
     /// Positive values scroll content left (horizontal) or up (vertical).
     public var scrollOffset: Int = 0
 
+    /// The offset a `.defaultScrollAnchor(_:)` put this scroll node at on the
+    /// last render, nil before one has. While the offset is still there, the
+    /// reader has not scrolled away from the anchor.
+    var scrollAnchoredOffset: Int?
+
     /// How far the scroll content actually *draws* along its axis, as opposed
     /// to how tall it declares itself. Stamped each render, nil until then.
     ///

@@ -66,6 +66,10 @@ public struct EnvironmentValues: Sendable {
     /// Glyphs `ScrollView` draws its scrollbar with. Default `.thin`. Set via
     /// `.scrollbarStyle(_:)`; colour comes from ``theme``.
     public var scrollbarStyle: ScrollbarStyle = .thin
+    /// Where enclosed `ScrollView`s open, and what they keep in view as their
+    /// content changes size. Default `nil` opens at the start and leaves the
+    /// offset alone. Set via `.defaultScrollAnchor(_:)`.
+    public var scrollAnchor: Alignment? = nil
     /// Lexers by language name, for every view that is handed a language.
     /// Extend with `.syntaxHighlighter(_:for:)`; Swift is registered as
     /// standard.

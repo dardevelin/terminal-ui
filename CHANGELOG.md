@@ -8,6 +8,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`.defaultScrollAnchor(_:)`** — where enclosed `ScrollView`s open, and what
+  they keep in view as their content changes size. `.bottom` is a transcript's
+  tail: it opens on the latest entry and follows new ones in; scroll away and it
+  stays where it was left, scroll back to the end and it follows again. SwiftUI's
+  name and meaning, with `Alignment` in place of `UnitPoint`.
+
 - **`PromptPrefix` and `.promptPrefix(_:)`** — replace a `PromptInput`'s prompt
   glyph with a column drawn per row and for focus, such as Crush's composer:
   `>` on the first row while focused, `:::` on the rest. Every row's prefix is

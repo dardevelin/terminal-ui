@@ -214,6 +214,20 @@ def storybook_theme_switch_reaches_unchanged_views(app: Client) -> None:
                 f"switching back should too: {app.preview_text()!r}")
 
 
+def storybook_anchored_scroll_follows_its_tail(app: Client) -> None:
+    """The `.defaultScrollAnchor` page's log opens on its last line and keeps
+    the newest in view as lines are appended."""
+    app.goto_page(".defaultScrollAnchor")
+    preview = app.preview_text()
+    assert_true("line 12" in preview and "line 1 " not in preview,
+                f"the log should open on its tail: {preview!r}")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    assert_true(app.wait_until(lambda c: "line 13" in c.preview_text(), timeout=1.0),
+                f"an appended line should come into view: {app.preview_text()!r}")
+
+
 def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
@@ -1644,14 +1658,15 @@ CODER_DIFF_FIRST = "private var previousBuffer: CellBuffer?"
 
 
 def _coder_scroll_until(app: Client, needle: str, what: str, *also: str) -> str:
-    """Wheel the transcript down until `needle` — and every string in `also`
-    — is on screen, and return the frame text. Waiting for everything a case
-    asserts on, rather than for one line and assuming its neighbours came
-    with it, keeps a one-row shift in wrapping from turning into a false
-    failure. Stops when the frame stops changing — the transcript's end."""
+    """Wheel the transcript back from its tail, where it opens, until
+    `needle` — and every string in `also` — is on screen, and return the
+    frame text. Waiting for everything a case asserts on, rather than for one
+    line and assuming its neighbours came with it, keeps a one-row shift in
+    wrapping from turning into a false failure. Stops when the frame stops
+    changing — the transcript's start."""
     text = app.cells().text()
     while not all(part in text for part in (needle, *also)):
-        app.mouse_wheel("down", *CODER_TRANSCRIPT_POINT)
+        app.mouse_wheel("up", *CODER_TRANSCRIPT_POINT)
         app.wait_for_frame(1, timeout=0.5)
         after = app.cells().text()
         if after == text:
@@ -1669,10 +1684,15 @@ def _coder_scroll_to_edit_card(app: Client) -> str:
 
 def coder_renders(app: Client) -> None:
     """Boots into the shell: wordmark, a user message, a tool card."""
-    full = app.cells().text()
-    assert_true("CODER" in full, "expected the wordmark in the header")
-    assert_true("You" in full, "expected the user's message in the transcript")
-    assert_true("Read" in full, "expected the Read tool card")
+    assert_true("CODER" in app.cells().text(), "expected the wordmark in the header")
+    _coder_scroll_until(app, "You", "the user's message", "Read")
+
+
+def coder_opens_on_the_latest_entry(app: Client) -> None:
+    """The transcript opens on its tail — the pending Bash card — as Crush's
+    does, with nothing scrolled."""
+    assert_true("Waiting for tool response" in app.cells().text(),
+                "the latest entry should be on screen at boot")
 
 
 def coder_typing_reaches_the_prompt(app: Client) -> None:
@@ -1693,8 +1713,8 @@ def coder_enter_sends_the_draft(app: Client) -> None:
     which shows its placeholder again."""
     app.send_text("lands at the end")
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
-    _coder_scroll_until(app, "lands at the end", "the sent message")
+    assert_true(app.wait_until(lambda c: "lands at the end" in c.cells().text(), timeout=1.0),
+                "the sent message should come into view with nothing scrolled")
     assert_true("Ask anything" in app.cells().text(), "the composer empties after sending")
 
 
@@ -1727,7 +1747,7 @@ def coder_transcript_diff_takes_no_keys(app: Client) -> None:
 def coder_reply_keeps_heading_markers_and_chips_code(app: Client) -> None:
     """The transcript draws replies in the demo's markdown style: headings
     keep their `##` marker, and inline code is padded into a chip."""
-    text = app.cells().text()
+    text = _coder_scroll_until(app, "## The fix", "the reply's heading", " previousBuffer  to signal")
     assert_true("## The fix" in text, "expected the heading drawn with its marker")
     assert_true(" previousBuffer  to signal" in text, "expected inline code padded as a chip")
 
@@ -1735,7 +1755,7 @@ def coder_reply_keeps_heading_markers_and_chips_code(app: Client) -> None:
 def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
     """A Read result shows the file text itself, numbered from where the
     read started rather than from one, and capped like any tool result."""
-    text = app.cells().text()
+    text = _coder_scroll_until(app, "/// Compute the bytes", "the Read excerpt", "… (5 lines hidden)")
     rows = text.splitlines()
     first = next((row for row in rows if "/// Compute the bytes" in row), None)
     assert_true(first is not None, "expected the excerpt's first line")
@@ -1769,6 +1789,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),
+    SmokeCase("storybook.anchored_scroll_follows_its_tail", "Storybook", storybook_anchored_scroll_follows_its_tail),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),
     SmokeCase("storybook.toggle_alternates_state", "Storybook", storybook_toggle_alternates_state),
@@ -1848,6 +1869,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
+    SmokeCase("coder.opens_on_the_latest_entry", "Coder", coder_opens_on_the_latest_entry),
     SmokeCase("coder.enter_sends_the_draft", "Coder", coder_enter_sends_the_draft),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),
     SmokeCase("coder.transcript_diff_takes_no_keys", "Coder", coder_transcript_diff_takes_no_keys),

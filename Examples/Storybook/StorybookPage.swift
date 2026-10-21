@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -724,6 +724,17 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
                 var quiet = ScrollbarStyle.thin
                 quiet.edgeMarkers = nil   // keep the bar, drop ▲ ▼
+                """)
+        case .defaultScrollAnchor: return PageInfo(id: self, category: .modifiers, name: ".defaultScrollAnchor",
+            summary: "Where a ScrollView opens, and what it keeps in view as its content changes size. .bottom is a transcript's tail: it opens on the latest line and follows new ones in. Scroll away and it stays where you left it while lines arrive; scroll back to the end and it follows again.",
+            code: """
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(lines, id: \\.self) { Text($0) }
+                    }
+                }
+                .defaultScrollAnchor(.bottom)
+                .frame(height: 5)
                 """)
         case .syntaxHighlighter: return PageInfo(id: self, category: .modifiers, name: ".syntaxHighlighter",
             summary: "Register a lexer for a language. Every view handed that language — CodeView, MarkdownView fences — uses it. Adds to the lexers inherited from above: Swift stays highlighted beside the new one.",

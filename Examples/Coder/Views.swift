@@ -91,7 +91,9 @@ struct Transcript: TerminalView {
 
     var body: some TerminalView {
         // The scroll view spans the column, so its bar sits at the column's
-        // edge; the entries inside stop at a readable width.
+        // edge; the entries inside stop at a readable width. Like Crush's, it
+        // opens on the latest entry and keeps the newest in view as they
+        // arrive, until the reader scrolls back to read.
         ScrollView {
             VStack(spacing: 1) {
                 ForEach(state.entries) { entry in
@@ -105,6 +107,7 @@ struct Transcript: TerminalView {
             }
             .frame(maxWidth: .fixed(Self.maxTextWidth))
         }
+        .defaultScrollAnchor(.bottom)
     }
 }
 
