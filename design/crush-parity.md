@@ -649,13 +649,27 @@ real change pays the field-by-field compare. Storybook's
 `.environment(\.theme)` page switches themes live under a view that takes no
 inputs.
 
+**L17. The transcript follows its tail.** *(demo — built)*
+
+Crush opens on the latest message and keeps it in view as entries arrive,
+until the reader scrolls away. The demo opened at the top, and a message sent
+from the composer landed below the fold. `.defaultScrollAnchor(_:)` is
+SwiftUI's shape for it: the scroll view opens at the anchor, and while its
+offset is still where the anchor put it last frame it moves with the anchor;
+any other offset came from the reader and is left alone, until they scroll
+back. `.scrollPosition(id:)` was the wrong tool — it re-applies its target
+every frame, which pins rather than follows.
+
+Building it turned up a framework bug underneath: a `ForEach` that gained an
+element left the cached sizes above it in place, and a scroll view sizes its
+content by measuring it — the appended message was laid out and never drawn.
+Every structural change now invalidates the measurements above it.
+
 ### Ledger — open
 
-- **The transcript does not follow its tail.** Crush opens on the latest
-  message and keeps it in view as entries arrive, until the reader scrolls
-  away. `.scrollPosition(id:)` re-applies its target on every render, which
-  pins rather than follows; SwiftUI's is a two-way binding. A sent message
-  lands below the fold.
+- **`.scrollPosition(id:)` takes a value, not a binding.** It re-applies its
+  target every frame, so a reader cannot scroll away from it; SwiftUI's is
+  two-way, and a user scroll writes back. Nothing in the demo needs it yet.
 - **`TextInput` and `TextArea` draw their cursor without focus** — the defect
   `PromptInput` had; the fix is the same, and nothing in the demo uses them yet.
 - **G1 remainder — the literal-drawing components** listed in L4, less

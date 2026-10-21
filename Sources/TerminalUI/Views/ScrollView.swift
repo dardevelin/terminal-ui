@@ -10,7 +10,7 @@
 /// Edge glyphs advertise clipped content in each direction; hide them via
 /// ``ScrollIndicatorVisibility`` with `.scrollIndicators(.hidden)`.
 ///
-/// Three ways the offset moves:
+/// Four ways the offset moves:
 /// - **Focus.** Tabbing to a focusable descendant outside the viewport
 ///   scrolls it into view automatically — nothing to opt into.
 /// - **Direct keys.** When the content has no focusable descendants there
@@ -19,6 +19,9 @@
 ///   drive the offset.
 /// - **Programmatic.** `.scrollPosition(id:)` keeps a `.id(_:)`-tagged
 ///   descendant visible without touching keyboard focus.
+/// - **Anchored.** `.defaultScrollAnchor(.bottom)` opens on the end and
+///   follows it as content grows, while the reader leaves it there — a chat
+///   transcript's tail.
 ///
 /// Prefer ``List`` when rows need selection and a row cursor; `ScrollView`
 /// is for free-form content that merely overflows.
@@ -198,6 +201,25 @@ extension TerminalView {
     public func scrollbarStyle(_ style: ScrollbarStyle)
         -> ModifiedView<Self, EnvironmentModifier<ScrollbarStyle>> {
         environment(\.scrollbarStyle, style)
+    }
+
+    /// Open enclosed `ScrollView`s at `anchor`, and keep them there as their
+    /// content changes size for as long as the reader leaves them there.
+    ///
+    /// `.bottom` is a chat transcript's tail: the view opens on the latest
+    /// entry and follows new ones in. Scroll away and it stays where it was
+    /// left while entries keep arriving; scroll back to the end and it
+    /// follows again. Only the anchor's position along the scroll axis
+    /// counts — `.bottom`, `.bottomLeading` and `.bottomTrailing` are the
+    /// same anchor to a vertical scroll view. Pass `nil` to clear an
+    /// inherited anchor.
+    ///
+    /// SwiftUI parity: `View.defaultScrollAnchor(_:)` (iOS 17+ / macOS 14+),
+    /// with `Alignment` standing in for `UnitPoint`: a cell grid scrolls by
+    /// whole rows, so the edges and the middle are the positions there are.
+    public func defaultScrollAnchor(_ anchor: Alignment?)
+        -> ModifiedView<Self, EnvironmentModifier<Alignment?>> {
+        environment(\.scrollAnchor, anchor)
     }
 
     /// Scroll an enclosing `ScrollView` so the descendant tagged with

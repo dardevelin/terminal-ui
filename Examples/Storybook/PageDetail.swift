@@ -757,6 +757,20 @@ struct PreviewPane: TerminalView {
                 ScrollbarSample(title: ".block", style: .block)
                 ScrollbarSample(title: ".hairline", style: .hairline)
             }
+        case .defaultScrollAnchor:
+            VStack {
+                Button("Append a line") { state.anchoredLines += 1 }
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(Array(1...state.anchoredLines), id: \.self) { line in
+                            Text("line \(line)")
+                        }
+                    }
+                }
+                .defaultScrollAnchor(.bottom)
+                .frame(width: 24, height: 5)
+                Text("wheel up to stay put, back down to follow").foreground(.gray)
+            }
         case .syntaxHighlighter:
             MarkdownView("""
                 ```ini
@@ -1119,8 +1133,6 @@ struct AsyncTaskDemo: TerminalView {
 }
 
 
-/// A deliberately loud theme for the `.environment(\.theme)` page — the point
-/// is that nothing on the page names a color, yet everything changes.
 /// One overflowing pane drawn with a given scrollbar style, for the
 /// `.scrollbarStyle` page's side-by-side comparison.
 struct ScrollbarSample: TerminalView {
@@ -1182,6 +1194,8 @@ struct IniHighlighter: SyntaxHighlighter {
     }
 }
 
+/// A deliberately loud theme for the `.environment(\.theme)` page — the point
+/// is that nothing on the page names a color, yet everything changes.
 struct StorybookLoudTheme: Theme {
     var accent: Color = .magenta
     var foregroundMuted: Color = .rgb(120, 90, 140)

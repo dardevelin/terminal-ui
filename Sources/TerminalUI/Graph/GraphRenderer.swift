@@ -845,9 +845,9 @@ public enum GraphRenderer {
     static func renderScroll(_ node: AttributeNode, axis: ScrollAxis, children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
         guard let contentChild = node.children.first else { return }
-        let offset = node.scrollOffset
         let viewport = context.rect
-        let affordance = ScrollAffordance(environment: scrollEnvironment(of: node))
+        let environment = scrollEnvironment(of: node)
+        let affordance = ScrollAffordance(environment: environment)
         let showIndicators = affordance.isVisible
         // Claimed below only if a track is actually painted; a pane whose
         // content fits must not swallow clicks meant for what is under it.
@@ -871,6 +871,13 @@ public enum GraphRenderer {
             render(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
+            // See the vertical branch: drawn, not declared.
+            let drawnWidth = lastDrawnColumn(in: contentBuffer).map { $0 + 1 } ?? 0
+            node.scrollDrawnExtent = drawnWidth
+            followAnchor(environment.scrollAnchor?.horizontal.offset(for: viewport.width, in: drawnWidth),
+                         of: node)
+            let offset = node.scrollOffset
+
             // Blit visible slice: source x range [offset ..< offset+viewportWidth]
             let srcStartX = max(0, offset)
             let srcEndX = min(contentWidth, offset + viewport.width)
@@ -887,10 +894,6 @@ public enum GraphRenderer {
 
             // Offset child rects so hit testing works in screen coordinates
             offsetRects(of: contentChild, dx: viewport.x - offset, dy: viewport.y)
-
-            // See the vertical branch: drawn, not declared.
-            let drawnWidth = lastDrawnColumn(in: contentBuffer).map { $0 + 1 } ?? 0
-            node.scrollDrawnExtent = drawnWidth
 
             if showIndicators {
                 // ◀ when content extends before the viewport's left edge,
@@ -945,6 +948,17 @@ public enum GraphRenderer {
             render(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
+            // What the content draws, not what it declares. The affordances
+            // below answer "is there more to see", and rows padded out by a
+            // fixed frame or a trailing spacer are not more to see: a list
+            // sitting on its last row kept promising ▼ and kept scrolling into
+            // blank space, which reads as a stuck pane rather than as an end.
+            let drawnHeight = lastDrawnRow(in: contentBuffer).map { $0 + 1 } ?? 0
+            node.scrollDrawnExtent = drawnHeight
+            followAnchor(environment.scrollAnchor?.vertical.offset(for: viewport.height, in: drawnHeight),
+                         of: node)
+            let offset = node.scrollOffset
+
             let srcStartY = max(0, offset)
             let srcEndY = min(contentHeight, offset + viewport.height)
             for srcY in srcStartY..<srcEndY {
@@ -959,14 +973,6 @@ public enum GraphRenderer {
             }
 
             offsetRects(of: contentChild, dx: viewport.x, dy: viewport.y - offset)
-
-            // What the content draws, not what it declares. The affordances
-            // below answer "is there more to see", and rows padded out by a
-            // fixed frame or a trailing spacer are not more to see: a list
-            // sitting on its last row kept promising ▼ and kept scrolling into
-            // blank space, which reads as a stuck pane rather than as an end.
-            let drawnHeight = lastDrawnRow(in: contentBuffer).map { $0 + 1 } ?? 0
-            node.scrollDrawnExtent = drawnHeight
 
             if showIndicators {
                 // ▲ when content extends above the viewport's top row,
@@ -1101,6 +1107,25 @@ public enum GraphRenderer {
             }
         }
         return nil
+    }
+
+    /// Put a scroll node where its anchor holds it — `anchored`, the offset
+    /// the anchor names for this frame's content, or nil without an anchor.
+    ///
+    /// The node follows while its offset is still where the anchor put it
+    /// last frame: content that grows moves the anchor and the viewport with
+    /// it. Any other offset was set by the reader — a wheel, a key, the
+    /// scrollbar — and is left alone, until they scroll back to where the
+    /// anchor is. A first frame has nothing to compare and opens there.
+    private static func followAnchor(_ anchored: Int?, of node: AttributeNode) {
+        guard let anchored else {
+            node.scrollAnchoredOffset = nil
+            return
+        }
+        if node.scrollAnchoredOffset.map({ $0 == node.scrollOffset }) ?? true {
+            node.scrollOffset = anchored
+        }
+        node.scrollAnchoredOffset = anchored
     }
 
     /// The horizontal twin of `lastDrawnRow`.
