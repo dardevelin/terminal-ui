@@ -10,14 +10,17 @@ PTYs and prove the architectural guarantees end-to-end:
    the path itself encodes which process owns it. Two instances from
    the same checkout never collide.
 2. **PID-targeted socket lookup.** ``default_socket_path(pid=N)``
-   resolves to that PID's socket file specifically; the glob fallback
-   used for no-PID lookups is correctly scoped.
+   resolves to that PID's socket file specifically.
 3. **PID-targeted ctl queries.** ``swtui ctl --pid <N> focus`` reaches
    the named instance's socket and returns its focus state. Two
    independent instances answer independently.
 4. **kill --pid is surgical.** Killing instance A writes `quit` to A's
    socket but does NOT touch instance B's socket file or its
    responsiveness to subsequent ctl queries.
+5. **A ctl call that names no app.** With two apps running, `swtui ctl`
+   without `--pid` refuses and lists both; with one, it reaches it.
+6. **SIGTERM quits through teardown.** An app ended by SIGTERM removes its
+   own data dir and socket, then dies of the signal.
 
 The contract HYP-348 owns is "kill --pid writes quit to that PID's
 socket and ONLY that socket." End-to-end "A actually exits" requires
@@ -35,11 +38,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+import tempfile
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -68,11 +72,11 @@ def _run(name: str, fn: Callable[[], None]) -> CaseResult:
         return CaseResult(name, False, f"{type(exc).__name__}: {exc}")
 
 
-def _swtui_ctl(*args: str) -> subprocess.CompletedProcess:
-    """Run `swtui ctl <args>` from the repo root."""
+def _swtui_ctl(*args: str, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
+    """Run `swtui ctl <args>` from the repo root, or from `cwd`."""
     return subprocess.run(
         [str(SWTUI_BIN), "ctl", *args],
-        cwd=str(REPO_ROOT),
+        cwd=cwd or str(REPO_ROOT),
         capture_output=True,
         text=True,
         check=False,
@@ -124,9 +128,8 @@ def case_two_instances_distinct_dirs() -> None:
 
 def case_default_socket_lookup_pid_specific() -> None:
     """default_socket_path(pid=A.pid) must resolve to A's socket file
-    (under A's diag dir), and pid=B.pid to B's. Compare via os.path.realpath
-    because the lookup may go through `.terminalui/data` symlink which
-    points to the most-recently-booted instance's dir."""
+    (under A's diag dir), and pid=B.pid to B's. Compared via
+    os.path.realpath, since /tmp is a link on macOS."""
     import os
     with spawn_and_connect("Storybook") as (proc_a, client_a):
         client_a.wait_for_frame(1, timeout=2.0)
@@ -277,6 +280,62 @@ def case_kill_pid_a_leaves_b_alive() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Case 5: a ctl call that names no app — each app is addressed by its own id
+# ---------------------------------------------------------------------------
+
+
+def case_bare_ctl_with_two_apps_names_both() -> None:
+    """With two apps running from this checkout, `swtui ctl` without
+    `--pid` refuses and lists both. It used to pick the most recently
+    started one, so an app the harness launched took over the
+    developer's session — and left nothing to reach once it exited."""
+    with spawn_and_connect("Storybook") as (proc_a, client_a):
+        client_a.wait_for_frame(1, timeout=2.0)
+        with spawn_and_connect("Storybook") as (proc_b, client_b):
+            client_b.wait_for_frame(1, timeout=2.0)
+            res = _swtui_ctl("ping")
+            assert res.returncode == 2, (
+                f"a bare ctl call with two apps running must refuse; rc={res.returncode}, "
+                f"stdout={res.stdout!r}, stderr={res.stderr!r}")
+            for pid in (proc_a.pid, proc_b.pid):
+                assert f"--pid {pid}" in res.stderr, f"pid {pid} is not offered: {res.stderr!r}"
+            assert "Storybook" in res.stderr, f"the apps are not named: {res.stderr!r}"
+
+
+def case_bare_ctl_with_one_app_reaches_it() -> None:
+    """With one app running from a checkout, `swtui ctl` without `--pid`
+    reaches it. A fresh directory stands for the checkout, so apps a
+    developer has running from this one do not count."""
+    with tempfile.TemporaryDirectory(prefix="terminalui-checkout-") as checkout:
+        with spawn_and_connect("Storybook", cwd=checkout) as (_, client):
+            client.wait_for_frame(1, timeout=2.0)
+            res = _swtui_ctl("ping", cwd=checkout)
+            assert res.returncode == 0, (
+                f"a bare ctl call with one app running must reach it; rc={res.returncode}, "
+                f"stdout={res.stdout!r}, stderr={res.stderr!r}")
+
+
+def case_sigterm_quits_through_the_apps_own_teardown() -> None:
+    """SIGTERM — how the harness ends every app, and what a closed terminal
+    tab's SIGHUP amounts to — asks the app to quit. It leaves through its
+    normal teardown, so its per-process dir and socket are gone, and then
+    dies of the signal, so the parent still sees -15. Killed inside the
+    handler, it left both behind every time."""
+    import os
+    import signal
+
+    with spawn_and_connect("Storybook") as (proc, client):
+        client.wait_for_frame(1, timeout=2.0)
+        diag_dir = Path(client.diag_dir)
+        assert diag_dir.is_dir(), f"the running app has no data dir at {diag_dir}"
+        client.expected_exit_signal = signal.SIGTERM
+        os.kill(proc.pid, signal.SIGTERM)
+        status = client.wait_for_exit(10.0)
+        assert status == -signal.SIGTERM, f"exit status {status}, not -SIGTERM"
+        assert not diag_dir.exists(), f"the app left its data dir: {diag_dir}"
+
+
+# ---------------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------------
 
@@ -286,6 +345,10 @@ CASES = [
     ("concurrent.default_socket_lookup_pid_specific",  case_default_socket_lookup_pid_specific),
     ("concurrent.swtui_ctl_pid_targeted",              case_swtui_ctl_pid_targeted),
     ("concurrent.kill_pid_a_leaves_b_alive",           case_kill_pid_a_leaves_b_alive),
+    ("concurrent.bare_ctl_with_two_apps_names_both",   case_bare_ctl_with_two_apps_names_both),
+    ("concurrent.bare_ctl_with_one_app_reaches_it",    case_bare_ctl_with_one_app_reaches_it),
+    ("concurrent.sigterm_quits_through_the_apps_own_teardown",
+     case_sigterm_quits_through_the_apps_own_teardown),
 ]
 
 

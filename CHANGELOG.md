@@ -145,6 +145,34 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Each app is addressed by its own id.** `swtui ctl` without `--pid`
+  followed `latest.sock`, the most recently started app's socket, so an app a
+  test harness launched took over a developer's `swift run Coder` session,
+  and when it exited left `ctl` with nothing to reach. Now `ctl` reaches the
+  one app running from the checkout and, when several are, refuses and lists
+  them by pid and name; `swtui ctl list` and `swtui status` show each app,
+  including those writing inline with `use_tmp = false`. Apps no longer
+  publish `latest.sock`, nor point `.terminalui/data` at themselves — the
+  same "newest wins" choice, which every app a harness started claimed; `swtui
+  status` lists each app's dir instead, and `DiagPaths.updateDataSymlink()`
+  is deprecated. The Python client requires a `pid`. New in `DiagPaths`:
+  `runningApps()`, `debugApps()`, `removeDeadApps()`,
+  `socket(inRemoteDir:pid:)`, `isAlive(_:)` and the app-name record.
+- **SIGINT, SIGTERM and SIGHUP quit through the app's teardown.** The handler
+  restored the terminal and died on the spot, since little else is safe in a
+  signal handler, so every app ended that way — each one a test harness
+  stops, each closed terminal tab — left its socket and output in `/tmp` and
+  never wrote its trace summary. The first such signal now asks the running
+  app to quit, as a key would, and it dies of the signal after tearing down,
+  so the parent still sees it; a second signal ends it at once. `swtui ctl
+  reap` removes the whole output of an app that crashed or was killed, not
+  just its socket, and the harness flags an app that stopped normally but
+  left its output behind.
+- **`swtui clean` leaves running apps alone.** It deleted every per-process
+  dir of the checkout, the sockets of live apps among them, breaking a
+  running session; it now skips live processes and says which.
+- **`swtui status` shows the running apps.** It reported the CLI's own data
+  dir, which no app writes, as "not yet created".
 - **An idle app costs nothing.** An `.onDemand` app — documented as zero CPU
   when idle — polled for work every millisecond, every app polled for a
   resize every 16ms, and the input thread woke ten times a second. Now an

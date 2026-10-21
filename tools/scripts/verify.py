@@ -59,39 +59,20 @@ def dirty_relevant_sources() -> bool:
     return False
 
 
-def reap_dead_sockets() -> None:
-    """Unlink stale socket files left by debug apps that crashed without
-    cleanup. Calls `swtui ctl reap` which probes every socket's owning
-    PID with `kill(pid, 0)` and only unlinks the dead ones. Live
-    processes are NEVER touched.
+def reap_dead_apps() -> None:
+    """Remove what debug apps from this checkout left when they died — a
+    crash, or SIGKILL, leaves their output and socket behind. Calls
+    `swtui ctl reap`, which touches only apps whose PID is dead: a live
+    `swift run Coder` is never affected.
 
     Replaces the legacy `kill_strays()` whose `swtui ctl kill all`
     dragnet would `quit` the user's live `swift run Storybook` when
-    running from this Stop hook mid-keystroke. PID-isolated diag dirs
-    plus the explicit-PID `kill` verb make that impossible by
-    construction; this function uses the safe verb.
+    running from this Stop hook mid-keystroke.
     """
     swtui = BUILD_DIR / "swtui"
-    if not swtui.exists():
-        return
-    # Reap every dir matching /tmp/terminalui-*/remote — each
-    # PID-isolated dir has its own subdir. The verb is read-only with
-    # respect to live state; running it across all dirs is safe.
-    remote_dirs = sorted(Path("/tmp").glob("terminalui-*/remote"))
-    for remote_dir in remote_dirs:
-        if not remote_dir.is_dir():
-            continue
+    if swtui.exists():
         subprocess.run(
-            [str(swtui), "ctl", "--dir", str(remote_dir), "reap"],
-            cwd=str(REPO_ROOT), check=False,
-            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-    # Also reap the project-local fallback dir if it exists (config
-    # with `useTmp = false` writes here).
-    local_remote = REPO_ROOT / ".terminalui" / "data" / "remote"
-    if local_remote.is_dir():
-        subprocess.run(
-            [str(swtui), "ctl", "--dir", str(local_remote), "reap"],
+            [str(swtui), "ctl", "reap"],
             cwd=str(REPO_ROOT), check=False,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -137,8 +118,17 @@ def main() -> int:
     if not dirty_relevant_sources():
         return 0
 
-    reap_dead_sockets()
+    # Before, for what earlier runs left; after, for what this one leaves —
+    # the smoke suite kills one app with SIGKILL on purpose, and nothing in
+    # it can remove that app's output.
+    reap_dead_apps()
+    try:
+        return run_gate()
+    finally:
+        reap_dead_apps()
 
+
+def run_gate() -> int:
     rc, out = step("escape hatches",
                    [sys.executable, "tools/scripts/check_escape_hatches.py"], 30)
     if rc != 0:

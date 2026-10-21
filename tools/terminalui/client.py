@@ -7,9 +7,8 @@ Design:
   that key's frame.
 - Responses parse into small frozen dataclasses so tests use dot-access
   instead of dict indexing.
-- The default socket path is ``<diag_dir>/remote/latest.sock``. Pass
-  ``pid=N`` to target a specific running app (useful when multiple apps are
-  under test concurrently).
+- Every client names its app with ``pid=N``; `swtui ctl list` shows the
+  running ones.
 - Errors raise ``RemoteError`` with the server-reported string — callers do
   not need to interpret the low-level JSON shape.
 
@@ -32,44 +31,34 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence
 # Socket path resolution
 # ---------------------------------------------------------------------------
 
-# Default search order matches the framework's DiagPaths: per-project
-# `.terminalui/data/remote/` first, then the tmp fallback used when
-# `use_tmp` is enabled in terminalui.toml. A user running tests from any
-# cwd usually hits one of these without extra configuration.
-_DEFAULT_DIRS: Sequence[str] = (
-    ".terminalui/data/remote",
-    "/tmp/terminalui-*/remote",  # glob-expanded below
-)
-
-
 def default_socket_path(pid: Optional[int] = None,
                         socket_dir: Optional[str] = None) -> str:
-    """Resolve the most likely socket path for a running debug app.
+    """The socket of the app with ``pid``: in ``socket_dir`` when given —
+    where it is, or will be once the app has made it — or found among the
+    per-process dirs in ``/tmp``.
 
-    Priority: explicit ``socket_dir`` arg > ``.terminalui/data/remote/`` in
-    cwd > any ``/tmp/terminalui-*/remote`` tmp dir. When ``pid`` is given,
-    look for ``<pid>.sock``; otherwise follow ``latest.sock``.
+    A pid is required: which app to reach when none is named is a rule
+    `swtui ctl` owns, and `swtui ctl list` shows the running ones. Following
+    the most recently started app let one a test harness launched take over
+    a developer's session.
     """
-    filename = f"{pid}.sock" if pid is not None else "latest.sock"
+    if pid is None:
+        raise RemoteError("name the app with pid=; `swtui ctl list` shows the running ones")
     if socket_dir:
-        return str(Path(socket_dir) / filename)
+        return str(Path(socket_dir) / f"{pid}.sock")
+    diag_dir = find_diag_dir(pid)
+    if diag_dir is None:
+        raise RemoteError(f"no debug app with pid {pid} has a data dir")
+    return str(Path(diag_dir) / "remote" / f"{pid}.sock")
 
-    local = Path.cwd() / ".terminalui" / "data" / "remote" / filename
-    if local.exists() or local.is_symlink():
-        return str(local)
 
-    # Fall back to tmp — scan for the newest matching dir rather than the
-    # first, so concurrent runs don't confuse the lookup.
-    import glob
-
-    candidates = sorted(glob.glob("/tmp/terminalui-*/remote"), key=os.path.getmtime, reverse=True)
-    for cand in candidates:
-        sock = Path(cand) / filename
-        if sock.exists() or sock.is_symlink():
-            return str(sock)
-    # Return the local path even if it doesn't exist yet — connect() will
-    # raise a clearer error than our best-guess logic.
-    return str(local)
+def find_diag_dir(pid: int) -> Optional[str]:
+    """The per-process dir of the app with `pid`, `/tmp/terminalui-{hash}-{pid}`,
+    from whichever checkout started it — or None before it has made one."""
+    for match in Path("/tmp").glob(f"terminalui-*-{pid}"):
+        if match.is_dir():
+            return str(match)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +161,7 @@ class Client:
     Use as a context manager so the socket closes cleanly on test
     teardown::
 
-        with Client() as app:
+        with Client(pid=app_pid) as app:
             app.send_key("tab")
 
     The client is NOT thread-safe; create one per test. Reads are

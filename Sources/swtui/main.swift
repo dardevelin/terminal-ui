@@ -95,11 +95,14 @@ func statusCommand() {
         ink("config:  ".muted + "(none — using defaults, run 'swtui init' to create)".warning)
     }
 
-    let dataRoot = DiagPaths.dataDir(useTmp: config.useTmp)
-    if fm.fileExists(atPath: dataRoot) {
-        ink("data:    ".muted + dataRoot)
-    } else {
-        ink("data:    ".muted + dataRoot + " " + "(not yet created)".muted)
+    // The apps' dirs, not this CLI's own: the pid in `dataDir(useTmp:)`
+    // would be swtui's, and no app writes there.
+    let apps = DiagPaths.runningApps()
+    if apps.isEmpty {
+        ink("apps:    ".muted + "(none running from this checkout)".muted)
+    }
+    for app in apps {
+        ink("app:     ".muted + "\(app.name ?? "?") pid \(app.pid)  " + app.dataDir.muted)
     }
 
     ink("")
@@ -281,9 +284,13 @@ func configCommand() {
 }
 
 func cleanCommand() {
-    DiagPaths.clean()
+    let kept = DiagPaths.clean()
     let path = FileManager.default.currentDirectoryPath
     ink("Cleaned diagnostic output for ".success + path.muted)
+    if !kept.isEmpty {
+        let pids = kept.map(String.init).joined(separator: ", ")
+        ink("Left the output of running apps alone: pid \(pids)".muted)
+    }
 }
 
 // MARK: - Output helpers
@@ -317,10 +324,11 @@ func printUsage() {
 // MARK: - ctl (remote control socket client)
 
 /// `swtui ctl <cmd> [args...]` — send a single JSON command to a running
-/// debug build via its AF_UNIX socket and print the response. Resolves the
-/// socket via the `latest.sock` symlink (most-recently-started app) unless
-/// `--pid <N>` is supplied. Prints the response JSON, exits non-zero on
-/// error.
+/// debug build via its AF_UNIX socket and print the response. With no
+/// `--pid`, reaches the one app running from this checkout, and refuses —
+/// listing them — when several are: "the most recent" let an app a test
+/// harness started take over a developer's session. Prints the response
+/// JSON, exits non-zero on error.
 ///
 /// Shipped so smoke tests can be shell scripts and humans can drive a
 /// running app without an MCP client.
@@ -329,11 +337,10 @@ func ctlCommand(args: [String]) {
     // list and peel off `--pid`, `--socket`, `--dir`. The first remaining
     // token is the subcommand; the rest become positional args.
     //
-    // ctl is a CLIENT: it must resolve sockets by searching this checkout's
-    // per-process dirs (`DiagPaths.clientSocketPath`), never through its own
-    // `tmpDataDir` — the PID in that path is ctl's, and no app ever wrote
-    // there. Resolution defers until after flag parsing so `--pid` targets
-    // the dir that actually holds that socket.
+    // ctl is a CLIENT: it must resolve sockets among this checkout's apps
+    // (`DiagPaths.runningApps`), never through its own `tmpDataDir` — the PID
+    // in that path is ctl's, and no app ever wrote there. Resolution defers
+    // until after flag parsing so `--pid` and `--dir` can choose.
     var explicitDir: String? = nil
     var explicitSocket: String? = nil
     var explicitPID: Int32? = nil
@@ -378,11 +385,11 @@ func ctlCommand(args: [String]) {
         ctlList(socketDirs: socketDirs)
         return
     case "reap":
-        // Unlink stale sockets whose owning PID is dead. Never sends
+        // Remove what apps whose PID is dead left behind. Never sends
         // `quit`. Live processes are always preserved. This is the
         // verb automation calls; humans use `kill --pid <N>` when
         // they know exactly what they're killing.
-        ctlReap(socketDirs: socketDirs)
+        ctlReap(explicitDir: explicitDir)
         return
     case "kill":
         // Send `quit` to a single explicit PID. The legacy `kill all`
@@ -399,14 +406,35 @@ func ctlCommand(args: [String]) {
     if let explicitSocket {
         socketPath = explicitSocket
     } else if let explicitDir {
-        let filename = explicitPID.map { "\($0).sock" } ?? "latest.sock"
-        socketPath = "\(explicitDir)/\(filename)"
-    } else if let resolved = DiagPaths.clientSocketPath(pid: explicitPID) {
+        guard let resolved = DiagPaths.socket(inRemoteDir: explicitDir, pid: explicitPID) else {
+            let wanted = explicitPID.map { "pid \($0)'s socket" } ?? "exactly one app socket"
+            log.error("\(explicitDir) does not hold \(wanted)")
+            exit(1)
+        }
+        socketPath = resolved
+    } else if let explicitPID {
+        guard let resolved = DiagPaths.clientSocketPath(pid: explicitPID) else {
+            log.error("no debug app with pid \(explicitPID) is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
+            exit(1)
+        }
         socketPath = resolved
     } else {
-        let target = explicitPID.map { "pid \($0)" } ?? "any app"
-        log.error("no running debug app found for this checkout (\(target); searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
-        exit(1)
+        // The one app running from this checkout. Several is a choice for
+        // the caller: picking the newest let an app a test harness started
+        // take over a developer's session.
+        let apps = DiagPaths.runningApps()
+        switch apps.count {
+        case 1:
+            socketPath = apps[0].socketPath
+        case 0:
+            log.error("no debug app is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
+            exit(1)
+        default:
+            let rows = apps.map { "  --pid \($0.pid)  \($0.name ?? "?")" }.joined(separator: "\n")
+            FileHandle.standardError.write(Data(
+                "swtui ctl: \(apps.count) debug apps are running from this checkout; name one:\n\(rows)\n".utf8))
+            exit(2)
+        }
     }
 
     let payload: [String: Any]
@@ -563,28 +591,22 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
     return String(data: response, encoding: .utf8) ?? ""
 }
 
-/// Walk the socket directory and print each running app's PID + socket
-/// path. Skips `latest.sock` (a symlink) so the output is one row per
-/// live binary.
 /// Read-only enumeration of running debug apps. Probes each socket's
-/// owning PID with `kill(pid, 0)` to label it alive or dead, but
-/// **never mutates filesystem state**. Stale sockets are reported but
-/// not unlinked — that's `swtui ctl reap`'s job. Splitting display
-/// from cleanup means automation can `list` without fearing accidents.
+/// owning PID to label it alive or dead, but **never mutates filesystem
+/// state**. Stale sockets are reported but not unlinked — that's
+/// `swtui ctl reap`'s job. Splitting display from cleanup means automation
+/// can `list` without fearing accidents.
 private func ctlList(socketDirs: [String]) {
-    let fm = FileManager.default
     var aliveCount = 0
     var deadCount = 0
     for socketDir in socketDirs {
-        guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else { continue }
-        for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
-            let path = "\(socketDir)/\(name)"
-            let pid = name.replacingOccurrences(of: ".sock", with: "")
-            let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
+        let appName = DiagPaths.recordedAppName(
+            inDataDir: (socketDir as NSString).deletingLastPathComponent) ?? "?"
+        for (pid, path) in DiagPaths.sockets(inRemoteDir: socketDir) {
+            let alive = DiagPaths.isAlive(pid)
             // Machine-readable list — keep plain so `swtui ctl list | awk`
             // works without stripping ANSI.
-            let status = alive ? "alive" : "dead"
-            print("pid=\(pid) status=\(status) socket=\(path)")
+            print("pid=\(pid) app=\(appName) status=\(alive ? "alive" : "dead") socket=\(path)")
             if alive { aliveCount += 1 } else { deadCount += 1 }
         }
     }
@@ -596,25 +618,32 @@ private func ctlList(socketDirs: [String]) {
     }
 }
 
-/// Unlink stale sockets whose owning PID is dead. Never sends `quit`.
-/// Live processes are always preserved. The verb automation should
-/// call from CI / Stop hooks / cron — replaces the legacy `kill all`
-/// dragnet which sent `quit` indiscriminately.
-private func ctlReap(socketDirs: [String]) {
-    let fm = FileManager.default
-    var reaped = 0
-    for socketDir in socketDirs {
-        guard let entries = try? fm.contentsOfDirectory(atPath: socketDir) else { continue }
-        for name in entries.sorted() where name.hasSuffix(".sock") && name != "latest.sock" {
-            let path = "\(socketDir)/\(name)"
-            let pid = name.replacingOccurrences(of: ".sock", with: "")
-            let alive = (Int(pid).flatMap { kill(Int32($0), 0) == 0 } ?? false)
-            if alive { continue }
-            if unlink(path) == 0 {
-                print("reaped pid=\(pid) socket=\(path)")
-                reaped += 1
-            }
+/// Remove what apps whose PID is dead left behind: across this checkout,
+/// their whole output — a crash or SIGKILL leaves it, and nothing else would
+/// remove it — or, in an explicit `--dir`, their sockets and the `latest.sock`
+/// links builds before 1.1 left beside them. Never sends `quit`. Live
+/// processes are always preserved. The verb automation should call from CI /
+/// Stop hooks / cron — replaces the legacy `kill all` dragnet which sent
+/// `quit` indiscriminately.
+private func ctlReap(explicitDir: String?) {
+    guard let explicitDir else {
+        let reaped = DiagPaths.removeDeadApps()
+        for app in reaped {
+            print("reaped pid=\(app.pid) \(app.ownsDataDir ? app.dataDir : app.socketPath)")
         }
+        print("# \(reaped.count) app\(reaped.count == 1 ? "" : "s") reaped")
+        return
+    }
+    var reaped = 0
+    for (pid, path) in DiagPaths.sockets(inRemoteDir: explicitDir) where !DiagPaths.isAlive(pid) {
+        if unlink(path) == 0 {
+            print("reaped pid=\(pid) socket=\(path)")
+            reaped += 1
+        }
+    }
+    let legacyLink = "\(explicitDir)/latest.sock"
+    if unlink(legacyLink) == 0 {
+        print("reaped \(legacyLink)")
     }
     print("# \(reaped) socket\(reaped == 1 ? "" : "s") reaped")
 }
@@ -653,8 +682,7 @@ private func ctlKill(socketDirs: [String], explicitPID: Int32?, positional: [Str
 
     // Find the dir that actually holds this PID's socket — a client must
     // search the checkout's per-process dirs, not assume one location.
-    let fm = FileManager.default
-    guard let path = socketDirs.map({ "\($0)/\(pid).sock" }).first(where: { fm.fileExists(atPath: $0) }) else {
+    guard let path = socketDirs.lazy.compactMap({ DiagPaths.socket(inRemoteDir: $0, pid: pid) }).first else {
         print("pid=\(pid) status=no-socket")
         exit(1)
     }
@@ -731,7 +759,7 @@ private func printCtlUsage() {
     ink("")
     ink("Flags:", .primary, .bold)
     let flags: [(String, String)] = [
-        ("--pid <N>",        "target a specific app by PID (default: latest.sock)"),
+        ("--pid <N>",        "target a specific app by PID (default: the one running app)"),
         ("--socket <path>",  "use an explicit socket path"),
         ("--dir <path>",     "override the socket directory"),
     ]

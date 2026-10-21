@@ -30,7 +30,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence, Tuple
 
-from .client import Client, RemoteError, default_socket_path, set_window_size
+from .client import Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
 
 
 # Where the binaries under test live. `TERMINALUI_BUILD_DIR` points automation
@@ -286,13 +286,14 @@ def spawn_and_connect(target: str,
             pass
         sanitizer_reports = _read_sanitizer_reports(sanitizer_dir)
         shutil.rmtree(sanitizer_dir, ignore_errors=True)
-        # Best-effort: remove the child's PID-isolated dir so /tmp
-        # doesn't accumulate one entry per smoke case. SIGTERM doesn't
-        # run Swift defer blocks, so the framework's atexit hook
-        # doesn't fire — the parent owns this cleanup. `swtui ctl
-        # reap` is the safety net for crashes that bypass even this.
-        if diag_dir is not None:
-            shutil.rmtree(diag_dir, ignore_errors=True)
+        # An app asked to stop — SIGTERM, how this runner ends every app —
+        # quits through its own teardown, which removes its PID-isolated
+        # dir. One still there after that is a finding; one left by a crash
+        # or SIGKILL is expected, and removed here so /tmp does not keep one
+        # entry per case.
+        leftover_dir = diag_dir if diag_dir is not None and Path(diag_dir).exists() else None
+        if leftover_dir is not None:
+            shutil.rmtree(leftover_dir, ignore_errors=True)
         # A failing case already says what went wrong; this verdict is for
         # the cases that passed while the app crashed or raced underneath.
         if not case_failed and client is not None:
@@ -302,6 +303,7 @@ def spawn_and_connect(target: str,
                 output=_output(),
                 sanitizer_reports=sanitizer_reports,
                 expected_signal=client.expected_exit_signal,
+                leftover_dir=leftover_dir,
             )
             if problems:
                 raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
@@ -318,7 +320,8 @@ def _exit_problems(returncode: Optional[int],
                    had_to_kill: bool,
                    output: bytes,
                    sanitizer_reports: list[str],
-                   expected_signal: Optional[int]) -> list[str]:
+                   expected_signal: Optional[int],
+                   leftover_dir: Optional[str] = None) -> list[str]:
     """Everything wrong with how an app ended, as sentences for a case
     failure; empty when it ended cleanly."""
     problems: list[str] = []
@@ -342,6 +345,10 @@ def _exit_problems(returncode: Optional[int],
             problems.append(f"crashed on {_signal_name(-returncode)}")
     elif returncode != 0:
         problems.append(f"exited with status {returncode}")
+    # Stopped or quit, the app tears down; only a crash leaves its dir.
+    if leftover_dir is not None and expected_signal is None and not had_to_kill and (
+            returncode == 0 or (returncode is not None and -returncode in _STOP_SIGNALS)):
+        problems.append(f"left its data dir {leftover_dir}")
 
     for mode, on in _MODES_TO_RESTORE.items():
         off = b"l" if on == b"h" else b"h"
@@ -375,15 +382,13 @@ def _wait_for_diag_dir(pid: int, timeout: float) -> str:
     Returns the absolute path. Raises `RemoteError` if the dir never
     appears (child failed to boot)."""
     deadline = time.monotonic() + timeout
-    pattern = f"/tmp/terminalui-*-{pid}"
     while time.monotonic() < deadline:
-        matches = list(Path("/tmp").glob(f"terminalui-*-{pid}"))
-        for match in matches:
-            if match.is_dir():
-                return str(match)
+        diag_dir = find_diag_dir(pid)
+        if diag_dir is not None:
+            return diag_dir
         time.sleep(0.05)
     raise RemoteError(
-        f"diag dir matching {pattern} never appeared; child pid={pid} "
+        f"diag dir /tmp/terminalui-*-{pid} never appeared; child pid={pid} "
         "may have failed to boot or did not honor PID-isolated paths"
     )
 

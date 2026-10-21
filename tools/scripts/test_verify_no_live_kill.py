@@ -13,7 +13,7 @@ already dead.
 The contract:
 
 1. **Live processes survive verify.** Spawning a Storybook child,
-   running `verify.reap_dead_sockets()`, then asserting the child is
+   running `verify.reap_dead_apps()`, then asserting the child is
    still alive and its socket file is still present.
 2. **Dead sockets are reaped.** A stale socket file with a guaranteed-
    dead PID is unlinked.
@@ -108,7 +108,7 @@ def case_verify_does_not_quit_live_process() -> None:
     the start of every turn. Assert the process is still alive AND its
     socket file is still on disk. The legacy `kill_strays()` would
     `swtui ctl kill all` against the canonical dir, killing the live
-    process; the new `reap_dead_sockets()` must leave it alone."""
+    process; the new `reap_dead_apps()` must leave it alone."""
     with spawn_and_connect("Storybook") as (proc, client):
         client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
@@ -119,19 +119,19 @@ def case_verify_does_not_quit_live_process() -> None:
         # Call the cleanup verify.py would invoke — but only the
         # cleanup, not the full verify pipeline (would take 5min+
         # because of swift build + test + smoke).
-        verify.reap_dead_sockets()
+        verify.reap_dead_apps()
 
         # Brief settle — `swtui ctl reap` is synchronous but the test
         # window must close before any racy event arrives.
         time.sleep(0.1)
 
         assert proc.poll() is None, (
-            f"reap_dead_sockets killed the live process (pid={proc.pid}, "
+            f"reap_dead_apps killed the live process (pid={proc.pid}, "
             f"exit_code={proc.poll()}). Live processes must NEVER be "
             "touched by automation."
         )
         assert live_sock.exists(), (
-            f"reap_dead_sockets unlinked the live socket at {live_sock}. "
+            f"reap_dead_apps unlinked the live socket at {live_sock}. "
             "Live socket files must survive cleanup."
         )
 
@@ -142,44 +142,30 @@ def case_verify_does_not_quit_live_process() -> None:
 
 
 def case_verify_reaps_dead_sockets() -> None:
-    """Create a socket file under a guaranteed-dead PID. Run
-    verify.reap_dead_sockets(). The stale file must be unlinked.
-
-    We seed the file inside the canonical dir for THIS cwd
-    (`/tmp/terminalui-{cwd-hash}-<dead-pid>/remote/<dead-pid>.sock`)
-    because verify.py shells out to `swtui ctl reap` which scans
-    `/tmp/terminalui-*/remote/*.sock` via the active socketDir
-    resolver — same path the live runtime would use."""
+    """A dead app's output — its dir under this checkout's prefix,
+    `/tmp/terminalui-{cwd-hash}-<dead-pid>/` — is removed by the cleanup
+    verify.py runs, and a live app beside it is not. The prefix is read
+    from a live app's dir, so the test needs no copy of the hash."""
     fake_pid = _find_dead_pid()
-    # Build a path that mirrors what a real dead-process diag dir
-    # would look like: /tmp/terminalui-{cwd-hash}-<fake_pid>/remote/<fake_pid>.sock
-    # That dir name is what `swtui ctl reap` enumerates by default.
-    # We don't need to compute the hash — any /tmp/terminalui-*-* dir
-    # gets scanned. We use a unique marker so we don't collide with
-    # other tests' temp dirs.
-    test_marker = f"verify-test-{os.getpid()}"
-    socket_dir = Path("/tmp") / f"terminalui-{test_marker}-{fake_pid}" / "remote"
-    try:
-        sock_path = _make_stale_socket(socket_dir, fake_pid)
-        assert sock_path.exists()
-
-        verify.reap_dead_sockets()
-
-        assert not sock_path.exists(), (
-            f"reap_dead_sockets did not unlink stale socket at {sock_path}. "
-            "Stale-only cleanup is the verb's whole point."
-        )
-    finally:
+    with spawn_and_connect("Storybook") as (proc, client):
+        client.wait_for_frame(1, timeout=2.0)
+        live_dir = Path(client.diag_dir)
+        prefix = live_dir.name.rsplit("-", 1)[0]
+        dead_dir = live_dir.parent / f"{prefix}-{fake_pid}"
         try:
-            for entry in socket_dir.iterdir():
-                entry.unlink()
-        except FileNotFoundError:
-            pass
-        try:
-            socket_dir.rmdir()
-            socket_dir.parent.rmdir()
-        except (FileNotFoundError, OSError):
-            pass
+            sock_path = _make_stale_socket(dead_dir / "remote", fake_pid)
+            assert sock_path.exists()
+
+            verify.reap_dead_apps()
+
+            assert not dead_dir.exists(), (
+                f"reap_dead_apps left the dead app's dir at {dead_dir}. "
+                "Stale-only cleanup is the verb's whole point.")
+            assert (live_dir / "remote" / f"{proc.pid}.sock").exists(), (
+                "reap_dead_apps touched the live app beside it")
+        finally:
+            import shutil
+            shutil.rmtree(dead_dir, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------

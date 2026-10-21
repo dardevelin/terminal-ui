@@ -116,8 +116,31 @@ func installSignalDisposition(_ signum: Int32, _ handler: SignalHandler?) {
     _ = sigaction(signum, &action, nil)
 }
 
+/// Write end of the runtime's terminate pipe, or -1 while no runtime runs.
+private let _terminateWakeFD = Atomic<Int32>(-1)
+
+/// The terminating signal the runtime was asked to quit by, or 0.
+private let _terminationSignal = Atomic<Int32>(0)
+
+/// SIGINT, SIGTERM and SIGHUP. The first, while a runtime runs, asks it to
+/// quit: the byte written to the terminate pipe wakes the input task, and the
+/// app leaves through its normal teardown — terminal restored, socket and
+/// per-process dir removed, trace summary written — then dies of the signal,
+/// so the parent still sees it. Done here, any of that would have to be
+/// async-signal-safe, and most of it is not. A second signal, or one with no
+/// runtime to ask, restores the terminal and dies at once: an app that does
+/// not answer must still be stoppable.
 @_cdecl("_terminalSignalHandler")
 internal func _terminalSignalHandler(signum: Int32) {
+    let wakeFD = _terminateWakeFD.load(ordering: .acquiring)
+    if wakeFD >= 0,
+       _terminationSignal.compareExchange(expected: 0, desired: signum, ordering: .acquiringAndReleasing).exchanged {
+        // The interrupted code may be about to read errno.
+        let savedErrno = errno
+        SelfPipe.signal(writeEnd: wakeFD)
+        errno = savedErrno
+        return
+    }
     Terminal.runCleanup()
     // Restore default disposition + re-raise so the parent shell
     // sees the conventional exit code (130 for SIGINT, 143 for
@@ -525,6 +548,43 @@ public enum Terminal {
             }
         }
     }
+
+    /// The pipe a terminating signal writes a byte to while a runtime runs,
+    /// so it can quit through its own teardown; nil otherwise.
+    static var terminateWakeFD: Int32? {
+        get {
+            let fd = _terminateWakeFD.load(ordering: .acquiring)
+            return fd < 0 ? nil : fd
+        }
+        set { _terminateWakeFD.store(newValue ?? -1, ordering: .releasing) }
+    }
+
+    /// The terminating signal the runtime has been asked to quit by.
+    static var terminationSignal: Int32? {
+        let signum = _terminationSignal.load(ordering: .acquiring)
+        return signum == 0 ? nil : signum
+    }
+
+    /// Die of the signal the runtime quit for, now that it has torn down:
+    /// the parent sees 143 for SIGTERM, as it would have before. Does
+    /// nothing when no signal asked.
+    static func endIfTerminatedBySignal() {
+        guard let signum = terminationSignal else { return }
+        installSignalDisposition(signum, SIG_DFL)
+        #if canImport(Darwin)
+        _ = Darwin.raise(signum)
+        #elseif canImport(Glibc)
+        _ = Glibc.raise(signum)
+        #endif
+    }
+
+    #if DEBUG
+    /// Forget a termination request. For tests, which call the handler
+    /// directly.
+    static func resetTermination() {
+        _terminationSignal.store(0, ordering: .releasing)
+    }
+    #endif
 
     /// The pipe the SIGWINCH handler writes a byte to, or nil. Its write end
     /// must be non-blocking: a full pipe must not stall the handler.

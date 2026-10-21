@@ -6,8 +6,7 @@ The unit tests for the socket gating only assert API surface
 assertion needs a PTY-based integration test. This script spawns
 Storybook under PTY in a temp cwd whose ``.terminalui/terminalui.toml``
 opts the socket off, then asserts that the framework honored the
-gate: no ``<pid>.sock`` appears, no ``latest.sock`` symlink appears,
-and the app still boots normally.
+gate: no ``<pid>.sock`` appears, and the app still boots normally.
 
 Run::   ``swift build && python3 tools/scripts/socket_disabled.py``
 Exit:   0 on pass, 1 on fail. Sibling of ``storybook_smoke.py``.
@@ -15,7 +14,6 @@ Exit:   0 on pass, 1 on fail. Sibling of ``storybook_smoke.py``.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import sys
 import tempfile
@@ -33,22 +31,20 @@ from terminalui.runner import spawn_and_connect, _repo_root  # noqa: E402
 
 
 def _fnv1a(text: str) -> str:
-    """Mirror DiagPaths.fnv1a — FNV-1a 32-bit, 8-hex-char output. Must
-    match the Swift hash so the Python harness looks at the same /tmp
-    dir the spawned process would have used."""
+    """Mirror DiagPaths.fnv1a — FNV-1a 32-bit as unpadded hex, which is what
+    Swift's `String(hash, radix: 16)` prints. Must match the Swift hash so the
+    harness looks at the dirs the spawned process used."""
     h = 0x811C9DC5
     for byte in text.encode("utf-8"):
         h ^= byte
         h = (h * 0x01000193) & 0xFFFFFFFF
-    return f"{h:08x}"
+    return format(h, "x")
 
 
-def _expected_tmp_data_dir(cwd: str) -> str:
-    return f"/tmp/terminalui-{_fnv1a(cwd)}"
-
-
-def _expected_socket_dir(cwd: str) -> str:
-    return f"{_expected_tmp_data_dir(cwd)}/remote"
+def _socket_dirs(cwd: str) -> list[Path]:
+    """Every app's `remote/` dir for this checkout: `/tmp/terminalui-{hash}-{pid}`.
+    The checkout is a fresh temp dir, so every one is this run's."""
+    return sorted(Path("/tmp").glob(f"terminalui-{_fnv1a(cwd)}-*/remote"))
 
 
 # ---------------------------------------------------------------------------
@@ -65,15 +61,6 @@ def main() -> int:
             "[socket]\nenabled = false\n", encoding="utf-8"
         )
 
-        socket_dir = Path(_expected_socket_dir(cwd))
-        # Defensive: scrub any prior leftover so we are testing this run.
-        if socket_dir.exists():
-            for child in socket_dir.iterdir():
-                try:
-                    child.unlink()
-                except OSError:
-                    pass
-
         # The harness's `_wait_for_client` raises when the socket
         # doesn't appear — that's exactly the symptom we want to see.
         # Catch the error and assert the filesystem.
@@ -84,8 +71,8 @@ def main() -> int:
                 # gate — that's the bug the test catches.
                 _proc_alive = proc.poll() is None
                 print(
-                    f"FAIL: socket appeared at {socket_dir} despite "
-                    f"socketEnabled=false (process alive={_proc_alive})",
+                    f"FAIL: a socket appeared despite socketEnabled=false "
+                    f"(process alive={_proc_alive})",
                     file=sys.stderr,
                 )
                 return 1
@@ -101,15 +88,10 @@ def main() -> int:
         # cleanup before checking the directory state.
         time.sleep(0.3)
 
-        # Filesystem assertion. socket_dir may legitimately not exist at
-        # all (TerminalApp only creates it when socketEnabled is true);
-        # if it does exist, neither <pid>.sock nor latest.sock should
-        # be present.
-        offending = []
-        if socket_dir.exists():
-            for entry in socket_dir.iterdir():
-                if entry.name.endswith(".sock") or entry.name == "latest.sock":
-                    offending.append(str(entry))
+        # Filesystem assertion. A remote dir may exist (the data dirs are
+        # made either way); it must hold no socket.
+        offending = [str(entry) for socket_dir in _socket_dirs(cwd)
+                     for entry in socket_dir.iterdir() if entry.name.endswith(".sock")]
 
         if offending:
             print(
@@ -125,7 +107,7 @@ def main() -> int:
             print("FAIL: never observed boot signal", file=sys.stderr)
             return 1
 
-        print("PASS: socketEnabled=false honored — no <pid>.sock or latest.sock created")
+        print("PASS: socketEnabled=false honored — no <pid>.sock created")
         return 0
 
 

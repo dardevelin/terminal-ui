@@ -167,36 +167,4 @@ struct DiagPathsConcurrencyTests {
             }
         }
     }
-
-    // MARK: - updateDataSymlink
-
-    @Test("updateDataSymlink resolves to the calling process's tmpDataDir")
-    func updateDataSymlinkPointsAtOwnDir() throws {
-        try Self.withEnv(DiagPaths.dataDirEnvVar, nil) {
-            let fm = FileManager.default
-            let ownDir = DiagPaths.tmpDataDir
-            try fm.createDirectory(atPath: ownDir, withIntermediateDirectories: true)
-            defer { try? fm.removeItem(atPath: ownDir) }
-
-            // Project-local config dir — needed so the symlink can be created.
-            try? fm.createDirectory(atPath: DiagPaths.configDir, withIntermediateDirectories: true)
-
-            // Pre-poison: place a stale symlink pointing at a bogus dir.
-            let link = DiagPaths.symlinkPath
-            try? fm.removeItem(atPath: link)
-            try? fm.createSymbolicLink(atPath: link, withDestinationPath: "/tmp/terminalui-stale-from-prior-run")
-
-            try DiagPaths.updateDataSymlink()
-
-            let resolved = try fm.destinationOfSymbolicLink(atPath: link)
-            #expect(resolved == ownDir,
-                    "updateDataSymlink must repoint .terminalui/data at this PID's dir; resolved=\(resolved)")
-
-            // Idempotent — call again, still points at ownDir.
-            try DiagPaths.updateDataSymlink()
-            let resolvedAgain = try fm.destinationOfSymbolicLink(atPath: link)
-            #expect(resolvedAgain == ownDir,
-                    "updateDataSymlink must be idempotent; got \(resolvedAgain) on second call")
-        }
-    }
 }

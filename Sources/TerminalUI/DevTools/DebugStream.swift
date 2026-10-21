@@ -335,7 +335,7 @@ public final class DebugStream: Sendable {
     /// Called by `TerminalApp.run()` around its raw-mode lifetime.
     /// While true, framework warnings DO NOT fall back to stderr —
     /// they'd corrupt the rendered viewport. They route to the
-    /// `.terminalui/data/warnings.log` file instead so developers can
+    /// `warnings.log` in the app's data dir instead so developers can
     /// grep them after exit (or during, via `tail -f`).
     public func setLiveTUI(_ live: Bool, logFileURL: URL? = nil) {
         state.withLock { state in

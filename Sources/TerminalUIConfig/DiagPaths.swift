@@ -11,7 +11,6 @@ import Glibc
 /// ```
 /// .terminalui/                              project-local config
 ///   terminalui.toml                         config file
-///   data -> /tmp/terminalui-{hash}-{pid}/   symlink to most-recent ephemeral output
 ///
 /// /tmp/terminalui-{hash}-{pid}/             ephemeral output, one dir per process
 ///   captures/
@@ -24,9 +23,9 @@ import Glibc
 /// `{hash}` is FNV-1a of the cwd — same for every instance launched
 /// from this checkout. `{pid}` is the process's own PID — unique per
 /// instance. Two processes from the same checkout never collide on
-/// any path. The project-local `.terminalui/data` symlink points at
-/// the most-recently booted instance's dir as a convenience for
-/// `swtui ctl` no-arg invocations.
+/// any path. Nothing names "the" app, since several may run at once — a
+/// developer's and those a test harness started: `swtui status` lists each
+/// app's dir, and a client names the app it wants by pid.
 ///
 /// When `useTmp = false`, output goes directly under `.terminalui/` with no symlink.
 public enum DiagPaths {
@@ -36,11 +35,13 @@ public enum DiagPaths {
     private static let configDirName = ".terminalui"
     private static let configFileName = "terminalui.toml"
     private static let symlinkName = "data"
+    private static let remoteDirName = "remote"
+    private static let appNameFileName = "app-name"
     private static let tmpPrefix = "terminalui-"
 
     // MARK: - Subdirectories inside the data root
 
-    private static let subdirectories = ["captures", "screenshots", "traces", "remote"]
+    private static let subdirectories = ["captures", "screenshots", "traces", remoteDirName]
 
     // MARK: - Resolved paths
 
@@ -55,10 +56,12 @@ public enum DiagPaths {
         (configDir as NSString).appendingPathComponent(configFileName)
     }
 
-    /// The symlink path: `{cwd}/.terminalui/data`
+    /// `{cwd}/.terminalui/data`, the single link builds before 1.1 pointed
+    /// at the most recently started app. `swtui clean` removes it.
     public static var symlinkPath: String {
         (configDir as NSString).appendingPathComponent(symlinkName)
     }
+
 
     /// The ephemeral output directory in `/tmp/` for the calling process.
     /// `{hash}` is FNV-1a of the cwd (same across instances from this
@@ -67,28 +70,26 @@ public enum DiagPaths {
     /// path, which is why `swtui ctl kill --pid <N>` is the only way to
     /// affect another instance.
     public static var tmpDataDir: String {
-        let cwd = FileManager.default.currentDirectoryPath
-        let hash = fnv1a(cwd)
-        return "/tmp/\(tmpPrefix)\(hash)-\(getpid())"
+        dataDir(forPID: getpid())
+    }
+
+    /// `{tmpRoot}/terminalui-{hash}-{pid}`: where the app with `pid`, started
+    /// from this checkout, keeps its output.
+    public static func dataDir(forPID pid: Int32, tmpRoot: String = "/tmp") -> String {
+        "\(tmpRoot)/\(tmpPrefix)\(cwdHash)-\(pid)"
+    }
+
+    /// The pid at the end of a per-process dir's name, `terminalui-{hash}-{pid}`.
+    private static func pid(ofDataDirNamed name: String) -> Int32? {
+        Int32(name.split(separator: "-").last ?? "")
     }
 
     /// Every `remote/` socket directory belonging to THIS checkout,
     /// newest first. The enumeration a client needs for `list` and `reap`.
-    public static func clientRemoteDirs(tmpRoot: String = "/tmp") -> [String] {
-        let prefix = "\(tmpPrefix)\(cwdHash)-"
-        let fileManager = FileManager.default
-        let entries = (try? fileManager.contentsOfDirectory(atPath: tmpRoot)) ?? []
-        let dirs = entries.compactMap { entry -> (path: String, modified: Date)? in
-            guard entry.hasPrefix(prefix) else { return nil }
-            let remote = "\(tmpRoot)/\(entry)/remote"
-            var isDirectory = ObjCBool(false)
-            guard fileManager.fileExists(atPath: remote, isDirectory: &isDirectory),
-                  isDirectory.boolValue else { return nil }
-            let attributes = try? fileManager.attributesOfItem(atPath: remote)
-            let modified = attributes?[.modificationDate] as? Date ?? .distantPast
-            return (remote, modified)
-        }
-        return dirs.sorted { $0.modified > $1.modified }.map(\.path)
+    public static func clientRemoteDirs(tmpRoot: String = "/tmp", inlineDataDir: String = configDir) -> [String] {
+        var seen = Set<String>()
+        return debugApps(tmpRoot: tmpRoot, inlineDataDir: inlineDataDir).map(\.remoteDir)
+            .filter { seen.insert($0).inserted }
     }
 
     /// The socket path a CLIENT process (swtui ctl, scripts) should target.
@@ -97,23 +98,144 @@ public enum DiagPaths {
     /// that path is the client's, and no app ever wrote there — `swtui ctl`
     /// doing exactly that is how every invocation failed while the Python
     /// harness client (which searches the checkout's dirs) kept passing.
-    /// Searches every per-process dir for this checkout, newest first, and
-    /// returns the first that actually holds the wanted socket file — or
-    /// nil, so the caller reports "no running app" instead of a fabricated
-    /// path. `TERMINALUI_DATA_DIR` still wins when set, mirroring
-    /// `dataDir(useTmp:)`.
+    /// With a `pid`, that app's socket; without one, the socket of the one
+    /// app running — nil when there is none or several, so the caller
+    /// reports that instead of a fabricated path. `TERMINALUI_DATA_DIR` still
+    /// wins when set, mirroring `dataDir(useTmp:)`.
     public static func clientSocketPath(pid: Int32?, tmpRoot: String = "/tmp") -> String? {
-        let filename = pid.map { "\($0).sock" } ?? "latest.sock"
-        if let override = ProcessInfo.processInfo.environment[dataDirEnvVar],
-           !override.isEmpty {
-            return "\(override)/remote/\(filename)"
+        if let override = ProcessInfo.processInfo.environment[dataDirEnvVar], !override.isEmpty {
+            return socket(inRemoteDir: (override as NSString).appendingPathComponent(remoteDirName), pid: pid)
         }
+        guard let pid else {
+            let apps = runningApps(tmpRoot: tmpRoot)
+            return apps.count == 1 ? apps[0].socketPath : nil
+        }
+        return debugApps(tmpRoot: tmpRoot).first { $0.pid == pid && $0.isRunning }?.socketPath
+    }
+
+    /// The control socket in an app's `remote/` dir: `{pid}.sock`, or — with
+    /// no pid named — the one socket there.
+    public static func socket(inRemoteDir remoteDir: String, pid: Int32?) -> String? {
+        if let pid {
+            let path = (remoteDir as NSString).appendingPathComponent(socketName(pid: pid))
+            return FileManager.default.fileExists(atPath: path) ? path : nil
+        }
+        let sockets = self.sockets(inRemoteDir: remoteDir)
+        return sockets.count == 1 ? sockets[0].path : nil
+    }
+
+    /// Every app's control socket in a `remote/` dir, by pid. Names that carry
+    /// no pid, such as the `latest.sock` link builds before 1.1 published,
+    /// are not an app's.
+    public static func sockets(inRemoteDir remoteDir: String) -> [(pid: Int32, path: String)] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: remoteDir)) ?? []
+        return names.sorted().compactMap { name in
+            pid(ofSocketNamed: name).map { ($0, (remoteDir as NSString).appendingPathComponent(name)) }
+        }
+    }
+
+    /// The pid in a control socket's name, `{pid}.sock`.
+    public static func pid(ofSocketNamed name: String) -> Int32? {
+        guard name.hasSuffix(".sock") else { return nil }
+        return Int32(name.dropLast(".sock".count))
+    }
+
+    private static func socketName(pid: Int32) -> String {
+        "\(pid).sock"
+    }
+
+    /// A debug app started from this checkout, whatever has become of its
+    /// process since.
+    public struct DebugApp: Equatable, Sendable {
+        public let pid: Int32
+        /// Where it writes its output: its own `terminalui-{hash}-{pid}` dir,
+        /// or — with `useTmp = false` — `.terminalui/`, shared with the
+        /// checkout's other such apps.
+        public let dataDir: String
+
+        public var remoteDir: String {
+            (dataDir as NSString).appendingPathComponent(DiagPaths.remoteDirName)
+        }
+
+        public var socketPath: String {
+            (remoteDir as NSString).appendingPathComponent(socketName(pid: pid))
+        }
+
+        /// Whether `dataDir` is the app's alone, to remove with it.
+        public var ownsDataDir: Bool {
+            (dataDir as NSString).lastPathComponent.hasPrefix(DiagPaths.tmpPrefix)
+        }
+
+        /// What the app recorded as its name — its executable — or nil for an
+        /// app that predates recording it, or shares its data dir.
+        public var name: String? {
+            ownsDataDir ? recordedAppName(inDataDir: dataDir) : nil
+        }
+
+        /// Its process is alive and its control socket is there.
+        public var isRunning: Bool {
+            isAlive(pid) && FileManager.default.fileExists(atPath: socketPath)
+        }
+    }
+
+    /// Every debug app started from this checkout, newest first: one per
+    /// per-process dir under `tmpRoot`, and one per socket in the shared
+    /// `inlineDataDir` that apps with `useTmp = false` write to.
+    public static func debugApps(tmpRoot: String = "/tmp", inlineDataDir: String = configDir) -> [DebugApp] {
         let fileManager = FileManager.default
-        for dir in clientRemoteDirs(tmpRoot: tmpRoot) {
-            let candidate = "\(dir)/\(filename)"
-            if fileManager.fileExists(atPath: candidate) { return candidate }
+        let prefix = "\(tmpPrefix)\(cwdHash)-"
+        let perProcess = ((try? fileManager.contentsOfDirectory(atPath: tmpRoot)) ?? []).compactMap { entry -> DebugApp? in
+            guard entry.hasPrefix(prefix), let pid = pid(ofDataDirNamed: entry) else { return nil }
+            return DebugApp(pid: pid, dataDir: (tmpRoot as NSString).appendingPathComponent(entry))
         }
-        return nil
+        let inline = sockets(inRemoteDir: (inlineDataDir as NSString).appendingPathComponent(remoteDirName))
+            .map { DebugApp(pid: $0.pid, dataDir: inlineDataDir) }
+        func modified(_ app: DebugApp) -> Date {
+            let attributes = try? fileManager.attributesOfItem(atPath: app.ownsDataDir ? app.remoteDir : app.socketPath)
+            return attributes?[.modificationDate] as? Date ?? .distantPast
+        }
+        return (perProcess + inline)
+            .map { (app: $0, modified: modified($0)) }
+            .sorted { $0.modified > $1.modified }
+            .map(\.app)
+    }
+
+    /// Every debug app running from this checkout, newest first.
+    public static func runningApps(tmpRoot: String = "/tmp", inlineDataDir: String = configDir) -> [DebugApp] {
+        debugApps(tmpRoot: tmpRoot, inlineDataDir: inlineDataDir).filter(\.isRunning)
+    }
+
+    /// Remove what every app from this checkout whose process has ended left
+    /// behind — its own data dir, or its socket in a shared one. A crash, or
+    /// SIGKILL, leaves these. Returns the apps removed.
+    @discardableResult
+    public static func removeDeadApps(tmpRoot: String = "/tmp", inlineDataDir: String = configDir) -> [DebugApp] {
+        debugApps(tmpRoot: tmpRoot, inlineDataDir: inlineDataDir).filter { app in
+            guard !isAlive(app.pid) else { return false }
+            let path = app.ownsDataDir ? app.dataDir : app.socketPath
+            return (try? FileManager.default.removeItem(atPath: path)) != nil
+        }
+    }
+
+    /// Records the calling app's name in its data dir, for clients that list
+    /// running apps.
+    public static func recordAppName(_ name: String, inDataDir dataDir: String) throws {
+        try name.write(toFile: appNamePath(inDataDir: dataDir), atomically: true, encoding: .utf8)
+    }
+
+    /// The name an app recorded in its data dir, if it did.
+    public static func recordedAppName(inDataDir dataDir: String) -> String? {
+        try? String(contentsOfFile: appNamePath(inDataDir: dataDir), encoding: .utf8)
+    }
+
+    private static func appNamePath(inDataDir dataDir: String) -> String {
+        (dataDir as NSString).appendingPathComponent(appNameFileName)
+    }
+
+    /// Whether `pid` names a live process. EPERM means it exists but belongs
+    /// to someone else.
+    public static func isAlive(_ pid: Int32) -> Bool {
+        kill(pid, 0) == 0 || errno == EPERM
     }
 
     /// FNV-1a hash of the current cwd, exposed so callers can enumerate
@@ -162,10 +284,8 @@ public enum DiagPaths {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("debug.sock")
     }
 
-    /// Directory holding per-app remote-control sockets. Each running debug
-    /// build creates `<pid>.sock` here and maintains a `latest.sock` symlink
-    /// pointing to the newest one. Default resolver used by the
-    /// remote-control server.
+    /// Directory holding the app's remote-control socket, `<pid>.sock`.
+    /// Default resolver used by the remote-control server.
     public static func socketDir(useTmp: Bool) -> String {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("remote")
     }
@@ -184,7 +304,7 @@ public enum DiagPaths {
 
     // MARK: - Directory setup
 
-    /// Create all necessary directories and the symlink.
+    /// Create the data dirs and record the app's name in them.
     public static func ensureDirectories(config: DiagConfig) {
         let fm = FileManager.default
 
@@ -199,63 +319,41 @@ public enum DiagPaths {
             try? fm.createDirectory(atPath: path, withIntermediateDirectories: true)
         }
 
-        // Atomically point .terminalui/data at this process's per-PID
-        // dir when using /tmp. Race-free: link/rename can't be observed
-        // partially even when concurrent boots collide.
-        if config.useTmp {
-            try? updateDataSymlink()
+        if root == tmpDataDir {
+            try? recordAppName(ProcessInfo.processInfo.processName, inDataDir: root)
         }
     }
 
-    /// Remove every ephemeral output dir for this project — all
-    /// `/tmp/terminalui-{cwd-hash}-*/` directories regardless of PID.
-    /// Used by `swtui clean` for an explicit project-wide nuke.
-    /// Does NOT distinguish live vs dead processes; for safe automated
-    /// cleanup of stale-only state use `swtui ctl reap` instead.
-    public static func clean() {
+    /// Remove the output of every app from this project that is no longer
+    /// running — but never that of a live process, whose socket and output a
+    /// running session still uses — and the pre-1.1 `.terminalui/data` link.
+    /// Used by `swtui clean`. Returns the pids it left alone.
+    @discardableResult
+    public static func clean(tmpRoot: String = "/tmp", inlineDataDir: String = configDir) -> [Int32] {
         let fm = FileManager.default
-
-        // Remove every per-PID dir for this cwd. The prefix is stable
-        // across instances; siblings are distinguished only by PID
-        // suffix.
-        let parent = "/tmp"
-        let pidPrefix = "\(tmpPrefix)\(cwdHash)-"
-        if let entries = try? fm.contentsOfDirectory(atPath: parent) {
-            for entry in entries where entry.hasPrefix(pidPrefix) {
-                try? fm.removeItem(atPath: (parent as NSString).appendingPathComponent(entry))
+        removeDeadApps(tmpRoot: tmpRoot, inlineDataDir: inlineDataDir)
+        if (try? fm.destinationOfSymbolicLink(atPath: symlinkPath)) != nil {
+            try? fm.removeItem(atPath: symlinkPath)
+        }
+        let live = debugApps(tmpRoot: tmpRoot, inlineDataDir: inlineDataDir)
+        // Output written inline — `useTmp = false` — is shared; it goes only
+        // when no app is left to use it.
+        if !live.contains(where: { !$0.ownsDataDir }) {
+            for subdir in subdirectories {
+                try? fm.removeItem(atPath: (inlineDataDir as NSString).appendingPathComponent(subdir))
             }
         }
-
-        // Remove symlink
-        let link = symlinkPath
-        if (try? fm.destinationOfSymbolicLink(atPath: link)) != nil {
-            try? fm.removeItem(atPath: link)
-        }
-
-        // Remove inline data subdirectories if they exist
-        for subdir in subdirectories {
-            let path = (configDir as NSString).appendingPathComponent(subdir)
-            try? fm.removeItem(atPath: path)
-        }
+        return live.map(\.pid)
     }
 
-    /// Remove the calling process's own `tmpDataDir` and unlink the
-    /// project-local `.terminalui/data` symlink **if** it points at
-    /// our dir. Called from the runtime's atexit hook so a clean exit
-    /// doesn't leak per-PID state. Crashes leave the dir for the next
-    /// `swtui ctl reap` to handle — orphan dirs are recoverable; live
-    /// ones are not, so this method intentionally never touches a dir
-    /// it doesn't own.
+    /// Remove the calling process's own `tmpDataDir`. Called when the runtime
+    /// exits — normally, or on a terminating signal, which it turns into a
+    /// quit — so a clean exit doesn't leak per-PID state. Crashes leave the
+    /// dir for the next `swtui ctl reap` — orphan dirs are recoverable; live
+    /// ones are not, so this method intentionally never touches a dir it
+    /// doesn't own.
     public static func cleanupOwnDir() {
-        let fm = FileManager.default
-        let own = tmpDataDir
-        try? fm.removeItem(atPath: own)
-        // Only unlink the symlink if it still points at our dir — a
-        // newer instance may have repointed it.
-        let link = symlinkPath
-        if let dest = try? fm.destinationOfSymbolicLink(atPath: link), dest == own {
-            try? fm.removeItem(atPath: link)
-        }
+        try? FileManager.default.removeItem(atPath: tmpDataDir)
     }
 
     /// Atomically point `.terminalui/data` at this process's
@@ -264,6 +362,7 @@ public enum DiagPaths {
     /// the canonical path. Per POSIX `rename(2)`, the swap is atomic
     /// — at no point does a reader see a missing or partially-updated
     /// link. Idempotent: repeated calls converge on the same target.
+    @available(*, deprecated, message: "No single link names the app: several may run at once. DiagPaths.runningApps() lists them.")
     public static func updateDataSymlink() throws {
         let fm = FileManager.default
         let target = tmpDataDir

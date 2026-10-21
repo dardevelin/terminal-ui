@@ -279,19 +279,27 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// and signal-cleanup handlers so escape state never leaks to the parent
     /// shell. Returns after `onEvent` returns `false` or a quit action fires;
     /// terminal state is restored on every path, including thrown errors.
-    /// Throws ``TerminalRuntimeError/rawModeUnavailable`` — before touching
-    /// the screen — when stdin isn't a TTY.
+    /// SIGINT, SIGTERM or SIGHUP quits the same way, then ends the process
+    /// with that signal. Throws ``TerminalRuntimeError/rawModeUnavailable`` —
+    /// before touching the screen — when stdin isn't a TTY.
     public func run() async throws {
+        try await runUntilQuit()
+        Terminal.endIfTerminatedBySignal()
+    }
+
+    private func runUntilQuit() async throws {
         // Self-pipes wake the input task's poll(): one when the runtime
         // shuts down — a blocked read() on stdin doesn't respect
-        // Task.cancel() on Linux — and one the SIGWINCH handler writes to.
-        // Made before anything touches the terminal, so failing leaves it
-        // as it was.
+        // Task.cancel() on Linux — one the SIGWINCH handler writes to, and
+        // one a terminating signal writes to. Made before anything touches
+        // the terminal, so failing leaves it as it was.
         // Closed last, after the defer below has cleared the descriptors.
         let shutdownPipe = try SelfPipe()
         defer { shutdownPipe.close() }
         let resizePipe = try SelfPipe()
         defer { resizePipe.close() }
+        let terminatePipe = try SelfPipe()
+        defer { terminatePipe.close() }
         Terminal.installResizeHandler()
         // Raw-mode setup can fail when stdin isn't a TTY (CI, headless,
         // shell pipe). Propagate as a typed error so callers — and the
@@ -319,7 +327,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         #if DEBUG
         // Tell DebugStream the visible terminal is now ours. Framework
-        // warnings will route to .terminalui/data/warnings.log instead
+        // warnings will route to warnings.log in the app's data dir instead
         // of stderr — stderr writes corrupt the rendered viewport.
         let liveDiagConfig = DiagPaths.loadConfig()
         let warningsURL = URL(fileURLWithPath: DiagPaths.warningsLogPath(useTmp: liveDiagConfig.useTmp))
@@ -342,16 +350,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
             let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
             attachRemoteControl(socketPath: socketPath)
-            // Also publish a stable `latest.sock` symlink so CLIs can find
-            // the most-recently-started app without scanning PIDs.
-            let latest = "\(socketDir)/latest.sock"
-            _ = unlink(latest)
-            _ = symlink("\(ProcessInfo.processInfo.processIdentifier).sock", latest)
         }
         #endif
 
         StdinByteSource.shutdownReadFD = shutdownPipe.read
         Terminal.resizeWakeFD = resizePipe.write
+        Terminal.terminateWakeFD = terminatePipe.write
 
         defer {
             tracer.writeSummary()
@@ -368,16 +372,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // descriptor.
             StdinByteSource.shutdownReadFD = nil
             Terminal.resizeWakeFD = nil
+            Terminal.terminateWakeFD = nil
 
             #if DEBUG
-            // drop the remote-control server explicitly so its
-            // deinit unlinks the PID socket + latest.sock symlink. Without
-            // this, killing the app left stale sockets that confused the
-            // next debug run. Clearing the ref triggers deinit now rather
-            // than on class dealloc (which can be delayed arbitrarily).
+            // drop the remote-control server explicitly so its deinit
+            // unlinks the PID socket. Without this, killing the app left
+            // stale sockets that confused the next debug run. Clearing the
+            // ref triggers deinit now rather than on class dealloc (which
+            // can be delayed arbitrarily).
             remoteControl = nil
-            let latest = "\(DiagPaths.socketDir(useTmp: DiagPaths.loadConfig().useTmp))/latest.sock"
-            _ = unlink(latest)
             // Remove this process's per-PID tmpDataDir on graceful exit.
             // Crashes leave the dir for the next `swtui ctl reap` to
             // handle — orphan dirs are recoverable, live ones are not,
@@ -394,14 +397,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // `withValue`; the run-loop body runs inside this closure and
         // the binding restores on exit — no manual teardown needed.
         try await GraphContext.$currentFocusEngine.withValue(focusEngine) {
-            try await runFrameLoop(shutdownPipe: shutdownPipe, resizePipe: resizePipe)
+            try await runFrameLoop(shutdownPipe: shutdownPipe, resizePipe: resizePipe, terminatePipe: terminatePipe)
         }
     }
 
     /// Body of `run()` after raw-mode setup and the focus-engine
     /// binding. Extracted so `run()` can wrap it in
     /// `GraphContext.$currentFocusEngine.withValue`.
-    private func runFrameLoop(shutdownPipe: SelfPipe, resizePipe: SelfPipe) async throws {
+    private func runFrameLoop(shutdownPipe: SelfPipe, resizePipe: SelfPipe, terminatePipe: SelfPipe) async throws {
         renderFullFrame()
 
         let queue = self.eventQueue
@@ -413,9 +416,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Blocks in one poll() between events — no timeout — so an idle app's
         // input thread sleeps; a resize arrives the same way, from SIGWINCH.
         // Cancellation cannot interrupt poll(); the shutdown pipe ends it.
+        let wake = self.wake
         let inputTask = Task.detached {
             while true {
-                switch StdinByteSource.waitForActivity(resize: resizePipe.read, shutdown: shutdownPipe.read) {
+                switch StdinByteSource.waitForActivity(resize: resizePipe.read, terminate: terminatePipe.read,
+                                                       shutdown: shutdownPipe.read) {
                 case .input:
                     if let event = InputParser.readEvent() {
                         queue.push(event)
@@ -423,6 +428,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 case .resize:
                     let newSize = Terminal.size()
                     queue.push(.resize(newSize.cols, newSize.rows))
+                case .terminate:
+                    // The loop reads `Terminal.terminationSignal`.
+                    wake.wake()
+                    return
                 case .shutdown:
                     return
                 }
@@ -581,9 +590,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 }
             }
 
-            // An action can quit without a key: `invoke_action` from a remote
-            // client fires it outside event handling.
-            if pendingQuitSignal?.fired == true {
+            // A quit can arrive without a key: `invoke_action` from a remote
+            // client fires one outside event handling, and a terminating
+            // signal asks for one.
+            if quitRequestedOutsideEvents {
                 running = false
             }
 
@@ -646,8 +656,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
     }
 
+    private var quitRequestedOutsideEvents: Bool {
+        pendingQuitSignal?.fired == true || Terminal.terminationSignal != nil
+    }
+
     private var hasWork: Bool {
-        if eventQueue.hasEvents || needsFrame || pendingQuitSignal?.fired == true {
+        if eventQueue.hasEvents || needsFrame || quitRequestedOutsideEvents {
             return true
         }
         #if DEBUG
