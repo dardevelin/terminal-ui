@@ -7,6 +7,7 @@ import Darwin
 import Foundation
 import TerminalUIConfig
 import TerminalLog
+import Synchronization
 
 // Module-level logger for framework warnings that fall through when no
 // inspector sink is attached. Routes via TerminalLog so capability
@@ -258,81 +259,76 @@ public struct GraphDebugNode: Codable, Sendable {
 /// no-sink fallback — stderr normally, the `warnings.log` file while a live
 /// TUI owns the terminal — plus per-code suppression and per-session
 /// dedupe. In release builds the class is a stub and every call disappears.
-public final class DebugStream: @unchecked Sendable {
+public final class DebugStream: Sendable {
     /// Process-wide instance every framework emit site reports to.
     public static let shared = DebugStream()
 
-    private var sinks: [any DebugSink] = []
-    private let lock = NSLock()
-    private var enabled = false
-    private var suppressedWarnings: Set<FrameworkWarningCode> = []
-    /// Set when a `TerminalApp` is in raw mode and OWNS the visible
-    /// terminal. While true, `emitWarning`'s stderr fallback is
-    /// disabled — printing to stderr would corrupt the rendered
-    /// viewport. Warnings still reach in-process sinks (debug panel,
-    /// remote socket) and the on-disk warnings log.
-    private var isLiveTUI = false
-    /// Dedupe set for `emitWarning`. A misbehaving node typically
-    /// re-fires the same `(code, message)` every frame; flooding the
-    /// terminal (or a log file) at 60+ Hz is unusable. Each unique
-    /// pair fires AT MOST ONCE per session — same posture as SwiftUI
-    /// runtime warnings. Cleared by `resetWarningDedup()` for tests.
-    private var seenWarnings: Set<String> = []
-    /// Path to the warnings log file (set when DiagPaths reports a
-    /// data dir). Lazily appended via `Foundation.FileHandle`.
-    private var warningsLogURL: URL?
+    /// Everything the stream knows, behind one lock: emit sites run on the
+    /// render path, the input task and tests running in parallel.
+    private struct State {
+        var sinks: [any DebugSink] = []
+        var enabled = false
+        var suppressedWarnings: Set<FrameworkWarningCode> = []
+        /// Set when a `TerminalApp` is in raw mode and OWNS the visible
+        /// terminal. While true, `emitWarning`'s stderr fallback is
+        /// disabled — printing to stderr would corrupt the rendered
+        /// viewport. Warnings still reach in-process sinks (debug panel,
+        /// remote socket) and the on-disk warnings log.
+        var isLiveTUI = false
+        /// Dedupe set for `emitWarning`. A misbehaving node typically
+        /// re-fires the same `(code, message)` every frame; flooding the
+        /// terminal (or a log file) at 60+ Hz is unusable. Each unique
+        /// pair fires AT MOST ONCE per session — same posture as SwiftUI
+        /// runtime warnings. Cleared by `resetWarningDedup()` for tests.
+        var seenWarnings: Set<String> = []
+        /// Path to the warnings log file (set when DiagPaths reports a
+        /// data dir). Lazily appended via `Foundation.FileHandle`.
+        var warningsLogURL: URL?
+    }
+
+    private let state = Mutex(State())
 
     private init() {}
 
     /// Attach a sink and enable the stream. Every subsequent event reaches
     /// this sink until `removeAllSinks()` — there is no per-sink removal.
     public func addSink(_ sink: any DebugSink) {
-        lock.lock()
-        sinks.append(sink)
-        enabled = true
-        lock.unlock()
+        state.withLock { state in
+            state.sinks.append(sink)
+            state.enabled = true
+        }
     }
 
     /// Detach every sink. Used by tests between cases so probe sinks
     /// from one test don't leak into the next.
     public func removeAllSinks() {
-        lock.lock()
-        sinks.removeAll(keepingCapacity: true)
         // `enabled` stays true so framework warnings still fire to the
         // stderr fallback when no sinks are attached. The fallback is
         // what makes warnings reach developers who never wired up an
         // inspector — same posture as SwiftUI's os_log reaching Console.
-        lock.unlock()
+        state.withLock { $0.sinks.removeAll(keepingCapacity: true) }
     }
 
     /// Suppress a framework warning by code. Subsequent emits with
     /// that code are dropped before reaching any sink or stderr.
     /// Mirrors SwiftUI's per-warning silencing pattern. Idempotent.
     public func suppressWarning(_ code: FrameworkWarningCode) {
-        lock.lock()
-        suppressedWarnings.insert(code)
-        lock.unlock()
+        _ = state.withLock { $0.suppressedWarnings.insert(code) }
     }
 
     /// Re-enable a previously-suppressed warning code.
     public func unsuppressWarning(_ code: FrameworkWarningCode) {
-        lock.lock()
-        suppressedWarnings.remove(code)
-        lock.unlock()
+        _ = state.withLock { $0.suppressedWarnings.remove(code) }
     }
 
     /// Clear all suppressions. Used by tests between cases.
     public func unsuppressAllWarnings() {
-        lock.lock()
-        suppressedWarnings.removeAll(keepingCapacity: true)
-        lock.unlock()
+        state.withLock { $0.suppressedWarnings.removeAll(keepingCapacity: true) }
     }
 
     /// Whether ``suppressWarning(_:)`` is currently in effect for `code`.
     public func isWarningSuppressed(_ code: FrameworkWarningCode) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return suppressedWarnings.contains(code)
+        state.withLock { $0.suppressedWarnings.contains(code) }
     }
 
     /// Mark the runtime as in-or-out of the "owns the terminal" state.
@@ -342,28 +338,23 @@ public final class DebugStream: @unchecked Sendable {
     /// `.terminalui/data/warnings.log` file instead so developers can
     /// grep them after exit (or during, via `tail -f`).
     public func setLiveTUI(_ live: Bool, logFileURL: URL? = nil) {
-        lock.lock()
-        isLiveTUI = live
-        warningsLogURL = logFileURL
-        lock.unlock()
+        state.withLock { state in
+            state.isLiveTUI = live
+            state.warningsLogURL = logFileURL
+        }
     }
 
     /// Clear the per-session warning dedupe set. Tests call this
     /// between cases so a warning fired in one test doesn't get
     /// dropped as "already seen" in the next.
     public func resetWarningDedup() {
-        lock.lock()
-        seenWarnings.removeAll(keepingCapacity: true)
-        lock.unlock()
+        state.withLock { $0.seenWarnings.removeAll(keepingCapacity: true) }
     }
 
     /// Deliver an event synchronously to every attached sink. No-op until
     /// the first ``addSink(_:)`` enables the stream.
     public func emit(_ event: DebugEvent) {
-        guard enabled else { return }
-        lock.lock()
-        let currentSinks = sinks
-        lock.unlock()
+        let currentSinks = state.withLock { $0.enabled ? $0.sinks : [] }
         for sink in currentSinks {
             sink.receive(event)
         }
@@ -378,11 +369,6 @@ public final class DebugStream: @unchecked Sendable {
     /// stderr — that's the path that reaches developers who haven't
     /// wired up an inspector, matching SwiftUI's os_log → Console.app.
     public func emitWarning(_ code: FrameworkWarningCode, message: String, nodeID: String = "") {
-        lock.lock()
-        let suppressed = suppressedWarnings.contains(code)
-        let currentSinks = sinks
-        let live = isLiveTUI
-        let logURL = warningsLogURL
         // Dedupe: each (code, nodeID, message-hash) fires at most once
         // per session. A misbehaving node otherwise re-emits the same
         // warning every frame and floods stderr / the log file. The
@@ -390,9 +376,11 @@ public final class DebugStream: @unchecked Sendable {
         // different nodes are still distinct, narrower than the full
         // message so wording-only changes don't break the dedupe.
         let dedupeKey = "\(code.rawValue)\u{1F}\(nodeID)\u{1F}\(message.hashValue)"
-        let alreadySeen = seenWarnings.contains(dedupeKey)
-        if !alreadySeen { seenWarnings.insert(dedupeKey) }
-        lock.unlock()
+        let (suppressed, alreadySeen, currentSinks, live, logURL) = state.withLock { state in
+            (state.suppressedWarnings.contains(code),
+             !state.seenWarnings.insert(dedupeKey).inserted,
+             state.sinks, state.isLiveTUI, state.warningsLogURL)
+        }
         guard !suppressed else { return }
         guard !alreadySeen else { return }
 
@@ -463,7 +451,7 @@ public final class DebugStream: @unchecked Sendable {
     /// and emit it as a ``DebugEvent/graphSnapshot(_:)``. No-op when the
     /// stream is disabled or the graph has no root yet.
     public func emitGraphSnapshot(from root: AttributeNode?, frameNumber: Int) {
-        guard enabled, let root else { return }
+        guard state.withLock({ $0.enabled }), let root else { return }
         let snapshot = GraphDebugSnapshot(
             frameNumber: frameNumber,
             nodes: [buildDebugNode(root, depth: 0)]
@@ -577,10 +565,12 @@ public protocol DebugSink: AnyObject, Sendable {
 // MARK: - Built-in Sinks
 
 /// Keeps last N events in memory — the in-app overlay reads from this.
-public final class MemoryDebugSink: DebugSink, @unchecked Sendable {
-    private var events: [DebugEvent] = []
-    private var lastSnapshot: GraphDebugSnapshot?
-    private let lock = NSLock()
+public final class MemoryDebugSink: DebugSink, Sendable {
+    private struct Retained {
+        var events: [DebugEvent] = []
+        var lastSnapshot: GraphDebugSnapshot?
+    }
+    private let retained = Mutex(Retained())
     /// Maximum events retained; older events drop off the front.
     public let capacity: Int
 
@@ -592,48 +582,50 @@ public final class MemoryDebugSink: DebugSink, @unchecked Sendable {
     /// Appends the event (evicting the oldest past capacity) and caches
     /// graph snapshots for ``latestSnapshot``.
     public func receive(_ event: DebugEvent) {
-        lock.lock()
-        events.append(event)
-        if events.count > capacity {
-            events.removeFirst(events.count - capacity)
+        retained.withLock { retained in
+            retained.events.append(event)
+            if retained.events.count > capacity {
+                retained.events.removeFirst(retained.events.count - capacity)
+            }
+            if case .graphSnapshot(let snap) = event {
+                retained.lastSnapshot = snap
+            }
         }
-        if case .graphSnapshot(let snap) = event {
-            lastSnapshot = snap
-        }
-        lock.unlock()
     }
 
     /// The most recent graph snapshot seen, or `nil` before the first
     /// one arrives.
     public var latestSnapshot: GraphDebugSnapshot? {
-        lock.lock()
-        defer { lock.unlock() }
-        return lastSnapshot
+        retained.withLock { $0.lastSnapshot }
     }
 
     /// The newest 100 retained events, oldest first.
     public var recentEvents: [DebugEvent] {
-        lock.lock()
-        defer { lock.unlock() }
-        return Array(events.suffix(100))
+        retained.withLock { Array($0.events.suffix(100)) }
     }
 }
 
 /// Writes JSON-lines to a file — external tools read this.
-public final class FileDebugSink: DebugSink, @unchecked Sendable {
-    private let handle: FileHandle
-    private let encoder = JSONEncoder()
+public final class FileDebugSink: DebugSink, Sendable {
+    private struct Output {
+        let handle: FileHandle
+        let encoder = JSONEncoder()
+    }
+    /// One lock around encoding and both writes, so concurrent events land
+    /// as whole lines rather than a line and someone else's newline.
+    private let output: Mutex<Output>
 
     /// Opens (truncating/creating) the JSON-lines file at `path`; throws
     /// when the file cannot be opened for writing.
     public init(path: String) throws {
         _ = FileManager.default.createFile(atPath: path, contents: nil)
-        self.handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
+        let handle = try FileHandle(forWritingTo: URL(fileURLWithPath: path))
         handle.seekToEndOfFile()
+        self.output = Mutex(Output(handle: handle))
     }
 
     deinit {
-        handle.closeFile()
+        output.withLock { $0.handle.closeFile() }
     }
 
     public func receive(_ event: DebugEvent) {
@@ -651,17 +643,24 @@ public final class FileDebugSink: DebugSink, @unchecked Sendable {
     }
 
     private func writeJSON<T: Encodable>(_ value: T) {
-        guard let data = try? encoder.encode(value) else { return }
-        handle.write(data)
-        handle.write("\n".data(using: .utf8)!)
+        output.withLock { output in
+            guard var data = try? output.encoder.encode(value) else { return }
+            data.append(0x0A)
+            output.handle.write(data)
+        }
     }
 }
 
 /// Writes to a Unix socket — external tools connect live.
-public final class SocketDebugSink: DebugSink, @unchecked Sendable {
-    private var fd: Int32 = -1
-    private var clientFd: Int32 = -1
-    private let encoder = JSONEncoder()
+public final class SocketDebugSink: DebugSink, Sendable {
+    private struct Connection {
+        var listenFd: Int32
+        var clientFd: Int32 = -1
+        let encoder = JSONEncoder()
+    }
+    /// Events can arrive from more than one thread, and each may accept,
+    /// write to and close the client: all of that happens under this lock.
+    private let connection: Mutex<Connection>
     private let path: String
 
     /// Binds a listening AF_UNIX socket at `path` (default: the
@@ -669,18 +668,19 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
     /// sink rather than throwing.
     public init(path: String = DiagPaths.socketPath(useTmp: DiagPaths.loadConfig().useTmp)) {
         self.path = path
-        // Socket setup is deferred to avoid blocking
-        setupSocket()
+        self.connection = Mutex(Connection(listenFd: Self.listeningSocket(at: path)))
     }
 
-    private func setupSocket() {
+    /// A non-blocking listening socket bound at `path`, or -1 when it
+    /// cannot be created or bound.
+    private static func listeningSocket(at path: String) -> Int32 {
         unlink(path)
         #if canImport(Glibc)
-        fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
         #else
-        fd = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         #endif
-        guard fd >= 0 else { return }
+        guard fd >= 0 else { return -1 }
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -699,23 +699,17 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
 
         if bindResult < 0 {
             close(fd)
-            fd = -1
-            return
+            return -1
         }
 
         listen(fd, 1)
 
         // Non-blocking accept
         _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+        return fd
     }
 
     public func receive(_ event: DebugEvent) {
-        // Try to accept a client if we don't have one
-        if clientFd < 0 && fd >= 0 {
-            clientFd = accept(fd, nil, nil)
-        }
-        guard clientFd >= 0 else { return }
-
         switch event {
         case .frameEnd(let info):
             sendJSON(info)
@@ -727,20 +721,29 @@ public final class SocketDebugSink: DebugSink, @unchecked Sendable {
     }
 
     private func sendJSON<T: Encodable>(_ value: T) {
-        guard var data = try? encoder.encode(value) else { return }
-        data.append(0x0A) // newline
-        let result = data.withUnsafeBytes { buf in
-            socketWrite(clientFd, buf.baseAddress!, buf.count)
-        }
-        if result <= 0 {
-            close(clientFd)
-            clientFd = -1
+        connection.withLock { connection in
+            if connection.clientFd < 0 && connection.listenFd >= 0 {
+                connection.clientFd = accept(connection.listenFd, nil, nil)
+            }
+            guard connection.clientFd >= 0,
+                  var data = try? connection.encoder.encode(value) else { return }
+            data.append(0x0A) // newline
+            let clientFd = connection.clientFd
+            let result = data.withUnsafeBytes { buf in
+                socketWrite(clientFd, buf.baseAddress!, buf.count)
+            }
+            if result <= 0 {
+                close(connection.clientFd)
+                connection.clientFd = -1
+            }
         }
     }
 
     deinit {
-        if clientFd >= 0 { close(clientFd) }
-        if fd >= 0 { close(fd) }
+        connection.withLock { connection in
+            if connection.clientFd >= 0 { close(connection.clientFd) }
+            if connection.listenFd >= 0 { close(connection.listenFd) }
+        }
         unlink(path)
     }
 }
@@ -780,7 +783,7 @@ public final class DebugStream: Sendable {
 }
 public protocol DebugSink: AnyObject {}
 /// Release stub — retains nothing.
-public final class MemoryDebugSink: @unchecked Sendable {
+public final class MemoryDebugSink: Sendable {
     /// Creates the inert stub; `capacity` is ignored.
     public init(capacity: Int = 1000) {}
     /// Always `nil` in release builds.

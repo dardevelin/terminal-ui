@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import TerminalInk
 
 // sinks for log output.
@@ -57,7 +58,7 @@ public protocol LogSink: Sendable {
 /// Stdout/stderr writer. Routes by `entry.level.stream`. Capability
 /// is detected once at construction; reset to `.detectFromProcess()`
 /// per write would be wasteful and detection isn't free.
-public final class ConsoleSink: LogSink, @unchecked Sendable {
+public final class ConsoleSink: LogSink, Sendable {
     private let capability: ColorCapability
 
     public init(capability: ColorCapability? = nil) {
@@ -75,9 +76,10 @@ public final class ConsoleSink: LogSink, @unchecked Sendable {
 /// Plain-text file writer. Capability is forced to `.none` — the
 /// file never accumulates ANSI escapes regardless of where the
 /// process is otherwise writing color.
-public final class FileSink: LogSink, @unchecked Sendable {
-    private let handle: FileHandle
-    private let lock = NSLock()
+public final class FileSink: LogSink, Sendable {
+    /// Held under a lock so two threads logging at once cannot interleave
+    /// their bytes in the file.
+    private let handle: Mutex<FileHandle>
 
     public init(url: URL) throws {
         // Create the file if it doesn't exist; otherwise open for append.
@@ -92,30 +94,27 @@ public final class FileSink: LogSink, @unchecked Sendable {
                 throw CocoaError(.fileWriteUnknown, userInfo: [NSFilePathErrorKey: url.path])
             }
         }
-        self.handle = try FileHandle(forWritingTo: url)
+        let handle = try FileHandle(forWritingTo: url)
         // Append mode — seek to end so concurrent process restarts
         // don't truncate prior contents.
-        try self.handle.seekToEnd()
+        try handle.seekToEnd()
+        self.handle = Mutex(handle)
     }
 
     deinit {
-        try? handle.close()
+        handle.withLock { try? $0.close() }
     }
 
     public func receive(_ entry: LogEntry) {
         let line = entry.rendered(capability: .none) + "\n"
         guard let data = line.data(using: .utf8) else { return }
-        lock.lock()
-        handle.write(data)
-        lock.unlock()
+        handle.withLock { $0.write(data) }
     }
 
     /// Force the OS write buffer to disk. Useful before reading the
     /// file back in tests or after a critical message.
     public func flush() {
-        lock.lock()
-        try? handle.synchronize()
-        lock.unlock()
+        handle.withLock { try? $0.synchronize() }
     }
 }
 

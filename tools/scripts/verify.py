@@ -139,6 +139,11 @@ def main() -> int:
 
     reap_dead_sockets()
 
+    rc, out = step("escape hatches",
+                   [sys.executable, "tools/scripts/check_escape_hatches.py"], 30)
+    if rc != 0:
+        return fail("a concurrency escape hatch is not listed with its guard", out)
+
     rc, out = step("swift build", ["swift", "build", "--scratch-path", SCRATCH_PATH],
                    BUILD_TIMEOUT_SECONDS)
     if rc != 0:
