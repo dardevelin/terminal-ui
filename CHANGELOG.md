@@ -81,6 +81,9 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **`TextInput` and `TextArea` draw their cursor only while they hold focus**,
+  as `PromptInput` now does. Two fields both showing a cursor left the user to
+  guess which one keys would reach.
 - **`PromptInput` draws its cursor only while it holds focus, in theme
   colours.** The cursor was drawn whether or not keys would reach the prompt.
   Its literal cyan, white and greys are now the theme's `accent` (prompt glyph,

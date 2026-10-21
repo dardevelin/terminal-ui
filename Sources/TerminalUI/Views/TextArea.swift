@@ -146,8 +146,8 @@ public enum TextAreaArrowMode: Sendable, Equatable {
 /// A multi-line text editor with cursor positioning, selection, scrolling,
 /// and bounded undo.
 ///
-/// Renders a viewport over a `\n`-delimited document: a block cursor,
-/// blue-background selection, vim-style `~` markers past the last line, and
+/// Renders a viewport over a `\n`-delimited document: a block cursor while
+/// the editor holds focus, blue-background selection, vim-style `~` markers past the last line, and
 /// an optional line-number gutter. Long logical lines soft-wrap at the
 /// container width. Supports arrow-key navigation (char/line), Ctrl+A/E
 /// (home/end of line), Ctrl+Left/Right (word jump), Shift+arrow selection,
@@ -341,7 +341,7 @@ public struct TextArea: TerminalView {
                 wrapWidth: wrapWidth
             )
         }
-        let displaySpans = Self.buildDisplaySpans(
+        let rows = TextAreaRows(
             lines: lines,
             cursor: cursor,
             selection: editorState.selection,
@@ -352,7 +352,7 @@ public struct TextArea: TerminalView {
             highlighter: highlighter,
             theme: theme ?? appTheme.syntax
         )
-        return Text(spans: displaySpans)
+        return rows
             .foreground(isEnabled ? .default : .gray)
             .focusable()
             .onKeyPress { [text, state, arrowMode, boundaryMode, onBoundaryHit] event in
@@ -716,7 +716,8 @@ public struct TextArea: TerminalView {
         lineNumbers: Bool,
         wrapWidth: Int = 0,
         highlighter: (any SyntaxHighlighter)? = nil,
-        theme: SyntaxTheme = .defaultDark
+        theme: SyntaxTheme = .defaultDark,
+        showsCursor: Bool = true
     ) -> [TextSpan] {
         var spans: [TextSpan] = []
         let totalLines = lines.count
@@ -786,7 +787,8 @@ public struct TextArea: TerminalView {
                 let chunkColEnd = chunkColStart + chunk.count
                 // Empty chunk on an empty logical line
                 if chunk.isEmpty {
-                    if row == cursor.row && cursor.col >= chunkColStart && cursor.col <= chunkColEnd {
+                    if showsCursor && row == cursor.row
+                        && cursor.col >= chunkColStart && cursor.col <= chunkColEnd {
                         spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
                     }
                 } else {
@@ -836,7 +838,7 @@ public struct TextArea: TerminalView {
 
                     for col in 0..<chunk.count {
                         let logicalCol = chunkColStart + col
-                        let atCursor = row == cursor.row && logicalCol == cursor.col
+                        let atCursor = showsCursor && row == cursor.row && logicalCol == cursor.col
                         let selected = isPositionSelected(row: row, col: logicalCol, selection: selection)
                         let style: CharStyle = atCursor ? .cursor : selected ? .selected : .normal
                         let charColor: Color = tokenColors.isEmpty ? theme.plain : tokenColors[col]
@@ -857,7 +859,7 @@ public struct TextArea: TerminalView {
                     // only when this is the LAST chunk of the
                     // logical line (otherwise cursor lives on the
                     // next chunk).
-                    if row == cursor.row && cursor.col >= chunkColEnd
+                    if showsCursor && row == cursor.row && cursor.col >= chunkColEnd
                         && chunkIdx == chunks.count - 1
                     {
                         spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
@@ -1496,5 +1498,39 @@ public struct TextArea: TerminalView {
         while col < chars.count && !chars[col].isWhitespace { col += 1 }
         while col < chars.count && chars[col].isWhitespace { col += 1 }
         return TextAreaCursor(row: row, col: col)
+    }
+}
+
+/// A text area's visible rows, drawn as a view of their own under the
+/// editor's focusable so they can ask whether it holds focus — `isFocused`
+/// reports to the content below the focusable — and draw the cursor only
+/// while it does. Handed values, not the bindings, for the reason
+/// `PromptRows` gives.
+struct TextAreaRows: TerminalView {
+    let lines: [String]
+    let cursor: TextAreaCursor
+    let selection: TextAreaSelection?
+    let scrollOffset: Int
+    let visibleHeight: Int
+    let lineNumbers: Bool
+    let wrapWidth: Int
+    let highlighter: (any SyntaxHighlighter)?
+    let theme: SyntaxTheme
+
+    @TerminalEnvironment(\.isFocused) var isFocused
+
+    var body: some TerminalView {
+        Text(spans: TextArea.buildDisplaySpans(
+            lines: lines,
+            cursor: cursor,
+            selection: selection,
+            scrollOffset: scrollOffset,
+            visibleHeight: visibleHeight,
+            lineNumbers: lineNumbers,
+            wrapWidth: wrapWidth,
+            highlighter: highlighter,
+            theme: theme,
+            showsCursor: isFocused
+        ))
     }
 }

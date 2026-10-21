@@ -537,6 +537,19 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     )
 
 
+def storybook_textinput_cursor_follows_focus(app: Client) -> None:
+    """The TextInput page's field draws its caret only once Tab gives it
+    focus. Regression: the caret was drawn whether or not keys reached the
+    field."""
+    app.goto_page("TextInput")
+    preview = app.preview_text()
+    assert_true("type an email" in preview and "│type an email" not in preview,
+                f"no caret before the field holds focus: {preview!r}")
+    app.send_key("tab")
+    assert_true(app.wait_until(lambda c: "│type an email" in c.preview_text(), timeout=1.0),
+                f"the caret should appear with focus: {app.preview_text()!r}")
+
+
 def storybook_textinput_paste_inserts(app: Client) -> None:
     """Bracketed-paste payload reaches a focused TextInput and inserts
     at the cursor. Single-line component → embedded \\n must NOT
@@ -1789,6 +1802,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),
+    SmokeCase("storybook.textinput_cursor_follows_focus", "Storybook", storybook_textinput_cursor_follows_focus),
     SmokeCase("storybook.anchored_scroll_follows_its_tail", "Storybook", storybook_anchored_scroll_follows_its_tail),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),
     SmokeCase("storybook.button_click_updates_message", "Storybook", storybook_button_click_updates_message),

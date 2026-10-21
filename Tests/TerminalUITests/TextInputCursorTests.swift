@@ -144,15 +144,18 @@ struct TextInputCursorRenderTests {
         // Cursor at end (4). Left twice → cursor at 2.
         send(engine, graph, .left)
         send(engine, graph, .left)
-        // Re-update so the render reflects post-key state.
-        GraphContext.$currentFocusEngine.withValue(engine) {
-            GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-                graph.update(from: view)
-            }
-        }
+        // Re-update so the render reflects post-key state, with focus bound
+        // as the runtime binds it — the cursor is drawn only while focused.
+        var focused = EnvironmentValues()
+        focused.focusedID = engine.keyboardFocusID
         var buffer = CellBuffer(width: 16, height: 1)
         let ctx = RenderContext(rect: Rect(x: 0, y: 0, width: 16, height: 1))
-        GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            GraphContext.$currentEnvironment.withValue(focused) {
+                graph.update(from: view)
+                GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
+            }
+        }
         var row = ""
         for c in 0..<16 { row.append(buffer[c, 0].character) }
         let trimmed = row.trimmingCharacters(in: .whitespaces)

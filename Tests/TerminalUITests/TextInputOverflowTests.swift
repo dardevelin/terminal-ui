@@ -12,15 +12,28 @@ import Testing
 @MainActor
 struct TextInputOverflowTests {
 
+    /// Rendered focused: the cursor these cases place is drawn only while
+    /// the field holds focus.
     private func renderInput(value: String, prompt: String = "", width: Int) -> CellBuffer {
         var text = value
         let binding = Binding(get: { text }, set: { text = $0 })
+        let view = TextInput(prompt, text: binding)
         let graph = AttributeGraph()
-        graph.update(from: TextInput(prompt, text: binding))
+        graph.update(from: view)
+        var focused = EnvironmentValues()
+        focused.focusedID = focusableID(in: graph.root!)
         var buffer = CellBuffer(width: width, height: 1)
         let ctx = RenderContext(rect: Rect(x: 0, y: 0, width: width, height: 1))
-        GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
+        GraphContext.$currentEnvironment.withValue(focused) {
+            graph.update(from: view)
+            GraphRenderer.render(graph.root!, into: &buffer, context: ctx)
+        }
         return buffer
+    }
+
+    private func focusableID(in node: AttributeNode) -> NodeID? {
+        if node.isFocusable { return node.id }
+        return node.children.lazy.compactMap { focusableID(in: $0) }.first
     }
 
     @Test("long value ends with cursor at right-most content cell")
