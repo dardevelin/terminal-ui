@@ -145,6 +145,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A crash restores the terminal.** Only SIGINT, SIGTERM and SIGHUP put it
+  back; a crash left raw mode, the alternate screen and mouse reporting on, so
+  the backtrace printed as a staircase over the last frame and the shell went
+  on receiving mouse coordinates as typed text. SIGSEGV, SIGBUS, SIGILL,
+  SIGFPE, SIGTRAP and SIGABRT now restore it first, then go to the handler they
+  had before — the Swift backtracer still prints, on the restored screen.
 - **Content that gains children is measured again.** A `ForEach` that gained
   elements — and a stack whose children were rebuilt, a split re-laid, an
   overlay or modal added or removed — left the cached sizes above it in place.
