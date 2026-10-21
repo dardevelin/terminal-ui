@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-// HYP-277 — @Observable wrapper around SplitNode so SplitView re-
+// @Observable wrapper around SplitNode so SplitView re-
 // renders when the tree mutates. Mirrors SwiftUI's NavigationPath
 // pattern: the consumer holds the state, the view binds to it,
 // mutations propagate via Observation.

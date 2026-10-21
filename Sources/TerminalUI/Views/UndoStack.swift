@@ -15,7 +15,7 @@
 /// Pure value type — `mutating` push/undo/redo so a `Binding`-backed
 /// container struct (like `TextAreaState`) holds its own stack.
 ///
-/// User design memo (HYP-65):
+/// User design memo:
 ///   > *"Snapshot = (text: String, cursor: TextAreaCursor,
 ///   > selection: TextAreaSelection?). On each edit action push
 ///   > current state before mutation. New edits after undo truncate

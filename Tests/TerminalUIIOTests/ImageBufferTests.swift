@@ -2,9 +2,9 @@ import Foundation
 import Testing
 @testable import TerminalUIIO
 
-// HYP-296 — TerminalUIIO module foundation: ImageBuffer value type
+// TerminalUIIO module foundation: ImageBuffer value type
 // + ImageDecoder protocol seam + typed errors. No concrete decoder
-// yet (HYP-297 ships ImageIO/libpng); these tests pin the API
+// ships; these tests pin the API
 // shape and the basic ops (init validation, downsample, pixel
 // access, average color).
 

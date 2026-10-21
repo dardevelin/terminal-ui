@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-215 — `FocusEngine.rebuildIndex` must validate the existing
+// `FocusEngine.rebuildIndex` must validate the existing
 // `keyboardFocusID` against the new `nodeIndex`. Page transitions
 // (sidebar click → state.selectedIndex change → graph rebuild from
 // a different view) leave the old NodeID dangling: it doesn't

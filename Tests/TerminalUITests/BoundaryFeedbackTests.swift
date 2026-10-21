@@ -27,7 +27,7 @@ struct BoundaryHitReasonTests {
 
     @Test("five reason cases per spec")
     func fiveReasons() {
-        // The five wall types from the ticket spec. Edge cases for
+        // The five wall types. Edge cases for
         // cursor-at-extreme; maxLength for fixed-width inputs.
         let reasons: [BoundaryHitReason] = [
             .leftEdge,

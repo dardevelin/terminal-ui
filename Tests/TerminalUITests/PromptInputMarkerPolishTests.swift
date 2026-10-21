@@ -2,7 +2,7 @@ import Testing
 import Foundation
 @testable import TerminalUI
 
-// HYP-223 Phase A.1 — PromptInput markers polish:
+// PromptInput markers polish:
 //   * Marker text spans render with dim color (not default text color).
 //   * `PromptInputLocalizer` protocol routes marker + hint strings.
 //   * `.pasteHint(.hidden)` opts out of the auto-hint row.
@@ -24,7 +24,7 @@ private struct GermanLocalizer: PromptInputLocalizer {
     }
 }
 
-@Suite("PromptInput — marker polish (HYP-223)")
+@Suite("PromptInput — marker polish")
 @MainActor
 struct PromptInputMarkerPolishTests {
 

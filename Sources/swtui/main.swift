@@ -18,7 +18,7 @@ import Darwin
 //   - Section headers ([trace], [capture], etc.): `ink(text, .primary, .bold)`.
 //   - Key/value status lines: built with StyledString chain so keys
 //     are dim, values colored by type (booleans green/red, paths
-//     dim, custom bindings yellow per ticket spec).
+//     dim, custom bindings yellow).
 //   - Help/usage blocks + machine-readable ctl output (PID lists,
 //     JSON responses) stay as plain `print(...)` — terminal-style
 //     decoration would impede `grep` / pipes.
@@ -133,7 +133,7 @@ func statusCommand() {
     for action in DiagConfig.keybindingActions {
         if let key = config.keybindings[action] {
             let isDefault = DiagConfig.defaultKeybindings[action] == key
-            // Custom bindings get yellow (ticket spec); defaults stay
+            // Custom bindings get yellow; defaults stay
             // muted so the eye lands on the customizations.
             let valueStyle: InkColor = isDefault ? .secondary : .warning
             var line = "  " + action.muted + " = " + key.styled(valueStyle)

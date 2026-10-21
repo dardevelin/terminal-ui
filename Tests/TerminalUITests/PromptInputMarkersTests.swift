@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-195 Phase A — PromptInput paste markers (Claude Code parity).
+// PromptInput paste markers (Claude Code parity).
 //   * Paste with newlines OR > 200 chars collapses to `[Pasted text #N +M lines]`.
 //   * Buffer pool dedupes by content hash.
 //   * "Paste again to expand" — re-paste of same content adjacent to a
@@ -11,7 +11,7 @@ import Testing
 //   * Submit sends pristine expanded text (markers stripped).
 //   * History snapshot preserves references + buffers; ↑ recall restores them.
 
-@Suite("PromptInput — paste markers (Phase A)")
+@Suite("PromptInput — paste markers")
 @MainActor
 struct PromptInputMarkersTests {
 

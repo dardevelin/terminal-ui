@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-298 — sub-cell glyph atlas. Maps each glyph-class case to the
+// Sub-cell glyph atlas. Maps each glyph-class case to the
 // canonical Unicode block-element character. Existing BrailleCanvas
 // already does the braille bit-encoding (`Sources/TerminalUI/Views/
 // Charts/BrailleCanvas.swift::brailleChar`); the primitive formalises

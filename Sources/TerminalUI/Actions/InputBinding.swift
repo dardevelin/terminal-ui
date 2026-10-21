@@ -48,7 +48,7 @@ public struct GestureID: Hashable, Sendable, ExpressibleByStringLiteral {
 /// returns the action to fire. Multiple `BoundAction`s can carry the
 /// same action (one action, many bindings).
 ///
-/// `contextRequirement` (HYP-327) gates whether the binding fires given
+/// `contextRequirement` gates whether the binding fires given
 /// the runtime's current `ActionContext`. Nil = unconditional (legacy
 /// behaviour). Set via the `whenContext:` / `whenContextContains:`
 /// overloads on `Action.bound(to:)`.
@@ -84,7 +84,7 @@ extension Action {
     /// Pair this action with a binding that only fires when the runtime
     /// `ActionContext` has `context` as its topmost entry. Models i3's
     /// `mode "resize"` block — bindings declared inside are scoped to
-    /// the mode they live in. HYP-327.
+    /// the mode they live in.
     public func bound(to binding: InputBinding, whenContext context: String) -> BoundAction {
         BoundAction(
             action: self,
@@ -96,7 +96,7 @@ extension Action {
     /// Pair this action with a binding that fires when `context` appears
     /// anywhere on the runtime `ActionContext` stack — including under
     /// nested sub-modes. Useful for "always available while mode X is
-    /// somewhere active" affordances. HYP-327.
+    /// somewhere active" affordances.
     public func bound(to binding: InputBinding, whenContextContains context: String) -> BoundAction {
         BoundAction(
             action: self,

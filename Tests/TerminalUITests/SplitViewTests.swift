@@ -2,14 +2,14 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-277 (i3 epic Slice 1) — tree-as-state SwiftUI-shaped split
+// Tree-as-state SwiftUI-shaped split
 // layout primitive. Recursive SplitNode enum, @Observable SplitState,
 // SplitView consumer view + native LayoutKind.split(SplitAxis) graph
 // primitive with ratio-based child distribution.
 //
-// This slice ships fixed ratios at construction time. Mutation API,
-// nested splits, mouse-resize, and i3 hotkeys come in slices 2-7.
-// Layer-2 layout/render contract from HYP-204 Layer 2 is preserved:
+// Ratios are fixed at construction; mutation, nested splits,
+// mouse-resize and hotkeys are not covered here.
+// The Layer 2 layout/render contract is preserved:
 // Layout.measureAndPlace stamps child.rect; render reads pre-stamped
 // rects and draws content + dividers.
 

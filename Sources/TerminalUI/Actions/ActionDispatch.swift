@@ -23,7 +23,7 @@ public enum ActionDispatch {
     /// standard innermost-wins rule. Pass `nil` for tests / scopes
     /// where defaults aren't relevant.
     ///
-    /// Context-scoped bindings (HYP-327) consult `node._resolvedEnv?.actionContext`
+    /// Context-scoped bindings consult `node._resolvedEnv?.actionContext`
     /// to filter — bindings declared with `whenContext:` / `whenContextContains:`
     /// only fire when their predicate is satisfied by the current
     /// context stack.
@@ -38,7 +38,7 @@ public enum ActionDispatch {
         // Diagnostic: record every dispatch attempt with the focused
         // node id, the binding, the active context, and the outcome.
         // Lets `swtui enable events` consumers see exactly why a
-        // chord did or didn't fire (HYP-341 + family).
+        // chord did or didn't fire.
         var matched: String? = nil
         defer {
             DevTracer.shared.traceActionDispatch(

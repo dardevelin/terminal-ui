@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-65 — `UndoStack<Snapshot>` is the core data type for the
+// `UndoStack<Snapshot>` is the core data type for the
 // TextArea undo/redo feature. Pure value type, generic over the
 // snapshot shape so it's reusable beyond TextArea later.
 //

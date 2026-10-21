@@ -1,4 +1,4 @@
-// HYP-327 — i3-shaped "modes" without a global state machine.
+// Modes, i3-style, without a global state machine.
 //
 // ActionContext is a stack of mode names. Bindings declare a context
 // requirement on construction (`whenContext:` / `whenContextContains:`);

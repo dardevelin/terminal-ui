@@ -3,9 +3,8 @@ import Testing
 
 // TerminalInk ships its own color model so non-render
 // tooling (swtui CLI, DevTools dumps, future Log) can produce styled
-// output without pulling the full TUI runtime. The model also subsumes
-// the older truecolor → 256 → 16 downgrade ticket: degradation
-// happens at write time, driven by `ColorCapability` detected from
+// output without pulling the full TUI runtime. Truecolor → 256 → 16
+// degradation happens at write time, driven by `ColorCapability` detected from
 // `$COLORTERM` / `$TERM` / `$NO_COLOR` / `isatty(1)`.
 
 @Suite("InkColor — color model")

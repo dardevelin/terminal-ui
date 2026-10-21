@@ -1,4 +1,4 @@
-// HYP-298 — alpha-aware cell + 2D buffer. Mirrors `Cell` and
+// Alpha-aware cell + 2D buffer. Mirrors `Cell` and
 // `CellBuffer` but adds an alpha channel for compositing into an
 // existing CellBuffer with proper RGB blending.
 

@@ -98,7 +98,7 @@ final class StorybookState {
     var asyncTicks: Int = 0
     // SplitView demo: nested two-level tree. Left pane is one leaf; right
     // pane is itself a vertical split. Holding the SplitState here means
-    // mutations (slice 2 mutation API) will survive page switches.
+    // a reassigned `root` survives page switches.
     /// Active mode stack for the .actionContext storybook page. Pushed
     /// by .alt+r (enter resize), popped by Esc (exit). The page reads
     /// `currentMode.current` to render the visible mode indicator and
@@ -295,11 +295,11 @@ struct StorybookMain: TerminalAppProtocol {
         // Global-only binding: Esc quits — UNLESS a context mode is
         // active, in which case Esc clears the mode and STAYS in the
         // app. We can't safely dispatch the page's scoped Esc binding
-        // here (HYP-341: focusable nodes swallow keys), so we
+        // here (a focusable node takes the key first), so we
         // unconditionally clear all active modes when the user presses
         // Esc and a mode is on the stack. Acts like a master "exit
-        // any sticky mode" affordance until HYP-341 lets the action
-        // graph handle Esc properly.
+        // any sticky mode" affordance until the action graph sees Esc
+        // ahead of focusable nodes.
         //
         // Arrow keys are handled by the sidebar's hint-line
         // `.onKeyPress` when focused (see Sidebar). Arrow focus

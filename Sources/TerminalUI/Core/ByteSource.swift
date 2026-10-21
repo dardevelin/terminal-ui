@@ -145,8 +145,8 @@ extension StdinByteSource {
 /// Wraps another `ByteSource` and records every consumed byte. The
 /// runtime hands one of these to `InputParser.parseEvent` when DEBUG +
 /// `events` capture is enabled, then reads `consumed` after the event
-/// to log raw bytes alongside the parsed event. HYP-337 — diagnostic
-/// for terminal-key bugs where the parsed-event log alone doesn't
+/// to log raw bytes alongside the parsed event — a diagnostic for
+/// terminal-key bugs where the parsed-event log alone doesn't
 /// distinguish "parser bug" from "different bytes than expected."
 ///
 /// Generic over the underlying source so it works with both

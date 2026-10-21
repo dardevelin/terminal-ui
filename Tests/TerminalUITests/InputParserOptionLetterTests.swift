@@ -2,14 +2,8 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-337 — Diagnostic tests pinning the InputParser's handling of
-// Option/Alt+letter chords. User reported Option+R doesn't fire in
-// the storybook .actionContext page; Claude Code receives Option fine
-// in the same terminal, so the bug is in our code somewhere.
-//
-// These tests prove or disprove the parser as the cause. If all three
-// pass, the bug is downstream (focus routing, ActionDispatch scope walk,
-// or storybook page wiring) — not in byte parsing.
+// Pins how the parser decodes Option/Alt+letter chords, including
+// Apple Terminal's Option-compose characters (Option+R arrives as ®).
 
 @Suite("InputParser — Option/Alt+letter chord handling")
 struct InputParserOptionLetterTests {
@@ -30,7 +24,7 @@ struct InputParserOptionLetterTests {
         #expect(key.modifiers == .alt, "modifiers should be .alt, got \(key.modifiers)")
     }
 
-    @Test("Apple Terminal Option+R bytes (U+00AE) decode to Option+R chord (HYP-336)")
+    @Test("Apple Terminal Option+R bytes (U+00AE) decode to Option+R chord")
     func parserDecodesAppleOptionR() {
         // What stock Apple Terminal sends for Option+R when "Use Option
         // as Meta key" is OFF (Apple's default): UTF-8 encoding of

@@ -345,8 +345,8 @@ public struct SwiftSyntaxHighlighter: SyntaxHighlighter {
             }
 
             // Block comment `/* …` — terminate at `*/` if present on
-            // same line, else extend to end of line (Phase A: no
-            // multi-line carry).
+            // same line, else extend to end of line. This overload is
+            // per-line; `tokenize(line:state:)` carries it across lines.
             if c == "/" && i + 1 < n && chars[i + 1] == "*" {
                 var j = i + 2
                 while j + 1 < n && !(chars[j] == "*" && chars[j + 1] == "/") {

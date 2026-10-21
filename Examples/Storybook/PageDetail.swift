@@ -700,8 +700,7 @@ struct PreviewPane: TerminalView {
                 // explicit per-child ratios in its layout phase, so
                 // the visible boundary tracks `actionContextLeftFraction`
                 // exactly. (HStack with `.frame(width:)` doesn't honor
-                // proposed widths inside flex distribution — see the
-                // separate framework-correctness ticket for that bug.)
+                // proposed widths inside flex distribution.)
                 // Each leaf is bordered so the boundary slide moves
                 // visible rectangle edges, not just text.
                 SplitView(state: state.actionContextSplit)
@@ -1043,8 +1042,8 @@ private func shrinkLeftPane() {
 /// Build a 24x4 CellBuffer for the BufferView preview. Distinct cells
 /// at known positions so a smoke walkthrough can spot-check by reading
 /// the rendered preview pane back through the harness. Uses .plain
-/// style (Style's custom initializer is internal); a future Style
-/// public API ticket will let demos colour individual cells.
+/// style: Style's custom initializer is internal, so a demo cannot
+/// colour individual cells.
 func buildBufferDemo() -> CellBuffer {
     var buffer = CellBuffer(width: 24, height: 4)
     buffer.write("BufferView demo", x: 0, y: 0, style: .plain)

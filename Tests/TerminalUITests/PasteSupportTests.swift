@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-211 — bracketed-paste support across TextInput / TextArea / PromptInput.
+// Bracketed-paste support across TextInput / TextArea / PromptInput.
 //
 // Three layers of coverage:
 //   1. FocusEngine.routePasteEvent — payload reaches the focused subtree's

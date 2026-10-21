@@ -5,9 +5,8 @@ verify.py runs from the project Stop hook on every Claude turn that
 touches a `.swift` or `.py` file. The legacy implementation called
 `kill_strays()` which invoked `swtui ctl kill all` against the
 canonical socket dir — a dragnet that sent `quit` to whatever was
-running there, including the user's live `swift run Storybook`. Per
-HYP-349 + the protocol-correctness work in HYP-348, this is replaced
-with `swtui ctl reap` which only touches sockets whose owning PID is
+running there, including the user's live `swift run Storybook`. It is
+replaced with `swtui ctl reap`, which only touches apps whose PID is
 already dead.
 
 The contract:

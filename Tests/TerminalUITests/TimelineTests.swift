@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-302 — Timeline animation primitive. Two concrete timelines:
+// Timeline animation primitive. Two concrete timelines:
 // FrameTimeline (advances integer frame counter at fps) and
 // CurveTimeline (eased 0..1 progress over a Duration). Both
 // `@Observable` so views observing `currentFrame` re-render as

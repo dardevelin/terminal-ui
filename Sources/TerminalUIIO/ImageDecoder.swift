@@ -1,8 +1,7 @@
 import Foundation
 
-// HYP-296 — protocol seam for image decoders. Default decoder
-// (HYP-297) uses ImageIO on Darwin / libpng+libjpeg on Linux.
-// Consumers can swap in custom decoders (swift-png, swift-image,
+// Protocol seam for image decoders. No default decoder ships;
+// consumers supply their own (swift-png, swift-image,
 // or domain-specific formats) by conforming this protocol.
 //
 // Typed throws (`throws(ImageDecodeError)`) so consumers see the

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-298 — SubCellRenderer maps a 2×4 alpha pattern (matching braille
+// SubCellRenderer maps a 2×4 alpha pattern (matching braille
 // resolution) to the best-fitting SubCellGlyph + colors. Used by
 // shape-clip modifiers to convert alpha masks into terminal cells.
 //

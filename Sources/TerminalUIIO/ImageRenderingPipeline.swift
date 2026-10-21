@@ -1,9 +1,9 @@
 import TerminalUI
 
-// HYP-299 — dispatch ImageBuffer renders to the right
+// Dispatch ImageBuffer renders to the right
 // ImageRenderer based on detected capabilities + strategy. The
 // pipeline holds a registry of renderers keyed by GraphicsProtocol;
-// renderers from later slices (HYP-300 Kitty) plug in alongside
+// renderers added later (Kitty) plug in alongside
 // the half-block one shipped here.
 //
 // Strategy resolution descends the ladder from kitty (highest)

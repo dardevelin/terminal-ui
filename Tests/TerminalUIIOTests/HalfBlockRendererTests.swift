@@ -3,7 +3,7 @@ import Testing
 import TerminalUI
 @testable import TerminalUIIO
 
-// HYP-299 — Half-block renderer is the universal floor of the
+// Half-block renderer is the universal floor of the
 // render ladder. Maps an ImageBuffer to ▀ characters with 24-bit
 // fg/bg colours: top pixel → foreground, bottom pixel →
 // background. Each cell carries 2 vertical pixels of source.

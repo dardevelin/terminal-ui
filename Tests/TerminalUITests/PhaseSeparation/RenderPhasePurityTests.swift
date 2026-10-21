@@ -149,7 +149,7 @@ struct RenderPhasePurityTests {
                 "after Layout.measureAndPlace, render must not invoke geometryRebuilder; got \(counter.value)")
     }
 
-    // HYP-204 Layer 2 contract: for a tree containing only modifiers
+    // Layer 2 contract: for a tree containing only modifiers
     // + ZStack + primitives (no flex distribution from VStack/HStack/
     // ScrollView), render must NOT alter any node's rect after layout
     // has stamped them. The previous test pinned children-identity

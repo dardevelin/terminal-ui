@@ -1,6 +1,6 @@
 import Foundation
 
-// HYP-296 — RGBA pixel buffer used as the canonical input to all
+// RGBA pixel buffer used as the canonical input to all
 // renderers (half-block, kitty, sixel, etc.). Holds raw bytes +
 // dimensions; provides downsample (box-filter) + pixel access +
 // rect-mean color helpers used by per-protocol renderers.

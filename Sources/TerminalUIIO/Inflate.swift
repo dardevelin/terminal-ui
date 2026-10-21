@@ -1,7 +1,7 @@
 import Foundation
 
-// HYP-304 (Slice 297a) — pure-Swift RFC 1951 deflate decoder. Used
-// by the PNG decoder (Slice 297b) for IDAT-chunk decompression.
+// Pure-Swift RFC 1951 deflate decoder, the decompression PNG IDAT
+// chunks need; no PNG decoder ships with it yet.
 // Zero external dependencies: works identically on macOS + Linux.
 //
 // Algorithm (RFC 1951):

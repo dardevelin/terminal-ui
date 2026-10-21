@@ -1,4 +1,4 @@
-// HYP-336 — Reverse-map Apple Terminal's Option-compose Unicode chars
+// Reverse-map Apple Terminal's Option-compose Unicode chars
 // back to their underlying Option+letter chord.
 //
 // The problem: Apple Terminal.app and iTerm2 default to "Option as

@@ -128,11 +128,23 @@ def main() -> int:
         reap_dead_apps()
 
 
+# Source-only checks, cheap enough to run ahead of the build: (step label,
+# script, what a failure means).
+REPOSITORY_CHECKS = (
+    ("escape hatches", "tools/scripts/check_escape_hatches.py",
+     "a concurrency escape hatch is not listed with its guard"),
+    ("tracker ids", "tools/scripts/check_tracker_ids.py",
+     "a tracker id is in the repository"),
+    ("tracker id checker", "tools/scripts/test_check_tracker_ids.py",
+     "the tracker id checker misses a case"),
+)
+
+
 def run_gate() -> int:
-    rc, out = step("escape hatches",
-                   [sys.executable, "tools/scripts/check_escape_hatches.py"], 30)
-    if rc != 0:
-        return fail("a concurrency escape hatch is not listed with its guard", out)
+    for label, script, failure in REPOSITORY_CHECKS:
+        rc, out = step(label, [sys.executable, script], 30)
+        if rc != 0:
+            return fail(failure, out)
 
     rc, out = step("swift build", ["swift", "build", "--scratch-path", SCRATCH_PATH],
                    BUILD_TIMEOUT_SECONDS)

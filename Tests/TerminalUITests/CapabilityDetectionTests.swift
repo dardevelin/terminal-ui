@@ -2,10 +2,10 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-295 — Capability detection (env-sniff phase). Reads
-// TERM / TERM_PROGRAM / NO_COLOR to classify the graphics
-// protocol the current terminal supports. Active escape-query
-// (Phase A2) ships separately.
+// Capability detection from the environment: TERM / TERM_PROGRAM /
+// NO_COLOR classify the graphics protocol the current terminal
+// supports. Querying the terminal with escape sequences is not
+// covered.
 //
 // Tests inject an explicit env dictionary so behaviour is
 // deterministic regardless of the test runner's actual env.

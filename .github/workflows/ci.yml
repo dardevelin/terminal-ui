@@ -66,6 +66,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
+        with:
+          # The commit-message check walks the pushed range.
+          fetch-depth: 0
 
       # The runner's default Xcode ships Swift 6.1; the manifest requires
       # 6.2 (swift:6.0/6.1 reject the file). Pick the newest Xcode on the
@@ -79,6 +82,24 @@ jobs:
       # what guards it; each race this framework shipped sat behind one.
       - name: Concurrency escape hatches are listed
         run: python3 tools/scripts/check_escape_hatches.py
+      - name: No tracker ids in the repository
+        run: |
+          python3 tools/scripts/test_check_tracker_ids.py
+          python3 tools/scripts/check_tracker_ids.py
+
+      # Only the commits this push or pull request adds: history before the
+      # rule stays as written. A new branch or a force-push leaves no base
+      # in the clone, and the pull request run covers those commits.
+      - name: No tracker ids in new commit messages
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -n "$BASE" ] && git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            python3 tools/scripts/check_tracker_ids.py --commits "$BASE..$HEAD"
+          else
+            echo "no base commit to compare against; skipped"
+          fi
 
       - name: Cache build
         uses: actions/cache@v5

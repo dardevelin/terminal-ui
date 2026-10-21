@@ -1,11 +1,9 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-218 — TextInput's `windowedSlice` must "scroll only when the
-// cursor would clip" instead of recentring the cursor mid-buffer
-// every frame. Pre-HYP-208 this worked because the window always
-// pinned to the tail; HYP-208's new model centres aggressively which
-// breaks the editing flow when the user arrows left mid-buffer.
+// TextInput's `windowedSlice` slides only when the cursor would clip
+// an edge: recentring every frame made the window jump when the user
+// arrowed left mid-buffer.
 //
 // The assertions below pin the four behavioural quadrants:
 //
