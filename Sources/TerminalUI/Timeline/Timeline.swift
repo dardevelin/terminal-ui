@@ -1,6 +1,6 @@
 import Foundation
 
-// HYP-302 — Timeline animation primitive. Pull-based: each timeline
+// Timeline animation primitive. Pull-based: each timeline
 // computes `currentFrame` / `progress` on demand from a clock,
 // rather than being driven by a per-frame registry tick. This keeps
 // the framework's existing render loop unchanged — views observing

@@ -418,13 +418,13 @@ public final class AttributeGraph: @unchecked Sendable {
         }
 
         // SplitView — rebuild the layout tree from the SplitState's
-        // current root. Slice 1 doesn't try to diff individual SplitNode
-        // mutations; the @Observable hook will mark the SplitView's
+        // current root. Individual SplitNode mutations are not diffed;
+        // the @Observable hook will mark the SplitView's
         // ancestor dirty whenever `root` is reassigned, and update walks
         // the new tree. Tree shape changes (depth, children count) are
         // structurally invasive — rebuilding the children is correct
-        // behaviour. Identity-preserving diff lands with Slice 2's
-        // mutation API.
+        // behaviour. An identity-preserving diff needs stable leaf
+        // identifiers, which SplitNode does not carry.
         if let split = view as? any _GraphSplitView {
             if case .layout(let info) = node.kind, case .split = info.kind {
                 rebuildSplitChildren(node, from: split.state.root)
@@ -867,7 +867,7 @@ public final class AttributeGraph: @unchecked Sendable {
                 // A bare-leaf root has no split layout shell of its own;
                 // no kind to match. Returning false forces a rebuild,
                 // which then constructs a single-leaf tree without a
-                // split node. Acceptable for Slice 1 — degenerate case.
+                // split node — a degenerate case, rebuilt in full.
                 return false
             }
         }
@@ -1092,8 +1092,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// `LayoutKind.split(axis)` node carrying the per-child ratios on
     /// `node.splitRatios`. Leaves construct as their underlying view.
     ///
-    /// Slice 1 ships fixed ratios at construction time. Slice 2 (mutation
-    /// API) will re-enter via `rebuildSplitChildren` when `root` changes.
+    /// Reassigning `root` re-enters via `rebuildSplitChildren`.
     func constructSplitView(_ split: any _GraphSplitView, id: NodeID) -> AttributeNode {
         constructSplitNode(split.state.root, id: id)
     }
@@ -1121,8 +1120,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Rebuild a SplitView's children from a (possibly mutated)
     /// `SplitNode` root. Used by `updateNode` when the consumer
     /// reassigns `state.root`. Replaces the existing subtree rather
-    /// than diffing — Slice 2 will introduce identity-preserving diff
-    /// once the mutation API has stable identifiers.
+    /// than diffing: SplitNode carries no stable identifiers to diff by.
     private func rebuildSplitChildren(_ node: AttributeNode, from tree: SplitNode) {
         guard case .split(let axis, let children, let ratios) = tree else {
             // Defensive: kindMatches() rejects a leaf root before we
@@ -1135,9 +1133,7 @@ public final class AttributeGraph: @unchecked Sendable {
         node.kind = .layout(LayoutInfo(kind: .split(axis)))
         node.splitRatios = ratios
 
-        // Rebuild children — Slice 1's "good enough" strategy. Mark
-        // the tree dirty so downstream consumers re-render. Identity-
-        // preserving diff is Slice 2 work.
+        // Mark the tree dirty so downstream consumers re-render.
         for old in node.children {
             fireDisappear(on: old)
         }

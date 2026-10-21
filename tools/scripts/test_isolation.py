@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke-vs-live isolation contract.
 
-Per-process PID-isolated diag dirs (HYP-347) make collision impossible
+Per-process PID-isolated diag dirs make collision impossible
 by construction: every TerminalUI process — including smoke children
 — writes to its own ``/tmp/terminalui-{cwd-hash}-{pid}/`` directory.
 The smoke harness no longer needs ``-smoke-`` markers or env-var
@@ -85,11 +85,7 @@ def case_smoke_child_uses_isolated_dir() -> None:
             "Client.diag_dir is None — runner must record the dir the "
             "child wrote to so tests can verify isolation."
         )
-        # PID embedding: the child's PID must appear in the path.
-        # Tolerant match — could be `terminalui-{hash}-{pid}` (production)
-        # or `terminalui-smoke-{runner_pid}-{n}` (legacy override) for
-        # the duration of the migration. After HYP-350 lands, only the
-        # first shape exists.
+        # The child's PID must appear in the path.
         assert str(proc.pid) in diag_dir, (
             f"diag_dir {diag_dir!r} must embed the child's PID {proc.pid} — "
             "otherwise concurrent processes from this checkout would collide."
@@ -107,7 +103,7 @@ def case_smoke_child_uses_isolated_dir() -> None:
 
 
 def case_smoke_child_uses_framework_default_path() -> None:
-    """After HYP-350 the runner no longer forces a smoke-specific
+    """The runner no longer forces a smoke-specific
     ``TERMINALUI_DATA_DIR`` — the framework's per-process default
     (``/tmp/terminalui-{cwd-hash}-{pid}/``) handles isolation. The
     child's diag dir must therefore match the framework-default shape:

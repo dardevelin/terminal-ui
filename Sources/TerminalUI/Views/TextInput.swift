@@ -157,12 +157,8 @@ public struct TextInput: TerminalView {
     /// only slides when the cursor would clip an edge. Same node-
     /// resident-state pattern as `cursor`.
     ///
-    /// Bug fix history: HYP-208 introduced a centring formula that
-    /// recomputed `windowStart` from the cursor every frame; that
-    /// broke editing flow because the visible window jumped as soon
-    /// as the user arrowed left mid-buffer. HYP-218 reverted to
-    /// "scroll only on edge-clip" by giving `windowedSlice` a
-    /// stored anchor.
+    /// The anchor `windowedSlice` keeps, so the window slides only
+    /// when the cursor would clip an edge.
     @TerminalState var windowStart: Int = -1
 
     /// Creates a single-row field bound to `text`.
@@ -225,7 +221,7 @@ public struct TextInput: TerminalView {
         // GR closure reads + writes this so the window stays put
         // while the cursor moves within it; only edge-clip events
         // (cursor < windowStart, cursor > windowStart + room - 1)
-        // slide the window. See HYP-218 for the regression history.
+        // slide the window.
         let windowStartBinding = $windowStart
 
         // Capture env-resolved boundary-feedback channels at body
@@ -570,7 +566,7 @@ public struct TextInput: TerminalView {
             // available room, slide the visible window only when the
             // cursor would otherwise clip an edge. Persisted
             // `windowStart` anchors the window across renders so
-            // arrow-left mid-buffer doesn't recentre the view (HYP-218).
+            // arrow-left mid-buffer doesn't recentre the view.
             let result = Self.windowedSlice(
                 value: value, cursor: cursor, room: valueRoom,
                 windowStart: windowStart.get())
@@ -618,11 +614,9 @@ public struct TextInput: TerminalView {
     /// observation pins to the tail (legacy "scroll the tail into
     /// view" rendering for the typing case).
     ///
-    /// Bug history: HYP-208 introduced a centring formula that
-    /// recomputed start from cursor every frame; that broke editing
-    /// flow because the window jumped when the user arrowed left
-    /// mid-buffer. HYP-218 reverted to "scroll only on edge-clip"
-    /// by giving this function a stored anchor.
+    /// Slides only when the cursor would clip an edge: recentring every
+    /// frame made the window jump when the user arrowed left
+    /// mid-buffer.
     static func windowedSlice(value: String, cursor: Int, room: Int, windowStart: Int = -1)
         -> (visible: String, cursorOffset: Int, windowStart: Int)
     {

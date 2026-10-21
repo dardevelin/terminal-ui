@@ -1,4 +1,4 @@
-// HYP-298 — Compositor.compositeAlphaLayer. Walks an AlphaLayer
+// Compositor.compositeAlphaLayer. Walks an AlphaLayer
 // cell-by-cell and writes the result into a destination CellBuffer
 // at an offset. Pure pass-through when alpha=1.0, no-op when
 // alpha=0.0, RGB blending otherwise.

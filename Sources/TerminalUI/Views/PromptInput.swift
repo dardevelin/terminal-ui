@@ -161,7 +161,7 @@ public enum PasteMode: Equatable, Sendable {
     /// Claude Code defaults: `lines = 2, chars = 200`. SwiftUI parity
     /// is N/A — Claude Code is the reference, this is its mirror.
     case placeholder(lines: Int = 2, chars: Int = 200)
-    /// Always render paste content inline. Legacy mode (pre-HYP-195).
+    /// Always render paste content inline (the pre-marker behaviour).
     /// Useful for prompts that want the user to see the full pasted
     /// text every time (e.g. command-bar autocomplete previews).
     case inline
@@ -255,16 +255,16 @@ public struct DefaultPromptInputLocalizer: PromptInputLocalizer {
     }
 }
 
-/// Content held by a `PasteBuffer`. Phase A ships text only; image paste
-/// flows through a separate input pipeline (kitty graphics / OSC 52)
-/// tracked as a follow-up ticket. The case shape is forward-compatible
-/// so the consumer-facing API stays stable when image paste lands.
+/// Content held by a `PasteBuffer`. Only text is pasted today; image paste
+/// would arrive through a separate input pipeline (kitty graphics /
+/// OSC 52). The case shape is forward-compatible so the consumer-facing
+/// API stays stable if it does.
 public enum PasteBufferContent: Hashable, Equatable, Sendable {
     /// Plain-text paste payload, stored verbatim (newlines included).
     case text(String)
     /// Image buffer — opaque payload bytes plus mime type. The actual
     /// kitty graphics protocol / OSC 52 clipboard wiring lives in its
-    /// own pipeline (separate ticket); this case is the stable
+    /// own pipeline; this case is the stable
     /// data-shape side so the consumer-facing API doesn't churn when
     /// image paste arrives.
     case image(bytes: Data, mimeType: String)
@@ -273,8 +273,8 @@ public enum PasteBufferContent: Hashable, Equatable, Sendable {
 /// One paste payload (or future selection-collapsed buffer) stored in the
 /// PromptInput's per-state pool. Buffers are append-only and survive
 /// reference deletion — that's what lets `Backspace` on a marker
-/// "delete the presentation" without losing the data, so a Phase B
-/// buffer-picker can re-insert the same buffer later.
+/// "delete the presentation" without losing the data, so the same
+/// buffer can be re-inserted later.
 ///
 /// User design quote (verbatim 2026-04-26):
 /// > *"deleting regions don't delete the buffer, they delete the
@@ -314,8 +314,7 @@ public struct PasteBuffer: Identifiable, Equatable, Sendable {
 
 /// A view of a buffer at a specific position in the binding text. One
 /// buffer can be inserted multiple times — each insertion gets its own
-/// `Reference`. Phase A: paste creates references; Phase B will add
-/// selection-collapse and named references.
+/// `Reference`. Only paste creates references.
 ///
 /// `range` is stored as `(start: Int, length: Int)` rather than
 /// `Range<String.Index>` because the binding is mutable (cursor edits
@@ -340,16 +339,14 @@ public struct PasteReference: Identifiable, Equatable, Sendable {
     public var length: Int
     /// `true` when the reference's underlying text is rendered inline.
     /// `false` (default) collapses to a marker (`[Pasted text #N +M lines]`).
-    /// Toggled by "paste again to expand" and (Phase B) by
-    /// `expand(refID:)` API.
+    /// Toggled by "paste again to expand".
     public var isExpanded: Bool
-    /// Optional human-readable name. Phase A: always nil — markers
-    /// render with `#N` numeric tag. Phase B: selection-collapse and
-    /// LLM-suggested names populate this field.
+    /// Optional human-readable name. Nothing sets it yet, so markers
+    /// render with their `#N` numeric tag.
     public var name: String?
 
     /// Creates a reference into the buffer pool. Defaults produce the
-    /// Phase A shape: collapsed marker, no name.
+    /// A collapsed marker with no name.
     public init(
         id: ID,
         bufferID: PasteBuffer.ID,
@@ -416,7 +413,7 @@ public struct PromptInputState: Equatable, Sendable {
     public var savedInput: String = ""
     /// Buffer pool — append-only across the prompt's lifetime. References
     /// point into here; deleting a reference does NOT delete its buffer
-    /// (Phase B re-applies via the buffer picker). Indexed by `id`.
+    /// so it can be re-inserted. Indexed by `id`.
     public var buffers: [PasteBuffer] = []
     /// Live references in the current text. Empty when no paste has
     /// happened yet (or all references were deleted).
@@ -850,8 +847,8 @@ public struct PromptInput: TerminalView {
         localizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()
     ) -> CollapsedProjection {
         // Sort references by start so we can walk left-to-right and
-        // accumulate deltas. Phase A's "cursor snaps to edge" rule
-        // means references never overlap; sort is stable in that case.
+        // accumulate deltas. The "cursor snaps to edge" rule means
+        // references never overlap; sort is stable in that case.
         let sortedRefs = references.sorted { $0.start < $1.start }
         guard !sortedRefs.isEmpty else {
             return CollapsedProjection(
@@ -918,8 +915,7 @@ public struct PromptInput: TerminalView {
             // route through the localizer with chars=0 to keep the
             // shape consistent — apps that customize markers will
             // see this branch when references have been disconnected
-            // from their buffer (Phase B picker may legitimately
-            // produce that state).
+            // from their buffer.
             return localizer.charsMarker(id: ref.id, charCount: 0)
         }
         switch buffer.content {
@@ -963,8 +959,8 @@ public struct PromptInput: TerminalView {
         let projection = rows.projection
         // Translate cursor from expanded coordinates → display
         // coordinates. Markers shift the column count for any
-        // position past their start. Phase A: cursor never lives
-        // INSIDE a collapsed range (input handlers snap to edges),
+        // position past their start. The cursor never lives INSIDE a
+        // collapsed range (input handlers snap to edges),
         // so a single-pass delta lookup is sufficient.
         let expandedLines = splitLines(rows.text)
         let cursorRowInExpanded = min(st.cursorRow, max(0, expandedLines.count - 1))
@@ -1122,7 +1118,7 @@ public struct PromptInput: TerminalView {
         }
         // Walk the chunk left-to-right, alternating text-color and
         // dim-color segments. Marker ranges are sorted by start so a
-        // simple sweep is sufficient (Phase A: no nested markers).
+        // simple sweep is sufficient (markers never nest).
         var cursor = chunkStartInDisplay
         for range in intersecting {
             // Pre-marker plain segment.
@@ -1181,8 +1177,8 @@ public struct PromptInput: TerminalView {
     ///   3. Existing references AFTER the insertion point shift right
     ///      by `payload.count` so their stored offsets stay accurate.
     ///
-    /// Phase A intentionally keeps "paste again to expand" + auto-hint
-    /// scaffolding integrated; the cursor-adjacency check fires when
+    /// "Paste again to expand" and the auto-hint live here too; the
+    /// cursor-adjacency check fires when
     /// the same content is pasted right after a collapsed reference.
     static func handlePaste(
         _ payload: String,
@@ -1259,8 +1255,8 @@ public struct PromptInput: TerminalView {
 
         // Shift any existing reference whose range starts at or after
         // the insertion point. References that ENCLOSE the insertion
-        // point are split: not supported in Phase A (cursor snaps to
-        // edges, so insertion inside a reference can't happen).
+        // point would be split, which is unsupported: the cursor snaps
+        // to edges, so insertion inside a reference can't happen.
         let insertedLength = normalised.count
         for i in 0..<st.references.count {
             if st.references[i].start >= insertOffset {
@@ -1406,7 +1402,7 @@ public struct PromptInput: TerminalView {
             // Atomic delete of a collapsed marker: if cursor sits at
             // the right edge of a collapsed reference, remove the
             // ENTIRE underlying range instead of one character. The
-            // buffer stays in the pool (Phase B picker can re-insert).
+            // buffer stays in the pool.
             //
             // Compute current absolute cursor offset.
             var absCursor = 0

@@ -4,8 +4,7 @@
 //   "ok".success
 //   "Hello, \(name.cyan)"  // works because StyledString is interpolatable
 //
-// These extensions give callers the dollar-sign-free ergonomics the
-// ticket pitched. Each named-color and trait property returns a fresh
+// These extensions give callers dollar-sign-free ergonomics. Each named-color and trait property returns a fresh
 // `StyledString`; the cascade composes by re-applying on the result
 // — `"x".red.bold` is `"x".red` (StyledString) followed by `.bold`
 // (StyledString → StyledString trait setter).

@@ -3,8 +3,8 @@ import Observation
 import TerminalUI
 
 // A drill-down that ends in the settings screen — the composition NavigationStack
-// exists for, and the one the parity epic's acceptance names: a settings screen
-// reachable *through* navigation, since that is what real apps do.
+// exists for: a settings screen reachable *through* navigation, since that is
+// what real apps do.
 //
 // State lives in an `@Observable` class because the links capture bindings, and
 // `@TerminalState` does not survive a handler closure. The path is the model:
@@ -46,8 +46,7 @@ struct RootScreen: TerminalView {
     }
 }
 
-/// The settings screen from the Form work, reached through navigation. This is
-/// the composition the epic's acceptance calls for.
+/// The settings screen from the Form work, reached through navigation.
 struct SettingsScreen: TerminalView {
     let model: AppModel
 

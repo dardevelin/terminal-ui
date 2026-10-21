@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-324 — terminal escape state must NEVER leak to the parent
+// Terminal escape state must NEVER leak to the parent
 // terminal on signal/abort. Cleanup is normally in TerminalApp.run()'s
 // defer block, but defer doesn't run for SIGINT/SIGTERM/SIGHUP or
 // direct exit() calls. Framework MUST install signal handlers + an

@@ -48,8 +48,8 @@ public struct TextAreaState: Equatable, Sendable {
     /// Bounded undo/redo history. Each text-mutating key path pushes
     /// a snapshot of (text, cursor, selection) BEFORE the mutation.
     /// Ctrl+Z restores from `undoStack.undo()`; Ctrl+Shift+Z (or
-    /// Ctrl+Y) restores from `undoStack.redo()`. Default 100 entries
-    /// per the HYP-65 design memo. Equatable conformance ignores the
+    /// Ctrl+Y) restores from `undoStack.redo()`. Default 100 entries.
+    /// Equatable conformance ignores the
     /// internal stack contents to keep state-equality cheap on hot
     /// paths — the public-facing edit position is what `==` checks.
     public var undoStack: UndoStack<TextAreaSnapshot> = UndoStack(maxSize: 100)

@@ -1,7 +1,7 @@
 import Foundation
 import Observation
 
-// HYP-302 — eased-progress timeline. Reports `progress` in 0..1
+// Eased-progress timeline. Reports `progress` in 0..1
 // over a fixed duration with an animation curve applied. Useful
 // for transitions (TabView focus indicator slide, Modal fade-in,
 // ProgressBar indeterminate sweep) where the consumer interpolates

@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-298 — alpha-aware compositing into a CellBuffer. AlphaLayer is
+// Alpha-aware compositing into a CellBuffer. AlphaLayer is
 // the input (a 2D buffer of AlphaCell, each carrying glyph + fg + bg
 // + alpha). Compositor.compositeAlphaLayer walks the layer cell-by-
 // cell and either passes through (alpha=1.0), preserves (alpha=0.0),

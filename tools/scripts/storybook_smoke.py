@@ -147,7 +147,7 @@ def storybook_a_client_that_hangs_up_leaves_the_app_running(app: Client) -> None
 def storybook_sidebar_order_matches_navigation(app: Client) -> None:
     """Walking Down through every page must visit each visible
     sidebar row in the same order the sidebar displays them.
-    Regression test for HYP-323 / the Primitives cursor-jump bug
+    Regression test for the Primitives cursor-jump bug
     (2026-05-05): the enum declaration order silently diverged from
     sidebar visual order, causing arrow nav to skip three pages.
     Index-based smoke tests didn't catch it by construction (they
@@ -573,7 +573,7 @@ def storybook_treeview_expand_collapse(app: Client) -> None:
 def storybook_sidebar_autoscrolls_with_selection(app: Client) -> None:
     """Pressing Down past the visible sidebar window must keep the ▸
     cursor visible — the ScrollView should auto-scroll to follow the
-    selection. HYP-217: prior to the fix, ▸ moved off-screen because
+    selection. Prior to the fix, ▸ moved off-screen because
     only the bottom hint row was focusable, so adjustScrollForFocus
     never had a moving target."""
     # Press Down 35 times — past the ~33-row visible window.
@@ -668,9 +668,10 @@ def storybook_textarea_paste_splits_lines(app: Client) -> None:
 
 
 def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
-    """HYP-219 + HYP-195 regression: a large multi-line paste must
-    arrive intact AND collapse to a marker. Verifies that:
-      1. App chrome still renders post-paste (parser fix from HYP-219).
+    """A large multi-line paste must arrive intact AND collapse to a
+    marker. Verifies that:
+      1. App chrome still renders post-paste (the parser tolerates read
+         timeouts mid-paste).
       2. PromptInput's default `.pasteMode(.claudeCode)` collapses
          the paste into a `[Pasted text #N +M lines]` marker so the
          viewport doesn't flood with raw paste content."""

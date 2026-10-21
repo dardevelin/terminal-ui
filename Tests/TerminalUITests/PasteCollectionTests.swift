@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-219 — InputParser bracketed-paste collection must tolerate
+// InputParser bracketed-paste collection must tolerate
 // transient `readByte()` nils (raw-mode timeouts), not terminate
 // on the first one. Without this, a paste split across multiple
 // stdin reads collapses to a partial payload and the unread bytes

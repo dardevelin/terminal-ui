@@ -208,7 +208,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .subCell: return PageInfo(id: self, category: .primitives, name: "SubCellGlyph",
-            summary: "Sub-cell precision atlas: full / halves / quadrants / eighths / shade / braille glyphs. Used by Image circle clip + chart precision + .disabled() alpha overlay (HYP-298).",
+            summary: "Sub-cell precision atlas: full / halves / quadrants / eighths / shade / braille glyphs. Used by Image circle clip + chart precision + .disabled() alpha overlay.",
             code: """
                 // Full atlas of glyph classes:
                 Text(String(SubCellGlyph.full.character))                            // █
@@ -219,7 +219,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 Text(String(SubCellGlyph.shade(.medium).character))                  // ▒
                 """)
         case .timeline: return PageInfo(id: self, category: .primitives, name: "Timeline",
-            summary: "Animation primitive — FrameTimeline (frame-step at fps) + CurveTimeline (eased 0..1 progress). @Observable so view bodies reactively re-render (HYP-302).",
+            summary: "Animation primitive — FrameTimeline (frame-step at fps) + CurveTimeline (eased 0..1 progress). @Observable so view bodies reactively re-render.",
             code: """
                 // Frame timeline: cycle 0..<8 at 10fps
                 let frame = FrameTimeline(frames: 8, fps: 10)
@@ -243,7 +243,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     }
                 """)
         case .capabilities: return PageInfo(id: self, category: .primitives, name: "TerminalCapabilities",
-            summary: "Detected terminal graphics protocol via env-sniff (TERM, TERM_PROGRAM, NO_COLOR). Read Runtime.capabilities.graphics to know which renderer to use (HYP-295).",
+            summary: "Detected terminal graphics protocol via env-sniff (TERM, TERM_PROGRAM, NO_COLOR). Read Runtime.capabilities.graphics to know which renderer to use.",
             code: """
                 // Read the framework-level singleton:
                 let caps = Runtime.capabilities

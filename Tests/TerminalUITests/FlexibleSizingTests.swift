@@ -8,7 +8,7 @@ import Testing
 // remaining axis space; ScrollView fills its scroll axis. Plain views
 // take intrinsic size with no growth.
 //
-// Goal (from ticket): SwiftUI-equivalent flex API.
+// A SwiftUI-equivalent flex API:
 //
 //     Text("title").flexible()              // both axes
 //     Text("title").flexible(.horizontal)   // single axis

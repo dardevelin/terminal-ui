@@ -1,9 +1,9 @@
 import Foundation
 import Observation
 
-// HYP-302 — frame-stepped timeline. Advances an integer frame
+// Frame-stepped timeline. Advances an integer frame
 // counter at a fixed fps. Useful for frame-by-frame animations
-// (Spinner glyph cycle, Avatar animated frames, MorseTicker dot
+// (Spinner glyph cycle, animated image frames, MorseTicker dot
 // scan) where the consumer renders the N-th frame from a fixture
 // array.
 

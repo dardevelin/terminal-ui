@@ -1,6 +1,6 @@
 import TerminalUI
 
-// HYP-299 — universal-floor renderer. Each terminal cell carries
+// Universal-floor renderer. Each terminal cell carries
 // 2 vertical pixels of source image: top pixel as foreground,
 // bottom pixel as background, ▀ (U+2580 upper-half-block) as the
 // glyph. Works on any 24-bit-color terminal.

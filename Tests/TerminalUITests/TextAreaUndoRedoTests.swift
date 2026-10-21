@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-65 — TextArea undo/redo.
+// TextArea undo/redo.
 //
 // Each text-mutating key (character, enter, backspace, delete,
 // selection-replace, paste) pushes a snapshot of (text, cursor,

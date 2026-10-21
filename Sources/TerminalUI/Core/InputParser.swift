@@ -153,7 +153,7 @@ public enum InputParser {
         // When DEBUG + events trace are on, wrap the stdin source so we
         // can record the exact byte sequence that produced each event.
         // This is what lets us diagnose terminal-key bugs at the byte
-        // level (HYP-337). The wrapper is only constructed in DEBUG —
+        // level. The wrapper is only constructed in DEBUG —
         // release builds get the bare StdinByteSource path with zero
         // recording overhead.
         var source = RecordingByteSource(StdinByteSource())
@@ -239,7 +239,7 @@ public enum InputParser {
         }
 
         let char = parseUtf8Character(firstByte: byte, from: &source)
-        // HYP-336 — reverse-map Apple Terminal's Option-compose Unicode
+        // Reverse-map Apple Terminal's Option-compose Unicode
         // outputs (`®` for Option+R, `å` for Option+A, etc.) back to
         // the underlying chord. Bracketed paste is collected at
         // `collectBracketedPaste` BEFORE this path, so pasted content

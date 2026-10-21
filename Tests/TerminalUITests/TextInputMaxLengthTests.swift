@@ -11,7 +11,7 @@ import Testing
 /// Same shared-singleton recorder pattern as TextInputBoundaryTests.
 /// Captured here too so the maxLength suite is self-contained — copy
 /// is cheap, and stitching the two suites together would couple
-/// otherwise-independent ticket scopes.
+/// otherwise-independent suites.
 private final class SharedEmitterRecorder: @unchecked Sendable {
     nonisolated(unsafe) var bell = 0
     nonisolated(unsafe) var bounce: [BoundaryHitReason] = []

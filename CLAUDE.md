@@ -387,9 +387,9 @@ Prefer hardening the core over starting new epics.
 
   ```bash
   tools/scripts/kanban.py board            # columns
-  tools/scripts/kanban.py show TUI-4       # one card in full
+  tools/scripts/kanban.py show <card>      # one card in full
   tools/scripts/kanban.py lessons          # every lesson, with the card that earned it
-  tools/scripts/kanban.py move TUI-4 doing
+  tools/scripts/kanban.py move <card> doing
   ```
 
 The board file (`design/board.jsonl`) is **gitignored** — it is working state,

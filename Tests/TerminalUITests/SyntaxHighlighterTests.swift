@@ -229,10 +229,10 @@ struct SyntaxHighlighterTests {
 
     // MARK: - Stateful tokenisation (multi-line constructs)
     //
-    // Phase A is per-line stateless — block comments and multiline
+    // The per-line overload is stateless — block comments and multiline
     // string literals that span more than one line lose their
-    // classification on lines 2..n. Phase B threads a `TokenizerState`
-    // across calls so the tokenizer remembers an open `/* …` or `"""`.
+    // classification on lines 2..n. Threading a `TokenizerState` across
+    // calls lets the tokenizer remember an open `/* …` or `"""`.
 
     @Test("TokenizerState defaults to a closed-out state")
     func tokenizerStateDefaults() {

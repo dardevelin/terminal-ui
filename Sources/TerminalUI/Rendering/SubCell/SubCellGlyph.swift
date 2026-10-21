@@ -1,4 +1,4 @@
-// HYP-298 — Sub-cell glyph atlas. Maps glyph-class enum cases to
+// Sub-cell glyph atlas. Maps glyph-class enum cases to
 // canonical Unicode "Block Elements" code points (U+2580..U+259F),
 // braille (U+2800..U+28FF), and shade glyphs (U+2591..U+2593).
 //

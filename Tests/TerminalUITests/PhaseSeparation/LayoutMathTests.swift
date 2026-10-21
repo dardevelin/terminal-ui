@@ -2,19 +2,17 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-204 Layer 2 — modifier rect math + ZStack semantics move into the
-// layout phase. Today these transforms run during render: `renderModifier`
-// computes `ctx.rect = ctx.rect.inset(...)` for padding/border/frame and
-// hands the inset rect to the recursive `render(child, ...)` call.
-// `renderZStack` hands every child the parent's rect.
+// Modifier rect math and ZStack semantics belong to the layout phase:
+// padding, border and frame inset the rect a child is placed in, and a
+// ZStack gives every child the parent's rect.
 //
-// Phase-separation contract under HYP-203 says the layout phase owns
+// The phase-separation contract says the layout phase owns
 // rect computation. This suite pins the per-primitive math at the Layout
 // level: after `Layout.measureAndPlace`, a child node's `rect` already
 // reflects its modifier/ZStack-derived rect WITHOUT calling render.
 //
 // Stack distribution (VStack/HStack flex) and ScrollView content sizing
-// stay on the renderer for now — Layer 3 of the epic.
+// are not covered here.
 
 @Suite("Layout math — modifier rect transforms + ZStack stamp child rects in layout phase")
 @MainActor

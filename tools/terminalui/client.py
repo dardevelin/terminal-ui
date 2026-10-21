@@ -581,7 +581,7 @@ class Client:
         page list is reordered (regression seen 2026-05-05 when three
         primitives were added under .primitives but cases sat at the
         tail of the enum). Index-based tests cannot detect visual-vs-
-        declaration order divergence by construction. See HYP-323."""
+        declaration order divergence by construction."""
         for _ in range(index):
             self.send_key("down")
         self.wait_for_frame(1, timeout=1.0)
@@ -608,7 +608,7 @@ class Client:
         """Read the visible sidebar entries (page names) in display order.
 
         Used by :py:meth:`goto_page` for resilience checks and by the
-        sidebar-order regression test (HYP-323). Skips category headers
+        sidebar-order regression test. Skips category headers
         (which sit at column 0), the gap rows between categories, the
         scrollbar column at the right edge (▎ cursor, ┃/█ thumb, │ track,
         ▼/▲ edge glyphs), and the
@@ -705,7 +705,7 @@ class Client:
         finds the right page regardless of where it sits in the
         declaration. Replaces hardcoded indices like ``goto_storybook_page(9)``
         which encode the enum order at test-write time and break
-        silently when the order changes (HYP-323).
+        silently when the order changes.
 
         Raises ``RuntimeError`` if the page can't be reached within
         ``max_steps`` presses in either direction."""

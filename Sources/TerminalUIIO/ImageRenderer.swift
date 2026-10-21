@@ -1,8 +1,8 @@
 import TerminalUI
 
-// HYP-299 — image renderer protocol + strategy enum. Concrete
-// renderers (HalfBlockRenderer here, KittyImageRenderer in
-// HYP-300) plug into ImageRenderingPipeline and dispatch by
+// Image renderer protocol + strategy enum. Concrete
+// renderers (HalfBlockRenderer here, a Kitty-protocol renderer
+// later) plug into ImageRenderingPipeline and dispatch by
 // detected GraphicsProtocol.
 
 /// Renders an `ImageBuffer` into a destination `CellBuffer` rect.

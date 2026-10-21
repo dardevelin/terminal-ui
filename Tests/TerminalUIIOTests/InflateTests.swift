@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUIIO
 
-// HYP-304 (Slice 297a) — pure-Swift RFC 1951 deflate decoder.
+// Pure-Swift RFC 1951 deflate decoder.
 // Tests use fixtures pre-generated on macOS via Apple's Compression
 // framework (raw deflate format, no zlib wrapping). Decoder runs
 // identically on macOS + Linux Docker.

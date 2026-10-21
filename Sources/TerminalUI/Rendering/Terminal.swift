@@ -78,7 +78,7 @@ private let _resizeFlag = Atomic<Bool>(false)
 /// reaches an idle app without anything polling for it.
 private let _resizeWakeFD = Atomic<Int32>(-1)
 
-// MARK: - Crash-path signal cleanup (HYP-324)
+// MARK: - Crash-path signal cleanup
 //
 // Signal handlers and atexit hooks must be `@convention(c)` and
 // non-capturing. Swift forbids forming C function pointers from
@@ -468,7 +468,7 @@ public enum Terminal {
     /// so a single disable would be undone by the screen restore and
     /// leave the shell spewing SGR mouse bytes.
     public static func exitAlternateScreen() {
-        // HYP-342 — disable mouse modes BOTH before AND after the
+        // Disable mouse modes BOTH before AND after the
         // alt-screen exit. Apple Terminal.app saves/restores per-
         // screen state on ?1049l: a disable issued only in the alt
         // screen is reverted when the main screen is restored, so
@@ -479,7 +479,7 @@ public enum Terminal {
         // The pre-exit disable still matters: it prevents in-flight
         // mouse events from being reported during the brief window
         // between alt-exit and the second disable, which is the
-        // corruption pattern HYP-324 documented.
+        // corruption pattern a crash left on the shell.
         disableMouseTracking()
         // cursorVisible on + alternateScreen off
         writeRaw("\u{1B}[?25h\u{1B}[?1049l")
@@ -611,7 +611,7 @@ public enum Terminal {
         }
     }
 
-    // MARK: - Crash-path cleanup (HYP-324)
+    // MARK: - Crash-path cleanup
 
     /// Concatenated DEC private-mode disable sequence covering every
     /// state TerminalApp.run() enables. Precomputed at file scope so
@@ -623,8 +623,8 @@ public enum Terminal {
     /// reported BEFORE the alternate screen is exited and the user's
     /// shell becomes visible again. Disabling alt-screen first would
     /// briefly leave the shell rendering SGR 1006 coordinate strings
-    /// before mouse mode is off — that's the corruption pattern that
-    /// triggered HYP-324.
+    /// before mouse mode is off — the corruption pattern a crash used to
+    /// leave on the shell.
     public static let cleanupEscapeSequence: String =
         "\u{1B}[?1006l" +    // SGR 1006 mouse extended-coordinates off
         "\u{1B}[?1003l" +    // mouse motion (any-event) off
@@ -633,7 +633,7 @@ public enum Terminal {
         "\u{1B}[?2004l" +    // bracketed-paste off
         "\u{1B}[?25h"   +    // cursor visible
         "\u{1B}[?1049l" +    // alt-screen exit
-        // HYP-342 — re-issue mouse-off in main-screen context. Apple
+        // Re-issue mouse-off in main-screen context. Apple
         // Terminal.app restores per-screen mouse state on ?1049l, so
         // the pre-alt-exit disable doesn't stick. Repeat after the
         // alt-screen exit so the shell-side state is mouse-off too.

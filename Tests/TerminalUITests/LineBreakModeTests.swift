@@ -11,9 +11,8 @@ import Testing
 //    word level; truncate with ellipsis at beginning, middle, or
 //    end."
 //
-// Today TextInput always clips with virtual horizontal scroll
-// (matches HIG default). Apps that want non-default break behaviour
-// have no public knob — this ticket adds:
+// TextInput clips with virtual horizontal scroll by default (the HIG
+// default). Apps that want another break behaviour use:
 //   - `LineBreakMode` enum (six cases per HIG)
 //   - `EnvironmentValues.lineBreakMode` (default `.byClipping`)
 //   - `.lineBreakMode(_:)` modifier

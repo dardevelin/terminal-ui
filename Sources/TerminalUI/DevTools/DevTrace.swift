@@ -84,11 +84,11 @@ public enum TraceEntry: Sendable {
     /// Raw bytes consumed by InputParser to produce ONE TerminalEvent.
     /// Recorded BEFORE the parser interprets them, so we can see e.g.
     /// `c2 ae` (UTF-8 ®) → `Alt+r` (after decode) — the diagnostic
-    /// path for terminal-key bugs. HYP-337.
+    /// path for terminal-key bugs.
     case inputBytes(hex: String, decoded: String)
     /// One ActionDispatch.dispatch attempt. Records the focused node
     /// id, the binding, the active ActionContext stack, and whether
-    /// any action matched (by id). HYP-341+ — diagnoses why a
+    /// any action matched (by id) — diagnoses why a
     /// chord didn't fire when the user expected it to.
     case actionDispatch(fromNode: String, binding: String, context: String, matchedActionID: String?)
     /// An `@Observable` / `@TerminalState` property mutated, naming the

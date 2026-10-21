@@ -67,7 +67,7 @@ public struct ActionScope: Sendable {
     /// Order matters — the first matching binding wins. Callers that
     /// declare both a context-scoped and a default binding for the same
     /// chord should list the context-scoped one first so it shadows the
-    /// fallback when its predicate is satisfied. HYP-327.
+    /// fallback when its predicate is satisfied.
     public func boundAction(for binding: InputBinding, context: ActionContext) -> BoundAction? {
         for entry in boundActions where entry.binding == binding && entry.action.isEnabled {
             if let requirement = entry.contextRequirement, !requirement.matches(context) {

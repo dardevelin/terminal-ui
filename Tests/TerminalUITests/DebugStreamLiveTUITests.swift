@@ -3,7 +3,7 @@ import Testing
 import Foundation
 @testable import TerminalUI
 
-// HYP-221 — `DebugStream.emitWarning` must not corrupt the live TUI:
+// `DebugStream.emitWarning` must not corrupt the live TUI:
 //   1. While `setLiveTUI(true)` is set, no fallback writes to stderr.
 //   2. Identical `(code, nodeID, message)` pairs dedupe per session
 //      so a misbehaving node doesn't flood thousands of warnings.

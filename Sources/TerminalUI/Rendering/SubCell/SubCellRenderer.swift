@@ -1,5 +1,5 @@
-// HYP-298 — alpha pattern → SubCellGlyph + AlphaCell. Used by
-// shape-clip modifiers (Avatar circle clip etc.) to convert per-
+// Alpha pattern → SubCellGlyph + AlphaCell. Used by
+// shape-clip modifiers (a circle clip, say) to convert per-
 // sub-pixel alpha masks into a single rendered cell.
 //
 // AlphaPattern is a 2-column × 4-row grid of doubles in [0, 1].

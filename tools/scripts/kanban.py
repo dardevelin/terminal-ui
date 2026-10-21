@@ -25,12 +25,12 @@ Usage::
         --type gap --lane framework --priority P1 --tags theme,design-system
     tools/scripts/kanban.py board
     tools/scripts/kanban.py list --status todo --lane framework
-    tools/scripts/kanban.py move TUI-3 doing
-    tools/scripts/kanban.py note TUI-3 "measurer and renderer must share one allocation"
-    tools/scripts/kanban.py lesson TUI-3 "shared passes drift unless they share code"
-    tools/scripts/kanban.py show TUI-3
+    tools/scripts/kanban.py move <card> doing
+    tools/scripts/kanban.py note <card> "measurer and renderer must share one allocation"
+    tools/scripts/kanban.py lesson <card> "shared passes drift unless they share code"
+    tools/scripts/kanban.py show <card>
     tools/scripts/kanban.py lessons
-    tools/scripts/kanban.py link TUI-9 --blocked-by TUI-3
+    tools/scripts/kanban.py link <other> --blocked-by <card>
 
 Exits 0 on success, 1 on a usage or lookup error.
 """

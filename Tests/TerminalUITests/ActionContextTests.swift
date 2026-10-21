@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import TerminalUI
 
-// HYP-327 Slice 0b — ActionContext stack value type + scoped key bindings.
+// ActionContext stack value type + scoped key bindings.
 // i3-faithful "modes" reimagined as a sparse predicate on each binding,
 // not a global mode state machine. Stack-based so nested modes work.
 

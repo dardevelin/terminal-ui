@@ -462,9 +462,9 @@ Closed core debt before expanding the framework's surface.
 - **InputParser → ByteSource** refactor. The state machine now takes
   `inout some ByteSource`, with `StdinByteSource` for runtime and
   `ArrayByteSource` for tests. Behavior unchanged, parser testable without a TTY.
-- **HYP-41 quit hang fixed** via POSIX self-pipe: pressing `q` now exits in
+- **Quit hang fixed** via POSIX self-pipe: pressing `q` now exits in
   ~2.4ms (previously ≥100ms because `read(STDIN_FILENO)` blocks cancellation).
-- **HYP-40 focus scopes**: `.focusScope(_ id: String)` groups focusables.
+- **Focus scopes**: `.focusScope(_ id: String)` groups focusables.
   Arrow keys clamp inside the scope; Tab still crosses (SwiftUI convention).
 - Demo grew a "Scopes" tab (12th) demonstrating focus scopes.
 

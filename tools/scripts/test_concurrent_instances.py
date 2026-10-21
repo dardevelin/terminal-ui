@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Concurrent live-instances integration contract.
 
-Final acceptance for the per-process diag-dir epic. Spawn two
+Spawn two
 Storybook processes from the same checkout in separate harnessed
 PTYs and prove the architectural guarantees end-to-end:
 
@@ -22,10 +22,8 @@ PTYs and prove the architectural guarantees end-to-end:
 6. **SIGTERM quits through teardown.** An app ended by SIGTERM removes its
    own data dir and socket, then dies of the signal.
 
-The contract HYP-348 owns is "kill --pid writes quit to that PID's
-socket and ONLY that socket." End-to-end "A actually exits" requires
-the runtime quit-wake fix (tracked separately as HYP-352); this test
-asserts the kill side is surgical.
+The kill contract is "kill --pid writes quit to that PID's socket and
+ONLY that socket"; this test asserts that side, not that A then exits.
 
 Run::
 
@@ -229,10 +227,8 @@ def case_kill_pid_a_leaves_b_alive() -> None:
     ctl queries. Pins the architectural guarantee: PID-targeted
     mutations don't fan out.
 
-    End-to-end "A actually exits" depends on the runtime quit-wake
-    fix (HYP-352); this test asserts the kill SIDE is surgical
-    (stdout reports `status=quit-sent`, B's socket+responsiveness
-    are untouched)."""
+    Asserts only that the kill is surgical (stdout reports
+    `status=quit-sent`, B's socket and responsiveness are untouched)."""
     with spawn_and_connect("Storybook") as (proc_a, client_a):
         client_a.wait_for_frame(1, timeout=2.0)
         with spawn_and_connect("Storybook") as (proc_b, client_b):
