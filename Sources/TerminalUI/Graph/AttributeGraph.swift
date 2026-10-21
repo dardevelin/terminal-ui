@@ -4,7 +4,6 @@ import Darwin
 import Glibc
 #endif
 import Observation
-import Synchronization
 
 /// Persistent DAG of typed nodes — the core data structure.
 ///
@@ -24,18 +23,11 @@ public final class AttributeGraph: @unchecked Sendable {
     /// already holds.
     public private(set) var updateGeneration = 0
 
-    /// Atomic<Bool> from the Synchronization module — a lock-free boolean
-    /// safe to read/write from any thread or signal handler.
-    /// Set by Observation onChange callbacks (which fire on the thread that
-    /// mutated the @Observable property). Read/cleared on MainActor in update().
-    private let _hasDirtyNodes = Atomic<Bool>(false)
-    /// Whether any node awaits re-evaluation. Set by Observation `onChange`
-    /// from whatever thread mutated the state; the runtime reads it before
+    /// Whether any node awaits re-evaluation. The runtime reads it before
     /// doing any frame work — false means the frame is skipped entirely,
     /// which is what makes idle cost zero.
     public var hasDirtyNodes: Bool {
-        get { _hasDirtyNodes.load(ordering: .relaxed) }
-        set { _hasDirtyNodes.store(newValue, ordering: .relaxed) }
+        invalidations.hasPending || !dirtyQueue.isEmpty
     }
 
     /// Creates an empty graph; the first ``update(from:)`` builds the tree.
@@ -49,8 +41,8 @@ public final class AttributeGraph: @unchecked Sendable {
     // The view updates — not its parents, not its siblings. The
     // `update(from:)` path always walks from root, paying parent-
     // emission cost on the unchanged path. The dirty queue is the
-    // bypass: every per-node `withObservationTracking` `onChange`
-    // enqueues the dirty node; `drain()` re-evaluates only those nodes
+    // bypass: every node a per-node `withObservationTracking` `onChange`
+    // invalidated joins it; `drain()` re-evaluates only those nodes
     // in place.
     //
     // Keyed by `ObjectIdentifier(node)` so two enqueues of the same
@@ -67,16 +59,27 @@ public final class AttributeGraph: @unchecked Sendable {
     /// applied to the bound environment, and applying the chain again on top
     /// would run a `transformEnvironment` edit twice.
     private(set) var baseEnvironment = EnvironmentValues()
-    /// Re-entrancy guard: a markDirty fired *during* a drain (because a
-    /// body re-evaluation read+wrote an observable) must enqueue for
-    /// the next drain, not corrupt the current iteration.
+    /// Re-entrancy guard: a `drain()` reached from inside a drain's body
+    /// evaluation returns at once and leaves the work to the outer one.
     private var draining: Bool = false
 
-    /// Called from the per-node `onChange` callback to register a
-    /// dirty node for the next `drain()` cycle.
-    func enqueueDirty(_ node: AttributeNode) {
-        dirtyQueue[ObjectIdentifier(node)] = node
-        hasDirtyNodes = true
+    /// Nodes invalidated since the last update or drain, by `onChange` on
+    /// any thread or by the main actor. The main actor moves them into the
+    /// dirty queue at the start of its next ``update(from:)`` or ``drain()``.
+    private let invalidations = InvalidationInbox()
+
+    /// Marks every invalidated node and queues it for ``drain()``.
+    private func applyInvalidations() {
+        for (key, node) in invalidations.take() {
+            node.markDirty()
+            dirtyQueue[key] = node
+        }
+    }
+
+    /// A node a reconciliation replaced no longer belongs to the tree, and
+    /// re-evaluating it would only feed a subtree nothing renders.
+    private func isAttached(_ node: AttributeNode) -> Bool {
+        node.parent != nil || node === root
     }
 
     /// Re-evaluate every node that became dirty since the last drain.
@@ -84,6 +87,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// outside the dirty nodes themselves — that's the parity claim.
     @discardableResult
     public func drain() -> Bool {
+        applyInvalidations()
         guard !dirtyQueue.isEmpty else { return false }
         guard !draining else {
             // Re-entry from within an ongoing drain — let the outer
@@ -105,7 +109,7 @@ public final class AttributeGraph: @unchecked Sendable {
         for (_, node) in pending {
             // Node may have been detached between markDirty and drain
             // (e.g. parent flipped an if/else branch). Skip silently.
-            guard node.parent != nil || node === root else { continue }
+            guard isAttached(node) else { continue }
             GraphContext.$currentEnvironment.withValue(environment(at: node)) {
                 node.bodyReplay?(self, node)
             }
@@ -117,8 +121,6 @@ public final class AttributeGraph: @unchecked Sendable {
         if let r = root {
             stampSubtree(r)
         }
-
-        hasDirtyNodes = !dirtyQueue.isEmpty
         return true
     }
 
@@ -160,7 +162,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// drained on `drain()`, so call this before draining to inspect
     /// what's pending.
     public var dirtyQueueNodeIDs: [NodeID] {
-        dirtyQueue.values.map { $0.id }
+        dirtyQueue.merging(invalidations.posted) { queued, _ in queued }.values.map { $0.id }
     }
 
     /// The keypath that fired the most recent observation `willSet`,
@@ -178,6 +180,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Returns true if any node values actually changed.
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
+        applyInvalidations()
         updateGeneration += 1
         baseEnvironment = GraphContext.currentEnvironment ?? EnvironmentValues()
         #if DEBUG
@@ -187,14 +190,18 @@ public final class AttributeGraph: @unchecked Sendable {
         if let existing = root {
             changed = false
             updateNode(existing, from: view)
-            // Clear dirty AFTER update — Observation may set it again
-            // for the next state change during re-evaluation
-            hasDirtyNodes = false
             result = changed
         } else {
             root = constructNode(for: view, id: .root)
-            hasDirtyNodes = false
             result = true
+        }
+        // The walk re-evaluated what it reached; anything it left dirty
+        // still belongs to the next drain.
+        let stillDue = { (node: AttributeNode) in node.isDirty && self.isAttached(node) }
+        if dirtyQueue.values.contains(where: stillDue) {
+            dirtyQueue = dirtyQueue.filter { stillDue($0.value) }
+        } else {
+            dirtyQueue.removeAll(keepingCapacity: true)
         }
         // Stamp `_containsViewBody` bottom-up so `GraphMeasurer.containsViewBody`
         // is O(1) on the measurement hot path. Reconciliation may have added
@@ -231,65 +238,47 @@ public final class AttributeGraph: @unchecked Sendable {
 
     // MARK: - Body Evaluation with Observation
 
-    /// Evaluate a composite view's body with Observation tracking.
+    /// Runs `view.body` for `node` with Observation tracking.
     ///
-    /// `withObservationTracking` (from the Observation framework) records every
-    /// @Observable property accessed during the `apply` closure. When any of
-    /// those properties mutate later, the `onChange` closure fires — once, on
-    /// whatever thread performed the mutation.
-    ///
-    /// The onChange closure must be thread-safe:
-    /// - `hasDirtyNodes` is Atomic — safe from any thread.
-    /// - `markDirty()` walks the mutable parent chain, so it dispatches
-    ///   to @MainActor via Task.
-    /// - `weak` captures prevent retain cycles when nodes are removed
-    ///   from the graph between frames.
-    /// - `AttributeNode` and `AttributeGraph` are `@unchecked Sendable`
-    ///   so the weak captures travel through the closure freely. The
-    ///   safety guarantee comes from runtime discipline — the closure
-    ///   touches the captured nodes only via `markDirty` / `enqueueDirty`,
-    ///   both of which only mutate atomic flags + cache fields.
-    func evaluateBody<V: TerminalView>(node: AttributeNode, view: V) {
-        weak let weakNode: AttributeNode? = node
-        weak let weakGraph: AttributeGraph? = self
+    /// `withObservationTracking` records every `@Observable` property the
+    /// body reads. When one of them changes, `onChange` fires — once, on
+    /// whatever thread made the change — and all it can reach is the inbox.
+    /// `weak` captures keep a node the graph has since dropped, and a graph
+    /// that is gone, from being kept alive by state they once read.
+    private func trackedBody<V: TerminalView>(of view: V, for node: AttributeNode) -> V.Body {
         #if DEBUG
         bodyEvaluationCount += 1
         #endif
+        weak let weakNode: AttributeNode? = node
+        weak let inbox: InvalidationInbox? = invalidations
 
-        // Bind currentNode + currentGraph for the body-evaluation scope
-        // via @TaskLocal. `withValue` restores the prior binding on
-        // exit (regardless of throw) and isolates the binding to this
-        // task — `Task.detached` callers cannot observe these values.
+        // `withValue` restores the prior binding on exit (regardless of
+        // throw) and isolates it to this task — `Task.detached` callers
+        // cannot observe these values.
         node.environmentReads.removeAll(keepingCapacity: true)
         let body: V.Body = GraphContext.$currentNode.withValue(node) {
             GraphContext.$currentGraph.withValue(self) {
                 withObservationTracking {
                     view.body
                 } onChange: {
-                    weakGraph?.hasDirtyNodes = true
-                    // Per-node dirty flag for the in-place drain path. Set
-                    // synchronously so a subsequent `graph.update(from:)` on
-                    // the same actor sees the dirtiness. Observation's
-                    // onChange fires on the mutating thread; in a TUI app
-                    // that's @MainActor for any state-driven update.
-                    // `markDirty` itself only mutates a Bool + nil-able
-                    // cache fields, safe under runtime discipline.
-                    weakNode?.markDirty()
-                    // Enqueue for in-place drain so the next frame doesn't
-                    // have to walk from the root.
-                    if let n = weakNode {
-                        weakGraph?.enqueueDirty(n)
+                    if let node = weakNode {
+                        inbox?.post(node)
                     }
                 }
             }
         }
-        // Capture a replay closure so `drain()` can re-run the body
-        // with the last-known view value without needing the generic
-        // V in scope.
+        // `drain()` re-runs the body from the last view value, without the
+        // generic `V` in scope.
         node.bodyReplay = { graph, target in
             guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
             graph.evaluateBody(node: target, view: stored)
         }
+        return body
+    }
+
+    /// Re-evaluates a composite's body and reconciles its child against it.
+    func evaluateBody<V: TerminalView>(node: AttributeNode, view: V) {
+        let body = trackedBody(of: view, for: node)
 
         // Update or create child from body result
         if let child = node.children.first {
@@ -1293,8 +1282,7 @@ public final class AttributeGraph: @unchecked Sendable {
             let readsOwnFocus = node.environmentReads[\EnvironmentValues.isFocused] != nil
                 && focusable.map(moved.contains) == true
             if readsOwnFocus || node.environmentReads[\EnvironmentValues.focusedID] != nil {
-                node.markDirty()
-                enqueueDirty(node)
+                invalidations.post(node)
                 invalidated = true
             }
         }
@@ -1371,36 +1359,7 @@ public final class AttributeGraph: @unchecked Sendable {
         let info = ViewBodyInfo(viewTypeName: String(describing: V.self))
         let node = AttributeNode(id: id, kind: .viewBody(info))
 
-        weak let weakNode2: AttributeNode? = node
-        weak let weakGraph2: AttributeGraph? = self
-        #if DEBUG
-        bodyEvaluationCount += 1
-        #endif
-        // Bind currentNode + currentGraph for the body-evaluation scope
-        // via @TaskLocal. See `evaluateBody` for the contract.
-        node.environmentReads.removeAll(keepingCapacity: true)
-        let body: V.Body = GraphContext.$currentNode.withValue(node) {
-            GraphContext.$currentGraph.withValue(self) {
-                withObservationTracking {
-                    view.body
-                } onChange: {
-                    weakGraph2?.hasDirtyNodes = true
-                    // Per-node dirty flag — synchronous so the next
-                    // graph.update sees it. See `evaluateBody` for the
-                    // longer note on isolation.
-                    weakNode2?.markDirty()
-                    // Same enqueue dance as evaluateBody.
-                    if let n = weakNode2 {
-                        weakGraph2?.enqueueDirty(n)
-                    }
-                }
-            }
-        }
-        // Replay closure for drain(); see evaluateBody site.
-        node.bodyReplay = { graph, target in
-            guard let storedAny = target.lastInputView, let stored = storedAny as? V else { return }
-            graph.evaluateBody(node: target, view: stored)
-        }
+        let body = trackedBody(of: view, for: node)
 
         let childID = id.appending(.index(0))
         let childNode = constructNode(for: body, id: childID)
