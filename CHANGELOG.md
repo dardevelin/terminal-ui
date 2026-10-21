@@ -145,6 +145,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Scrolling no longer crashes debug builds.** The input task records each
+  event's bytes in the dev trace while the render loop opens and closes frames
+  on another thread, and both wrote one unguarded array — a burst of wheel
+  events crashed it, and debug builds trace their first hundred frames by
+  default. The recording is now behind a lock. Input traced between frames
+  goes into the next frame instead of being cleared away, and nothing is
+  recorded past the frame limit.
 - **A crash restores the terminal.** Only SIGINT, SIGTERM and SIGHUP put it
   back; a crash left raw mode, the alternate screen and mouse reporting on, so
   the backtrace printed as a staircase over the last frame and the shell went
