@@ -145,6 +145,30 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A modal presented from inside a modal is drawn.** A presentation is drawn
+  after the tree, over the whole screen; one declared while drawing another
+  was added to a list that had already been read, so an alert raised from a
+  sheet never appeared. Presentations are now drawn level by level, each over
+  the one before.
+- **A dialog owns the keyboard and the pointer.** Focus contained itself to
+  the first dialog at the deepest level while a later one at that level was
+  drawn over it, so Tab walked a dialog the user could not see. A key or an
+  action binding the dialog did not take climbed out into the view that
+  declared it, and a click on a `.onClick` row, a hover, or the wheel reached
+  the content under the dim; only focusable controls had been fenced off. Hit
+  testing pruned by the rect of the declaring view, so the inspector and
+  `swtui ctl probe` missed any dialog declared below the root. The renderer,
+  focus, key routing, hit testing and every pointer path now agree on one
+  order of presentations — level by level, then tree order — and on the one
+  drawn on top.
+- **`containmentDepth` is right after a partial update.** A dialog whose view
+  re-evaluated on its own restamped its content at depth 1 whatever enclosed
+  it, and a node a reader rebuilt during layout read 0. The depth is now read
+  from the tree.
+- **`TerminalApp.print` may run on several threads at once.** What a render
+  had left to draw was kept in statics every render shared, so two at once
+  drew each other's dialogs or crashed. The renderer now keeps no state
+  between calls.
 - **An `@Observable` model may change on any thread.** Observation reports a
   change on the thread that made it, and the graph marked the node and wrote
   its drain queue right there, racing the frame that was reading both; under

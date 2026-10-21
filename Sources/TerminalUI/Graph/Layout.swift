@@ -33,15 +33,13 @@
 /// The split lines up with risk: Layer 2 is pure rect arithmetic
 /// (easy to verify per-primitive at the layout level). Layer 3 needs
 /// flex measurement + env stacking + scroll content sizing (the
-/// dependency that bit the HYP-5 attempt). Layer 3 lands when its
+/// dependency that bit an earlier attempt). Layer 3 lands when its
 /// own slice ships.
 ///
-/// Isolation: Layout is non-isolated to match `GraphRenderer`. Both
-/// run on the main thread by convention (the framework's 5
-/// `nonisolated(unsafe)` statics in `GraphContext` document the same
-/// convention) and `AttributeNode` is `@unchecked Sendable`. Tests
-/// run inside `@MainActor` suites; the runtime invokes Layout from
-/// main-thread render code.
+/// Isolation: Layout is non-isolated to match `GraphRenderer`. Both run
+/// on the thread that owns the graph they are given — the main actor for
+/// the runtime's, the caller's for `TerminalApp.print` — and keep no state
+/// of their own between calls.
 public enum Layout {
 
     /// Measure and place the graph rooted at `node` within `rect`.

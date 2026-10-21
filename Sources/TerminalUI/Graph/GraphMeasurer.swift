@@ -70,9 +70,6 @@ public enum GraphMeasurer {
         if let cached = node._containsViewBody {
             return cached
         }
-        #if DEBUG
-        containsViewBodyWalkCount += 1
-        #endif
         let result: Bool
         if case .viewBody = node.kind {
             result = true
@@ -91,13 +88,6 @@ public enum GraphMeasurer {
     }
 
     #if DEBUG
-    /// Counts every descendant walk performed by `containsViewBody`.
-    /// Tests reset to zero, exercise the measurement path, and assert
-    /// the counter stays at zero — proof the bottom-up stamp filled
-    /// the cache and reads short-circuit. MainActor-only by inheritance
-    /// from the test harness; release builds elide the field entirely.
-    nonisolated(unsafe) static var containsViewBodyWalkCount: Int = 0
-
     /// Test-only entry point so suites can probe the cache without
     /// going through the full `measureHeight` measurement pipeline.
     /// Underscored to telegraph it is not a public API.

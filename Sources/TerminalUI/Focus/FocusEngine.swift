@@ -59,19 +59,16 @@ public final class FocusEngine: @unchecked Sendable {
     /// the top of the page. Cleared once restored.
     private var focusBeforeContainment: NodeID?
 
-    /// Depth of the innermost presented modal in the current tree, or 0 when
-    /// none is presented. Folded into `buildIndexRecursive` rather than
-    /// re-derived per access: Tab, Shift-Tab and every mouse click ask for it,
-    /// and `rebuildIndex` already visits every node once per frame.
-    private var deepestContainmentDepth: Int = 0
-
-    /// Root of the innermost presented subtree, or nil when none is
-    /// presented. When a presentation has no focusable descendants,
-    /// keyboard focus adopts this node instead — so `routeKeyEvent`'s
-    /// ancestor walk starts inside the presentation and reaches its
-    /// handlers (a pushed screen's Esc-pop, a dialog's shortcuts) rather
-    /// than routing from stale outside focus that falls back to root.
-    private var deepestPresentationRootID: NodeID?
+    /// The content of the presentation drawn on top, which contains focus.
+    /// Read from the tree once per `rebuildIndex` rather than per access:
+    /// Tab, Shift-Tab and every mouse event ask for it.
+    ///
+    /// When it has no focusable descendants, keyboard focus adopts it
+    /// instead — so `routeKeyEvent`'s ancestor walk starts inside the
+    /// presentation and reaches its handlers (a pushed screen's Esc-pop, a
+    /// dialog's shortcuts) rather than routing from stale outside focus that
+    /// falls back to root.
+    private var topmostPresentation: AttributeNode?
 
     /// Whether a modal presentation is currently containing focus.
     ///
@@ -79,7 +76,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// is up, so Escape belongs to the dialog and quitting out from under it
     /// would discard the user's context. The runtime enforces the same rule
     /// for its own default quit path.
-    public var isContainingFocus: Bool { deepestContainmentDepth > 0 }
+    public var isContainingFocus: Bool { topmostPresentation != nil }
 
     /// Focusables Tab may currently reach, in traversal order. Cached
     /// alongside `focusableList` so the per-keypress path is a stored-array
@@ -115,13 +112,14 @@ public final class FocusEngine: @unchecked Sendable {
     public func rebuildIndex(root: AttributeNode) {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
-        deepestContainmentDepth = 0
-        deepestPresentationRootID = nil
+        // Containment is a fact about the tree, not about what Tab can
+        // reach: a presented screen made only of Text still owns Escape.
+        topmostPresentation = Presentations(in: root).topmost
         lastIndexedRoot = root
         buildIndexRecursive(root)
-        traversableList = deepestContainmentDepth == 0
-            ? focusableList
-            : focusableList.filter { $0.containmentDepth == deepestContainmentDepth }
+        traversableList = topmostPresentation.map { content in
+            focusableList.filter { $0.isWithin(content) }
+        } ?? focusableList
         // A presentation that replaces its base (a pushed screen blanking
         // the root) removes the focused node from the tree, so the stale
         // clear below would erase the very ID dismissal should restore.
@@ -149,11 +147,11 @@ public final class FocusEngine: @unchecked Sendable {
     private func adoptActiveContainment(interrupted: NodeID?) {
         let candidates = traversableFocusables
 
-        if deepestContainmentDepth > 0 {
+        if let presentationRoot = topmostPresentation?.id {
             // Focus already sits somewhere legal inside the presentation —
             // nothing to adopt.
             if let focused = keyboardFocusID,
-               focused == deepestPresentationRootID
+               focused == presentationRoot
                 || candidates.contains(where: { $0.id == focused }) {
                 return
             }
@@ -174,7 +172,7 @@ public final class FocusEngine: @unchecked Sendable {
             if focusBeforeContainment == nil {
                 focusBeforeContainment = interrupted
             }
-            keyboardFocusID = candidates.first?.id ?? deepestPresentationRootID
+            keyboardFocusID = candidates.first?.id ?? presentationRoot
             return
         }
 
@@ -221,15 +219,6 @@ public final class FocusEngine: @unchecked Sendable {
         if node.participatesInFocus {
             focusableList.append(node)
         }
-        // Containment is a fact about the tree, not about what Tab can
-        // reach: a presented screen made only of Text still owns Escape.
-        // Pre-order means the first node seen at a new maximum depth is
-        // the presented subtree's root — the node key routing falls back
-        // to when the presentation has no focusable descendants.
-        if node.containmentDepth > deepestContainmentDepth {
-            deepestContainmentDepth = node.containmentDepth
-            deepestPresentationRootID = node.id
-        }
         for child in node.children {
             buildIndexRecursive(child)
         }
@@ -241,10 +230,10 @@ public final class FocusEngine: @unchecked Sendable {
     ///
     /// When a modal is presented, that set is exactly its contents: modality
     /// "prevents interaction with the parent view" (Apple HIG, Patterns →
-    /// Modality), and a panel Tab can walk out of is not modal. With modals
-    /// nested, the deepest presentation owns focus — the graph already encodes
-    /// the nesting via `containmentDepth`, so the engine holds no stack of
-    /// its own and cannot drift out of sync with the tree.
+    /// Modality), and a panel Tab can walk out of is not modal. With several
+    /// up, the one drawn on top owns focus — `Presentations` is read from the
+    /// tree on every index rebuild, so the engine holds no stack of its own
+    /// and cannot drift out of sync with the screen.
     ///
     /// A presented modal with nothing focusable inside still owns the level:
     /// Tab has nothing to reach — correct, since the covered content must
@@ -286,10 +275,12 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
-    /// True when `node` may take focus under the active containment. Nodes
-    /// outside a presented modal are unreachable by both Tab and click.
-    private func isReachableUnderActiveContainment(_ node: AttributeNode) -> Bool {
-        deepestContainmentDepth == 0 || node.containmentDepth == deepestContainmentDepth
+    /// Where a pointer at (x, y) may reach: the whole tree, or — while a
+    /// presentation is up — only the content of the one on top, and nothing
+    /// at all in the dim around it. The covered content must not answer a
+    /// click, a hover or the wheel any more than it answers Tab.
+    private func pointerScope(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
+        Presentations.pointerScope(x: x, y: y, root: root, topmost: topmostPresentation)
     }
 
 
@@ -359,7 +350,7 @@ public final class FocusEngine: @unchecked Sendable {
                   let idx = children.firstIndex(where: { $0.id == descendantFromAncestor.id })
                       // Fallback for a child that was reshaped or filtered:
                       // find the one whose subtree still holds the focus.
-                      ?? children.firstIndex(where: { subtreeContains(node: $0, id: currentNode.id) })
+                      ?? children.firstIndex(where: { currentNode.isWithin($0) })
             else { continue }
 
             if let target = nextChild(in: children, from: idx, direction: direction) {
@@ -438,27 +429,14 @@ public final class FocusEngine: @unchecked Sendable {
         return nil
     }
 
-    /// True iff `id` is `node.id` or matches any descendant. Used by
-    /// `move(_:)` to map a deeply-nested focused node back to the
-    /// container child that owns its subtree.
-    private func subtreeContains(node: AttributeNode, id: NodeID) -> Bool {
-        if node.id == id { return true }
-        for child in node.children {
-            if subtreeContains(node: child, id: id) { return true }
-        }
-        return false
-    }
-
     // MARK: - Mouse Handling
 
     /// Update hover state from mouse position.
     public func updateMouseHover(x: Int, y: Int, root: AttributeNode?) {
         mousePosition = (x, y)
-        guard let root else {
-            mouseHoverID = nil
-            return
-        }
-        mouseHoverID = findFocusableAt(x: x, y: y, in: root)?.id
+        mouseHoverID = root
+            .flatMap { pointerScope(x: x, y: y, root: $0) }
+            .flatMap { findFocusableAt(x: x, y: y, in: $0) }?.id
     }
 
     /// Policy-aware mouse-move entry point. Replaces direct calls to
@@ -479,11 +457,12 @@ public final class FocusEngine: @unchecked Sendable {
     /// honouring even when auto-routing is disabled.
     public func applyMouseMove(x: Int, y: Int, root: AttributeNode?, policy: MouseFocusPolicy) {
         mousePosition = (x, y)
+        let scope = root.flatMap { pointerScope(x: x, y: y, root: $0) }
         // Always notify .onHover transitions — this is what the
         // .disabled escape hatch ultimately relies on.
-        fireHoverTransitions(x: x, y: y, root: root)
+        fireHoverTransitions(x: x, y: y, root: scope)
 
-        guard let root else {
+        guard let scope else {
             mouseHoverID = nil
             return
         }
@@ -492,9 +471,9 @@ public final class FocusEngine: @unchecked Sendable {
         case .disabled:
             mouseHoverID = nil
         case .clickToLock, .clickOnly:
-            mouseHoverID = findFocusableAt(x: x, y: y, in: root)?.id
+            mouseHoverID = findFocusableAt(x: x, y: y, in: scope)?.id
         case .hoverFollows:
-            let hover = findFocusableAt(x: x, y: y, in: root)?.id
+            let hover = findFocusableAt(x: x, y: y, in: scope)?.id
             mouseHoverID = hover
             if let hover {
                 keyboardFocusID = hover
@@ -521,8 +500,8 @@ public final class FocusEngine: @unchecked Sendable {
         case .clickOnly:
             return keyboardFocusID
         case .clickToLock, .hoverFollows:
-            guard let root else { return nil }
-            return findFocusableAt(x: x, y: y, in: root)?.id
+            guard let root, let scope = pointerScope(x: x, y: y, root: root) else { return nil }
+            return findFocusableAt(x: x, y: y, in: scope)?.id
         }
     }
 
@@ -663,11 +642,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// hover handler AND whose rect contains (x, y). Order does not
     /// matter — the result is consumed as a Set.
     private func collectHoveredHandlers(x: Int, y: Int, in node: AttributeNode, into result: inout Set<NodeID>) {
-        let r = node.rect
-        if hoverHandlers[node.id] != nil,
-           x >= r.x, x < r.x + r.width,
-           y >= r.y, y < r.y + r.height
-        {
+        if hoverHandlers[node.id] != nil, node.rect.contains(x: x, y: y) {
             result.insert(node.id)
         }
         for child in node.children {
@@ -693,18 +668,17 @@ public final class FocusEngine: @unchecked Sendable {
     /// each row has `.onClick { selectedIndex = ... }` so a mouse click
     /// jumps directly to the corresponding page.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
-        guard let root else { return }
+        // The same containment rule Tab obeys: while a modal is presented,
+        // clicking the content it dims must not reach it. The click is
+        // swallowed rather than redirected — dismissal is the modal's own
+        // explicit action.
+        guard let root, let scope = pointerScope(x: x, y: y, root: root) else { return }
         // A scrollbar is painted over the content's last column, so the cells
         // it occupies belong to the scroll view, not to the row underneath —
         // otherwise a press on the track would both scroll and activate
         // whatever it was drawn on top of.
-        if handleScrollAffordanceClick(x: x, y: y, root: root) { return }
-        if let target = findFocusableAt(x: x, y: y, in: root) {
-            // The same containment rule Tab obeys: while a modal is
-            // presented, clicking the content it dims must not pull focus
-            // out of the dialog. The click is swallowed rather than
-            // redirected — dismissal is the modal's own explicit action.
-            guard isReachableUnderActiveContainment(target) else { return }
+        if handleScrollAffordanceClick(x: x, y: y, root: scope) { return }
+        if let target = findFocusableAt(x: x, y: y, in: scope) {
             keyboardFocusID = target.id
             // A row inside a focusable pane keeps its own click handler.
             // Deepest wins is the rule the non-focusable path already follows,
@@ -735,7 +709,7 @@ public final class FocusEngine: @unchecked Sendable {
         // No focusable under the cursor — try a click handler on any
         // node containing the click point. Walks deepest-first so a
         // row's onClick wins over its parent VStack's.
-        if let (target, handler) = findClickableAt(x: x, y: y, in: root) {
+        if let (target, handler) = findClickableAt(x: x, y: y, in: scope) {
             let relX = x - target.rect.x
             let relY = y - target.rect.y
             handler(relX, relY)
@@ -783,8 +757,7 @@ public final class FocusEngine: @unchecked Sendable {
         }
         guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind,
               let affordance = node.scrollAffordanceRect,
-              x >= affordance.x, x < affordance.x + affordance.width,
-              y >= affordance.y, y < affordance.y + affordance.height
+              affordance.contains(x: x, y: y)
         else { return nil }
         return (node, axis, affordance)
     }
@@ -795,7 +768,8 @@ public final class FocusEngine: @unchecked Sendable {
     /// synthesising an Enter on focusables. The escape hatch's whole
     /// point: framework auto-routing is off, callbacks still run.
     public func fireClickHandlerOnly(x: Int, y: Int, root: AttributeNode) {
-        if let (target, handler) = findClickableAt(x: x, y: y, in: root) {
+        if let scope = pointerScope(x: x, y: y, root: root),
+           let (target, handler) = findClickableAt(x: x, y: y, in: scope) {
             let relX = x - target.rect.x
             let relY = y - target.rect.y
             handler(relX, relY)
@@ -814,8 +788,7 @@ public final class FocusEngine: @unchecked Sendable {
                 return hit
             }
         }
-        let r = node.rect
-        if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height,
+        if node.rect.contains(x: x, y: y),
            let handler = clickHandlers[node.id]
         {
             return (node, handler)
@@ -869,12 +842,12 @@ public final class FocusEngine: @unchecked Sendable {
                 if handler(event) == .handled { return true }
             }
 
-            var ancestor = startNode.parent
+            var ancestor = startNode.parentWithinPresentation
             while let node = ancestor {
                 if let handler = keyHandlers[node.id] {
                     if handler(event) == .handled { return true }
                 }
-                ancestor = node.parent
+                ancestor = node.parentWithinPresentation
             }
 
             return routeToSubtree(event, node: startNode)
@@ -991,13 +964,10 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
-    /// Public-ish entry point for hit-testing the focusable under a
-    /// cursor. Returns nil when the cursor is over inert space.
-    /// Used by the runtime's wheel-routing path so the event lands on
-    /// (or near) what the user is looking at, instead of a sibling tree
-    /// reachable through the root.
+    /// The focusable under a cursor, or nil over inert space or the dim
+    /// around a presented dialog.
     public func findFocusableUnderCursor(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
-        return findFocusableAt(x: x, y: y, in: root)
+        pointerScope(x: x, y: y, root: root).flatMap { findFocusableAt(x: x, y: y, in: $0) }
     }
 
     /// Resolve EnvironmentValues at a cursor coordinate by walking the
@@ -1011,7 +981,8 @@ public final class FocusEngine: @unchecked Sendable {
     /// Storybook's preview pane can carry `.disabled` while the
     /// surrounding shell stays on `.clickToLock`.
     public func resolveEnv(x: Int, y: Int, root: AttributeNode) -> EnvironmentValues {
-        if let deepest = findDeepestRectContaining(x: x, y: y, in: root),
+        if let scope = pointerScope(x: x, y: y, root: root),
+           let deepest = findDeepestRectContaining(x: x, y: y, in: scope),
            let env = deepest._resolvedEnv
         {
             return env
@@ -1024,8 +995,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// NOT require `isFocusable`; it just wants a rect — the env is
     /// readable from any node, focusable or not.
     private func findDeepestRectContaining(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        let r = node.rect
-        let containsHere = x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height
+        let containsHere = node.rect.contains(x: x, y: y)
         // Children walked deepest-first so a leaf's rect wins over an
         // ancestor's larger rect.
         for child in node.children.reversed() {
@@ -1044,8 +1014,7 @@ public final class FocusEngine: @unchecked Sendable {
             }
         }
         if node.isFocusable {
-            let r = node.rect
-            if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height {
+            if node.rect.contains(x: x, y: y) {
                 return node
             }
         }
@@ -1113,15 +1082,18 @@ public final class FocusEngine: @unchecked Sendable {
     /// the wheel is owned by the deepest scroll region under the
     /// cursor, regardless of focus reachability.
     public func findScrollNodeAt(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
-        for child in root.children.reversed() {
-            if let hit = findScrollNodeAt(x: x, y: y, root: child) {
+        pointerScope(x: x, y: y, root: root).flatMap { findScrollNode(x: x, y: y, in: $0) }
+    }
+
+    private func findScrollNode(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
+        for child in node.children.reversed() {
+            if let hit = findScrollNode(x: x, y: y, in: child) {
                 return hit
             }
         }
-        if case .layout(let info) = root.kind, case .scroll = info.kind {
-            let r = root.rect
-            if x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height {
-                return root
+        if case .layout(let info) = node.kind, case .scroll = info.kind {
+            if node.rect.contains(x: x, y: y) {
+                return node
             }
         }
         return nil

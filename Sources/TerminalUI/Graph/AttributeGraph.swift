@@ -376,11 +376,6 @@ public final class AttributeGraph: @unchecked Sendable {
                     }
                 }
 
-                // Containment is stamped after the extra child is
-                // reconciled: on this path the modal's content subtree does
-                // not exist (or is stale) until the block above has run.
-                applyContainment(effect: newEffect, on: node)
-
                 // Lifecycle dispatch on every update — onChange compares
                 // current vs stored value here; onAppear is a no-op past
                 // the first frame; onDisappear refreshes its captured action.
@@ -1201,7 +1196,6 @@ public final class AttributeGraph: @unchecked Sendable {
         if case .focusScope(let scopeID) = effect {
             stampScopeID(scopeID, on: node.children)
         }
-        applyContainment(effect: effect, on: node)
 
         // Fire lifecycle on the modifier node itself (onAppear, onChange's
         // first probe, onDisappear's closure capture). Without this, an
@@ -1241,14 +1235,8 @@ public final class AttributeGraph: @unchecked Sendable {
     /// rebuilt during layout — must ask for it, or it sees the frame's bare
     /// environment and draws with the default theme under an app that set one.
     func environment(at node: AttributeNode) -> EnvironmentValues {
-        var ancestors: [AttributeNode] = []
-        var current = node.parent
-        while let ancestor = current {
-            ancestors.append(ancestor)
-            current = ancestor.parent
-        }
         var env = baseEnvironment
-        for ancestor in ancestors.reversed() {
+        for ancestor in node.ancestors {
             ancestor.applyEnvironment(to: &env)
         }
         return env
@@ -1301,54 +1289,6 @@ public final class AttributeGraph: @unchecked Sendable {
             if case .modifier(.focusScope) = node.kind { continue }
             if node.isFocusable { node.scopeID = id }
             stampScopeID(id, on: node.children)
-        }
-    }
-
-    /// Stamp (or clear) focus containment for a modal effect. Shared by the
-    /// construction and reconciliation paths, both of which call this only
-    /// once the modal's content child exists.
-    ///
-    /// Content lives at `child[1]`; `child[0]` is the base view the modal is
-    /// presented over and must stay reachable-free of the containment.
-    func applyContainment(effect: ModifierEffect, on node: AttributeNode) {
-        guard case .modal(let isPresented) = effect else { return }
-        guard node.children.count > 1 else { return }
-        // Depth 0 means "not contained", so dismissing is the same walk with
-        // a different starting depth — a dismissed modal's content must be
-        // reset, since reconciliation reuses these nodes and they would
-        // otherwise keep trapping focus after `isPresented` flips false.
-        stampContainment(depth: isPresented ? 1 : 0, on: [node.children[1]])
-    }
-
-    /// Walk a modal's content subtree recording how many presented modals
-    /// enclose each focusable descendant.
-    ///
-    /// Depth is carried *down* from this walk rather than derived by walking
-    /// up from a node's ancestors: graph construction is bottom-up, so an
-    /// inner modal is stamped before its parent links exist and could not see
-    /// the enclosing presentation. Descending through nested presentations
-    /// here makes the result a function of tree shape alone — hence writing
-    /// every visited focusable unconditionally is enough to stay idempotent
-    /// under the per-frame reconciliation that re-runs this on live nodes,
-    /// with no separate clearing pass.
-    func stampContainment(depth: Int, on nodes: [AttributeNode]) {
-        for node in nodes {
-            if case .modifier(.modal(let isPresented)) = node.kind,
-               node.children.count > 1 {
-                // Base content stays at this level; the nested modal's own
-                // content sits one level deeper when it is presented.
-                stampContainment(depth: depth, on: [node.children[0]])
-                stampContainment(depth: isPresented ? depth + 1 : 0,
-                                 on: [node.children[1]])
-                continue
-            }
-            // Stamped on every node, not only the explicitly focusable ones:
-            // a container that is focusable as a *unit* — a split pane holding
-            // nothing focusable — is decided later, at focus-collection time,
-            // and would otherwise be left at depth 0 and filtered out of a
-            // presented modal's traversal.
-            node.containmentDepth = depth
-            stampContainment(depth: depth, on: node.children)
         }
     }
 
