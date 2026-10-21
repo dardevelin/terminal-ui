@@ -147,8 +147,9 @@ public enum TextAreaArrowMode: Sendable, Equatable {
 /// and bounded undo.
 ///
 /// Renders a viewport over a `\n`-delimited document: a block cursor while
-/// the editor holds focus, blue-background selection, vim-style `~` markers past the last line, and
-/// an optional line-number gutter. Long logical lines soft-wrap at the
+/// the editor holds focus, the selection on a highlighted background,
+/// vim-style `~` markers past the last line, and an optional line-number
+/// gutter, all in ``Theme`` roles. Long logical lines soft-wrap at the
 /// container width. Supports arrow-key navigation (char/line), Ctrl+A/E
 /// (home/end of line), Ctrl+Left/Right (word jump), Shift+arrow selection,
 /// insert/delete/backspace, newline, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y)
@@ -217,8 +218,8 @@ public struct TextArea: TerminalView {
     @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
 
     /// Read at body-eval time. When false (a `.disabled()` ancestor
-    /// has run), the editor's visible content is rendered through a
-    /// `.gray` foreground modifier — the visual half of `.disabled()`.
+    /// has run), the editor's visible content is rendered in the theme's
+    /// ``Theme/foregroundMuted`` — the visual half of `.disabled()`.
     @TerminalEnvironment(\.isEnabled) var isEnabled
 
     // -- Display constants --
@@ -229,14 +230,6 @@ public struct TextArea: TerminalView {
     private static let minGutterDigits = 3
     /// Character shown at cursor position when at end of line or on empty line
     private static let cursorBlock: Character = "▏"
-
-    // -- Colors --
-
-    private static let lineNumberFg: Color = .gray
-    private static let cursorFg: Color = .white
-    private static let cursorBg: Color = .cyan
-    private static let selectionBg: Color = .blue
-    private static let emptyRowMarkerFg: Color = .ansi256(240)
 
     /// Creates an editor bound to its document and state.
     ///
@@ -353,7 +346,7 @@ public struct TextArea: TerminalView {
             theme: theme ?? appTheme.syntax
         )
         return rows
-            .foreground(isEnabled ? .default : .gray)
+            .foreground(isEnabled ? appTheme.foreground : appTheme.foregroundMuted)
             .focusable()
             .onKeyPress { [text, state, arrowMode, boundaryMode, onBoundaryHit] event in
                 Self.handleKey(
@@ -717,8 +710,18 @@ public struct TextArea: TerminalView {
         wrapWidth: Int = 0,
         highlighter: (any SyntaxHighlighter)? = nil,
         theme: SyntaxTheme = .defaultDark,
-        showsCursor: Bool = true
+        showsCursor: Bool = true,
+        chrome: any Theme = DefaultTheme()
     ) -> [TextSpan] {
+        // The editor's own marks take theme roles, as `PromptInput`'s do: the
+        // cursor is the accent with the character under it in emphasis, a
+        // selection is the selected background, the gutter is chrome and the
+        // rows past the end are the quietest step.
+        let cursorFg = chrome.foregroundEmphasis
+        let cursorBg = chrome.accent
+        let selectionBg = chrome.backgroundSelected
+        let lineNumberFg = chrome.foregroundMuted
+        let emptyRowMarkerFg = chrome.foregroundFaint
         var spans: [TextSpan] = []
         let totalLines = lines.count
         let gutter = lineNumbers ? gutterWidth(for: totalLines) : 0
@@ -819,7 +822,7 @@ public struct TextArea: TerminalView {
                             // editor's bg regardless of token kind.
                             spans.append(TextSpan(text, foreground: cursorFg, background: cursorBg, bold: true))
                         case .selected:
-                            // Selection keeps its blue background; foreground
+                            // Selection keeps its background; foreground
                             // honours syntax color so highlighted code
                             // stays readable inside a selection.
                             if highlighter != nil {
@@ -1518,6 +1521,7 @@ struct TextAreaRows: TerminalView {
     let theme: SyntaxTheme
 
     @TerminalEnvironment(\.isFocused) var isFocused
+    @TerminalEnvironment(\.theme) var chrome
 
     var body: some TerminalView {
         Text(spans: TextArea.buildDisplaySpans(
@@ -1530,7 +1534,8 @@ struct TextAreaRows: TerminalView {
             wrapWidth: wrapWidth,
             highlighter: highlighter,
             theme: theme,
-            showsCursor: isFocused
+            showsCursor: isFocused,
+            chrome: chrome
         ))
     }
 }

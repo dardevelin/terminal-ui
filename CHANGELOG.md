@@ -81,6 +81,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **`TextArea` draws in theme colours.** Its literal cyan cursor, blue
+  selection, grey gutter and disabled text are now the theme's `accent` (with
+  `foregroundEmphasis` under the cursor), `backgroundSelected`,
+  `foregroundMuted`, and `foregroundFaint` for the `~` rows past the end. The
+  stock theme reproduces the old colours, except the `~` rows: they were a
+  darker 256-colour grey and are now `foregroundFaint`.
 - **`TextInput` and `TextArea` draw their cursor only while they hold focus**,
   as `PromptInput` now does. Two fields both showing a cursor left the user to
   guess which one keys would reach.
