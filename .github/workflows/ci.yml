@@ -75,6 +75,11 @@ jobs:
           sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
           swift --version
 
+      # Every @unchecked Sendable / nonisolated(unsafe) must be listed with
+      # what guards it; each race this framework shipped sat behind one.
+      - name: Concurrency escape hatches are listed
+        run: python3 tools/scripts/check_escape_hatches.py
+
       - name: Cache build
         uses: actions/cache@v5
         with:

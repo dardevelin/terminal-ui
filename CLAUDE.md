@@ -335,6 +335,13 @@ exists.
   `windowSize`. Prefer full words: `paramString`, not `numStr`.
 - **ExistentialAny** — protocol-as-type must use `any`: `[any DebugSink]`,
   `any AnyStateStorage`, `as? any _FocusGraphModifier`.
+- **Concurrency escape hatches are listed.** `@unchecked Sendable` and
+  `nonisolated(unsafe)` switch the compiler's checking off, and every data race
+  this framework shipped sat behind one. Prefer what the compiler checks:
+  `Mutex` / `Atomic` (Synchronization) with a plain `Sendable`, or `@MainActor`.
+  Where that is impossible, add the declaration to `tools/escape-hatches.txt`
+  with what actually guards it; `check_escape_hatches.py` (CI, verify.py) fails
+  on any hatch the list does not name, and on any entry whose hatch is gone.
 - **No tracker IDs in code.** Issue identifiers must never appear in filenames,
   code, comments, or commit messages — trackers rot, code outlives them.
 - **Commits carry no AI/generated attribution and no human co-author trailers.**

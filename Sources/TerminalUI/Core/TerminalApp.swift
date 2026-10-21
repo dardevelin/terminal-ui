@@ -7,6 +7,7 @@ import Darwin
 import Foundation
 import TerminalUIConfig
 import TerminalLog
+import Synchronization
 
 // MARK: - Events
 
@@ -44,16 +45,15 @@ public enum TerminalEvent: Sendable {
 // MARK: - Event Queue
 
 /// Thread-safe event queue. Producers push, main actor drains.
-final class EventQueue: @unchecked Sendable {
-    private var buffer: [TerminalEvent] = []
-    private let lock = NSLock()
+final class EventQueue: Sendable {
+    private let buffer = Mutex<[TerminalEvent]>([])
 
     func push(_ event: TerminalEvent) {
-        lock.withLock { buffer.append(event) }
+        buffer.withLock { $0.append(event) }
     }
 
     func drain() -> [TerminalEvent] {
-        lock.withLock {
+        buffer.withLock { buffer in
             let events = buffer
             buffer.removeAll(keepingCapacity: true)
             return events
@@ -61,7 +61,7 @@ final class EventQueue: @unchecked Sendable {
     }
 
     var hasEvents: Bool {
-        lock.withLock { !buffer.isEmpty }
+        buffer.withLock { !$0.isEmpty }
     }
 }
 
@@ -1260,11 +1260,10 @@ public enum TerminalRuntimeError: Error, Equatable {
 /// Lock-protected one-shot quit flag. The framework default
 /// `Action.quit` perform closure fires this; the event loop polls
 /// `fired` once per iteration and tears down the runtime on `true`.
-final class QuitSignal: @unchecked Sendable {
-    private let lock = NSLock()
-    private var _fired = false
-    func fire() { lock.lock(); _fired = true; lock.unlock() }
-    var fired: Bool { lock.lock(); defer { lock.unlock() }; return _fired }
+final class QuitSignal: Sendable {
+    private let state = Atomic<Bool>(false)
+    func fire() { state.store(true, ordering: .releasing) }
+    var fired: Bool { state.load(ordering: .acquiring) }
 }
 
 /// Build the framework's default ActionScope. Free helper, no

@@ -1,0 +1,39 @@
+# Every `@unchecked Sendable` and `nonisolated(unsafe)` in Sources/, with what
+# makes it safe. tools/scripts/check_escape_hatches.py fails when the sources
+# and this list disagree. Before adding a line, make the compiler check it
+# instead: `Mutex` or `Atomic` with a plain `Sendable`, or `@MainActor`.
+#
+# Format: <path> <declared name> <what guards it>
+# An entry that starts "NOT GUARDED" is a known race, kept visible until fixed.
+
+# Main-actor confined. `@unchecked` only so they can ride `@TaskLocal`; the
+# non-isolated graph code that calls them blocks `@MainActor`.
+Sources/TerminalUI/Focus/FocusEngine.swift FocusEngine Mutated only by the @MainActor runtime and @MainActor tests.
+Sources/TerminalUI/Graph/AttributeGraph.swift AttributeGraph NOT GUARDED when observed state changes off the main actor: onChange runs enqueueDirty on the mutating thread while drain() runs on main.
+Sources/TerminalUI/Graph/AttributeNode.swift AttributeNode NOT GUARDED when observed state changes off the main actor: onChange runs markDirty on the mutating thread.
+Sources/TerminalUI/DevTools/RemoteControl.swift RemoteControlServer pump() and everything it reaches is @MainActor; created and released by the @MainActor runtime.
+Sources/TerminalUI/Graph/GraphMeasurer.swift containsViewBodyWalkCount Incremented on the render path (main); read and reset only by @MainActor tests.
+Sources/TerminalUI/Graph/GraphRenderer.swift deferredPresentations NOT GUARDED for TerminalApp.print, which is public and non-isolated; the runtime itself renders only on main.
+Sources/TerminalUI/Graph/GraphRenderer.swift isRendering NOT GUARDED for TerminalApp.print, which is public and non-isolated; the runtime itself renders only on main.
+Sources/TerminalUI/Focus/BoundaryFeedback.swift BoundaryFeedbackEmitter Its public sink closures are written only by @MainActor tests, and emit runs from key handlers on main; nothing enforces it.
+
+# Immutable after init; unchecked only because a stored value is not Sendable.
+Sources/TerminalUI/Graph/NodeID.swift PathComponent Immutable enum; the AnyHashable payload is the only non-Sendable part.
+Sources/TerminalUI/Views/TreeView.swift AnyHashableID Immutable; its init requires ID: Sendable, so the AnyHashable it wraps is Sendable.
+Sources/TerminalUI/Views/ScrollView.swift ScrollTargetID Immutable AnyHashable; read by ScrollView on main.
+Sources/TerminalUI/Views/ScrollView.swift ScrollPositionBinding Immutable get/set closures over a Binding, called by ScrollView on main.
+Sources/TerminalUI/Views/AlertPresentation.swift AlertDismissal Immutable; every call goes through MainActor.assumeIsolated, which traps off main.
+Sources/TerminalUI/Views/Navigation.swift NavigationPopBox Immutable; run() goes through MainActor.assumeIsolated, which traps off main.
+Sources/TerminalUI/Views/Navigation.swift NavigationPushAction Immutable closure called from key and click handlers on main; nothing enforces it.
+Sources/TerminalUI/Views/Navigation.swift NavigationDestinations Immutable builder closures, called during body evaluation on main.
+Sources/TerminalUI/Core/TerminalCapabilities.swift TerminalCapabilities Written only in its initialisers; `var` only because it is @Observable.
+
+# Signal-handler state.
+Sources/TerminalUI/Rendering/Terminal.swift previousFatalActions Each slot is filled once, behind the fatalHandlersInstalled exchange, before its handler is installed; the handler only reads.
+Sources/TerminalUI/Rendering/Terminal.swift originalTermios Written by enableRawMode before the handlers are installed, read by the cleanup they run.
+
+# Test seams.
+Sources/TerminalUI/Rendering/Terminal.swift posix Production never writes it; tests swap it on @MainActor only.
+Sources/TerminalUI/Rendering/Terminal.swift debugMinSize Written only by @MainActor tests.
+Sources/TerminalUI/Rendering/Terminal.swift FailingPosixSyscalls DEBUG mock; its counters are touched only by @MainActor tests.
+Sources/TerminalUI/Focus/BoundaryFeedback.swift BoundaryFeedbackProbe DEBUG test seam; its counters are touched only by @MainActor tests.
