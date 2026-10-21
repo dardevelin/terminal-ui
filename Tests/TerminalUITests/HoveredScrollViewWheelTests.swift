@@ -281,4 +281,46 @@ struct WheelFallthroughTests {
         #expect(scrollNode.scrollOffset == 1,
                 "one wheel notch is one step, not one per path that could have taken it")
     }
+
+    // A trackpad reports a scroll as hundreds of wheel events a second, and
+    // each one found its target under the cursor afresh; a debug build under
+    // Thread Sanitizer fell seconds behind. A run of identical events finds
+    // its target once and moves it by the whole run.
+    @Test("several wheel steps scroll as far as that many events")
+    func severalStepsScrollAsFarAsThatManyEvents() throws {
+        func scrolled() -> (AttributeGraph, FocusEngine) {
+            let view = ScrollView(.vertical) {
+                VStack {
+                    ForEachWithID(0..<40, id: \.self) { i in Text("row \(i)") }
+                }
+            }
+            let graph = AttributeGraph()
+            let engine = FocusEngine()
+            var buffer = CellBuffer(width: 30, height: 5)
+            let rect = Rect(x: 0, y: 0, width: 30, height: 5)
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
+                    graph.update(from: view)
+                    Layout.measureAndPlace(graph: graph.root!, in: rect)
+                    GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+                }
+            }
+            engine.rebuildIndex(root: graph.root!)
+            return (graph, engine)
+        }
+        let (one, oneEngine) = scrolled()
+        let (each, eachEngine) = scrolled()
+
+        _ = oneEngine.routeWheel(KeyEvent(key: .down), root: one.root!, x: 2, y: 1,
+                                 policy: .clickToLock, steps: 7)
+        for _ in 0..<7 {
+            _ = eachEngine.routeWheel(KeyEvent(key: .down), root: each.root!, x: 2, y: 1,
+                                      policy: .clickToLock)
+        }
+
+        let offset = try #require(oneEngine.findScrollNodeAt(x: 2, y: 1, root: one.root!)).scrollOffset
+        let expected = try #require(eachEngine.findScrollNodeAt(x: 2, y: 1, root: each.root!)).scrollOffset
+        #expect(offset == expected)
+        #expect(offset > 0, "the wheel did not scroll at all")
+    }
 }

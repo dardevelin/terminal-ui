@@ -43,6 +43,17 @@ public enum MouseEventKind: Equatable, Sendable {
     case scrollUp
     /// One wheel tick toward the user.
     case scrollDown
+
+    /// A wheel tick, either way.
+    var isWheel: Bool { self == .scrollUp || self == .scrollDown }
+
+    /// The cursor moved, with or without a button held.
+    var isMotion: Bool {
+        switch self {
+        case .moved, .drag: true
+        default: false
+        }
+    }
 }
 
 /// Which physical mouse button an event refers to. Raw values match the

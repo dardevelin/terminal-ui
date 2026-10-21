@@ -560,9 +560,16 @@ public final class FocusEngine: @unchecked Sendable {
     /// it while the scroll view enclosing it never heard about it. The user
     /// reads that as "the wheel works over the gaps and not over the rows".
     ///
+    /// The policy decides where it lands: the focusable under the cursor for
+    /// `.clickToLock` and `.hoverFollows`, the keyboard-focused view for
+    /// `.clickOnly`, nowhere for `.disabled`.
+    ///
     /// `steps` delivers a run of identical wheel events at once: the target
     /// is found once — the tree walks that find it are the cost — and moved
-    /// by every step. Returns whether anything took the event.
+    /// step by step, so a `List` at its end hands the rest to the scroll view
+    /// holding it. A step nothing takes changes nothing, so the steps after it
+    /// would be refused too, and the run ends there. Returns whether anything
+    /// took the event.
     public func routeWheel(
         _ event: KeyEvent,
         root: AttributeNode,
@@ -603,7 +610,8 @@ public final class FocusEngine: @unchecked Sendable {
         }
         var taken = false
         for _ in 0..<steps {
-            taken = step() || taken
+            guard step() else { break }
+            taken = true
         }
         return taken
     }
