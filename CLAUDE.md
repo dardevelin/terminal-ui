@@ -80,6 +80,12 @@ python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + De
 # The whole local gate in one command: build → test → smoke. Skips itself when
 # the turn touched no .swift / .py file.
 python3 tools/scripts/verify.py
+
+# Thread Sanitizer: run before merging anything that touches a lock, a
+# Sendable conformance, a signal handler or a task. Its own scratch path.
+swift test --sanitize=thread --scratch-path .build-tsan
+swift build --sanitize=thread --scratch-path .build-tsan
+python3 tools/scripts/storybook_smoke.py .build-tsan/debug
 ```
 
 The harness builds into `.build-linux/`, not `.build/`: a shared build dir leaves
@@ -95,6 +101,21 @@ harness is a merge gate, not a local nicety — a change that renders differentl
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the
 runner default ships Swift 6.1 and the manifest requires 6.2.
+
+**Thread Sanitizer** (the commands above) catches what a crash-based test
+only sometimes does: the trace recorder's race crashed one smoke run in three,
+and TSan reports it on every run. It is not a CI gate yet, because the SIGTERM
+handler restores the terminal from inside the handler: under TSan, a SIGTERM
+that lands while the app is in `free` aborts in TSan's own lock, which fails
+one or two teardowns per smoke run.
+
+**Every app the harness spawns is checked on the way out**, in
+`tools/terminalui/runner.py`: a case fails, even with every assertion green,
+if the app crashed, ignored SIGTERM, left a DEC mode it set (alternate screen,
+mouse tracking, bracketed paste, hidden cursor), or a sanitizer reported on
+it. A case that kills its app on purpose sets `client.expected_exit_signal`.
+The runner turns Swift's backtracer off (`SWIFT_BACKTRACE=enable=no`): on a
+PTY it holds a crashed process open for 30s offering a debugger.
 
 ## Constraints (non-negotiable)
 

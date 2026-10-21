@@ -26,7 +26,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui import Client, CellSlice, Probe  # noqa: E402
-from terminalui.runner import spawn_and_connect  # noqa: E402
+from terminalui.runner import AppExitedBadly, spawn_and_connect  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +50,10 @@ class SmokeCase:
     name: str
     app: str  # binary under .build/debug/
     run: Callable[[Client], None]
+    # The runner's exit check, run in reverse: when set, the case passes
+    # only if the runner objects to how the app ended, in words containing
+    # every one of these phrases.
+    expected_objections: tuple[str, ...] = ()
 
     def execute(self, cols: int = 140, rows: int = 40,
                 build_dir: Optional[str] = None) -> CaseResult:
@@ -58,7 +62,14 @@ class SmokeCase:
                                    cols=cols, rows=rows) as (_, client):
                 client.wait_for_frame(1, timeout=1.0)
                 self.run(client)
+            if self.expected_objections:
+                return CaseResult(self.name, False, "the runner accepted how the app ended")
             return CaseResult(self.name, True, "ok")
+        except AppExitedBadly as objection:
+            if self.expected_objections and all(
+                    phrase in str(objection) for phrase in self.expected_objections):
+                return CaseResult(self.name, True, "ok")
+            return CaseResult(self.name, False, f"AppExitedBadly: {objection}")
         except CaseFailed as failure:
             return CaseResult(self.name, False, str(failure))
         except Exception as exc:  # noqa: BLE001
@@ -1855,6 +1866,7 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
 
     app.wait_for_frame(1, timeout=0.5)
     before = len(app.pty_output())
+    app.expected_exit_signal = signal.SIGSEGV
     os.kill(app.pid, signal.SIGSEGV)
     restored = (b"\x1b[?1006l", b"\x1b[?1000l", b"\x1b[?1049l", b"\x1b[?25h")
     deadline = time.monotonic() + 5.0
@@ -1864,6 +1876,31 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
             return
         time.sleep(0.05)
     raise CaseFailed(f"the terminal was not restored after SIGSEGV: {app.pty_output()[before:][:200]!r}")
+
+
+def _kill_and_wait(app: Client, signum: int) -> None:
+    import os
+
+    os.kill(app.pid, signum)
+    if app.wait_for_exit(20.0) is None:
+        raise CaseFailed(f"the app outlived signal {signum}")
+
+
+def harness_objects_to_an_unannounced_crash(app: Client) -> None:
+    """The runner fails a case whose app crashed, even when every assertion
+    passed. Regression: a crash under a passing case went unreported, so a
+    race that killed the app one run in three looked green the other two."""
+    import signal
+
+    _kill_and_wait(app, signal.SIGSEGV)
+
+
+def harness_objects_to_a_terminal_left_dirty(app: Client) -> None:
+    """The runner fails a case whose app left the terminal in a mode it
+    turned on. SIGKILL cannot be caught, so nothing restores it."""
+    import signal
+
+    _kill_and_wait(app, signal.SIGKILL)
 
 
 def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
@@ -1984,6 +2021,14 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
     SmokeCase("coder.wheel_burst_keeps_running", "Coder", coder_wheel_burst_keeps_running),
     SmokeCase("coder.crash_restores_the_terminal", "Coder", coder_crash_restores_the_terminal),
+    # A sanitized build reports the SEGV itself and then aborts, so the
+    # phrases name the signal without naming how the parent saw the death.
+    SmokeCase("harness.objects_to_an_unannounced_crash", "Coder",
+              harness_objects_to_an_unannounced_crash,
+              expected_objections=("crashed on", "SEGV")),
+    SmokeCase("harness.objects_to_a_terminal_left_dirty", "Coder",
+              harness_objects_to_a_terminal_left_dirty,
+              expected_objections=("crashed on SIGKILL", "left DEC mode 1049 on")),
 ]
 
 
