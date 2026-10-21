@@ -157,17 +157,27 @@ def spawn_and_connect(target: str,
         close_fds=True,
     )
     os.close(slave)
-    # Drain master to avoid pipe-full blocking when the app renders. The
-    # drained bytes are just the TUI's ANSI output, which we discard —
-    # assertions go through the remote-control socket.
+    # Drain master to avoid pipe-full blocking when the app renders. Most
+    # assertions go through the remote-control socket; the bytes are kept
+    # for the few that are about the terminal itself, such as what a
+    # crashing app leaves it in.
+    output = bytearray()
+    output_lock = threading.Lock()
+
     def _drain(fd: int) -> None:
         try:
             while True:
                 data = os.read(fd, 4096)
                 if not data:
                     return
+                with output_lock:
+                    output.extend(data)
         except OSError:
             return
+
+    def _output() -> bytes:
+        with output_lock:
+            return bytes(output)
     drain_thread = threading.Thread(target=_drain, args=(master,), daemon=True)
     drain_thread.start()
 
@@ -187,6 +197,8 @@ def spawn_and_connect(target: str,
         # Hand the master FD to the client so `paste()` can write
         # bracketed-paste sequences straight into the app's stdin.
         client.attach_pty(master)
+        client.pid = proc.pid
+        client.pty_output = _output
         yield proc, client
     finally:
         try:

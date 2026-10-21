@@ -205,6 +205,12 @@ class Client:
         # ESC[200~/ESC[201~ wrappers because they're a TTY-level protocol,
         # not an InputParser-level one.
         self._master_fd: Optional[int] = None
+        # Set by the runner: the spawned app's process id, and a callable
+        # returning every byte it has written to its terminal so far — what
+        # a case needs to check what the app leaves the terminal in when it
+        # dies, which no socket call can report.
+        self.pid: Optional[int] = None
+        self.pty_output: Callable[[], bytes] = lambda: b""
 
     # -- connection --
 

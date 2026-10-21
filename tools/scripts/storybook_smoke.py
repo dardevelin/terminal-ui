@@ -1826,6 +1826,28 @@ def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
     assert_true("… (5 lines hidden)" in text, "expected the excerpt's hidden-line count")
 
 
+def coder_crash_restores_the_terminal(app: Client) -> None:
+    """A crash leaves the terminal as the app found it: mouse reporting off,
+    the alternate screen left, the cursor shown. Regression: only SIGINT,
+    SIGTERM and SIGHUP restored it, so a crash while scrolling printed its
+    backtrace as a staircase over the last frame and the shell went on
+    receiving mouse coordinates as typed text."""
+    import os
+    import signal
+
+    app.wait_for_frame(1, timeout=0.5)
+    before = len(app.pty_output())
+    os.kill(app.pid, signal.SIGSEGV)
+    restored = (b"\x1b[?1006l", b"\x1b[?1000l", b"\x1b[?1049l", b"\x1b[?25h")
+    deadline = time.monotonic() + 5.0
+    while time.monotonic() < deadline:
+        after = app.pty_output()[before:]
+        if all(sequence in after for sequence in restored):
+            return
+        time.sleep(0.05)
+    raise CaseFailed(f"the terminal was not restored after SIGSEGV: {app.pty_output()[before:][:200]!r}")
+
+
 def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
     """A Bash result shows at most ten lines and says how many it held back;
     a line wider than the card ends in `…`. Regression: the transcript's
@@ -1942,6 +1964,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.reply_keeps_heading_markers_and_chips_code", "Coder", coder_reply_keeps_heading_markers_and_chips_code),
     SmokeCase("coder.read_card_shows_numbered_excerpt", "Coder", coder_read_card_shows_numbered_excerpt),
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
+    SmokeCase("coder.crash_restores_the_terminal", "Coder", coder_crash_restores_the_terminal),
 ]
 
 

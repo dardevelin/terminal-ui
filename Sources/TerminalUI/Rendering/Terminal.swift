@@ -80,6 +80,51 @@ internal func _terminalSignalHandler(signum: Int32) {
     #endif
 }
 
+/// Signals that end the process because something went wrong in it rather
+/// than because it was asked to stop: a bad memory access, a Swift runtime
+/// trap (`brk` on arm64 raises SIGTRAP, `ud2` on x86-64 SIGILL), an
+/// arithmetic fault, `abort()`.
+private let fatalSignals: [Int32] = [SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP, SIGABRT]
+
+/// What each of ``fatalSignals`` did before the terminal took it over —
+/// usually the Swift runtime's backtracer. Allocated once at install so the
+/// handler reads it without allocating, which a signal handler must not do.
+nonisolated(unsafe) private let previousFatalActions =
+    UnsafeMutablePointer<sigaction>.allocate(capacity: fatalSignals.count)
+
+/// Set once ``previousFatalActions`` holds what came before the terminal's
+/// handlers. Installing again must not record those handlers as their own
+/// predecessors: a crash would then hand the signal back to the handler
+/// that was running, forever.
+private let fatalHandlersInstalled = Atomic<Bool>(false)
+
+/// Restore the terminal, then hand the signal back to whoever had it.
+///
+/// A crash used to leave raw mode, the alternate screen and mouse tracking
+/// on: the backtrace printed as a staircase over the app's last frame, and
+/// every mouse movement afterwards typed SGR coordinates into the shell.
+/// Restoring the previous action and raising again keeps the backtrace — the
+/// re-raised signal stays pending while this handler runs, and is delivered
+/// to the restored handler, in the faulting thread, when it returns.
+@_cdecl("_terminalFatalSignalHandler")
+internal func _terminalFatalSignalHandler(signum: Int32) {
+    Terminal.runCleanup()
+    if let index = fatalSignals.firstIndex(of: signum) {
+        _ = sigaction(signum, previousFatalActions + index, nil)
+    } else {
+        #if canImport(Darwin)
+        _ = Darwin.signal(signum, SIG_DFL)
+        #elseif canImport(Glibc)
+        _ = Glibc.signal(signum, SIG_DFL)
+        #endif
+    }
+    #if canImport(Darwin)
+    _ = Darwin.raise(signum)
+    #elseif canImport(Glibc)
+    _ = Glibc.raise(signum)
+    #endif
+}
+
 @_cdecl("_terminalAtExitHandler")
 internal func _terminalAtExitHandler() {
     Terminal.runCleanup()
@@ -508,6 +553,11 @@ public enum Terminal {
     /// re-raises the signal with the default disposition so the
     /// parent shell observes the correct exit code.
     ///
+    /// The fatal signals — SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGTRAP,
+    /// SIGABRT — get the same cleanup, then go back to the handler they had
+    /// before, so a crash still reaches the Swift backtracer, now printed on
+    /// a restored screen.
+    ///
     /// Also registers an `atexit` hook so direct `exit()` calls run
     /// the same cleanup. SIGKILL cannot be intercepted by design;
     /// document recovery via `printf '\x1b[?1006l...\x1b[?1049l'` in
@@ -529,6 +579,21 @@ public enum Terminal {
         _ = Glibc.signal(SIGTERM, _terminalSignalHandler)
         _ = Glibc.signal(SIGHUP, _terminalSignalHandler)
         #endif
+        // A static `let` is initialised on first use, which allocates — the
+        // handler must find the sequence already built, not build it.
+        _ = cleanupEscapeSequence.utf8.count
+        let firstInstall = !fatalHandlersInstalled.exchange(true, ordering: .acquiringAndReleasing)
+        for (index, signum) in fatalSignals.enumerated() where firstInstall {
+            // Read the whole previous action, not just its handler: the
+            // backtracer installs with SA_SIGINFO, and `signal()` would hand
+            // back a pointer to be called with the wrong arguments.
+            _ = sigaction(signum, nil, previousFatalActions + index)
+            #if canImport(Darwin)
+            _ = Darwin.signal(signum, _terminalFatalSignalHandler)
+            #elseif canImport(Glibc)
+            _ = Glibc.signal(signum, _terminalFatalSignalHandler)
+            #endif
+        }
         atexit(_terminalAtExitHandler)
     }
 
