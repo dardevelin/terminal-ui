@@ -8,6 +8,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **A `crash` remote command** (debug builds) — the app raises SIGSEGV on its
+  own main thread, as a fault in its code would; the Python client's `crash()`
+  sends it. Crash tests that sent the signal with `kill` passed or failed by
+  chance under Thread Sanitizer.
 - **`.scrollPosition(id:anchor:)` with a binding** — SwiftUI's two-way scroll
   position. Set the binding and the view with that `.id(_:)` scrolls into
   sight, at the anchor; scroll, and the binding is set to the view now at the

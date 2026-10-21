@@ -123,7 +123,10 @@ whatever the thread was doing — in `free`, it aborted on TSan's own lock.
 `tools/terminalui/runner.py`: a case fails, even with every assertion green,
 if the app crashed, ignored SIGTERM, left a DEC mode it set (alternate screen,
 mouse tracking, bracketed paste, hidden cursor), left its data dir after
-stopping, or a sanitizer reported on it. A case that kills its app on purpose sets `client.expected_exit_signal`.
+stopping, or a sanitizer reported on it. A case that kills its app on purpose
+sets `client.expected_exit_signal`; one that tests a crash calls
+`client.crash()`, which raises SIGSEGV on the app's main thread — never
+`kill -SEGV`, whose signal any thread may take.
 The runner turns Swift's backtracer off (`SWIFT_BACKTRACE=enable=no`): on a
 PTY it holds a crashed process open for 30s offering a debugger.
 

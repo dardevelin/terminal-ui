@@ -33,7 +33,7 @@ public enum RemoteControlProtocol {
 /// `focus_get`, `focus_set`, `query_cells`, `query_tree`,
 /// `inspector_probe`, `inspector_move`, `inspector_toggle`,
 /// `inspect_range`, `scan`, `frame_number`, `screenshot`, `list_actions`,
-/// `invoke_action`, `quit`. The typed Python client in
+/// `invoke_action`, `quit`, `crash`. The typed Python client in
 /// `tools/terminalui/client.py` speaks this same shape.
 public struct RemoteRequest: Codable, Sendable {
     /// Client-chosen correlation ID; the response echoes it back.
@@ -644,6 +644,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case "frame_number":return frameNumber(request, runtime: runtime)
         case "screenshot":  return screenshot(request, runtime: runtime)
         case "quit":        return quit(request, runtime: runtime)
+        case "crash":       return crash(request)
         case "list_actions": return listActions(request, runtime: runtime)
         case "invoke_action": return invokeAction(request, runtime: runtime)
         case "ping":        return RemoteResponse(id: request.id, ok: true)
@@ -1042,6 +1043,23 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         runtime.remoteRequestCapture()
         // Path isn't known until captureFrame fires — client polls `query_cells`
         // or uses `frame_number` + filesystem sidechannel to locate the file.
+        return RemoteResponse(id: request.id, ok: true)
+    }
+
+    /// Crash the app as a fault in its own code would: raise SIGSEGV on the
+    /// main thread, once this reply has gone out. For tests of what a crash
+    /// leaves behind.
+    ///
+    /// Not `kill -SEGV` from outside, which may land on any thread. Worker
+    /// threads leave the fault signals unblocked on purpose — a fault there
+    /// with its signal blocked is killed by the kernel outright, so masking
+    /// them would lose every real crash on a worker — and under Thread
+    /// Sanitizer a worker the sanitizer has not set up faulted in the handler
+    /// that way, so a crash test passed or failed by chance.
+    private func crash(_ request: RemoteRequest) -> RemoteResponse {
+        Task { @MainActor in
+            _ = raise(SIGSEGV)
+        }
         return RemoteResponse(id: request.id, ok: true)
     }
 
