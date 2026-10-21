@@ -118,7 +118,7 @@ struct DiagPathsConcurrencyTests {
             // — the directory's existence is not a fact this test controls.
             // Whether *its own contents* were removed is.
             let marker = (ownDir as NSString).appendingPathComponent("marker")
-            fm.createFile(atPath: marker, contents: Data())
+            #expect(fm.createFile(atPath: marker, contents: Data()))
 
             DiagPaths.cleanupOwnDir()
 
