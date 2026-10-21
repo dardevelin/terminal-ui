@@ -18,22 +18,19 @@ unittest, or whatever you prefer. The runner just handles boilerplate.
 
 from __future__ import annotations
 
-import fcntl
 import os
 import pty
 import shutil
 import signal
-import struct
 import subprocess
 import tempfile
-import termios
 import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence, Tuple
 
-from .client import Client, RemoteError, default_socket_path
+from .client import Client, RemoteError, default_socket_path, set_window_size
 
 
 # Where the binaries under test live. `TERMINALUI_BUILD_DIR` points automation
@@ -200,8 +197,7 @@ def spawn_and_connect(target: str,
     # geometry and still run headless.
     master, slave = pty.openpty()
     # Set window size before spawn so the initial layout pass uses it.
-    winsize = struct.pack("HHHH", rows, cols, 0, 0)
-    fcntl.ioctl(slave, termios.TIOCSWINSZ, winsize)
+    set_window_size(slave, cols, rows)
     proc = subprocess.Popen(
         [str(exe)],
         cwd=str(cwd) if cwd is not None else str(root),

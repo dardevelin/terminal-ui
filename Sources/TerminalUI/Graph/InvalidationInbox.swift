@@ -13,6 +13,13 @@ final class InvalidationInbox: Sendable {
     /// `!pending.isEmpty`, written under the lock, so the frame loop can ask
     /// whether there is work without taking it.
     private let nonEmpty = Atomic<Bool>(false)
+    /// Raised on every post, so a frame loop with nothing to do learns of the
+    /// change without polling `hasPending`.
+    private let wake: WakeSignal?
+
+    init(wake: WakeSignal?) {
+        self.wake = wake
+    }
 
     /// Whether a node has been posted since the last ``take()``.
     var hasPending: Bool {
@@ -25,6 +32,7 @@ final class InvalidationInbox: Sendable {
             pending[ObjectIdentifier(node)] = node
             nonEmpty.store(true, ordering: .relaxed)
         }
+        wake?.wake()
     }
 
     /// Every node posted since the last call, leaving the inbox empty.

@@ -68,10 +68,15 @@ internal func socketWrite(_ fd: Int32, _ buf: UnsafeRawPointer, _ count: Int) ->
     #endif
 }
 
-/// Atomic flag set by SIGWINCH handler, polled by resize task.
-/// Atomic<Bool> is async-signal-safe and eliminates TOCTOU races
-/// between the signal handler (any thread) and the main loop polling.
+/// Atomic flag set by the SIGWINCH handler, for callers that poll with
+/// `Terminal.checkResize()`. Atomic<Bool> is async-signal-safe and
+/// eliminates TOCTOU races between the handler (any thread) and the poller.
 private let _resizeFlag = Atomic<Bool>(false)
+
+/// Write end of the runtime's resize pipe, or -1. The SIGWINCH handler
+/// writes a byte to it, which wakes the input task's `poll()`, so a resize
+/// reaches an idle app without anything polling for it.
+private let _resizeWakeFD = Atomic<Int32>(-1)
 
 // MARK: - Crash-path signal cleanup (HYP-324)
 //
@@ -346,8 +351,8 @@ public enum Terminal {
     /// Current terminal dimensions in cells, via `ioctl(TIOCGWINSZ)` on
     /// stdout. Falls back to ``TerminalSize/default`` (80×24) when the
     /// query fails or reports zero — piped stdout, headless CI — so
-    /// callers always get a renderable, non-zero geometry. Re-queried
-    /// after SIGWINCH (see `checkResize()`).
+    /// callers always get a renderable, non-zero geometry. The runtime
+    /// re-queries it on SIGWINCH and delivers a `.resize` event.
     public static func size() -> TerminalSize {
         var windowSize = winsize()
         let ioctlResult = posix.ioctl(STDOUT_FILENO, UInt(TIOCGWINSZ), &windowSize)
@@ -383,8 +388,8 @@ public enum Terminal {
     /// - OPOST: output post-processing (we emit raw ANSI, no translation)
     ///
     /// Sets VMIN=0, VTIME=1 (100ms timeout): read() returns immediately with available bytes
-    /// or after 100ms with nothing. This gives the event loop a natural polling interval
-    /// without busy-waiting.
+    /// or after 100ms with nothing — the silence that tells a bare Escape from the start of
+    /// an escape sequence.
     ///
     /// Returns `true` on success, `false` if the underlying syscalls fail
     /// (e.g. stdin is not a TTY). On failure no termios state is captured,
@@ -521,10 +526,28 @@ public enum Terminal {
         }
     }
 
-    /// Signal handler writes only an atomic bool — no Swift allocation or ARC in signal context.
+    /// The pipe the SIGWINCH handler writes a byte to, or nil. Its write end
+    /// must be non-blocking: a full pipe must not stall the handler.
+    static var resizeWakeFD: Int32? {
+        get {
+            let fd = _resizeWakeFD.load(ordering: .acquiring)
+            return fd < 0 ? nil : fd
+        }
+        set { _resizeWakeFD.store(newValue ?? -1, ordering: .releasing) }
+    }
+
+    /// The handler stores an atomic and calls write(2), which POSIX lists
+    /// as async-signal-safe — no Swift allocation or ARC in signal context.
+    /// The byte wakes the runtime's input task, which delivers the resize.
     public static func installResizeHandler() {
         installSignalDisposition(SIGWINCH) { _ in
             _resizeFlag.store(true, ordering: .relaxed)
+            let fd = _resizeWakeFD.load(ordering: .acquiring)
+            guard fd >= 0 else { return }
+            // The interrupted code may be about to read errno.
+            let savedErrno = errno
+            SelfPipe.signal(writeEnd: fd)
+            errno = savedErrno
         }
     }
 
@@ -629,6 +652,7 @@ public enum Terminal {
     }
 
     /// Atomically check and clear the resize flag. Single exchange — no TOCTOU.
+    @available(*, deprecated, message: "The runtime delivers a resize as TerminalEvent.resize; nothing needs to poll for it.")
     public static func checkResize() -> Bool {
         _resizeFlag.exchange(false, ordering: .relaxed)
     }

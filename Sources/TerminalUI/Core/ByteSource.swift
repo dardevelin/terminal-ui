@@ -21,13 +21,13 @@ public protocol ByteSource {
 
 /// Runtime source — reads one byte at a time from STDIN in raw mode.
 ///
-/// Normally relies on VTIME=1 (100ms poll) in raw mode for interruptibility.
-/// If `shutdownReadFD` is set, `poll()` watches both STDIN and the
-/// shutdown pipe; writing any byte to the pipe wakes a blocked readByte()
-/// and causes it to return nil, letting the caller check Task.isCancelled.
-///
-/// Without the shutdown pipe, quitting would hang up to one VTIME interval
-/// because Task.cancel() can't interrupt a blocked read() syscall on Linux.
+/// Between events the runtime waits in ``waitForActivity(input:resize:shutdown:)``.
+/// A read waits at most 100ms (VTIME=1, or the same timeout on `poll()`),
+/// which the parser relies on part-way through an escape sequence. If
+/// `shutdownReadFD` is set, `poll()` watches both STDIN and the shutdown
+/// pipe; writing any byte to the pipe wakes a blocked readByte() and causes
+/// it to return nil — Task.cancel() can't interrupt a blocked read() syscall
+/// on Linux.
 public struct StdinByteSource: ByteSource {
     /// Read end of a self-pipe used to wake a blocked readByte() at shutdown.
     /// Shared state: TerminalApp.run() opens the pipe and stores the read end
@@ -86,6 +86,52 @@ public struct StdinByteSource: ByteSource {
             return bytesRead == 1 ? byte : nil
         }
         return nil
+    }
+}
+
+/// What woke the input task.
+enum InputActivity: Equatable {
+    /// A byte is waiting on the input.
+    case input
+    /// The terminal was resized: SIGWINCH wrote to the resize pipe.
+    case resize
+    /// Stop reading: the runtime wrote to the shutdown pipe, or the input
+    /// hung up and nothing more will arrive on it.
+    case shutdown
+}
+
+extension StdinByteSource {
+    /// Blocks until `input` has a byte, the terminal is resized, or the
+    /// runtime shuts down — with no timeout, so an idle app's input thread
+    /// sleeps. The 100ms timeout `readByte()` keeps is for the parser part-way
+    /// through an escape sequence, where a bare Escape is told apart from a
+    /// sequence's start by the silence after it; between events there is
+    /// nothing to tell apart.
+    ///
+    /// Shutdown wins over everything, and its byte stays in the pipe, as in
+    /// `readByte()`. A resize empties the pipe, so several signals before the
+    /// task looks are one resize.
+    static func waitForActivity(input: Int32 = STDIN_FILENO, resize: Int32, shutdown: Int32) -> InputActivity {
+        var fds = [
+            pollfd(fd: input, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: resize, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: shutdown, events: Int16(POLLIN), revents: 0),
+        ]
+        // A signal handler running on this thread interrupts poll() with
+        // EINTR whatever SA_RESTART says; that is not activity.
+        while poll(&fds, nfds_t(fds.count), -1) < 0 && errno == EINTR {}
+
+        if fds[2].revents != 0 { return .shutdown }
+        if fds[1].revents & Int16(POLLIN) != 0 {
+            // One byte per SIGWINCH; one read takes every one written so far.
+            var drained = [UInt8](repeating: 0, count: 64)
+            _ = read(resize, &drained, drained.count)
+            return .resize
+        }
+        if fds[0].revents & Int16(POLLIN) != 0 { return .input }
+        // POLLHUP, POLLERR or POLLNVAL with nothing to read: polling again
+        // would return at once, forever.
+        return .shutdown
     }
 }
 

@@ -7,6 +7,7 @@ import Darwin
 #endif
 
 import Foundation
+import Synchronization
 
 // MARK: - Wire protocol (JSON lines)
 
@@ -288,6 +289,22 @@ public final class RemoteControlServer: @unchecked Sendable {
     /// Connected clients, each with the bytes read so far — a partial line
     /// belongs to the connection that sent it, so the buffers cannot be shared.
     private var clients: [Int32: Data] = [:]
+    /// Called, from a dispatch queue, when the listening socket or a client
+    /// has something to read — so a frame loop with nothing to do can sleep
+    /// until a command arrives instead of polling the socket. Nil leaves the
+    /// server to be pumped every frame.
+    private let onActivity: (@Sendable () -> Void)?
+    /// One per descriptor while `onActivity` is set; each closes its
+    /// descriptor when released.
+    private var watches: [Int32: ReadinessWatch] = [:]
+    /// Set when a watch fires, cleared by `pump()`.
+    private let activity = Atomic<Bool>(false)
+
+    /// Whether a client has connected or sent something that `pump()` has
+    /// not yet read. Any thread.
+    public var hasPendingActivity: Bool {
+        activity.load(ordering: .acquiring)
+    }
     private let path: String
     private let decoder: JSONDecoder = {
         let d = JSONDecoder()
@@ -308,10 +325,34 @@ public final class RemoteControlServer: @unchecked Sendable {
     /// Binds the listening socket at `path` and routes every parsed
     /// request through `dispatcher`. Bind failure leaves an inert server
     /// rather than throwing.
-    public init(path: String, dispatcher: any RemoteControlDispatcher) {
+    public convenience init(path: String, dispatcher: any RemoteControlDispatcher) {
+        self.init(path: path, dispatcher: dispatcher, onActivity: nil)
+    }
+
+    init(path: String, dispatcher: any RemoteControlDispatcher, onActivity: (@Sendable () -> Void)?) {
         self.path = path
         self.dispatcher = dispatcher
+        self.onActivity = onActivity
         setupSocket()
+        watch(listenFd)
+    }
+
+    /// Starts watching `fd` for something to read, when there is anyone to
+    /// tell.
+    private func watch(_ fd: Int32) {
+        guard fd >= 0, let onActivity else { return }
+        watches[fd] = ReadinessWatch(fd: fd) { [weak self] in
+            self?.activity.store(true, ordering: .releasing)
+            onActivity()
+        }
+    }
+
+    /// Closes `fd` — through its watch when it has one, since a dispatch
+    /// source must be cancelled before its descriptor is closed.
+    private func closeDescriptor(_ fd: Int32) {
+        if watches.removeValue(forKey: fd) == nil {
+            close(fd)
+        }
     }
 
     private func setupSocket() {
@@ -349,12 +390,18 @@ public final class RemoteControlServer: @unchecked Sendable {
     /// dispatches newline-separated JSON commands. Never blocks.
     @MainActor
     public func pump() {
+        activity.store(false, ordering: .releasing)
         acceptPending()
         for fd in clients.keys {
             readAvailable(from: fd)
             // The read may have hung up the connection.
             guard clients[fd] != nil else { continue }
             processCompleteLines(from: fd)
+        }
+        // What woke the loop has been read; anything that arrives from here
+        // on wakes it again.
+        for watch in watches.values {
+            watch.rearm()
         }
     }
 
@@ -368,6 +415,7 @@ public final class RemoteControlServer: @unchecked Sendable {
             guard accepted >= 0 else { return }
             _ = fcntl(accepted, F_SETFL, O_NONBLOCK)
             clients[accepted] = Data()
+            watch(accepted)
         }
     }
 
@@ -445,13 +493,74 @@ public final class RemoteControlServer: @unchecked Sendable {
 
     private func disconnect(_ fd: Int32) {
         guard clients.removeValue(forKey: fd) != nil else { return }
-        close(fd)
+        closeDescriptor(fd)
     }
 
     deinit {
-        for fd in clients.keys { close(fd) }
-        if listenFd >= 0 { close(listenFd) }
+        for fd in clients.keys { closeDescriptor(fd) }
+        if listenFd >= 0 { closeDescriptor(listenFd) }
         unlink(path)
+    }
+}
+
+/// Calls `onReady` when a descriptor has something to read, then holds off
+/// until ``rearm()``.
+///
+/// A dispatch read source fires for as long as data waits, but the data is
+/// read later, on the main actor, by `pump()`; left running, the source would
+/// spin a dispatch thread until then. So it suspends itself when it fires,
+/// and `pump()` resumes it once it has read.
+private final class ReadinessWatch: Sendable {
+    private struct State {
+        let source: any DispatchSourceRead
+        /// Whether the source is resumed. Dispatch traps on an unbalanced
+        /// resume, and on cancelling or releasing a suspended source.
+        var armed: Bool
+    }
+
+    /// The source lives under the lock with its state: it is not `Sendable`
+    /// on every platform, and every call on it must agree with `armed`.
+    private let state: Mutex<State>
+
+    init(fd: Int32, onReady: @escaping @Sendable () -> Void) {
+        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .global())
+        source.setCancelHandler {
+            close(fd)
+        }
+        state = Mutex(State(source: source, armed: true))
+        state.withLock { state in
+            state.source.setEventHandler { [weak self] in
+                self?.disarm()
+                onReady()
+            }
+            state.source.resume()
+        }
+    }
+
+    func rearm() {
+        state.withLock { state in
+            guard !state.armed else { return }
+            state.source.resume()
+            state.armed = true
+        }
+    }
+
+    /// Releasing the watch stops it and closes the descriptor.
+    deinit {
+        state.withLock { state in
+            if !state.armed {
+                state.source.resume()
+            }
+            state.source.cancel()
+        }
+    }
+
+    private func disarm() {
+        state.withLock { state in
+            guard state.armed else { return }
+            state.source.suspend()
+            state.armed = false
+        }
     }
 }
 
@@ -485,12 +594,20 @@ public protocol RemoteControlRuntime: AnyObject {
     func remotePreviousBuffer() -> CellBuffer?
     /// Asks the runtime to write a screenshot capture on its next frame.
     func remoteRequestCapture()
+    /// Ask for a frame: a command changed what is drawn without an event or
+    /// observed state to say so.
+    func remoteRequestFrame()
     /// The monotonic frame counter — clients poll it to await a render.
     func remoteCurrentFrameNumber() -> Int
     /// Build the framework's default action scope (Ctrl+C → Action.quit,
     /// Esc → Action.dismissOrQuit) so `list_actions` / `invoke_action`
     /// can route through the same data the runtime dispatch uses.
     func remoteFrameworkDefaultsScope() -> ActionScope
+}
+
+extension RemoteControlRuntime {
+    /// Default for a runtime that draws every frame regardless.
+    public func remoteRequestFrame() {}
 }
 
 /// Concrete dispatcher that translates `RemoteRequest` → actions on the
@@ -648,6 +765,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             return RemoteResponse(id: request.id, ok: false, error: "node not found: \(target)")
         }
         engine.keyboardFocusID = match.id
+        runtime.remoteRequestFrame()
         return RemoteResponse(id: request.id, ok: true)
     }
 
@@ -903,11 +1021,13 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         // absolute target by computing the delta client-side.
         inspector.moveCursor(dx: x - inspector.cursorX, dy: y - inspector.cursorY,
                              maxX: maxX, maxY: maxY)
+        runtime.remoteRequestFrame()
         return RemoteResponse(id: request.id, ok: true)
     }
 
     private func inspectorToggle(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
         runtime.remoteInspector().toggle()
+        runtime.remoteRequestFrame()
         return RemoteResponse(id: request.id, ok: true)
     }
 
@@ -988,6 +1108,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             from: focused,
             frameworkDefaults: defaults
         )
+        if fired { runtime.remoteRequestFrame() }
         return RemoteResponse(id: request.id, ok: true, result: RemoteResult(fired: fired))
     }
 

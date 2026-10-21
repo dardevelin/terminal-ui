@@ -1897,6 +1897,53 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
     raise CaseFailed(f"the terminal was not restored after SIGSEGV: {app.pty_output()[before:][:200]!r}")
 
 
+def idle_costs_nothing(app: Client) -> None:
+    """An app with nothing to do sleeps until something happens. Regression:
+    an `.onDemand` app — documented as zero CPU when idle — polled every
+    millisecond for work, and every app polled for a resize every 16ms."""
+    app.wait_for_frame(1, timeout=1.0)
+    time.sleep(1.0)
+    before = app.cpu_seconds()
+    time.sleep(4.0)
+    used = app.cpu_seconds() - before
+    assert_true(used < 0.03, f"idle for 4s, the app used {used:.3f}s of CPU")
+
+
+def navigation_a_remote_command_redraws_an_idle_app(app: Client) -> None:
+    """A remote command that changes what is drawn, without an event or
+    observed state, still gets its frame. Regression: an idle `.onDemand`
+    app showed `inspector-toggle`, a focus set or a screenshot only at the
+    next keypress."""
+    app.wait_for_frame(1, timeout=1.0)
+    time.sleep(0.3)
+    before = app.frame_number()
+    app.inspector_toggle()
+    assert_true(app.wait_until(lambda client: client.frame_number() > before, timeout=2.0),
+                "toggling the inspector drew no frame")
+
+
+def navigation_invoke_action_quits_an_idle_app(app: Client) -> None:
+    """`invoke_action app.quit` ends an idle app. Regression: the quit
+    signal was read only while handling a key, so an idle app went on."""
+    app.wait_for_frame(1, timeout=1.0)
+    time.sleep(0.3)
+    assert_true(app.invoke_action("app.quit"), "app.quit did not fire")
+    assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after app.quit")
+
+
+def coder_a_resize_redraws_at_the_new_size(app: Client) -> None:
+    """A terminal resize reaches an idle app and it redraws at the new
+    size."""
+    def size(client: Client) -> tuple[int, int]:
+        frame = client.cells()
+        return frame.width, frame.height
+
+    app.resize_terminal(100, 30)
+    if not app.wait_until(lambda client: size(client) == (100, 30), timeout=3.0):
+        width, height = size(app)
+        raise CaseFailed(f"after a resize to 100x30 the frame is {width}x{height}")
+
+
 def _kill_and_wait(app: Client, signum: int) -> None:
     import os
 
@@ -1943,6 +1990,13 @@ def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
 
 CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
+    SmokeCase("navigation.idle_costs_nothing", "Navigation", idle_costs_nothing),
+    SmokeCase("coder.idle_costs_nothing", "Coder", idle_costs_nothing),
+    SmokeCase("navigation.a_remote_command_redraws_an_idle_app", "Navigation",
+              navigation_a_remote_command_redraws_an_idle_app),
+    SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
+              navigation_invoke_action_quits_an_idle_app),
+    SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
     SmokeCase("storybook.a_client_that_hangs_up_leaves_the_app_running", "Storybook",
