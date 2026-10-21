@@ -82,17 +82,45 @@ private let _resizeFlag = Atomic<Bool>(false)
 // Both handlers are async-signal-safe: they only invoke
 // `posix_write` and `tcsetattr`, both on POSIX.1's signal-safe list.
 
+#if canImport(Darwin)
+typealias SignalHandler = sig_t
+#elseif canImport(Glibc)
+typealias SignalHandler = __sighandler_t
+#endif
+
+/// Install a signal disposition with `sigaction`, never `signal()`.
+///
+/// `signal()` differs by platform — System V resets the handler on delivery,
+/// BSD and glibc keep it and restart interrupted calls — and sanitizers only
+/// intercept `sigaction`. Under Thread Sanitizer a handler installed with
+/// `signal()` ran straight from the kernel in the middle of whatever the
+/// thread was doing; when that was `free`, TSan's own lock was held and the
+/// handler aborted on it. Through `sigaction` TSan runs the handler at a safe
+/// point. `SA_RESTART` keeps `signal()`'s BSD behaviour: a blocked `read` of
+/// stdin resumes after SIGWINCH instead of failing with EINTR.
+/// `sigaction` is async-signal-safe (POSIX.1), so handlers use this too.
+func installSignalDisposition(_ signum: Int32, _ handler: SignalHandler?) {
+    var action = sigaction()
+    #if canImport(Darwin)
+    action.__sigaction_u.__sa_handler = handler
+    #elseif canImport(Glibc)
+    action.__sigaction_handler.sa_handler = handler
+    #endif
+    action.sa_flags = SA_RESTART
+    sigemptyset(&action.sa_mask)
+    _ = sigaction(signum, &action, nil)
+}
+
 @_cdecl("_terminalSignalHandler")
 internal func _terminalSignalHandler(signum: Int32) {
     Terminal.runCleanup()
     // Restore default disposition + re-raise so the parent shell
     // sees the conventional exit code (130 for SIGINT, 143 for
     // SIGTERM, 129 for SIGHUP).
+    installSignalDisposition(signum, SIG_DFL)
     #if canImport(Darwin)
-    _ = Darwin.signal(signum, SIG_DFL)
     _ = Darwin.raise(signum)
     #elseif canImport(Glibc)
-    _ = Glibc.signal(signum, SIG_DFL)
     _ = Glibc.raise(signum)
     #endif
 }
@@ -129,11 +157,7 @@ internal func _terminalFatalSignalHandler(signum: Int32) {
     if let index = fatalSignals.firstIndex(of: signum) {
         _ = sigaction(signum, previousFatalActions + index, nil)
     } else {
-        #if canImport(Darwin)
-        _ = Darwin.signal(signum, SIG_DFL)
-        #elseif canImport(Glibc)
-        _ = Glibc.signal(signum, SIG_DFL)
-        #endif
+        installSignalDisposition(signum, SIG_DFL)
     }
     #if canImport(Darwin)
     _ = Darwin.raise(signum)
@@ -499,7 +523,7 @@ public enum Terminal {
 
     /// Signal handler writes only an atomic bool — no Swift allocation or ARC in signal context.
     public static func installResizeHandler() {
-        signal(SIGWINCH) { _ in
+        installSignalDisposition(SIGWINCH) { _ in
             _resizeFlag.store(true, ordering: .relaxed)
         }
     }
@@ -587,15 +611,9 @@ public enum Terminal {
         // forbids C-function-pointer formation from any closure that
         // captures Self / context, even via static-function calls.
         // File-scope free functions sidestep that.
-        #if canImport(Darwin)
-        _ = Darwin.signal(SIGINT, _terminalSignalHandler)
-        _ = Darwin.signal(SIGTERM, _terminalSignalHandler)
-        _ = Darwin.signal(SIGHUP, _terminalSignalHandler)
-        #elseif canImport(Glibc)
-        _ = Glibc.signal(SIGINT, _terminalSignalHandler)
-        _ = Glibc.signal(SIGTERM, _terminalSignalHandler)
-        _ = Glibc.signal(SIGHUP, _terminalSignalHandler)
-        #endif
+        for signum in [SIGINT, SIGTERM, SIGHUP] {
+            installSignalDisposition(signum, _terminalSignalHandler)
+        }
         // A static `let` is initialised on first use, which allocates — the
         // handler must find the sequence already built, not build it.
         _ = cleanupEscapeSequence.utf8.count
@@ -605,11 +623,7 @@ public enum Terminal {
             // backtracer installs with SA_SIGINFO, and `signal()` would hand
             // back a pointer to be called with the wrong arguments.
             _ = sigaction(signum, nil, previousFatalActions + index)
-            #if canImport(Darwin)
-            _ = Darwin.signal(signum, _terminalFatalSignalHandler)
-            #elseif canImport(Glibc)
-            _ = Glibc.signal(signum, _terminalFatalSignalHandler)
-            #endif
+            installSignalDisposition(signum, _terminalFatalSignalHandler)
         }
         atexit(_terminalAtExitHandler)
     }

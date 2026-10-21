@@ -102,3 +102,41 @@ jobs:
 
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py
+
+  thread-sanitizer:
+    name: Thread Sanitizer (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Select latest Xcode
+        run: |
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          swift --version
+
+      # Its own scratch path: a sanitized build shares no artifacts with a
+      # plain one, and mixing them in one .build rebuilds both every time.
+      - name: Cache build
+        uses: actions/cache@v5
+        with:
+          path: .build-tsan
+          key: macos-tsan-${{ hashFiles('Package.swift') }}-${{ github.sha }}
+          restore-keys: |
+            macos-tsan-${{ hashFiles('Package.swift') }}-
+            macos-tsan-
+
+      # A race is a bug whether or not a run happens to crash on it. TSan
+      # reports the unguarded access itself, so the trace recorder's race,
+      # which crashed one smoke run in three, fails every run here.
+      - name: Test
+        run: swift test --sanitize=thread --scratch-path .build-tsan
+
+      # The unit tests mostly run on one actor; the threads that race in a
+      # live app are the input task, the frame loop and the control socket.
+      # The runner sends each app's sanitizer reports to a file and fails the
+      # case that produced them.
+      - name: Build examples
+        run: swift build --sanitize=thread --scratch-path .build-tsan
+
+      - name: Behavioural smoke suite
+        run: python3 tools/scripts/storybook_smoke.py .build-tsan/debug
