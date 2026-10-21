@@ -630,6 +630,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
             var wake: UInt8 = 1
             _ = write(shutdownPipeFDs[1], &wake, 1)
         }
+        // `run()` clears the pipe's descriptor and closes the pipe as soon as
+        // this returns, and the input task reads both on its own thread.
+        // Unwaited, it could poll a closed descriptor, or one the cleanup that
+        // follows has reopened, or fall back to a blocking read of a stdin the
+        // shell has taken back.
+        await inputTask.value
         for t in timerTasks { t.cancel() }
         resizeTask.cancel()
     }

@@ -3,6 +3,7 @@ import Glibc
 #elseif canImport(Darwin)
 import Darwin
 #endif
+import Synchronization
 
 /// A synchronous, one-byte-at-a-time input stream for ``InputParser``.
 ///
@@ -32,7 +33,16 @@ public struct StdinByteSource: ByteSource {
     /// Shared state: TerminalApp.run() opens the pipe and stores the read end
     /// here before starting the input task, then writes to the write end on
     /// exit. nil when no runtime is active (tests, or before run() starts).
-    nonisolated(unsafe) public static var shutdownReadFD: Int32?
+    /// The input task reads it on its own thread while the runtime sets and
+    /// clears it, so it is held atomically.
+    public static var shutdownReadFD: Int32? {
+        get {
+            let fd = shutdownFD.load(ordering: .acquiring)
+            return fd < 0 ? nil : fd
+        }
+        set { shutdownFD.store(newValue ?? -1, ordering: .releasing) }
+    }
+    private static let shutdownFD = Atomic<Int32>(-1)
 
     /// Creates the stdin-backed source. Stateless — all state lives in
     /// the file descriptors it reads.
@@ -62,10 +72,11 @@ public struct StdinByteSource: ByteSource {
         let ready = poll(&fds, nfds_t(fds.count), 100)
         guard ready > 0 else { return nil }
 
-        // Shutdown pipe readable → drop the wake byte, return nil to caller.
+        // The wake byte stays in the pipe: every later poll returns at once,
+        // so a sequence the parser is part-way through gives up its retries
+        // immediately instead of waiting out a 100ms poll for each, and the
+        // input task reaches its cancellation check without delay.
         if fds[1].revents & Int16(POLLIN) != 0 {
-            var discard: UInt8 = 0
-            _ = read(shutdownFD, &discard, 1)
             return nil
         }
 

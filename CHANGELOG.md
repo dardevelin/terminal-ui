@@ -145,6 +145,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Quitting waits for the input task before closing its wake pipe.** The
+  runtime cleared and closed the pipe while the input task, cancelled but
+  still running, could be reading it: it could poll a closed descriptor, one a
+  later cleanup had reopened, or fall back to a blocking read of the shell's
+  stdin. The task is now awaited first; the wake byte stays in the pipe so a
+  half-parsed escape sequence gives up at once; and `StdinByteSource.shutdownReadFD`
+  is held atomically, with the same API.
 - **A control client that hangs up no longer kills the app.** `swtui ctl kill`
   sends its quit and disconnects without reading the reply; the reply then went
   to a closed socket, SIGPIPE ended the app inside the write, and nothing
