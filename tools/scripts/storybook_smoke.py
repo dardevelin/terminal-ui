@@ -1880,13 +1880,12 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
     SIGTERM and SIGHUP restored it, so a crash while scrolling printed its
     backtrace as a staircase over the last frame and the shell went on
     receiving mouse coordinates as typed text."""
-    import os
     import signal
 
     app.wait_for_frame(1, timeout=0.5)
     before = len(app.pty_output())
     app.expected_exit_signal = signal.SIGSEGV
-    os.kill(app.pid, signal.SIGSEGV)
+    app.crash()
     restored = (b"\x1b[?1006l", b"\x1b[?1000l", b"\x1b[?1049l", b"\x1b[?25h")
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
@@ -1944,29 +1943,24 @@ def coder_a_resize_redraws_at_the_new_size(app: Client) -> None:
         raise CaseFailed(f"after a resize to 100x30 the frame is {width}x{height}")
 
 
-def _kill_and_wait(app: Client, signum: int) -> None:
-    import os
-
-    os.kill(app.pid, signum)
-    if app.wait_for_exit(20.0) is None:
-        raise CaseFailed(f"the app outlived signal {signum}")
-
-
 def harness_objects_to_an_unannounced_crash(app: Client) -> None:
     """The runner fails a case whose app crashed, even when every assertion
     passed. Regression: a crash under a passing case went unreported, so a
     race that killed the app one run in three looked green the other two."""
-    import signal
-
-    _kill_and_wait(app, signal.SIGSEGV)
+    app.crash()
+    if app.wait_for_exit(20.0) is None:
+        raise CaseFailed("the app outlived its crash")
 
 
 def harness_objects_to_a_terminal_left_dirty(app: Client) -> None:
     """The runner fails a case whose app left the terminal in a mode it
     turned on. SIGKILL cannot be caught, so nothing restores it."""
+    import os
     import signal
 
-    _kill_and_wait(app, signal.SIGKILL)
+    os.kill(app.pid, signal.SIGKILL)
+    if app.wait_for_exit(20.0) is None:
+        raise CaseFailed("the app outlived SIGKILL")
 
 
 def coder_bash_card_caps_and_cuts_output(app: Client) -> None:

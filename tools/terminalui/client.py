@@ -284,6 +284,12 @@ class Client:
     def ping(self) -> None:
         self._call("ping")
 
+    def crash(self) -> None:
+        """Make the app crash with SIGSEGV raised on its own main thread, after
+        answering — not `kill`, which any thread may take; see the server's
+        `crash` for why that matters."""
+        self._call("crash")
+
     def send_key(self, key: str, *modifiers: str) -> None:
         """Inject a single key event. ``key`` accepts named keys (tab, enter,
         up/down/left/right, home/end, pageup/pagedown, f1..f12, escape) or a

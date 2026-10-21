@@ -122,8 +122,9 @@ extension StdinByteSource {
             pollfd(fd: terminate, events: Int16(POLLIN), revents: 0),
             pollfd(fd: shutdown, events: Int16(POLLIN), revents: 0),
         ]
-        // A signal handler running on this thread interrupts poll() with
-        // EINTR whatever SA_RESTART says; that is not activity.
+        // The task's pool thread blocks the signals the app handles, so they
+        // reach it as pipe bytes; a poll() interrupted all the same returns
+        // EINTR, whatever SA_RESTART says, and that is not activity.
         while poll(&fds, nfds_t(fds.count), -1) < 0 && errno == EINTR {}
 
         if fds[3].revents != 0 { return .shutdown }
