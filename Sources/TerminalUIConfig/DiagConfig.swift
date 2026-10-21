@@ -7,8 +7,8 @@ import Foundation
 /// debug-build app loads it via `DiagPaths.loadConfig()` at startup and
 /// wires each feature accordingly — `traceEnabled` drives the DevTracer,
 /// `socketEnabled` the remote-control socket, `useTmp` whether output
-/// lands in the per-process `/tmp/terminalui-{hash}-{pid}/` dir (with a
-/// `.terminalui/data` symlink) or inline under `.terminalui/`. Harness
+/// lands in the per-process `/tmp/terminalui-{hash}-{pid}/` dir or inline
+/// under `.terminalui/`. Harness
 /// authors normally edit the file with `swtui enable/disable/set` rather
 /// than constructing this type; property names below map 1:1 onto the
 /// TOML `[section] key` pairs noted in the MARK headers.
@@ -33,8 +33,8 @@ public struct DiagConfig: Sendable {
     // MARK: - [output]
 
     /// `[output] use_tmp` — true routes output to the per-process
-    /// `/tmp` dir (symlinked from `.terminalui/data`); false writes
-    /// inline under `.terminalui/`.
+    /// `/tmp` dir, listed by `swtui status`; false writes inline under
+    /// `.terminalui/`.
     public var useTmp: Bool
 
     // MARK: - [socket]

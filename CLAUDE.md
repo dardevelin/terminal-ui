@@ -122,8 +122,8 @@ whatever the thread was doing — in `free`, it aborted on TSan's own lock.
 **Every app the harness spawns is checked on the way out**, in
 `tools/terminalui/runner.py`: a case fails, even with every assertion green,
 if the app crashed, ignored SIGTERM, left a DEC mode it set (alternate screen,
-mouse tracking, bracketed paste, hidden cursor), or a sanitizer reported on
-it. A case that kills its app on purpose sets `client.expected_exit_signal`.
+mouse tracking, bracketed paste, hidden cursor), left its data dir after
+stopping, or a sanitizer reported on it. A case that kills its app on purpose sets `client.expected_exit_signal`.
 The runner turns Swift's backtracer off (`SWIFT_BACKTRACE=enable=no`): on a
 PTY it holds a crashed process open for 30s offering a debugger.
 
@@ -259,9 +259,10 @@ cycle the split removed.
 
 Config-driven, `#if DEBUG` only. Config in `.terminalui/terminalui.toml`;
 ephemeral output in a **per-process PID-isolated** dir,
-`/tmp/terminalui-{hash}-{pid}/`, with a `.terminalui/data` symlink to the most
-recent. Every running app owns its own world — this isolation is load-bearing for
-concurrent test runs. Features: `trace`, `capture`, `screenshots`, `events`,
+`/tmp/terminalui-{hash}-{pid}/`, which `swtui status` lists and the app removes
+when it quits — SIGTERM included, which it turns into a quit. Every running app
+owns its own world, and nothing names "the" app — this isolation is load-bearing
+for concurrent test runs. Features: `trace`, `capture`, `screenshots`, `events`,
 `socket`.
 
 ```bash
@@ -277,7 +278,8 @@ swift run swtui ctl inspector-move <x> <y> | inspector-toggle
 swift run swtui ctl list | reap | kill --pid <N>
 ```
 
-`ctl` targets `latest.sock` by default; `--pid`, `--socket`, `--dir` override.
+With no `--pid`, `ctl` reaches the one app running from this checkout and
+refuses, listing them, when several are; `--pid`, `--socket`, `--dir` choose.
 `kill` requires an explicit PID (no dragnet); `reap` unlinks stale sockets whose
 owning PID is dead; `list` is read-only.
 

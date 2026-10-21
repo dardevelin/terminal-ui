@@ -95,6 +95,9 @@ enum InputActivity: Equatable {
     case input
     /// The terminal was resized: SIGWINCH wrote to the resize pipe.
     case resize
+    /// A terminating signal asked the app to quit: its handler wrote to the
+    /// terminate pipe.
+    case terminate
     /// Stop reading: the runtime wrote to the shutdown pipe, or the input
     /// hung up and nothing more will arrive on it.
     case shutdown
@@ -109,19 +112,22 @@ extension StdinByteSource {
     /// nothing to tell apart.
     ///
     /// Shutdown wins over everything, and its byte stays in the pipe, as in
-    /// `readByte()`. A resize empties the pipe, so several signals before the
-    /// task looks are one resize.
-    static func waitForActivity(input: Int32 = STDIN_FILENO, resize: Int32, shutdown: Int32) -> InputActivity {
+    /// `readByte()`; a request to terminate wins over input. A resize empties
+    /// the pipe, so several signals before the task looks are one resize.
+    static func waitForActivity(input: Int32 = STDIN_FILENO, resize: Int32,
+                                terminate: Int32, shutdown: Int32) -> InputActivity {
         var fds = [
             pollfd(fd: input, events: Int16(POLLIN), revents: 0),
             pollfd(fd: resize, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: terminate, events: Int16(POLLIN), revents: 0),
             pollfd(fd: shutdown, events: Int16(POLLIN), revents: 0),
         ]
         // A signal handler running on this thread interrupts poll() with
         // EINTR whatever SA_RESTART says; that is not activity.
         while poll(&fds, nfds_t(fds.count), -1) < 0 && errno == EINTR {}
 
-        if fds[2].revents != 0 { return .shutdown }
+        if fds[3].revents != 0 { return .shutdown }
+        if fds[2].revents & Int16(POLLIN) != 0 { return .terminate }
         if fds[1].revents & Int16(POLLIN) != 0 {
             // One byte per SIGWINCH; one read takes every one written so far.
             var drained = [UInt8](repeating: 0, count: 64)
