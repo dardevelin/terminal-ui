@@ -20,42 +20,25 @@ public struct RenderContext {
 /// Switches on NodeKind enum — no Any, no as?, no protocol conformance checks.
 public enum GraphRenderer {
 
-    /// Presented modals collected during a render walk, composited against
-    /// the screen buffer once the tree is drawn.
+    /// Render `node`, then draw every presentation in it over the full
+    /// buffer.
     ///
     /// A modal is a *screen-level* presentation: it dims everything and
     /// centres on the terminal. But `ScrollView` renders its content into a
     /// local buffer that is later blitted (see `renderLayout`'s scroll
-    /// cases), so a modal declared inside one would otherwise centre on that
+    /// cases), so a modal drawn where it is declared would centre on that
     /// sub-buffer and be clipped by the blit — the dialog lands inside the
-    /// scrolled pane instead of over the app. Deferring detaches presentation
-    /// from wherever it happens to be declared, which is the same reason
-    /// SwiftUI's sheets don't inherit the declaring view's geometry.
-    ///
-    /// `nonisolated(unsafe)` matches the existing render-path statics: the
-    /// runtime invariant is that rendering happens on the MainActor.
-    nonisolated(unsafe) private static var deferredPresentations: [AttributeNode] = []
-
-    /// Render `node`, then composite any presentations it declared against
-    /// the full buffer. Nested calls (ScrollView content, the modal's own
-    /// subtree) go through `render(_:into:context:)` and do NOT drain, so
-    /// the deferral survives until the outermost walk finishes.
+    /// scrolled pane instead of over the app. Drawing presentations after the
+    /// walk detaches them from wherever they happen to be declared, which is
+    /// the same reason SwiftUI's sheets don't inherit the declaring view's
+    /// geometry. ``Presentations`` decides the order, so focus and the
+    /// pointer agree with what ends up on top.
     public static func render(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
-        let isOutermost = !isRendering
-        if isOutermost {
-            isRendering = true
-            deferredPresentations.removeAll(keepingCapacity: true)
-        }
         renderNode(node, into: &buffer, context: context)
-        if isOutermost {
-            isRendering = false
-            drainPresentations(into: &buffer)
+        for content in Presentations(in: node).inDrawOrder {
+            compositePresentation(content, effect: .modal(isPresented: true), into: &buffer)
         }
     }
-
-    /// True while a render walk is in flight, so nested `render` calls know
-    /// they are not the outermost one and must not drain.
-    nonisolated(unsafe) private static var isRendering = false
 
     static func renderNode(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
         // Record resolved rect on every node — used for hit testing
@@ -133,7 +116,7 @@ public enum GraphRenderer {
                             }
                         }
                         for child in node.children {
-                            render(child, into: &buffer, context: context)
+                            renderNode(child, into: &buffer, context: context)
                         }
                     }
                 }
@@ -362,7 +345,7 @@ public enum GraphRenderer {
         context: RenderContext
     ) {
         for child in children {
-            render(child, into: &buffer, context: RenderContext(style: context.style, rect: child.rect))
+            renderNode(child, into: &buffer, context: RenderContext(style: context.style, rect: child.rect))
         }
 
         // Dividers sit in the 1-cell gap between adjacent child rects.
@@ -521,7 +504,7 @@ public enum GraphRenderer {
                     // real slot. Once Layer 3 lands, this call goes
                     // away and render becomes a pure walk.
                     Layout.measureAndPlace(graph: child, in: childRect)
-                    render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+                    renderNode(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     y += flexHeight
                 }
                 if i < children.count - 1 { y += spacing }
@@ -534,7 +517,7 @@ public enum GraphRenderer {
                 x: context.rect.x + info.alignment.horizontal.offset(for: width, in: context.rect.width),
                 y: y, width: width, height: max(1, h))
             Layout.measureAndPlace(graph: child, in: childRect)
-            render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+            renderNode(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             y += h
             if i < children.count - 1 { y += spacing }
         }
@@ -774,7 +757,7 @@ public enum GraphRenderer {
                         y: context.rect.y + info.alignment.vertical.offset(for: height, in: context.rect.height),
                         width: max(1, flexWidth), height: height)
                     Layout.measureAndPlace(graph: child, in: childRect)
-                    render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+                    renderNode(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
                     x += flexWidth
                 }
                 if i < children.count - 1 { x += spacing }
@@ -790,7 +773,7 @@ public enum GraphRenderer {
                 y: context.rect.y + info.alignment.vertical.offset(for: height, in: context.rect.height),
                 width: max(1, clampedWidth), height: height)
             Layout.measureAndPlace(graph: child, in: childRect)
-            render(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
+            renderNode(child, into: &buffer, context: RenderContext(style: context.style, rect: childRect))
             x += w
             if i < children.count - 1 { x += spacing }
         }
@@ -868,7 +851,7 @@ public enum GraphRenderer {
             // translates back to screen coords after the content is
             // drawn.
             Layout.measureAndPlace(graph: contentChild, in: contentRect)
-            render(contentChild, into: &contentBuffer,
+            renderNode(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
             // See the vertical branch: drawn, not declared.
@@ -945,7 +928,7 @@ public enum GraphRenderer {
             // Re-stamp from local-buffer origin (0, 0); offsetRects
             // below translates back to screen coords.
             Layout.measureAndPlace(graph: contentChild, in: contentRect)
-            render(contentChild, into: &contentBuffer,
+            renderNode(contentChild, into: &contentBuffer,
                    context: RenderContext(style: context.style, rect: contentRect))
 
             // What the content draws, not what it declares. The affordances
@@ -1163,7 +1146,7 @@ public enum GraphRenderer {
                     width: max(1, width), height: max(1, height))
                 Layout.measureAndPlace(graph: child, in: childCtx.rect)
             }
-            render(child, into: &buffer, context: childCtx)
+            renderNode(child, into: &buffer, context: childCtx)
         }
     }
 
@@ -1501,30 +1484,30 @@ public enum GraphRenderer {
         switch effect {
         case .foreground(let color):
             ctx.style.foreground = color
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .background(let color):
             ctx.style.background = color
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .bold:
             ctx.style.bold = true
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .italic:
             ctx.style.italic = true
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .underline:
             ctx.style.underline = true
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .padding:
             // Layer 2: Layout has pre-stamped child.rect with the
             // padding inset. Render reads it and passes through —
             // no rect computation here.
             ctx.rect = child.rect
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .border(let style, let color, let edges):
             // Border edges draw at the modifier node's OUTER rect
@@ -1532,14 +1515,14 @@ public enum GraphRenderer {
             // that Layout already stamped on `child.rect`.
             renderBorder(style, color: color, edges: edges, into: &buffer, context: ctx)
             ctx.rect = child.rect
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .frame:
             // Layer 2: Layout has pre-stamped child.rect with the
             // frame's clamped dimensions. Render passes the resolved
             // rect through unchanged.
             ctx.rect = child.rect
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .flexible:
             // The flex modifier itself doesn't transform the rect —
@@ -1547,10 +1530,10 @@ public enum GraphRenderer {
             // the right rect when it saw `.flexible(matchingAxis)` in
             // `isFlexChild` / `isVFlexChild`. Just render the wrapped
             // child into the rect we were given.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .explicitID:
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .overlay(let alignment):
             // Base first, then the overlay over it. `.topLeading` keeps the
@@ -1558,7 +1541,7 @@ public enum GraphRenderer {
             // any other alignment is a request to *place* it, which needs its
             // own size — a badge pinned `.topTrailing` is the case this exists
             // for.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
             if node.children.count > 1 {
                 let overlay = node.children[1]
                 var overlayCtx = ctx
@@ -1576,15 +1559,15 @@ public enum GraphRenderer {
                     overlayCtx.rect = placedRect(of: overlay, in: base, alignment: alignment)
                     Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
                 }
-                render(overlay, into: &buffer, context: overlayCtx)
+                renderNode(overlay, into: &buffer, context: overlayCtx)
             }
 
         case .backgroundView:
             // Render background first, then base on top
             if node.children.count > 1 {
-                render(node.children[1], into: &buffer, context: ctx)
+                renderNode(node.children[1], into: &buffer, context: ctx)
             }
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .focusable:
             // isFocusable is set during graph construction; the focus ring is
@@ -1594,55 +1577,55 @@ public enum GraphRenderer {
             node.applyEnvironment(to: &newEnv)
             withUnsafeMutablePointer(to: &buffer) { bufPtr in
                 GraphContext.$currentEnvironment.withValue(newEnv) {
-                    render(child, into: &bufPtr.pointee, context: ctx)
+                    renderNode(child, into: &bufPtr.pointee, context: ctx)
                 }
             }
 
         case .focusScope:
             // Scope ids are stamped on focusable descendants during construction.
             // No visual effect — navigation-only modifier.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onKeyPress:
             // Handler is registered on FocusEngine during graph update,
             // not during rendering. Just pass through.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onAppear:
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onChange:
             // Comparison + dispatch happens in the graph layer during update
             // (see `FocusGraphIntegration.fireLifecycleIfNeeded`). The
             // renderer is a pass-through.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onDisappear:
             // Removal-time hook — the closure is captured on the node and
             // invoked from `AttributeGraph` when the node leaves the tree.
             // The renderer is a pass-through.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .task:
             // The work is started on the node during construct/update and
             // cancelled when the node leaves the tree; drawing is unaffected.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onClick:
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onHover:
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .onPaste:
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .actions:
             // ActionScope is captured on the modifier node during build
             // (see `FocusGraphIntegration.registerIfNeeded`). The
             // renderer is a pass-through; the input dispatcher walks
             // node._actionScope during event routing.
-            render(child, into: &buffer, context: ctx)
+            renderNode(child, into: &buffer, context: ctx)
 
         case .environment:
             // Push a modified EnvironmentValues for the duration of this
@@ -1651,43 +1634,20 @@ public enum GraphRenderer {
             // `withValue` automatically restores the prior binding on
             // closure exit so sibling subtrees observe their own
             // settings. The `withUnsafeMutablePointer` dance lets the
-            // recursive `render` keep its `inout buffer` parameter
+            // recursive `renderNode` keep its `inout buffer` parameter
             // across the @TaskLocal closure boundary.
             var newEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
             node.applyEnvironment(to: &newEnv)
             withUnsafeMutablePointer(to: &buffer) { bufPtr in
                 GraphContext.$currentEnvironment.withValue(newEnv) {
-                    render(child, into: &bufPtr.pointee, context: ctx)
+                    renderNode(child, into: &bufPtr.pointee, context: ctx)
                 }
             }
 
-        case .modal(let isPresented):
-            // Always render base app
-            render(child, into: &buffer, context: ctx)
-
-            // Defer the panel itself. It is a screen-level presentation, so
-            // it must composite against the terminal buffer — not whatever
-            // local buffer this subtree happens to be drawing into (a
-            // ScrollView's content buffer, or another modal's layer).
-            if isPresented, node.children.count > 1 {
-                deferredPresentations.append(node)
-            }
-        }
-    }
-
-    /// Composite every presentation collected during the walk against the
-    /// full-screen buffer, in declaration order so a modal presented from
-    /// within a modal lands on top of it.
-    private static func drainPresentations(into buffer: inout CellBuffer) {
-        guard !deferredPresentations.isEmpty else { return }
-        let pending = deferredPresentations
-        deferredPresentations.removeAll(keepingCapacity: true)
-
-        for node in pending {
-            guard case .modifier(let effect) = node.kind,
-                  case .modal = effect,
-                  node.children.count > 1 else { continue }
-            compositePresentation(node.children[1], effect: effect, into: &buffer)
+        case .modal:
+            // The base only: what it presents is drawn over the whole screen
+            // once the tree is done, by `render`.
+            renderNode(child, into: &buffer, context: ctx)
         }
     }
 
@@ -2017,7 +1977,9 @@ public enum GraphRenderer {
     static func offsetRects(of node: AttributeNode, dx: Int, dy: Int) {
         node.rect.x += dx
         node.rect.y += dy
-        for child in node.children {
+        // A presentation declared in here is placed when it is drawn.
+        let presented = node.presentedContent
+        for child in node.children where child !== presented {
             offsetRects(of: child, dx: dx, dy: dy)
         }
     }

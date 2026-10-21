@@ -1,11 +1,6 @@
 
 # Known Issues — 2026-04-11
 
-## Inspector z-order
-The inspector's hit test walks the graph tree depth-first but doesn't account for compositor layering. When a modal is open, hitting a cell in the modal's rendered area should find modal nodes, but may find base app nodes instead because the graph tree has both as children of the modal modifier node.
-
-**Fix needed:** Hit test should use resolved rects (which are correct from the render pass) AND respect compositor layer order. Cells within a modal's rendered bounds should only hit-test against modal children.
-
 ## Input parsing limitations
 - ctrl+i = tab (byte 9) — can't distinguish them
 - Some terminal emulators intercept certain ctrl combos

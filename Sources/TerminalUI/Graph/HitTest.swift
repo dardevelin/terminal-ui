@@ -5,10 +5,10 @@
 /// (last child = highest z-order, matching render order where last
 /// child paints on top). Returns the deepest node containing the point.
 ///
-/// Modal occlusion: when a modal is presented, clicks inside the modal
-/// bounds search only the modal subtree. Clicks in the dimmed area
-/// (outside modal content) are consumed by the modal node — no
-/// passthrough to the base app underneath.
+/// Modal occlusion: while a presentation is up, the one drawn on top owns
+/// the screen, wherever in the tree it was declared. A point inside its
+/// content searches only that content; a point in the dimmed area around it
+/// is consumed by the modal node — no passthrough to what lies underneath.
 
 public enum HitTest {
 
@@ -16,40 +16,19 @@ public enum HitTest {
     /// Returns the node and its full ancestor chain.
     public static func nodeAt(x: Int, y: Int, root: AttributeNode?) -> HitResult? {
         guard let root else { return nil }
-        var path: [AttributeNode] = []
-        if let found = search(x: x, y: y, node: root, path: &path) {
-            return HitResult(node: found, path: path)
+        let topmost = Presentations(in: root).topmost
+        guard let scope = Presentations.pointerScope(x: x, y: y, root: root, topmost: topmost) else {
+            // The dim around the dialog on top, which its modal owns.
+            return topmost?.parent.map { HitResult(node: $0, path: $0.ancestors + [$0]) }
         }
-        return nil
+        var path = scope.ancestors
+        return search(x: x, y: y, node: scope, path: &path).map { HitResult(node: $0, path: path) }
     }
 
     private static func search(x: Int, y: Int, node: AttributeNode, path: inout [AttributeNode]) -> AttributeNode? {
-        let r = node.rect
-        // Check if point is within this node's rect
-        guard x >= r.x, x < r.x + r.width,
-              y >= r.y, y < r.y + r.height else {
-            return nil
-        }
+        guard node.rect.contains(x: x, y: y) else { return nil }
 
         path.append(node)
-
-        // Modal layer awareness: when a modal is presented, it occludes the base app.
-        // If the point is inside the modal content, only search modal children.
-        // If outside, return the modal node itself (dimmed area, no base hit).
-        if case .modifier(.modal(let isPresented)) = node.kind, isPresented, node.children.count > 1 {
-            let modalChild = node.children[1]
-            let mr = modalChild.rect
-            if x >= mr.x, x < mr.x + mr.width,
-               y >= mr.y, y < mr.y + mr.height {
-                // Inside modal bounds — only search modal subtree
-                if let found = search(x: x, y: y, node: modalChild, path: &path) {
-                    return found
-                }
-                return modalChild
-            }
-            // Outside modal bounds — hit the dimmed area (no base app passthrough)
-            return node
-        }
 
         // Search children in reverse order (last child = highest z-order)
         for child in node.children.reversed() {

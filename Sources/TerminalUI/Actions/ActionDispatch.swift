@@ -99,8 +99,9 @@ public enum ActionDispatch {
 
     // MARK: - Internals
 
-    /// Walk `node` up to root yielding each `_actionScope` we find,
-    /// innermost first. Nodes without an attached scope are skipped.
+    /// Walk `node` up to root — or to the presentation it is in — yielding
+    /// each `_actionScope` we find, innermost first. Nodes without an
+    /// attached scope are skipped.
     /// `frameworkDefaults`, if provided, is appended at the end so it
     /// behaves as the outermost scope — user bindings shadow defaults.
     private static func scopeChain(
@@ -113,7 +114,7 @@ public enum ActionDispatch {
             if let scope = n._actionScope {
                 scopes.append(scope)
             }
-            current = n.parent
+            current = n.parentWithinPresentation
         }
         if let defaults = frameworkDefaults {
             scopes.append(defaults)

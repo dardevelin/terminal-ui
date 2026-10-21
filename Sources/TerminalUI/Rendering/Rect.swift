@@ -24,6 +24,13 @@ public struct LayoutRect<C: Coordinate>: Equatable, Sendable, Hashable {
     /// no cells.
     public var isEmpty: Bool { width <= C.zero || height <= C.zero }
 
+    /// Whether the point (`x`, `y`) lies inside: the left and top edges
+    /// included, the right and bottom excluded, so adjacent rects never both
+    /// claim a cell.
+    public func contains(x: C, y: C) -> Bool {
+        x >= self.x && x < self.x + width && y >= self.y && y < self.y + height
+    }
+
     /// A rect shrunk by `amount` on all four edges; dimensions floor at
     /// zero rather than going negative.
     public func inset(by amount: C) -> LayoutRect<C> {

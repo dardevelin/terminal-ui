@@ -13,27 +13,16 @@ import Observation
 @MainActor
 struct BodyContainmentCacheTests {
 
-    @Test("post-update walk count is zero for repeated reads")
-    func cachedReadsDoNotWalk() {
+    @Test("an update stamps every node, so reads never walk")
+    func everyNodeIsStampedAfterUpdate() throws {
         let graph = AttributeGraph()
         graph.update(from: VStack { Text("a"); Text("b"); Text("c") })
-        guard let root = graph.root else {
-            Issue.record("no root after update")
-            return
+        let root = try #require(graph.root)
+        // `containsViewBody` returns a stamped value before it would walk.
+        func unstamped(_ node: AttributeNode) -> [NodeID] {
+            (node._containsViewBody == nil ? [node.id] : []) + node.children.flatMap(unstamped)
         }
-
-        #if DEBUG
-        GraphMeasurer.containsViewBodyWalkCount = 0
-        // Three reads in a row must not perform any descendant walks
-        // once the post-update stamp has filled `_containsViewBody`.
-        _ = GraphMeasurer._containsViewBodyForTesting(root)
-        _ = GraphMeasurer._containsViewBodyForTesting(root)
-        _ = GraphMeasurer._containsViewBodyForTesting(root)
-        #expect(
-            GraphMeasurer.containsViewBodyWalkCount == 0,
-            "Cached reads must short-circuit at the stamped value, not walk descendants"
-        )
-        #endif
+        #expect(unstamped(root).isEmpty)
     }
 
     @Test("answer matches uncached truth on a primitives-only tree")

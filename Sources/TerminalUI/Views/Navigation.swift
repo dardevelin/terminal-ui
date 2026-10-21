@@ -33,13 +33,10 @@ import Observation
 /// needs to steer.
 ///
 /// **Mount policy: the root and the top screen are mounted; intermediate
-/// levels are not.** SwiftUI keeps every level mounted, but nesting a modal
-/// inside a modal's content centres it on that sub-buffer rather than the
-/// screen — the same limitation `.modal` has inside a `ScrollView` — so a stack
-/// of live modals does not composite. Since only the top screen is ever
-/// visible, the difference is invisible except that an intermediate screen's
-/// `@Observable` state is reconstructed when the user drills back into it
-/// rather than preserved. Lifting this waits on modal-in-modal compositing.
+/// levels are not.** SwiftUI keeps every level mounted. Since only the top
+/// screen is ever visible, the difference is invisible except that an
+/// intermediate screen's `@Observable` state is reconstructed when the user
+/// drills back into it rather than preserved.
 ///
 /// A pushed screen confines focus the same way a presented modal does — the
 /// covered parent is unreachable while a child is up — reusing the modal
@@ -142,7 +139,7 @@ struct NavigationPathBinding {
 
 /// Presents the top screen as a modal over the root.
 ///
-/// The modal reuses `containmentDepth` stamping so the covered root is
+/// Being a presentation like any modal, the covered root is
 /// unreachable by Tab, `isContainingFocus` reports a screen is up, and the
 /// modal machinery restores focus to the link that pushed on pop. Its base is a
 /// full-screen blank while a screen is up, so the root does not bleed through
@@ -167,9 +164,9 @@ struct _NavigationHost: TerminalView {
     }
 
     var body: some TerminalView {
-        // The pushed screen is a *presented modal* over the root, which is what
-        // reuses `containmentDepth` stamping — so the covered root is
-        // unreachable by Tab, `isContainingFocus` is true (protecting Esc from
+        // The pushed screen is a *presented modal* over the root, so it is
+        // contained like any presentation: the covered root is unreachable by
+        // Tab, `isContainingFocus` is true (protecting Esc from
         // the app's quit default), and the modal machinery restores focus to
         // the link that pushed on pop.
         //

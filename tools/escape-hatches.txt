@@ -9,12 +9,9 @@
 # Main-actor confined. `@unchecked` only so they can ride `@TaskLocal`; the
 # non-isolated graph code that calls them blocks `@MainActor`.
 Sources/TerminalUI/Focus/FocusEngine.swift FocusEngine Mutated only by the @MainActor runtime and @MainActor tests.
-Sources/TerminalUI/Graph/AttributeGraph.swift AttributeGraph Main-actor confined. Observation's onChange, which runs on the changing thread, captures only the checked-Sendable InvalidationInbox, never the graph.
-Sources/TerminalUI/Graph/AttributeNode.swift AttributeNode Main-actor confined; a change on another thread only posts it to the InvalidationInbox, which holds it without touching it, and the main actor marks it.
+Sources/TerminalUI/Graph/AttributeGraph.swift AttributeGraph One thread per graph: the runtime's on the main actor, a TerminalApp.print graph on its caller's. Observation's onChange, which runs on the changing thread, captures only the checked-Sendable InvalidationInbox, never the graph.
+Sources/TerminalUI/Graph/AttributeNode.swift AttributeNode Belongs to its graph's thread; a change on another thread only posts it to the InvalidationInbox, which holds it without touching it, and the graph's thread marks it.
 Sources/TerminalUI/DevTools/RemoteControl.swift RemoteControlServer pump() and everything it reaches is @MainActor; created and released by the @MainActor runtime.
-Sources/TerminalUI/Graph/GraphMeasurer.swift containsViewBodyWalkCount Incremented on the render path (main); read and reset only by @MainActor tests.
-Sources/TerminalUI/Graph/GraphRenderer.swift deferredPresentations NOT GUARDED for TerminalApp.print, which is public and non-isolated; the runtime itself renders only on main.
-Sources/TerminalUI/Graph/GraphRenderer.swift isRendering NOT GUARDED for TerminalApp.print, which is public and non-isolated; the runtime itself renders only on main.
 Sources/TerminalUI/Focus/BoundaryFeedback.swift BoundaryFeedbackEmitter Its public sink closures are written only by @MainActor tests, and emit runs from key handlers on main; nothing enforces it.
 
 # Immutable after init; unchecked only because a stored value is not Sendable.

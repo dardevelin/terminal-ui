@@ -2,11 +2,11 @@
 /// Persistent across frames — created once, updated in place.
 ///
 /// Marked `@unchecked Sendable` so it can be carried by `@TaskLocal`
-/// `GraphContext.currentNode`. The runtime invariant is that all node
-/// access happens on the MainActor body-eval/render call stack; the
-/// `@TaskLocal` binding only crosses tasks when the runtime spawns a
-/// structured child task on the same actor. The mutable state is not
-/// safe to touch from arbitrary threads — see `GraphContext.swift`.
+/// `GraphContext.currentNode`. A node belongs to its graph's thread — the
+/// main actor for the runtime's graph, the caller's for `TerminalApp.print`
+/// — and its mutable state is not safe to touch from any other. A change to
+/// observed state on another thread reaches it only through the graph's
+/// `InvalidationInbox`.
 public class AttributeNode: @unchecked Sendable {
     /// Structural identity — stable across frames, the reconciler's match key.
     public let id: NodeID
@@ -63,11 +63,18 @@ public class AttributeNode: @unchecked Sendable {
     /// Patterns → Modality). A panel that dims the background but lets Tab
     /// walk behind it is not modal.
     ///
-    /// Traversal selects the greatest depth present, so the topmost
-    /// presentation owns focus without the engine holding its own stack —
-    /// the graph already encodes the nesting, and a separate stack could
-    /// drift out of sync with it.
-    public var containmentDepth: Int = 0
+    /// Read from the tree, so it is right the moment a node is linked, even
+    /// one a reader rebuilt during layout. Which presentation contains focus
+    /// is decided by `Presentations`, the order they are drawn in.
+    public var containmentDepth: Int {
+        var depth = 0
+        var node = self
+        while let parent = node.parent {
+            if parent.presentedContent === node { depth += 1 }
+            node = parent
+        }
+        return depth
+    }
 
     /// Whether onAppear has already fired for this node.
     public var didAppear: Bool = false
@@ -274,6 +281,46 @@ public class AttributeNode: @unchecked Sendable {
         // construction of a modifier's children, so this reads the author's
         // preference for the subtree this node is being built into.
         self.focusGranularity = GraphContext.currentEnvironment?.focusGranularity
+    }
+
+    /// Every node above this one, root first.
+    var ancestors: [AttributeNode] {
+        var chain: [AttributeNode] = []
+        var current = parent
+        while let ancestor = current {
+            chain.append(ancestor)
+            current = ancestor.parent
+        }
+        chain.reverse()
+        return chain
+    }
+
+    /// The parent, unless this node is what a modal presents. A presentation
+    /// owns the keyboard as it owns the screen, so a key — or an action's
+    /// binding — that its content does not take must not climb out into the
+    /// view that declared it: modality "prevents interaction with the parent
+    /// view" (Apple HIG, Patterns → Modality).
+    var parentWithinPresentation: AttributeNode? {
+        guard let parent, parent.presentedContent !== self else { return nil }
+        return parent
+    }
+
+    /// Whether this node is `subtree` or lies below it.
+    func isWithin(_ subtree: AttributeNode) -> Bool {
+        var current: AttributeNode? = self
+        while let candidate = current {
+            if candidate === subtree { return true }
+            current = candidate.parent
+        }
+        return false
+    }
+
+    /// The content this node presents over the screen — the second child of
+    /// a presented modal — or nil when it presents nothing.
+    var presentedContent: AttributeNode? {
+        guard case .modifier(.modal(let isPresented)) = kind, isPresented,
+              children.count > 1 else { return nil }
+        return children[1]
     }
 
     /// Mark this node and its layout ancestors as needing re-evaluation.
