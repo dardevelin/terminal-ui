@@ -674,11 +674,17 @@ handed values, drawing the cursor only while focused. `TextArea`'s cursor,
 selection, gutter and `~` rows were literal colours too; they are theme roles
 now, as `PromptInput`'s are.
 
-### Ledger — open
+**L19. Scroll position is two-way.** *(parity, found building L17)*
 
-- **`.scrollPosition(id:)` takes a value, not a binding.** It re-applies its
-  target every frame, so a reader cannot scroll away from it; SwiftUI's is
-  two-way, and a user scroll writes back. Nothing in the demo needs it yet.
+`.scrollPosition(id:)` took a value and re-applied it every frame — Storybook's
+sidebar snapped back to the selected page under the wheel. SwiftUI's takes a
+binding: `.scrollPosition(id:anchor:)` scrolls to the view when the app changes
+the bound id, and writes back the id at the anchor when the reader scrolls;
+neither changing, nothing moves. The value form shipped in 1.0, so it is
+deprecated rather than removed. Chat's tail now uses `.defaultScrollAnchor`,
+and Storybook keeps its sidebar position apart from its selection.
+
+### Ledger — open
 - **G1 remainder — the literal-drawing components** listed in L4, less
   `DiffView` (L8) and `PromptInput` (L15): `TabView`, `TreeView`,
   `HunkDiffView`, `StatusBar`. (`ScrollView`'s indicators done in L10.)

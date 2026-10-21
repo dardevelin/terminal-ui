@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -735,6 +735,24 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 .defaultScrollAnchor(.bottom)
                 .frame(height: 5)
+                """)
+        case .scrollPosition: return PageInfo(id: self, category: .modifiers, name: ".scrollPosition",
+            summary: "Bind a ScrollView's position to the .id of a view in it, both ways. Set the binding and that view scrolls into sight, at the anchor; scroll, and the binding is set to the view now at the anchor. The view is moved only when the binding changes, so the reader can scroll away from it.",
+            code: """
+                @State var position: Int? = 0
+
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(0..<30, id: \\.self) { row in
+                            Text("row \\(row)").id(row)
+                        }
+                    }
+                }
+                .scrollPosition(id: $position, anchor: .top)
+                .frame(height: 5)
+
+                Button("Jump to row 25") { position = 25 }
+                Text("position: \\(position ?? -1)")
                 """)
         case .syntaxHighlighter: return PageInfo(id: self, category: .modifiers, name: ".syntaxHighlighter",
             summary: "Register a lexer for a language. Every view handed that language — CodeView, MarkdownView fences — uses it. Adds to the lexers inherited from above: Swift stays highlighted beside the new one.",

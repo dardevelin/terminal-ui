@@ -87,6 +87,10 @@ public struct EnvironmentValues: Sendable {
     /// SwiftUI parity: `View.scrollPosition(id:)` (iOS 17+).
     public var scrollTargetID: ScrollTargetID? = nil
 
+    /// Two-way scroll position for the nearest enclosing `ScrollView`. Set
+    /// via `.scrollPosition(id:anchor:)` with a binding.
+    public var scrollPosition: ScrollPositionBinding? = nil
+
     /// How `PromptInput` presents pasted content. Default
     /// `.placeholder(lines: 2, chars: 200)` mirrors Claude Code:
     /// pastes with a newline OR over 200 chars collapse to a marker.

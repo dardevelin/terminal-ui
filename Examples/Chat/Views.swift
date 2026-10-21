@@ -42,11 +42,12 @@ struct MessageList: TerminalView {
     let state: ChatState
 
     var body: some TerminalView {
-        let latest = state.latestID
         // `.scrollable()` is defined on `ScrollView` directly (not the
         // generic `TerminalView`), so it MUST come before any other
-        // TerminalView-flavoured modifier. `.scrollPosition(id:)` and
-        // border/padding wrap the result.
+        // TerminalView-flavoured modifier. The anchor and border/padding
+        // wrap the result. Anchored to the bottom, the list opens on the
+        // latest message and follows new ones in until the reader scrolls
+        // back through the history.
         return ScrollView {
             ForEach(state.messages) { msg in
                 MessageRow(message: msg)
@@ -54,7 +55,7 @@ struct MessageList: TerminalView {
             }
         }
         .scrollable()
-        .scrollPosition(id: latest)
+        .defaultScrollAnchor(.bottom)
         .padding(1)
         .border(.rounded)
     }

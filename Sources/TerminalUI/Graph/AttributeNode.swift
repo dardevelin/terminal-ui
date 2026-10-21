@@ -166,6 +166,12 @@ public class AttributeNode: @unchecked Sendable {
     /// reader has not scrolled away from the anchor.
     var scrollAnchoredOffset: Int?
 
+    /// For a scroll node under `.scrollPosition(id:anchor:)` with a binding:
+    /// the position it last agreed with the app on — the id, and the offset
+    /// that id meant. A bound id that differs is the app moving the view; an
+    /// offset that differs is the reader moving it.
+    var scrollPositionSeen: (id: AnyHashable?, offset: Int)?
+
     /// How far the scroll content actually *draws* along its axis, as opposed
     /// to how tall it declares itself. Stamped each render, nil until then.
     ///

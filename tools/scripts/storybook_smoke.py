@@ -228,6 +228,56 @@ def storybook_anchored_scroll_follows_its_tail(app: Client) -> None:
                 f"an appended line should come into view: {app.preview_text()!r}")
 
 
+def storybook_sidebar_scrolls_away_from_the_selection(app: Client) -> None:
+    """The wheel scrolls the sidebar past the selected row, and the list
+    stays where the reader put it. Regression: the sidebar's scroll position
+    was re-applied every frame, so the selected row was pinned in sight and
+    the list snapped back to it."""
+    first = app.storybook_sidebar_rows()
+    assert_true(len(first) > 0, "the sidebar should list pages")
+    for _ in range(12):
+        app.mouse_wheel("down", 4, 10)
+    app.wait_for_frame(1, timeout=0.5)
+    scrolled = app.storybook_sidebar_rows()
+    assert_true(first[0] not in scrolled,
+                f"the wheel should scroll the selected page out of sight: {scrolled!r}")
+    app.wait_for_frame(2, timeout=0.5)
+    assert_true(app.storybook_sidebar_rows() == scrolled,
+                "the list should stay where the reader scrolled it")
+    app.send_key("down")
+    assert_true(app.wait_until(lambda c: c.storybook_sidebar_rows()[:1] != scrolled[:1]
+                               and "▸" in c.cells(rect=c._STORYBOOK_SIDEBAR_RECT).text(),
+                               timeout=1.0),
+                "choosing a page brings its row back into sight")
+
+
+def storybook_scroll_position_binds_both_ways(app: Client) -> None:
+    """The `.scrollPosition` page: a button sets the position and the row
+    scrolls to the top; the wheel scrolls and the readout follows it."""
+    app.goto_page(".scrollPosition")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    app.send_key("enter")
+    assert_true(app.wait_until(lambda c: "row 25" in c.preview_text()
+                               and "position: 25" in c.preview_text(), timeout=1.0),
+                f"the button should bring row 25 into sight: {app.preview_text()!r}")
+    # The code listing above names row 25 too; the row itself sits right
+    # after the preview's frame.
+    cells = app.preview_cells()
+    y = next(i for i, row in enumerate(cells.rows) if row.lstrip().startswith("│ row 25"))
+    x = cells.rows[y].index("row 25")
+    app.mouse_wheel("up", cells.x + x, cells.y + y)
+
+    def reports_top_row(client: Client) -> bool:
+        rows = client.preview_cells().rows
+        top = next((row.split("│ row ")[1].split()[0] for row in rows
+                    if row.lstrip().startswith("│ row ")), None)
+        return top is not None and top != "25" and f"position: {top}" in client.preview_text()
+
+    assert_true(app.wait_until(reports_top_row, timeout=1.0),
+                f"scrolling should report the row now at the top: {app.preview_text()!r}")
+
+
 def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
@@ -1802,6 +1852,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.tab_crosses_to_preview", "Storybook", storybook_tab_crosses_to_preview),
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),
+    SmokeCase("storybook.scroll_position_binds_both_ways", "Storybook", storybook_scroll_position_binds_both_ways),
+    SmokeCase("storybook.sidebar_scrolls_away_from_the_selection", "Storybook", storybook_sidebar_scrolls_away_from_the_selection),
     SmokeCase("storybook.textinput_cursor_follows_focus", "Storybook", storybook_textinput_cursor_follows_focus),
     SmokeCase("storybook.anchored_scroll_follows_its_tail", "Storybook", storybook_anchored_scroll_follows_its_tail),
     SmokeCase("storybook.button_arrows_traverse_siblings", "Storybook", storybook_button_arrows_traverse_siblings),

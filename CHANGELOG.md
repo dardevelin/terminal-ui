@@ -8,6 +8,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`.scrollPosition(id:anchor:)` with a binding** — SwiftUI's two-way scroll
+  position. Set the binding and the view with that `.id(_:)` scrolls into
+  sight, at the anchor; scroll, and the binding is set to the view now at the
+  anchor. The view is moved only when the bound id changes, so a reader can
+  scroll away from it.
 - **`.defaultScrollAnchor(_:)`** — where enclosed `ScrollView`s open, and what
   they keep in view as their content changes size. `.bottom` is a transcript's
   tail: it opens on the latest entry and follows new ones in; scroll away and it
@@ -128,6 +133,15 @@ All notable changes to TerminalUI are documented here. Format based on
   in theme roles (`success`, `error`, `foregroundMuted`, `foregroundEmphasis`,
   `separator`). A diff that fits is content: it no longer becomes a Tab stop
   that swallows the arrows meant for its container.
+
+### Deprecated
+
+- **`.scrollPosition(id:)` with a value.** It re-applies its target every
+  frame, so a reader cannot scroll away from the view it names — the Storybook
+  sidebar snapped back to the selected page under the wheel. Bind the position
+  with `.scrollPosition(id:anchor:)`, or follow a tail with
+  `.defaultScrollAnchor(.bottom)`. It keeps working until the next major
+  version.
 
 ### Fixed
 

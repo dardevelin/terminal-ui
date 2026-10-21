@@ -1,9 +1,12 @@
 import Testing
 @testable import TerminalUI
 
-// HYP-217 — `.scrollPosition(id:)` adjusts an enclosing ScrollView's
-// offset to keep the descendant tagged with `.id(matching)` visible.
-// Independent of keyboard focus.
+// The deprecated value form of `.scrollPosition(id:)` adjusts an enclosing
+// ScrollView's offset to keep the descendant tagged with `.id(matching)`
+// visible, independent of keyboard focus. It is a one-line write of
+// `\.scrollTargetID`; these cases set that value directly, so they cover the
+// renderer pass apps on the old form still rely on without calling a
+// deprecated API.
 
 private struct PinnedTargetView: TerminalView {
     let targetIndex: Int
@@ -15,7 +18,7 @@ private struct PinnedTargetView: TerminalView {
                 }
             }
         }
-        .scrollPosition(id: targetIndex)
+        .environment(\.scrollTargetID, ScrollTargetID(targetIndex))
         .frame(width: 20, height: 5)
     }
 }
@@ -82,7 +85,7 @@ struct ScrollPositionTests {
                         }
                     }
                 }
-                .scrollPosition(id: targetIndex)
+                .environment(\.scrollTargetID, ScrollTargetID(targetIndex))
                 .frame(width: 20, height: 6)
             }
         }

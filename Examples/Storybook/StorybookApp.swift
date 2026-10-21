@@ -23,7 +23,17 @@ struct NavItem: Hashable, Identifiable {
 
 @Observable
 final class StorybookState {
-    var selectedIndex: Int = 0
+    private(set) var selectedIndex: Int = 0
+    /// Where the sidebar is scrolled to, by the id of the row at its top.
+    /// Kept apart from the selection because the wheel writes to it: a
+    /// reader scrolling the list is not choosing a page.
+    var sidebarPosition: Int? = 0
+
+    /// Choose a page, and bring its row into sight.
+    func select(_ index: Int) {
+        selectedIndex = index
+        sidebarPosition = index
+    }
 
     // Per-page interactive state — kept on the state so switching pages
     // doesn't reset progress.
@@ -32,6 +42,7 @@ final class StorybookState {
     var toggleValue: Bool = false
     var loudTheme: Bool = false
     var anchoredLines: Int = 12
+    var positionedRow: Int? = 0
     var pickerTheme: StorybookTheme = .dark
     var sliderVolume: Double = 40
     var stepperTabWidth: Int = 4
@@ -143,11 +154,11 @@ struct Sidebar: TerminalView {
             Text("TerminalUI Storybook").bold().foreground(.cyan)
             Text("\(Storybook.allPages.count) pages").foreground(.gray)
             Divider()
-            // .scrollPosition(id:) tells the framework to keep the row
-            // tagged with `.id(selectedIndex)` visible. Mirrors SwiftUI's
-            // `View.scrollPosition(id:)` (iOS 17+) and HIG's selection-row
-            // visibility requirement: *"Persistently highlight selected
-            // row to clarify navigation path."*
+            // The position is bound both ways: choosing a page sets it, so
+            // the selected row comes into sight (HIG: *"Persistently
+            // highlight selected row to clarify navigation path."*), and the
+            // wheel writes it back, so the reader can scroll the list away
+            // from the selection to look at the rest.
             ScrollView(.vertical) {
                 VStack {
                     ForEachWithID(Array(PageInfo.Category.allCases), id: \.self) { category in
@@ -164,7 +175,8 @@ struct Sidebar: TerminalView {
                     }
                 }
             }
-            .scrollPosition(id: st.selectedIndex)
+            .scrollPosition(id: Binding(get: { st.sidebarPosition },
+                                        set: { st.sidebarPosition = $0 }))
             Divider()
             Text(" ↑↓ navigate").foreground(.gray)
             Text(" Tab → preview").foreground(.gray)
@@ -184,11 +196,11 @@ struct Sidebar: TerminalView {
         .onKeyPress { event in
             switch event.key {
             case .up:
-                if st.selectedIndex > 0 { st.selectedIndex -= 1 }
+                if st.selectedIndex > 0 { st.select(st.selectedIndex - 1) }
                 return .handled
             case .down:
                 if st.selectedIndex < Storybook.allPages.count - 1 {
-                    st.selectedIndex += 1
+                    st.select(st.selectedIndex + 1)
                 }
                 return .handled
             default:
@@ -231,11 +243,9 @@ struct SidebarRow: TerminalView {
 
     var body: some TerminalView {
         let prefix = isSelected ? "▸ " : "  "
-        // The selected row is `.id(index)`-tagged so the sidebar's
-        // `.scrollPosition(id: selectedIndex)` knows which descendant
-        // to keep visible. Untagged rows are invisible to the
-        // explicit-target scroll path; that's fine — only the moving
-        // selection matters.
+        // Every row is `.id(index)`-tagged: the sidebar's scroll position
+        // names a row, both when a page is chosen and when the wheel
+        // reports where the list now starts.
         //
         // Rows accept clicks so a mouse-driven user can jump straight
         // to a page. The single-focusable architecture (one focusable
@@ -246,7 +256,7 @@ struct SidebarRow: TerminalView {
         return Text("\(prefix)\(label)")
             .foreground(isSelected ? .white : .default)
             .onClick { [state, index] _, _ in
-                state.selectedIndex = index
+                state.select(index)
             }
             .id(index)
     }
