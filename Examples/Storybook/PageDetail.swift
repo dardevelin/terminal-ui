@@ -842,6 +842,19 @@ struct PreviewPane: TerminalView {
                           placeholder: "arrow past an edge...")
                     .boundaryFeedback(.bell)
             }
+        case .textKeymap:
+            VStack {
+                Text("Standard: Ctrl+K kills to the end, Ctrl+A then Ctrl+Y yanks it back").foreground(.gray)
+                TextInput(text: Binding(get: { state.keymapLineValue },
+                                         set: { state.keymapLineValue = $0 }))
+                Text("Rebound: Ctrl+Y redoes here, as it did before yank took it").foreground(.gray)
+                TextArea(text: Binding(get: { state.keymapNotesContent },
+                                         set: { state.keymapNotesContent = $0 }),
+                         state: Binding(get: { state.keymapNotesState },
+                                          set: { state.keymapNotesState = $0 }),
+                         visibleHeight: 3)
+                    .textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): .redo]))
+            }
         case .modal:
             VStack {
                 Text("Enter on the trigger presents; Tab stays inside").foreground(.gray)

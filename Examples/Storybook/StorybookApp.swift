@@ -78,6 +78,9 @@ final class StorybookState {
     var boundaryHitValue: String = ""
     var boundaryHitMessage: String = "(no boundary hit yet)"
     var boundaryBellValue: String = ""
+    var keymapLineValue: String = "kill the rest of this line"
+    var keymapNotesContent: String = "Undo with Ctrl+Z,\nthen redo with Ctrl+Y."
+    var keymapNotesState: TextAreaState = TextAreaState()
     // Modal demo: toggled by the page's own focusable trigger. Presenting
     // confines Tab to the dialog, so the page doubles as the live check
     // that focus containment holds.

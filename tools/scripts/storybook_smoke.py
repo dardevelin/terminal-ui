@@ -1828,6 +1828,25 @@ def coder_typing_reaches_the_prompt(app: Client) -> None:
                 "the typed text should sit in the composer after its `>`")
 
 
+def coder_readline_keys_edit_the_draft(app: Client) -> None:
+    """The composer edits with readline's keys, from the bytes a terminal
+    sends: Ctrl+A — which Ghostty, iTerm2 and Terminal.app also send for
+    Cmd+Left — Option+Right as `ESC f`, Ctrl+K, Ctrl+E, Ctrl+Y. Regression:
+    no input knew Ctrl+K, and each kept its own handful of editing keys."""
+    app.send_text("keep this gone")
+    app.wait_for_frame(1, timeout=0.5)
+    app.write_raw(b"\x01")
+    app.write_raw(b"\x1bf")
+    app.write_raw(b"\x0b")
+    assert_true(app.wait_until(lambda c: "> keep" in c.cells().text()
+                               and "this gone" not in c.cells().text(), timeout=2.0),
+                "Ctrl+A, a word forward, then Ctrl+K should leave `keep`")
+    app.write_raw(b"\x05")
+    app.write_raw(b"\x19")
+    assert_true(app.wait_until(lambda c: "> keep this gone" in c.cells().text(), timeout=2.0),
+                "Ctrl+E then Ctrl+Y should yank the kill back onto the end")
+
+
 def coder_enter_sends_the_draft(app: Client) -> None:
     """Enter sends the draft into the transcript and empties the composer,
     which shows its placeholder again."""
@@ -2124,6 +2143,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
+    SmokeCase("coder.readline_keys_edit_the_draft", "Coder", coder_readline_keys_edit_the_draft),
     SmokeCase("coder.opens_on_the_latest_entry", "Coder", coder_opens_on_the_latest_entry),
     SmokeCase("coder.enter_sends_the_draft", "Coder", coder_enter_sends_the_draft),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),

@@ -62,9 +62,10 @@ public enum TextInputAxis: Sendable, Equatable {
 /// the cursor glyph (`│`) at the insertion point while the field holds
 /// focus. When the value outgrows the available width, a virtual window
 /// slides over it — and only when the cursor would clip an edge, so
-/// arrowing around mid-buffer does not recentre the view. Left/Right move the cursor by one character clamped
-/// to `[0, value.count]`; Home/End jump to the extremes. Character
-/// insertion + backspace operate at the cursor index, not the tail.
+/// arrowing around mid-buffer does not recentre the view. Characters insert
+/// at the cursor, not the tail; every other key edits with the
+/// environment's ``TextKeymap``, ``TextKeymap/standard`` unless a subtree
+/// sets one.
 ///
 /// The field joins the Tab order via the framework's `.focusable`
 /// machinery. While it holds focus, every printable key belongs to the
@@ -123,10 +124,11 @@ public struct TextInput: TerminalView {
     /// `.lineBreakMode(_:)` on this view or any ancestor.
     @TerminalEnvironment(\.lineBreakMode) var lineBreakMode
 
-    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
-    /// callback and the bell. Read at body-eval time for the handlers, which
-    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
-    @TerminalEnvironment(\.boundaryHit) var boundaryHit
+    /// The keymap, kill ring and boundary feedback the field edits with.
+    /// Read at body-eval time for the handlers, which run when no
+    /// environment is bound. Set with `.textKeymap(_:)` and
+    /// `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.textEditing) var textEditing
 
     /// Read at body-eval time. When false (a `.disabled()` ancestor
     /// has run), the rendered value is dimmed via `.foreground(.gray)`
@@ -217,11 +219,7 @@ public struct TextInput: TerminalView {
         // slide the window.
         let windowStartBinding = $windowStart
 
-        // Capture env-resolved boundary-feedback channels at body
-        // eval. The handler closure runs later when GraphContext's
-        // env may be unset; passing the captured values keeps the
-        // emit path deterministic.
-        let boundaryHit = self.boundaryHit
+        let textEditing = self.textEditing
         let maxLength = self.maxLength
 
         // Input + optional error row are stacked vertically so callers can
@@ -250,19 +248,19 @@ public struct TextInput: TerminalView {
                     windowStart: windowStartBinding)
                 return TextInputRow(spans: composed.spans, caret: composed.caret)
                     .focusable()
-                    .onKeyPress { [text, cursorBinding, boundaryHit, maxLength] event in
+                    .onKeyPress { [text, cursorBinding, textEditing, maxLength] event in
                         Self.handleKey(event,
                                        text: text,
                                        cursor: cursorBinding,
                                        maxLength: maxLength,
-                                       boundaryHit: boundaryHit)
+                                       textEditing: textEditing)
                     }
-                    .onPaste { [text, cursorBinding, boundaryHit, maxLength] payload in
+                    .onPaste { [text, cursorBinding, textEditing, maxLength] payload in
                         Self.handlePaste(payload,
                                          text: text,
                                          cursor: cursorBinding,
                                          maxLength: maxLength,
-                                         boundaryHit: boundaryHit)
+                                         boundaryHit: textEditing.boundaryHit)
                     }
             }
             // Single-row height for horizontal axis OR clip/truncation
@@ -292,89 +290,55 @@ public struct TextInput: TerminalView {
     /// Single dispatch site for key events, factored out of the body
     /// closure so the binding capture list stays small and the logic
     /// is unit-testable in isolation if needed.
-    ///
-    /// `boundaryHit` is captured at body-eval time and threaded in:
-    /// `GraphContext.currentEnvironment` is nil inside the deferred
-    /// handler closure.
     static func handleKey(_ event: KeyEvent,
                           text: Binding<String>,
                           cursor: Binding<Int>,
                           maxLength: Int?,
-                          boundaryHit: BoundaryHitAction) -> KeyEventResult {
+                          textEditing: TextEditingContext) -> KeyEventResult {
         let value = text.get()
         let pos = resolveCursor(cursor.get(), valueCount: value.count)
 
-
-        switch event.key {
-        case .character(let c):
-            guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
-                return .ignored
-            }
-            // maxLength is a hard ceiling on value.count. When the
-            // buffer is full, block the insert and emit .maxLength.
-            // Backspace remains unrestricted so the ceiling isn't a
-            // one-way ratchet.
-            if let limit = maxLength, value.count >= limit {
-                boundaryHit(.maxLength)
+        if let command = textEditing.keymap.command(for: event) {
+            // A yank is a paste of the last kill: held to maxLength, its line
+            // breaks made spaces.
+            if command == .yank {
+                let yanked = textEditing.killBuffer.lastKill
+                guard !yanked.isEmpty else { return .ignored }
+                handlePaste(String(yanked), text: text, cursor: cursor,
+                            maxLength: maxLength, boundaryHit: textEditing.boundaryHit)
                 return .handled
             }
-            let insertAt = value.index(value.startIndex, offsetBy: pos)
-            var mutated = value
-            mutated.insert(c, at: insertAt)
-            text.set(mutated)
-            cursor.set(pos + 1)
-            return .handled
-
-        case .backspace:
-            // Remove the char BEFORE the cursor; clamp at 0.
-            guard pos > 0 else { return .handled }
-            let removeAt = value.index(value.startIndex, offsetBy: pos - 1)
-            var mutated = value
-            mutated.remove(at: removeAt)
-            text.set(mutated)
-            cursor.set(pos - 1)
-            return .handled
-
-        case .delete:
-            // Forward delete — remove char AT the cursor; no-op at end.
-            guard pos < value.count else { return .handled }
-            let removeAt = value.index(value.startIndex, offsetBy: pos)
-            var mutated = value
-            mutated.remove(at: removeAt)
-            text.set(mutated)
-            return .handled
-
-        case .left:
-            if pos == 0 {
-                boundaryHit(.leftEdge)
-            } else {
-                cursor.set(pos - 1)
+            var buffer = TextEditingBuffer(text: Array(value), cursor: pos)
+            switch textEditing.perform(command, on: &buffer) {
+            case .unsupported, .unchanged:
+                return .ignored
+            case .moved, .hitWall:
+                cursor.set(buffer.cursor)
+            case .edited:
+                text.set(String(buffer.text))
+                cursor.set(buffer.cursor)
             }
             return .handled
+        }
 
-        case .right:
-            if pos == value.count {
-                boundaryHit(.rightEdge)
-            } else {
-                cursor.set(pos + 1)
-            }
-            return .handled
-
-        case .home:
-            cursor.set(0)
-            return .handled
-
-        case .end:
-            cursor.set(value.count)
-            return .handled
-
-        case .enter:
-            // Let Enter bubble up so parent handlers can submit.
-            return .ignored
-
-        default:
+        guard case .character(let c) = event.key,
+              !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) else {
+            // Enter, and chords no command claims, bubble to the parent.
             return .ignored
         }
+        // maxLength is a hard ceiling on value.count. When the buffer is
+        // full, block the insert and emit .maxLength. Deleting stays
+        // unrestricted so the ceiling isn't a one-way ratchet.
+        if let limit = maxLength, value.count >= limit {
+            textEditing.boundaryHit(.maxLength)
+            return .handled
+        }
+        let insertAt = value.index(value.startIndex, offsetBy: pos)
+        var mutated = value
+        mutated.insert(c, at: insertAt)
+        text.set(mutated)
+        cursor.set(pos + 1)
+        return .handled
     }
 
     /// Scalars a terminal renders as a line break. Unicode Annex #14 (Line
