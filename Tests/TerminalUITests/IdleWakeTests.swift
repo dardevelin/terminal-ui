@@ -14,23 +14,6 @@ import Testing
 // `.onDemand` app — documented as zero CPU when idle — a wakeup every
 // millisecond, and every app one every 16ms for a resize.
 
-/// Whether `wait` finishes within `limit`.
-private func finishes(within limit: Duration, _ wait: @escaping @Sendable () async -> Void) async -> Bool {
-    await withTaskGroup(of: Bool.self) { group in
-        group.addTask {
-            await wait()
-            return true
-        }
-        group.addTask {
-            try? await Task.sleep(for: limit)
-            return false
-        }
-        let first = await group.next() ?? false
-        group.cancelAll()
-        return first
-    }
-}
-
 @Observable
 private final class Counter {
     var value = 0

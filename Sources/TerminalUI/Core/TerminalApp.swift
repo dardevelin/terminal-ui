@@ -189,6 +189,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// is none.
     private let wake = WakeSignal()
     private let eventQueue: EventQueue
+    /// Rung through ``bellAction``, sounded with the next frame.
+    private let bell: TerminalBell
+    /// The environment's `\.bell` in every frame this runtime draws. Built
+    /// once, so the environment holds the same value frame to frame.
+    private let bellAction: BellAction
     private var outputBuffer = OutputBuffer()
     private let graph: AttributeGraph
     private let debugPanel = DebugPanel()
@@ -262,6 +267,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         @TerminalViewBuilder content: @escaping () -> RootView
     ) {
         self.eventQueue = EventQueue(wake: wake)
+        let bell = TerminalBell(wake: wake)
+        self.bell = bell
+        self.bellAction = BellAction { bell.ring() }
         self.graph = AttributeGraph(wake: wake)
         self.buildView = content
         self.onEvent = onEvent
@@ -617,6 +625,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     // Always render — for benchmarking max throughput
                     renderDiffFrame()
                     needsRender = false
+                    soundPendingBell()
                     await Task.yield()
                     continue
                 }
@@ -625,6 +634,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     renderDiffFrame()
                     needsRender = false
                 }
+                soundPendingBell()
                 await waitForWork()
                 // `.capped` draws at most one frame per interval: woken early,
                 // it waits out the rest. After a long idle there is none left.
@@ -670,12 +680,19 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
     }
 
+    /// Writes BEL if the bell rang and no frame carried it — one that drew
+    /// nothing, or none drawn at all, as when a background task rang.
+    private func soundPendingBell() {
+        guard bell.take() else { return }
+        Terminal.writeRaw(TerminalBell.sequence)
+    }
+
     private var quitRequestedOutsideEvents: Bool {
         pendingQuitSignal?.fired == true || Terminal.terminationSignal != nil
     }
 
     private var hasWork: Bool {
-        if eventQueue.hasEvents || needsFrame || quitRequestedOutsideEvents {
+        if eventQueue.hasEvents || needsFrame || bell.isPending || quitRequestedOutsideEvents {
             return true
         }
         #if DEBUG
@@ -865,6 +882,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         graph.focusMoved(to: focusEngine.keyboardFocusID)
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
+        env.bell = bellAction
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
@@ -909,6 +927,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #endif
 
         renderBuffer.renderFull(into: &outputBuffer)
+        if bell.take() { outputBuffer.write(TerminalBell.sequence) }
         let buildEnd = monotonicNanoseconds()
 
         outputBuffer.flush()
@@ -963,6 +982,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // still propagate.
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
+        env.bell = bellAction
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
@@ -1088,6 +1108,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let changedCells = renderBuffer.countDiff(from: previousBuffer)
         renderBuffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+        if bell.take() { outputBuffer.write(TerminalBell.sequence) }
         let buildEnd = monotonicNanoseconds()
 
         outputBuffer.flush()

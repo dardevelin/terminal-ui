@@ -795,13 +795,15 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     })
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
-            summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code.",
+            summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code, or ring the terminal bell with .bell.",
             code: """
                 TextInput(text: $value)
                     .boundaryFeedback(.modal)
                     .onBoundaryHit { reason in
                         message = "boundary: \\(reason)"
                     }
+                TextInput(text: $other)
+                    .boundaryFeedback(.bell)
                 """)
         case .modal: return PageInfo(id: self, category: .modifiers, name: ".modal",
             summary: "Presents a floating panel over the screen and confines keyboard focus to it — Tab cycles inside the dialog and cannot reach the dimmed content behind it.",

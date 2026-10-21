@@ -110,8 +110,7 @@ struct TextInputPasteTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: nil,
-                              boundaryMode: .bounce,
-                              onBoundaryHit: nil)
+                              boundaryHit: EnvironmentValues().boundaryHit)
 
         #expect(value == "abXYZ")
         #expect(cursorState == 5)
@@ -128,8 +127,7 @@ struct TextInputPasteTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: nil,
-                              boundaryMode: .bounce,
-                              onBoundaryHit: nil)
+                              boundaryHit: EnvironmentValues().boundaryHit)
 
         // Every line terminator scalar becomes a space, so CRLF yields two.
         // Replacement runs over unicode scalars rather than Characters:
@@ -163,8 +161,7 @@ struct TextInputPasteTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: 5,
-                              boundaryMode: .bounce,
-                              onBoundaryHit: nil)
+                              boundaryHit: EnvironmentValues().boundaryHit)
 
         #expect(value == "abXXX")  // 5-char ceiling → 3 chars accepted
         #expect(cursorState == 5)
@@ -182,8 +179,7 @@ struct TextInputPasteTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: nil,
-                              boundaryMode: .bounce,
-                              onBoundaryHit: nil)
+                              boundaryHit: EnvironmentValues().boundaryHit)
 
         #expect(value == "untouched")
         #expect(cursorState == 4)
@@ -337,8 +333,7 @@ struct PasteLineTerminatorTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: nil,
-                              boundaryMode: .bounce,
-                              onBoundaryHit: nil)
+                              boundaryHit: EnvironmentValues().boundaryHit)
         return value
     }
 

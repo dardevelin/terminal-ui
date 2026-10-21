@@ -1,26 +1,22 @@
+import Synchronization
+
 /// How a view should react when the user hits an input boundary — cursor at
 /// buffer start pressing left, at end pressing right, maxLength reached
-/// typing a char, read-only region, etc..
+/// typing a char.
 ///
-/// Input components (TextInput, TextArea, PromptInput) read this environment
-/// value and trigger the configured feedback on boundary-hit events. Default
-/// `.bounce` — visible cursor animation, drop-in. Apps opt into `.bell` for
-/// terminal beep, `.modal` for programmatic handling, `.none` for silent
-/// boundaries.
-///
-/// The API ships as scaffolding: environment entry + modifier + enum. Full
-/// animation wiring (frame-driven cursor bounce) lands when input components
-/// adopt the value. Until then, components that haven't been updated simply
-/// ignore boundary hits as before — no visual regression.
+/// TextInput, TextArea and PromptInput read it, through the environment's
+/// ``EnvironmentValues/boundaryHit`` action, at every wall they hit. Set it
+/// for a subtree with `.boundaryFeedback(_:)`.
 public enum BoundaryFeedback: Sendable, Equatable {
-    /// Default — cursor animates briefly (half-block shift or color pulse)
-    /// to signal the boundary. Implemented per-component.
+    /// The default. Routes to ``BoundaryFeedbackEmitter/bounceSink``, which
+    /// draws nothing unless an app installs one: no input animates its
+    /// cursor yet, so a hit under `.bounce` is silent.
     case bounce
-    /// Emit ASCII bell (`\x07`). Terminal decides whether to audible-beep,
-    /// flash, or ignore. Robust fallback that requires no animation engine.
+    /// Rings the environment's ``BellAction`` — in a running app, BEL to
+    /// the terminal, which beeps, flashes or ignores it as configured.
     case bell
-    /// Programmatic handling — dispatches to `.onBoundaryHit { ctx in ... }`
-    /// at the app level so the host can present its own modal / toast.
+    /// Programmatic handling — dispatches to `.onBoundaryHit { reason in ... }`
+    /// so the host can present its own modal / toast.
     case modal
     /// Silence. No feedback; app handles the state itself (e.g. a dedicated
     /// status bar line reading `cursor.atEnd` directly).
@@ -100,57 +96,43 @@ public struct BoundaryHitCallback: Sendable {
     }
 }
 
-// MARK: - Emitter
+// MARK: - Action
 
-/// Routes a boundary hit to the configured feedback channel.
+/// What an input does when it hits a wall: the subtree's ``BoundaryFeedback``
+/// mode, its `.onBoundaryHit` callback and its ``BellAction``, read together.
 ///
-/// Input components call `BoundaryFeedbackEmitter.shared.emit(...)`
-/// at their boundary-hit sites — typically in `handleKey` when a
-/// cursor move would push past the buffer extent or a character
-/// would exceed `maxLength`. The emitter consults `env.boundaryFeedback`
-/// to pick the route:
+/// Input views read it in `body` and call it from their handlers, which run
+/// after the frame, when no environment is bound:
 ///
-///   - `.bell`   → writes ASCII BEL via the registered bell sink
-///   - `.bounce` → calls the registered bounce sink (per-component
-///                 visual)
-///   - `.modal`  → invokes the `.onBoundaryHit { ... }` callback
-///                 if registered
-///   - `.none`   → silent
-///
-/// The emitter is `final` per the Swift-dev guideline (classes
-/// `final` unless designed for inheritance). Tests inject behavior
-/// by swapping the shared instance's sink closures rather than
-/// subclassing — same outcome, no inheritance hierarchy.
-public final class BoundaryFeedbackEmitter: @unchecked Sendable {
-    /// Shared instance. Production input components reach for this
-    /// directly; tests swap the sinks before each case to observe
-    /// dispatch.
-    public static let shared = BoundaryFeedbackEmitter()
+///     @TerminalEnvironment(\.boundaryHit) private var boundaryHit
+///     // in a key handler, at the wall:
+///     boundaryHit(.leftEdge)
+public struct BoundaryHitAction: Sendable {
+    /// The feedback mode in effect where the action was read.
+    public let mode: BoundaryFeedback
+    private let callback: BoundaryHitCallback?
+    private let bell: BellAction
+    private let bounce: @Sendable (BoundaryHitReason) -> Void
 
-    /// Creates an emitter with no-op sinks; production wires
-    /// ``bellSink``/``bounceSink`` after construction.
-    public init() {}
+    init(mode: BoundaryFeedback,
+         callback: BoundaryHitCallback?,
+         bell: BellAction,
+         bounce: @escaping @Sendable (BoundaryHitReason) -> Void = { reason in
+             BoundaryFeedbackEmitter.shared.bounceSink(reason)
+         }) {
+        self.mode = mode
+        self.callback = callback
+        self.bell = bell
+        self.bounce = bounce
+    }
 
-    /// Hook for `.bell` mode. Default: no-op. Production runtime
-    /// will swap in a writer that pushes BEL to OutputBuffer; tests
-    /// swap in a counter sink.
-    public var bellSink: @Sendable () -> Void = {}
-
-    /// Hook for `.bounce` mode. Default: no-op (visual feedback is
-    /// per-component). Components can register their own animator
-    /// here at construction time.
-    public var bounceSink: @Sendable (BoundaryHitReason) -> Void = { _ in }
-
-    /// Dispatch `reason` according to `env.boundaryFeedback`.
-    /// `callback` is the one registered by `.onBoundaryHit { ... }`.
-    public func emit(reason: BoundaryHitReason,
-                     env: EnvironmentValues,
-                     callback: BoundaryHitCallback?) {
-        switch env.boundaryFeedback {
+    /// Gives the feedback `mode` calls for.
+    public func callAsFunction(_ reason: BoundaryHitReason) {
+        switch mode {
         case .bell:
-            bellSink()
+            bell()
         case .bounce:
-            bounceSink(reason)
+            bounce(reason)
         case .modal:
             callback?(reason)
         case .none:
@@ -159,11 +141,68 @@ public final class BoundaryFeedbackEmitter: @unchecked Sendable {
     }
 }
 
+extension EnvironmentValues {
+    /// The boundary-hit action for this subtree, assembled from
+    /// ``boundaryFeedback``, ``onBoundaryHit`` and ``bell``.
+    public var boundaryHit: BoundaryHitAction {
+        BoundaryHitAction(mode: boundaryFeedback, callback: onBoundaryHit, bell: bell)
+    }
+}
+
+// MARK: - Emitter
+
+/// Holds the `.bounce` hook, ``bounceSink``.
+///
+/// It routed every boundary hit before the environment carried a
+/// ``BoundaryHitAction``; ``emit(reason:env:callback:)`` and ``bellSink``
+/// remain for code written against that, and no input uses them now. The
+/// sinks sit behind a lock: an app may install one while a hit routes.
+public final class BoundaryFeedbackEmitter: Sendable {
+    /// The emitter whose ``bounceSink`` every `.bounce` hit calls.
+    public static let shared = BoundaryFeedbackEmitter()
+
+    private struct Sinks {
+        var bell: @Sendable () -> Void = {}
+        var bounce: @Sendable (BoundaryHitReason) -> Void = { _ in }
+    }
+
+    private let sinks = Mutex(Sinks())
+
+    /// Creates an emitter with no-op sinks.
+    public init() {}
+
+    /// Called by ``emit(reason:env:callback:)`` under `.bell`. Inputs ring
+    /// the environment's ``BellAction`` instead, which a running app wires
+    /// to its terminal.
+    @available(*, deprecated, message: "Ring the environment's bell: @TerminalEnvironment(\\.bell), or replace it with .environment(\\.bell, BellAction { ... }).")
+    public var bellSink: @Sendable () -> Void {
+        get { sinks.withLock { $0.bell } }
+        set { sinks.withLock { $0.bell = newValue } }
+    }
+
+    /// Called for every hit under `.bounce`, the default mode. No-op until
+    /// an app installs one; the framework draws no bounce of its own yet.
+    public var bounceSink: @Sendable (BoundaryHitReason) -> Void {
+        get { sinks.withLock { $0.bounce } }
+        set { sinks.withLock { $0.bounce = newValue } }
+    }
+
+    /// Dispatch `reason` according to `env.boundaryFeedback`, ringing
+    /// ``bellSink`` under `.bell`.
+    @available(*, deprecated, message: "Call the environment's boundary-hit action: @TerminalEnvironment(\\.boundaryHit).")
+    public func emit(reason: BoundaryHitReason,
+                     env: EnvironmentValues,
+                     callback: BoundaryHitCallback?) {
+        let bell = sinks.withLock { $0.bell }
+        BoundaryHitAction(mode: env.boundaryFeedback, callback: callback,
+                          bell: BellAction(bell), bounce: bounceSink)(reason)
+    }
+}
+
 #if DEBUG
-/// Test seam: a fresh emitter instance with counter sinks attached.
-/// Used by `BoundaryFeedbackEmitterTests` to assert dispatch
-/// correctness without touching shared state. Hand-rolled so each
-/// test gets isolated counts.
+/// Test seam: a boundary-hit action with counters attached. Used by
+/// `BoundaryFeedbackEmitterTests` to assert dispatch without touching
+/// shared state; each probe counts on its own.
 public final class BoundaryFeedbackProbe: @unchecked Sendable {
     /// Times `.bell` mode dispatched through this probe.
     public private(set) var bellCount = 0
@@ -173,29 +212,22 @@ public final class BoundaryFeedbackProbe: @unchecked Sendable {
     /// callback was registered.
     public private(set) var callbackCount = 0
 
-    private let emitter = BoundaryFeedbackEmitter()
+    /// Creates a probe with all counts at zero.
+    public init() {}
 
-    /// Creates an isolated probe with counter sinks pre-wired and all
-    /// counts at zero.
-    public init() {
-        // Wire counter sinks. Capturing self in @Sendable closures is
-        // OK because the probe is class-typed (reference) — the
-        // counters update via the instance, not a captured value.
-        emitter.bellSink = { [weak self] in self?.bellCount += 1 }
-        emitter.bounceSink = { [weak self] _ in self?.bounceCount += 1 }
-    }
-
-    /// Dispatches through the probe's private emitter, updating the
-    /// counters — same contract as
-    /// ``BoundaryFeedbackEmitter/emit(reason:env:callback:)``.
+    /// Dispatches as the environment's ``BoundaryHitAction`` would,
+    /// updating the counters.
     public func emit(reason: BoundaryHitReason,
                      env: EnvironmentValues,
                      callback: BoundaryHitCallback?) {
-        // Track callback hits at the probe level so the counter
-        // reflects "the framework would have invoked the callback
-        // under this env" — independent of whether one was registered.
+        // Counted at the probe so it reflects "the framework would have
+        // invoked the callback under this env", registered or not.
         if env.boundaryFeedback == .modal { callbackCount += 1 }
-        emitter.emit(reason: reason, env: env, callback: callback)
+        let action = BoundaryHitAction(
+            mode: env.boundaryFeedback, callback: callback,
+            bell: BellAction { [weak self] in self?.bellCount += 1 },
+            bounce: { [weak self] _ in self?.bounceCount += 1 })
+        action(reason)
     }
 }
 #endif

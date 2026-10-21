@@ -208,14 +208,10 @@ public struct TextArea: TerminalView {
     /// Supplies ``Theme/syntax`` when no `theme` was passed.
     @TerminalEnvironment(\.theme) private var appTheme
 
-    /// Boundary-feedback mode read at body-eval time. Drives the
-    /// `BoundaryFeedbackEmitter.shared.emit` calls at the four
-    /// buffer-edge walls in `handleKey` (Left at (0,0), Right at end,
-    /// Up on row 0, Down on last row).
-    @TerminalEnvironment(\.boundaryFeedback) var boundaryFeedback
-
-    /// Optional `.onBoundaryHit { reason in ... }` callback.
-    @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
+    /// callback and the bell. Read at body-eval time for the handlers, which
+    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.boundaryHit) var boundaryHit
 
     /// Read at body-eval time. When false (a `.disabled()` ancestor
     /// has run), the editor's visible content is rendered in the theme's
@@ -263,15 +259,13 @@ public struct TextArea: TerminalView {
         // the GR closure runs later when GraphContext.currentEnvironment
         // may be nil. Same pattern as TextInput
         // (`feedback_bindings_in_geometryreader.md`).
-        let boundaryMode = boundaryFeedback
-        let onBoundaryHit = self.onBoundaryHit
+        let boundaryHit = self.boundaryHit
         let isEnabled = self.isEnabled
         return GeometryReader { size in
             self.renderEditor(
                 containerWidth: size.width,
                 containerHeight: size.height,
-                boundaryMode: boundaryMode,
-                onBoundaryHit: onBoundaryHit,
+                boundaryHit: boundaryHit,
                 isEnabled: isEnabled
             )
         }
@@ -303,8 +297,7 @@ public struct TextArea: TerminalView {
 
     private func renderEditor(containerWidth: Int,
                               containerHeight: Int,
-                              boundaryMode: BoundaryFeedback,
-                              onBoundaryHit: BoundaryHitCallback?,
+                              boundaryHit: BoundaryHitAction,
                               isEnabled: Bool) -> some TerminalView {
         let visibleHeight = effectiveVisibleHeight(containerHeight: containerHeight)
         let content = text.get()
@@ -348,7 +341,7 @@ public struct TextArea: TerminalView {
         return rows
             .foreground(isEnabled ? appTheme.foreground : appTheme.foregroundMuted)
             .focusable()
-            .onKeyPress { [text, state, arrowMode, boundaryMode, onBoundaryHit] event in
+            .onKeyPress { [text, state, arrowMode, boundaryHit] event in
                 Self.handleKey(
                     event,
                     text: text,
@@ -356,8 +349,7 @@ public struct TextArea: TerminalView {
                     visibleHeight: visibleHeight,
                     arrowMode: arrowMode,
                     wrapWidth: wrapWidth,
-                    boundaryMode: boundaryMode,
-                    onBoundaryHit: onBoundaryHit
+                    boundaryHit: boundaryHit
                 )
             }
             .onPaste { [text, state, visibleHeight] payload in
@@ -1012,8 +1004,7 @@ public struct TextArea: TerminalView {
         visibleHeight: Int,
         arrowMode: TextAreaArrowMode = .logical,
         wrapWidth: Int = 0,
-        boundaryMode: BoundaryFeedback = .bounce,
-        onBoundaryHit: BoundaryHitCallback? = nil
+        boundaryHit: BoundaryHitAction = EnvironmentValues().boundaryHit
     ) -> KeyEventResult {
         var editorState = state.get()
         let content = text.get()
@@ -1022,11 +1013,6 @@ public struct TextArea: TerminalView {
         let hasShift = event.modifiers.contains(.shift)
         let hasCtrl = event.modifiers.contains(.ctrl)
 
-        // Synthesize the env slice the emitter consults so emit call
-        // sites stay terse — same pattern as TextInput.handleKey.
-        var emitEnv = EnvironmentValues()
-        emitEnv.boundaryFeedback = boundaryMode
-        emitEnv.onBoundaryHit = onBoundaryHit
 
         // Capture anchor for selection before any movement
         let anchorBeforeMove = cursor
@@ -1193,8 +1179,7 @@ public struct TextArea: TerminalView {
                 cursor.col = lines[cursor.row].count
             } else {
                 // Wall: cursor is at (0, 0). Emit and stay put.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .leftEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.leftEdge)
             }
             editorState.desiredCol = nil
             commitCursorMove()
@@ -1213,8 +1198,7 @@ public struct TextArea: TerminalView {
                 cursor.col = 0
             } else {
                 // Wall: cursor at end of last row. Emit and stay put.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .rightEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.rightEdge)
             }
             editorState.desiredCol = nil
             commitCursorMove()
@@ -1266,8 +1250,7 @@ public struct TextArea: TerminalView {
                 } else {
                     // Wall: row 0 + chunk 0, displayArrowUp returned
                     // (curChunk, currentCol) — no destination.
-                    BoundaryFeedbackEmitter.shared.emit(
-                        reason: .topEdge, env: emitEnv, callback: onBoundaryHit)
+                    boundaryHit(.topEdge)
                 }
                 editorState.desiredCol = desired
             } else if cursor.row > 0 {
@@ -1277,8 +1260,7 @@ public struct TextArea: TerminalView {
                 editorState.desiredCol = desired
             } else {
                 // .logical mode at row 0 — buffer-top wall.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .topEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.topEdge)
             }
             commitCursorMove()
             return .handled
@@ -1323,8 +1305,7 @@ public struct TextArea: TerminalView {
                     )
                 } else {
                     // Wall: last row + last chunk — no destination.
-                    BoundaryFeedbackEmitter.shared.emit(
-                        reason: .bottomEdge, env: emitEnv, callback: onBoundaryHit)
+                    boundaryHit(.bottomEdge)
                 }
                 editorState.desiredCol = desired
             } else if cursor.row < lines.count - 1 {
@@ -1334,8 +1315,7 @@ public struct TextArea: TerminalView {
                 editorState.desiredCol = desired
             } else {
                 // .logical mode at last row — buffer-bottom wall.
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .bottomEdge, env: emitEnv, callback: onBoundaryHit)
+                boundaryHit(.bottomEdge)
             }
             commitCursorMove()
             return .handled

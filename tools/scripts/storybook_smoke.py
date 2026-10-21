@@ -891,6 +891,32 @@ def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
     )
 
 
+# BEL, the C0 control a terminal answers with a beep or a flash (ECMA-48).
+BEL = b"\x07"
+
+
+def storybook_textinput_boundary_rings_the_bell(app: Client) -> None:
+    """`.boundaryFeedback` page, second TextInput under `.bell`: a wall
+    hit must write BEL (0x07) to the terminal. Nothing supplied the bell,
+    so `.bell` was silent; a hit changes no cell, so the byte cannot ride
+    on a frame's diff alone. The `.modal` input above must stay silent."""
+    app.goto_page(".boundaryFeedback")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    start = len(app.pty_output())
+    app.send_key("right")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true(BEL not in app.pty_output()[start:],
+                "a wall hit under .modal must not ring the bell")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    start = len(app.pty_output())
+    app.send_key("left")
+    app.wait_until(lambda client: BEL in client.pty_output()[start:], timeout=2.0)
+    rang = app.pty_output()[start:].count(BEL)
+    assert_true(rang == 1, f"Left at an empty .bell TextInput must write one BEL; wrote {rang}")
+
+
 def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     """TextInput cursor model: typing 'AC', then Left, then 'B' must
     produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
@@ -2036,6 +2062,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.actioncontext_ctrl_r_enters_resize_mode", "Storybook", storybook_actioncontext_ctrl_r_enters_resize_mode),
     SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
     SmokeCase("storybook.textinput_boundary_emits_under_modal", "Storybook", storybook_textinput_boundary_emits_under_modal),
+    SmokeCase("storybook.textinput_boundary_rings_the_bell", "Storybook", storybook_textinput_boundary_rings_the_bell),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),

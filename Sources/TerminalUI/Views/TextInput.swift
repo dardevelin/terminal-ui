@@ -113,7 +113,7 @@ public struct TextInput: TerminalView {
     /// Hard ceiling on `value.count`. When non-nil, `.character`
     /// insertions that would push the value past `maxLength` are
     /// blocked at the handler and the `.maxLength` boundary reason
-    /// fires through `BoundaryFeedbackEmitter.shared`. Backspace
+    /// fires through the environment's `boundaryHit`. Backspace
     /// still works — the ceiling is not a one-way ratchet.
     public let maxLength: Int?
 
@@ -123,17 +123,10 @@ public struct TextInput: TerminalView {
     /// `.lineBreakMode(_:)` on this view or any ancestor.
     @TerminalEnvironment(\.lineBreakMode) var lineBreakMode
 
-    /// Boundary-feedback mode read at body-eval time. Drives the
-    /// `BoundaryFeedbackEmitter.shared.emit` calls at the wall sites
-    /// in `handleKey` (cursor at 0 + Left, cursor at value.count +
-    /// Right). Captured via env so app authors override per subtree
-    /// with `.boundaryFeedback(_:)`.
-    @TerminalEnvironment(\.boundaryFeedback) var boundaryFeedback
-
-    /// Optional `.onBoundaryHit { reason in ... }` callback registered
-    /// by an ancestor. Forwarded to the emitter so `.modal` mode
-    /// dispatches to app code instead of the bell/bounce sinks.
-    @TerminalEnvironment(\.onBoundaryHit) var onBoundaryHit
+    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
+    /// callback and the bell. Read at body-eval time for the handlers, which
+    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.boundaryHit) var boundaryHit
 
     /// Read at body-eval time. When false (a `.disabled()` ancestor
     /// has run), the rendered value is dimmed via `.foreground(.gray)`
@@ -228,8 +221,7 @@ public struct TextInput: TerminalView {
         // eval. The handler closure runs later when GraphContext's
         // env may be unset; passing the captured values keeps the
         // emit path deterministic.
-        let boundaryMode = boundaryFeedback
-        let onBoundaryHit = self.onBoundaryHit
+        let boundaryHit = self.boundaryHit
         let maxLength = self.maxLength
 
         // Input + optional error row are stacked vertically so callers can
@@ -258,21 +250,19 @@ public struct TextInput: TerminalView {
                     windowStart: windowStartBinding)
                 return TextInputRow(spans: composed.spans, caret: composed.caret)
                     .focusable()
-                    .onKeyPress { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] event in
+                    .onKeyPress { [text, cursorBinding, boundaryHit, maxLength] event in
                         Self.handleKey(event,
                                        text: text,
                                        cursor: cursorBinding,
                                        maxLength: maxLength,
-                                       boundaryMode: boundaryMode,
-                                       onBoundaryHit: onBoundaryHit)
+                                       boundaryHit: boundaryHit)
                     }
-                    .onPaste { [text, cursorBinding, boundaryMode, onBoundaryHit, maxLength] payload in
+                    .onPaste { [text, cursorBinding, boundaryHit, maxLength] payload in
                         Self.handlePaste(payload,
                                          text: text,
                                          cursor: cursorBinding,
                                          maxLength: maxLength,
-                                         boundaryMode: boundaryMode,
-                                         onBoundaryHit: onBoundaryHit)
+                                         boundaryHit: boundaryHit)
                     }
             }
             // Single-row height for horizontal axis OR clip/truncation
@@ -303,24 +293,17 @@ public struct TextInput: TerminalView {
     /// closure so the binding capture list stays small and the logic
     /// is unit-testable in isolation if needed.
     ///
-    /// `boundaryMode` + `onBoundaryHit` are env values captured at
-    /// body-eval time and threaded in so the wall-hit emit path
-    /// works without re-reading `GraphContext.currentEnvironment`
-    /// (which would be nil inside the deferred handler closure).
+    /// `boundaryHit` is captured at body-eval time and threaded in:
+    /// `GraphContext.currentEnvironment` is nil inside the deferred
+    /// handler closure.
     static func handleKey(_ event: KeyEvent,
                           text: Binding<String>,
                           cursor: Binding<Int>,
                           maxLength: Int?,
-                          boundaryMode: BoundaryFeedback,
-                          onBoundaryHit: BoundaryHitCallback?) -> KeyEventResult {
+                          boundaryHit: BoundaryHitAction) -> KeyEventResult {
         let value = text.get()
         let pos = resolveCursor(cursor.get(), valueCount: value.count)
 
-        // Synthesize the env slice the emitter actually consults so
-        // the call site doesn't need to know which fields matter.
-        var env = EnvironmentValues()
-        env.boundaryFeedback = boundaryMode
-        env.onBoundaryHit = onBoundaryHit
 
         switch event.key {
         case .character(let c):
@@ -332,8 +315,7 @@ public struct TextInput: TerminalView {
             // Backspace remains unrestricted so the ceiling isn't a
             // one-way ratchet.
             if let limit = maxLength, value.count >= limit {
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .maxLength, env: env, callback: onBoundaryHit)
+                boundaryHit(.maxLength)
                 return .handled
             }
             let insertAt = value.index(value.startIndex, offsetBy: pos)
@@ -364,8 +346,7 @@ public struct TextInput: TerminalView {
 
         case .left:
             if pos == 0 {
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .leftEdge, env: env, callback: onBoundaryHit)
+                boundaryHit(.leftEdge)
             } else {
                 cursor.set(pos - 1)
             }
@@ -373,8 +354,7 @@ public struct TextInput: TerminalView {
 
         case .right:
             if pos == value.count {
-                BoundaryFeedbackEmitter.shared.emit(
-                    reason: .rightEdge, env: env, callback: onBoundaryHit)
+                boundaryHit(.rightEdge)
             } else {
                 cursor.set(pos + 1)
             }
@@ -420,8 +400,7 @@ public struct TextInput: TerminalView {
                             text: Binding<String>,
                             cursor: Binding<Int>,
                             maxLength: Int?,
-                            boundaryMode: BoundaryFeedback,
-                            onBoundaryHit: BoundaryHitCallback?) {
+                            boundaryHit: BoundaryHitAction) {
         guard !payload.isEmpty else { return }
 
         // Map over unicode scalars, not Characters: "\r\n" is a SINGLE
@@ -456,11 +435,7 @@ public struct TextInput: TerminalView {
         }
 
         if truncated {
-            var env = EnvironmentValues()
-            env.boundaryFeedback = boundaryMode
-            env.onBoundaryHit = onBoundaryHit
-            BoundaryFeedbackEmitter.shared.emit(
-                reason: .maxLength, env: env, callback: onBoundaryHit)
+            boundaryHit(.maxLength)
         }
     }
 

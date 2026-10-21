@@ -8,6 +8,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **The terminal bell, `@TerminalEnvironment(\.bell)`** — a `BellAction` a
+  handler calls, as SwiftUI's `openURL` is: a running app writes BEL with its
+  next frame, and outside one it does nothing. Replace it for a subtree with
+  `.environment(\.bell, BellAction { ... })` to signal some other way.
+- **`@TerminalEnvironment(\.boundaryHit)`** — what an input does at a wall,
+  read in one piece: the `.boundaryFeedback` mode, the `.onBoundaryHit`
+  callback and the bell. A custom input calls `boundaryHit(.leftEdge)`.
 - **A `crash` remote command** (debug builds) — the app raises SIGSEGV on its
   own main thread, as a fault in its code would; the Python client's `crash()`
   sends it. Crash tests that sent the signal with `kill` passed or failed by
@@ -140,6 +147,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Deprecated
 
+- **`BoundaryFeedbackEmitter.emit(reason:env:callback:)` and `bellSink`.** No
+  input calls them any more: they read the environment's `boundaryHit`
+  instead, and the bell is the environment's `\.bell`. `bounceSink` stays the
+  `.bounce` hook. Both keep working until the next major version.
 - **`.scrollPosition(id:)` with a value.** It re-applies its target every
   frame, so a reader cannot scroll away from the view it names — the Storybook
   sidebar snapped back to the selected page under the wheel. Bind the position
@@ -149,6 +160,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **`.boundaryFeedback(.bell)` rings.** It called a bell sink nothing had
+  installed, so a wall hit was silent. The bell now comes from the running app,
+  through the environment, and BEL goes out with the next frame — on its own
+  when that frame changed no cell.
 - **A trackpad does not leave the app behind.** A trackpad reports a scroll,
   or a hover sweep, as hundreds of events a second, and each one found what was
   under the cursor afresh — the wheel three times over. A debug build under
