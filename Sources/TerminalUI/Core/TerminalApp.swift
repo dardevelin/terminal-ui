@@ -74,6 +74,19 @@ final class EventQueue: Sendable {
     }
 }
 
+/// Wheel notches in a row at one cell, routed together: a trackpad sends
+/// hundreds a second, and finding the target under the cursor is the cost.
+private struct WheelRun {
+    /// A notch scrolls three lines, as terminals and most platforms do.
+    static let linesPerNotch = 3
+
+    let key: Key
+    let x: Int
+    let y: Int
+    let policy: MouseFocusPolicy
+    var steps: Int
+}
+
 // MARK: - Timer
 
 /// A named repeating tick delivered to the app as `TerminalEvent.timer(name)`.
@@ -465,7 +478,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             remoteControl?.pump()
             #endif
             let events = eventQueue.drain()
+            // A run of wheel notches at one cell goes to its target in one
+            // step; anything else ends the run first, so order is kept.
+            var wheelRun: WheelRun?
             for event in events {
+                if case .mouse(let mouse) = event, mouse.kind == .scrollUp || mouse.kind == .scrollDown {
+                } else {
+                    route(wheelRun)
+                    wheelRun = nil
+                }
                 // Universal Ctrl+C is now an action graph default —
                 // `Action.quit` bound to `.keyboard(.character("c"), [.ctrl])`
                 // in `ActionScope.frameworkDefaults`. The runtime polls
@@ -521,18 +542,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         }
                     }
                     #endif
-                    // Resolve the policy from the deepest node under the
-                    // cursor, not from the app-level GraphContext (which
-                    // is nil between renders). Lets a sub-view override
-                    // the policy while the surrounding shell keeps the
-                    // default — matches SwiftUI's per-subtree env model.
-                    let policy: MouseFocusPolicy = {
-                        guard let root = graph.root else { return .clickToLock }
-                        return focusEngine.resolveEnv(x: mouseEvent.x, y: mouseEvent.y, root: root).mouseFocusPolicy
-                    }()
                     switch mouseEvent.kind {
                     case .press(.left):
-                        if policy == .disabled {
+                        if mousePolicy(at: mouseEvent) == .disabled {
                             // .disabled: no auto-focus promotion. Fire any
                             // .onClick handler under the cursor, then stop.
                             if let root = graph.root {
@@ -542,20 +554,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                             focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
                         }
                     case .moved, .drag:
-                        focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: graph.root, policy: policy)
-                    case .scrollUp:
+                        focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: graph.root,
+                                                   policy: mousePolicy(at: mouseEvent))
+                    case .scrollUp, .scrollDown:
                         // Policy decides where the wheel lands:
                         // .clickToLock / .hoverFollows  → focusable under cursor
                         // .clickOnly                    → keyboard-focused view
                         // .disabled                     → drop the event
-                        let event = KeyEvent(key: .up)
-                        for _ in 0..<3 {
-                            _ = routeWheelEvent(event, mouseEvent: mouseEvent, policy: policy)
-                        }
-                    case .scrollDown:
-                        let event = KeyEvent(key: .down)
-                        for _ in 0..<3 {
-                            _ = routeWheelEvent(event, mouseEvent: mouseEvent, policy: policy)
+                        let key: Key = mouseEvent.kind == .scrollUp ? .up : .down
+                        if let run = wheelRun, run.key == key, run.x == mouseEvent.x, run.y == mouseEvent.y {
+                            wheelRun?.steps += WheelRun.linesPerNotch
+                        } else {
+                            route(wheelRun)
+                            wheelRun = WheelRun(key: key, x: mouseEvent.x, y: mouseEvent.y,
+                                                policy: mousePolicy(at: mouseEvent), steps: WheelRun.linesPerNotch)
                         }
                     default:
                         break
@@ -589,6 +601,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     break
                 }
             }
+            route(wheelRun)
 
             // A quit can arrive without a key: `invoke_action` from a remote
             // client fires one outside event handling, and a terminating
@@ -685,11 +698,19 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// descends into siblings — eventually firing the keyboard-focused
     /// handler from a sibling tree, which is exactly the bug we're
     /// fixing.
-    private func routeWheelEvent(_ event: KeyEvent, mouseEvent: MouseEvent, policy: MouseFocusPolicy) -> Bool {
-        guard let root = graph.root else { return false }
-        return focusEngine.routeWheel(
-            event, root: root, x: mouseEvent.x, y: mouseEvent.y, policy: policy
-        )
+    private func route(_ run: WheelRun?) {
+        guard let run, let root = graph.root else { return }
+        _ = focusEngine.routeWheel(KeyEvent(key: run.key), root: root, x: run.x, y: run.y,
+                                   policy: run.policy, steps: run.steps)
+    }
+
+    /// The mouse-focus policy at the cursor, from the deepest node under it
+    /// rather than the app-level GraphContext (which is nil between
+    /// renders). Lets a sub-view override the policy while the surrounding
+    /// shell keeps the default — matches SwiftUI's per-subtree env model.
+    private func mousePolicy(at mouseEvent: MouseEvent) -> MouseFocusPolicy {
+        guard let root = graph.root else { return .clickToLock }
+        return focusEngine.resolveEnv(x: mouseEvent.x, y: mouseEvent.y, root: root).mouseFocusPolicy
     }
 
     // MARK: - Paste Event Handling

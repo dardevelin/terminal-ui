@@ -560,13 +560,16 @@ public final class FocusEngine: @unchecked Sendable {
     /// it while the scroll view enclosing it never heard about it. The user
     /// reads that as "the wheel works over the gaps and not over the rows".
     ///
-    /// Returns whether anything took the event.
+    /// `steps` delivers a run of identical wheel events at once: the target
+    /// is found once — the tree walks that find it are the cost — and moved
+    /// by every step. Returns whether anything took the event.
     public func routeWheel(
         _ event: KeyEvent,
         root: AttributeNode,
         x: Int,
         y: Int,
-        policy: MouseFocusPolicy
+        policy: MouseFocusPolicy,
+        steps: Int = 1
     ) -> Bool {
         let focusable = wheelTargetID(x: x, y: y, root: root, policy: policy)
             .flatMap { findNode(id: $0, in: root) }
@@ -583,19 +586,26 @@ public final class FocusEngine: @unchecked Sendable {
         // area", which for a list means moving its selection.
         let focusableFirst = depth(of: focusable) >= depth(of: scrollNode)
 
-        if focusableFirst, let id = focusable?.id,
-           routeKeyEvent(event, root: root, startingFrom: id) {
-            return true
+        func step() -> Bool {
+            if focusableFirst, let id = focusable?.id,
+               routeKeyEvent(event, root: root, startingFrom: id) {
+                return true
+            }
+            if let scrollNode {
+                let before = scrollNode.scrollOffset
+                dispatchWheelToScrollNode(scrollNode, event: event)
+                if scrollNode.scrollOffset != before { return true }
+            }
+            if !focusableFirst, let id = focusable?.id {
+                return routeKeyEvent(event, root: root, startingFrom: id)
+            }
+            return false
         }
-        if let scrollNode {
-            let before = scrollNode.scrollOffset
-            dispatchWheelToScrollNode(scrollNode, event: event)
-            if scrollNode.scrollOffset != before { return true }
+        var taken = false
+        for _ in 0..<steps {
+            taken = step() || taken
         }
-        if !focusableFirst, let id = focusable?.id {
-            return routeKeyEvent(event, root: root, startingFrom: id)
-        }
-        return false
+        return taken
     }
 
     /// How far a node sits from the root, or -1 for no node — so an absent
