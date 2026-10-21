@@ -149,6 +149,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A trackpad does not leave the app behind.** A trackpad reports a scroll,
+  or a hover sweep, as hundreds of events a second, and each one found what was
+  under the cursor afresh — the wheel three times over. A debug build under
+  Thread Sanitizer fell seconds behind and stopped answering its control
+  socket. Now a run of wheel notches at one cell is routed once and moves its
+  target by the whole run, stopping at the first step nothing takes, and of a
+  run of moves only the last is routed, as AppKit coalesces mouse-moved events.
+  `FocusEngine.routeWheel` takes a `steps` count; `onEvent` still sees every
+  event.
 - **Each app is addressed by its own id.** `swtui ctl` without `--pid`
   followed `latest.sock`, the most recently started app's socket, so an app a
   test harness launched took over a developer's `swift run Coder` session,
