@@ -164,9 +164,7 @@ struct LineBreakModeTextInputTests {
         // dropping the leading characters. This is the HIG default
         // and `.byClipping` preserves the legacy behaviour byte-for-byte.
         var value = "this is a very long input value"
-        var validation: TextInputValidation? = nil
         let textBinding = Binding(get: { value }, set: { value = $0 })
-        _ = validation
         let view = TextInput(text: textBinding)
         let graph = AttributeGraph()
         graph.update(from: view)

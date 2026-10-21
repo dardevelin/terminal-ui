@@ -83,7 +83,7 @@ struct TextAreaDisplayRowNavigationTests {
         let lineB = "another short"
         let chunksA = TextLayout.wrapWords(lineA, width: 20)
         let chunksB = TextLayout.wrapWords(lineB, width: 20)
-        let (newChunk, newCol) = TextArea.displayArrowDown(
+        let (newChunk, _) = TextArea.displayArrowDown(
             currentChunk: chunksA.count - 1, currentCol: 3,
             chunksOfCurrentLine: chunksA,
             chunksOfNextLine: chunksB,
