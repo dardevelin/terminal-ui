@@ -145,6 +145,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An `@Observable` model may change on any thread.** Observation reports a
+  change on the thread that made it, and the graph marked the node and wrote
+  its drain queue right there, racing the frame that was reading both; under
+  load the queue's dictionary was corrupted and the app crashed. The changing
+  thread now only records the node under a lock, and the main actor marks it
+  at the start of the next frame, as SwiftUI does for `@Observable` models.
+  `AttributeGraph.hasDirtyNodes` is read-only.
+- **A change that lands while the graph updates is no longer dropped.** The
+  update cleared the dirty flag when it finished, discarding a change made
+  meanwhile, so an `.onDemand` app showed the old value until something else
+  changed. The flag is now cleared only when no change is pending.
 - **Quitting waits for the input task before closing its wake pipe.** The
   runtime cleared and closed the pipe while the input task, cancelled but
   still running, could be reading it: it could poll a closed descriptor, one a
