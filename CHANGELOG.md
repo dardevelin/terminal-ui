@@ -8,6 +8,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`TerminalAppProtocol.willTerminate(_:)`** — called once the app has torn
+  down, with a `TerminationReason`: `.quit`, `.signal(_:)` or
+  `.terminalHungUp`. The place to save what must outlive the process, such as
+  an unsent draft when the connection drops. It returns how the process ends:
+  `.conventional`, the default — a quit exits 0, a signal is re-raised, a
+  hung-up terminal ends by SIGHUP — or `.exit(code:)`.
+- **`TerminalRuntime.run()` returns the `TerminationReason`** instead of
+  ending the process itself, so a hand-written `main()` gets control back;
+  `reason.end()` then ends it as the default `main()` does.
 - **The terminal bell, `@TerminalEnvironment(\.bell)`** — a `BellAction` a
   handler calls, as SwiftUI's `openURL` is: a running app writes BEL with its
   next frame, and outside one it does nothing. Replace it for a subtree with
@@ -160,6 +169,19 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An app quits when its terminal goes away.** The kernel sends SIGHUP only
+  to a terminal's controlling process; an app without one — started by a
+  harness, or in a detached multiplexer pane — learned of the hang-up from
+  stdin alone. macOS reports a hung-up terminal readable and empty, so the
+  input thread spun a core for as long as nobody killed the app; on Linux the
+  input stopped and the app ran on with no terminal. A hang-up is now handled
+  as SIGHUP, through the app's teardown, and a key the hang-up cut short is
+  not delivered.
+- **On Linux, an app stopped by a signal dies by it.** After teardown the
+  runtime re-raised the signal on a thread that blocked it, so it stayed
+  pending and the app exited 0 — its parent could not tell it was stopped.
+  The signal is unblocked first, and the test harness now fails an app that
+  exits 0 on SIGTERM.
 - **`.boundaryFeedback(.bell)` rings.** It called a bell sink nothing had
   installed, so a wall hit was silent. The bell now comes from the running app,
   through the environment, and BEL goes out with the next frame — on its own

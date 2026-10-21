@@ -21,7 +21,8 @@ public protocol ByteSource {
 
 /// Runtime source — reads one byte at a time from STDIN in raw mode.
 ///
-/// Between events the runtime waits in ``waitForActivity(input:resize:shutdown:)``.
+/// Between events the runtime waits in
+/// ``waitForActivity(input:resize:terminate:shutdown:)``.
 /// A read waits at most 100ms (VTIME=1, or the same timeout on `poll()`),
 /// which the parser relies on part-way through an escape sequence. If
 /// `shutdownReadFD` is set, `poll()` watches both STDIN and the shutdown
@@ -44,9 +45,27 @@ public struct StdinByteSource: ByteSource {
     }
     private static let shutdownFD = Atomic<Int32>(-1)
 
+    /// Whether a read found the terminal hung up. The parser takes the `nil`
+    /// that read returns for a timeout, so the input task asks here before it
+    /// queues what the parser made of a sequence the hang-up cut short.
+    static var inputHungUp: Bool {
+        get { hungUp.load(ordering: .acquiring) }
+        set { hungUp.store(newValue, ordering: .releasing) }
+    }
+    private static let hungUp = Atomic<Bool>(false)
+
+    /// The descriptor read: stdin, or a test's terminal.
+    private let input: Int32
+
     /// Creates the stdin-backed source. Stateless — all state lives in
     /// the file descriptors it reads.
-    public init() {}
+    public init() {
+        self.init(input: STDIN_FILENO)
+    }
+
+    init(input: Int32) {
+        self.input = input
+    }
 
     /// One byte from stdin, or `nil` on a poll/read timeout (pacing) or a
     /// shutdown-pipe wake.
@@ -55,7 +74,7 @@ public struct StdinByteSource: ByteSource {
             return readByteWithShutdown(shutdownFD: shutdownFD)
         }
         var byte: UInt8 = 0
-        let bytesRead = read(STDIN_FILENO, &byte, 1)
+        let bytesRead = read(input, &byte, 1)
         return bytesRead == 1 ? byte : nil
     }
 
@@ -63,8 +82,8 @@ public struct StdinByteSource: ByteSource {
     /// POSIX guarantees pollfd layout across Darwin and Glibc.
     private func readByteWithShutdown(shutdownFD: Int32) -> UInt8? {
         var fds = [
-            pollfd(fd: STDIN_FILENO, events: Int16(POLLIN), revents: 0),
-            pollfd(fd: shutdownFD,   events: Int16(POLLIN), revents: 0),
+            pollfd(fd: input, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: shutdownFD, events: Int16(POLLIN), revents: 0),
         ]
 
         // Timeout matches VTIME=1 (100ms) so callers that loop on nil still
@@ -80,9 +99,13 @@ public struct StdinByteSource: ByteSource {
             return nil
         }
 
+        if fds[0].revents & Int16(POLLHUP) != 0 {
+            Self.inputHungUp = true
+            return nil
+        }
         if fds[0].revents & Int16(POLLIN) != 0 {
             var byte: UInt8 = 0
-            let bytesRead = read(STDIN_FILENO, &byte, 1)
+            let bytesRead = read(input, &byte, 1)
             return bytesRead == 1 ? byte : nil
         }
         return nil
@@ -98,22 +121,29 @@ enum InputActivity: Equatable {
     /// A terminating signal asked the app to quit: its handler wrote to the
     /// terminate pipe.
     case terminate
-    /// Stop reading: the runtime wrote to the shutdown pipe, or the input
-    /// hung up and nothing more will arrive on it.
+    /// The terminal went away — its window closed, its connection dropped —
+    /// and nothing more will arrive on the input.
+    case hangUp
+    /// Stop reading: the runtime wrote to the shutdown pipe, or a descriptor
+    /// reports an error, which polling again would only report again.
     case shutdown
 }
 
 extension StdinByteSource {
-    /// Blocks until `input` has a byte, the terminal is resized, or the
-    /// runtime shuts down — with no timeout, so an idle app's input thread
-    /// sleeps. The 100ms timeout `readByte()` keeps is for the parser part-way
-    /// through an escape sequence, where a bare Escape is told apart from a
-    /// sequence's start by the silence after it; between events there is
-    /// nothing to tell apart.
+    /// Blocks until something wakes the input task — with no timeout, so an
+    /// idle app's input thread sleeps. The 100ms timeout `readByte()` keeps
+    /// is for the parser part-way through an escape sequence, where a bare
+    /// Escape is told apart from a sequence's start by the silence after it;
+    /// between events there is nothing to tell apart.
     ///
-    /// Shutdown wins over everything, and its byte stays in the pipe, as in
-    /// `readByte()`; a request to terminate wins over input. A resize empties
-    /// the pipe, so several signals before the task looks are one resize.
+    /// When several are ready: shutdown, then terminate, then hang-up, then
+    /// resize, then input. Shutdown's byte stays in the pipe, as in
+    /// `readByte()`. A resize empties its pipe, so several signals before the
+    /// task looks are one resize. A hang-up goes before input because macOS
+    /// reports a hung-up terminal readable as well as hung up, and a read of
+    /// it returns nothing: taken for input, it would wake the task at once,
+    /// forever. Linux reports the hang-up alone. Keys typed before it have no
+    /// screen left to act on.
     static func waitForActivity(input: Int32 = STDIN_FILENO, resize: Int32,
                                 terminate: Int32, shutdown: Int32) -> InputActivity {
         var fds = [
@@ -129,6 +159,7 @@ extension StdinByteSource {
 
         if fds[3].revents != 0 { return .shutdown }
         if fds[2].revents & Int16(POLLIN) != 0 { return .terminate }
+        if fds[0].revents & Int16(POLLHUP) != 0 { return .hangUp }
         if fds[1].revents & Int16(POLLIN) != 0 {
             // One byte per SIGWINCH; one read takes every one written so far.
             var drained = [UInt8](repeating: 0, count: 64)
@@ -136,8 +167,8 @@ extension StdinByteSource {
             return .resize
         }
         if fds[0].revents & Int16(POLLIN) != 0 { return .input }
-        // POLLHUP, POLLERR or POLLNVAL with nothing to read: polling again
-        // would return at once, forever.
+        // A pipe of the runtime's own reporting POLLHUP or POLLERR: polling
+        // again would return at once, forever.
         return .shutdown
     }
 }

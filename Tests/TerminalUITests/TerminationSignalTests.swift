@@ -47,4 +47,48 @@ struct TerminationSignalTests {
         #expect(StdinByteSource.waitForActivity(input: input.read, resize: resize.read,
                                                 terminate: terminate.read, shutdown: shutdown.read) == .shutdown)
     }
+
+    // A terminal that goes away hangs up the PTY; an app that is not its
+    // controlling process hears of it from stdin alone, and treats it as the
+    // SIGHUP it did not receive.
+
+    @Test func aHangUpEndsAsTheTerminalHangingUp() {
+        defer { Terminal.resetTermination() }
+        Terminal.recordHangUp()
+        #expect(Terminal.terminationSignal == SIGHUP)
+        #expect(TerminationReason(terminationSignal: Terminal.terminationSignal) == .terminalHungUp)
+    }
+
+    @Test func aHangUpDoesNotReplaceASignalAlreadyRecorded() throws {
+        // With no pipe to wake, the handler would end the process.
+        let pipe = try SelfPipe()
+        defer { pipe.close() }
+        Terminal.terminateWakeFD = pipe.write
+        defer {
+            Terminal.terminateWakeFD = nil
+            Terminal.resetTermination()
+        }
+        _terminalSignalHandler(signum: SIGTERM)
+        Terminal.recordHangUp()
+        #expect(Terminal.terminationSignal == SIGTERM)
+    }
+
+    @Test func eachWayOfQuittingHasItsReason() {
+        #expect(TerminationReason(terminationSignal: nil) == .quit)
+        #expect(TerminationReason(terminationSignal: SIGTERM) == .signal(SIGTERM))
+        #expect(TerminationReason(terminationSignal: SIGINT) == .signal(SIGINT))
+        #expect(TerminationReason(terminationSignal: SIGHUP) == .terminalHungUp)
+    }
+
+    @Test func theConventionalEndingIsWhatTheParentWouldHaveSeen() {
+        #expect(ProcessEnding(.quit, .conventional) == .exit(0))
+        #expect(ProcessEnding(.signal(SIGTERM), .conventional) == .signal(SIGTERM))
+        #expect(ProcessEnding(.terminalHungUp, .conventional) == .signal(SIGHUP))
+    }
+
+    @Test func anAppCanEndWithAStatusOfItsOwn() {
+        for reason in [TerminationReason.quit, .signal(SIGTERM), .terminalHungUp] {
+            #expect(ProcessEnding(reason, .exit(code: 3)) == .exit(3))
+        }
+    }
 }

@@ -43,6 +43,67 @@ public enum TerminalEvent: Sendable {
 /// MainActor-isolated to prevent torn reads from concurrent access.
 @MainActor public var frameStats = FrameStats.zero
 
+// MARK: - Termination
+
+/// Why a running app ended. ``TerminalRuntime/run()`` returns it once the
+/// runtime has torn down, and ``TerminalAppProtocol/willTerminate(_:)`` is
+/// handed it before the process ends.
+public enum TerminationReason: Sendable, Equatable {
+    /// The app quit: `onEvent` returned `false`, or an action asked.
+    case quit
+    /// A terminating signal — SIGINT or SIGTERM — asked the app to quit.
+    case signal(Int32)
+    /// The terminal went away: its window closed, its connection dropped.
+    /// Covers a SIGHUP, which POSIX defines as exactly this, and a hang-up
+    /// an app that is not the terminal's controlling process reads from its
+    /// input instead.
+    case terminalHungUp
+
+    init(terminationSignal: Int32?) {
+        switch terminationSignal {
+        case nil: self = .quit
+        case SIGHUP: self = .terminalHungUp
+        case let signum?: self = .signal(signum)
+        }
+    }
+
+    /// Ends the process as `ending` says for this reason. A hand-written
+    /// `main()` calls it with what ``TerminalRuntime/run()`` returned.
+    public func end(_ ending: TerminationEnding = .conventional) -> Never {
+        switch ProcessEnding(self, ending) {
+        case .exit(let status):
+            exit(status)
+        case .signal(let signum):
+            Terminal.end(bySignal: signum)
+        }
+    }
+}
+
+/// How the process ends, chosen by ``TerminalAppProtocol/willTerminate(_:)``.
+public enum TerminationEnding: Sendable, Equatable {
+    /// As the parent would have seen without the runtime: a quit exits 0, a
+    /// signal is re-raised, a hung-up terminal ends the process by SIGHUP.
+    case conventional
+    /// Exit with `code`, whatever the reason — for a parent that reads exit
+    /// statuses rather than signals.
+    case exit(code: Int32)
+}
+
+/// What ``TerminationReason/end(_:)`` does, decided apart from doing it.
+enum ProcessEnding: Equatable {
+    case exit(Int32)
+    case signal(Int32)
+
+    init(_ reason: TerminationReason, _ ending: TerminationEnding) {
+        switch (ending, reason) {
+        case (.exit(let code), _): self = .exit(code)
+        case (.conventional, .quit): self = .exit(0)
+        case (.conventional, .signal(let signum)): self = .signal(signum)
+        case (.conventional, .terminalHungUp): self = .signal(SIGHUP)
+        }
+    }
+}
+
 // MARK: - Event Queue
 
 /// Thread-safe event queue. Producers push, main actor drains.
@@ -162,7 +223,8 @@ public enum RenderMode: Sendable {
 ///
 /// ```swift
 /// let runtime = TerminalRuntime(renderMode: .onDemand) { ContentView() }
-/// try await runtime.run()
+/// let reason = try await runtime.run()
+/// reason.end()   // die of the signal that ended it, as the parent expects
 /// ```
 ///
 /// MainActor-isolated end to end: events are produced on background tasks
@@ -314,9 +376,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// SIGINT, SIGTERM or SIGHUP quits the same way, then ends the process
     /// with that signal. Throws ``TerminalRuntimeError/rawModeUnavailable`` —
     /// before touching the screen — when stdin isn't a TTY.
-    public func run() async throws {
+    @discardableResult
+    public func run() async throws -> TerminationReason {
         try await runUntilQuit()
-        Terminal.endIfTerminatedBySignal()
+        return TerminationReason(terminationSignal: Terminal.terminationSignal)
     }
 
     private func runUntilQuit() async throws {
@@ -454,12 +517,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 switch StdinByteSource.waitForActivity(resize: resizePipe.read, terminate: terminatePipe.read,
                                                        shutdown: shutdownPipe.read) {
                 case .input:
-                    if let event = InputParser.readEvent() {
+                    let event = InputParser.readEvent()
+                    // A hang-up part-way through a sequence ends it early, and
+                    // the parser makes a key of what it had: one nobody pressed.
+                    if StdinByteSource.inputHungUp {
+                        Terminal.recordHangUp()
+                        wake.wake()
+                        return
+                    }
+                    if let event {
                         queue.push(event)
                     }
                 case .resize:
                     let newSize = Terminal.size()
                     queue.push(.resize(newSize.cols, newSize.rows))
+                case .hangUp:
+                    Terminal.recordHangUp()
+                    fallthrough
                 case .terminate:
                     // The loop reads `Terminal.terminationSignal`.
                     wake.wake()
@@ -1413,6 +1487,11 @@ public protocol TerminalAppProtocol {
     /// ``TerminalEvent``. Return `false` to quit the app. The default quits
     /// on `q` or Escape.
     static func onEvent(_ event: TerminalEvent) -> Bool
+    /// Called once the app has torn down — the terminal handed back, its
+    /// per-process files removed — with why it ended: the place to save what
+    /// must outlive the process, such as an unsent draft when the connection
+    /// drops. Returns how the process ends. The default is `.conventional`.
+    static func willTerminate(_ reason: TerminationReason) -> TerminationEnding
     /// Builds the root view. Re-invoked whenever the runtime needs a
     /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
@@ -1445,6 +1524,11 @@ extension TerminalAppProtocol {
         return true
     }
 
+    /// Default: end as the parent would have seen without the runtime.
+    public static func willTerminate(_ reason: TerminationReason) -> TerminationEnding {
+        .conventional
+    }
+
     /// The `@main` entry: builds a ``TerminalRuntime`` from the static
     /// requirements and runs it. On ``TerminalRuntimeError/rawModeUnavailable``
     /// (stdin not a TTY) it logs to stderr and exits 1; write your own
@@ -1463,8 +1547,9 @@ extension TerminalAppProtocol {
         // can implement their own @main calling runtime.run() and
         // catching TerminalRuntimeError directly.
         let log = Log("TerminalUI")
+        let reason: TerminationReason
         do {
-            try await runtime.run()
+            reason = try await runtime.run()
         } catch TerminalRuntimeError.rawModeUnavailable {
             log.error("stdin is not a TTY; raw mode unavailable. Run from a terminal.")
             exit(1)
@@ -1472,6 +1557,7 @@ extension TerminalAppProtocol {
             log.error("runtime error: \(error)")
             exit(1)
         }
+        reason.end(willTerminate(reason))
     }
 }
 

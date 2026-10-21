@@ -1970,6 +1970,20 @@ def coder_a_resize_redraws_at_the_new_size(app: Client) -> None:
         raise CaseFailed(f"after a resize to 100x30 the frame is {width}x{height}")
 
 
+def storybook_a_hung_up_terminal_quits_the_app(app: Client) -> None:
+    """Closing the terminal — its window, its SSH connection — quits the app
+    through its teardown, which the runner checks, and ends it by SIGHUP.
+    Regression: the input thread spun a core on the hung-up terminal, and the
+    app ran on for as long as nobody killed it."""
+    import signal
+
+    app.wait_for_frame(1, timeout=0.5)
+    app.expected_exit_signal = signal.SIGHUP
+    app.hang_up()
+    if app.wait_for_exit(5.0) is None:
+        raise CaseFailed("the app outlived its terminal")
+
+
 def harness_objects_to_an_unannounced_crash(app: Client) -> None:
     """The runner fails a case whose app crashed, even when every assertion
     passed. Regression: a crash under a passing case went unreported, so a
@@ -2063,6 +2077,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
     SmokeCase("storybook.textinput_boundary_emits_under_modal", "Storybook", storybook_textinput_boundary_emits_under_modal),
     SmokeCase("storybook.textinput_boundary_rings_the_bell", "Storybook", storybook_textinput_boundary_rings_the_bell),
+    SmokeCase("storybook.a_hung_up_terminal_quits_the_app", "Storybook", storybook_a_hung_up_terminal_quits_the_app),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),
     SmokeCase("storybook.text_styles_render", "Storybook", storybook_text_styles_render),
