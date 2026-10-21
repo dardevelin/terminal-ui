@@ -8,6 +8,21 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **One keymap for text editing, the same in every input.** TextInput,
+  TextArea and PromptInput perform one set of named `TextEditCommand`s —
+  Ctrl+A/E and Home/End to the line's ends, Alt+B/F and Alt+←/→ by word,
+  Ctrl+K and Ctrl+U to kill to either end of the line, Ctrl+W back to
+  whitespace, Alt+Backspace and Alt+D a word, Ctrl+Y to yank the last kill,
+  Ctrl+Z / Ctrl+Shift+Z to undo and redo — through one engine. These are
+  readline's keys, which Claude Code, Codex and Crush follow, and which macOS
+  terminals send for Command and Option chords: Cmd+← arrives as Ctrl+A.
+  `TextKeymap.standard` holds them; `.textKeymap(_:)` rebinds keys for a
+  subtree, and `merging(_:)` adds or, with `nil`, removes bindings.
+  `TextEditCommand` is an open name, as `ActionID` is, so a keymap can bind
+  a command the framework does not declare. One `KillBuffer` serves the app,
+  so a kill in one input yanks into another; `\.killBuffer` gives a subtree
+  its own. A key whose command has nothing to do passes on to the app, as
+  Ctrl+D on an empty line does in readline.
 - **`TerminalAppProtocol.willTerminate(_:)`** — called once the app has torn
   down, with a `TerminationReason`: `.quit`, `.signal(_:)` or
   `.terminalHungUp`. The place to save what must outlive the process, such as
@@ -106,6 +121,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **Ctrl+Y yanks in TextArea; redo is Ctrl+Shift+Z.** Ctrl+Y was a redo
+  alias there, and nowhere else. To keep it,
+  `.textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): .redo]))`.
+- **Word movement in TextArea goes by letters and digits**, as Alt+B/F do in
+  readline and Emacs: Ctrl+←/→ stopped only at whitespace, so `path/to/file`
+  was one word. Ctrl+W still deletes back to whitespace.
 - **`TextArea` draws in theme colours.** Its literal cyan cursor, blue
   selection, grey gutter and disabled text are now the theme's `accent` (with
   `foregroundEmphasis` under the cursor), `backgroundSelected`,

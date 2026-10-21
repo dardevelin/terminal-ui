@@ -47,8 +47,8 @@ public struct TextAreaState: Equatable, Sendable {
     public var desiredCol: Int?
     /// Bounded undo/redo history. Each text-mutating key path pushes
     /// a snapshot of (text, cursor, selection) BEFORE the mutation.
-    /// Ctrl+Z restores from `undoStack.undo()`; Ctrl+Shift+Z (or
-    /// Ctrl+Y) restores from `undoStack.redo()`. Default 100 entries.
+    /// Ctrl+Z restores from `undoStack.undo()`; Ctrl+Shift+Z restores
+    /// from `undoStack.redo()`. Default 100 entries.
     /// Equatable conformance ignores the
     /// internal stack contents to keep state-equality cheap on hot
     /// paths — the public-facing edit position is what `==` checks.
@@ -150,10 +150,9 @@ public enum TextAreaArrowMode: Sendable, Equatable {
 /// the editor holds focus, the selection on a highlighted background,
 /// vim-style `~` markers past the last line, and an optional line-number
 /// gutter, all in ``Theme`` roles. Long logical lines soft-wrap at the
-/// container width. Supports arrow-key navigation (char/line), Ctrl+A/E
-/// (home/end of line), Ctrl+Left/Right (word jump), Shift+arrow selection,
-/// insert/delete/backspace, newline, Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y)
-/// undo/redo, and bracketed paste.
+/// container width. Edits with the environment's ``TextKeymap``,
+/// ``TextKeymap/standard`` unless a subtree sets one, with Shift+arrow
+/// selection, undo and redo, and bracketed paste.
 ///
 /// This is the *editor* of the text-entry trio: Enter inserts a newline and
 /// never submits. Reach for ``TextInput`` for a one-line form field, or
@@ -208,10 +207,11 @@ public struct TextArea: TerminalView {
     /// Supplies ``Theme/syntax`` when no `theme` was passed.
     @TerminalEnvironment(\.theme) private var appTheme
 
-    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
-    /// callback and the bell. Read at body-eval time for the handlers, which
-    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
-    @TerminalEnvironment(\.boundaryHit) var boundaryHit
+    /// The keymap, kill ring and boundary feedback the editor edits with.
+    /// Read at body-eval time for the handlers, which run when no
+    /// environment is bound. Set with `.textKeymap(_:)` and
+    /// `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.textEditing) var textEditing
 
     /// Read at body-eval time. When false (a `.disabled()` ancestor
     /// has run), the editor's visible content is rendered in the theme's
@@ -259,13 +259,13 @@ public struct TextArea: TerminalView {
         // the GR closure runs later when GraphContext.currentEnvironment
         // may be nil. Same pattern as TextInput
         // (`feedback_bindings_in_geometryreader.md`).
-        let boundaryHit = self.boundaryHit
+        let textEditing = self.textEditing
         let isEnabled = self.isEnabled
         return GeometryReader { size in
             self.renderEditor(
                 containerWidth: size.width,
                 containerHeight: size.height,
-                boundaryHit: boundaryHit,
+                textEditing: textEditing,
                 isEnabled: isEnabled
             )
         }
@@ -297,12 +297,12 @@ public struct TextArea: TerminalView {
 
     private func renderEditor(containerWidth: Int,
                               containerHeight: Int,
-                              boundaryHit: BoundaryHitAction,
+                              textEditing: TextEditingContext,
                               isEnabled: Bool) -> some TerminalView {
         let visibleHeight = effectiveVisibleHeight(containerHeight: containerHeight)
         let content = text.get()
         let editorState = state.get()
-        let lines = Self.splitLines(content)
+        let lines = TextLines.split(content)
         let cursor = Self.clampCursor(editorState.cursor, lines: lines)
         let wrapWidth = effectiveWrapWidth(containerWidth: containerWidth, totalLines: lines.count)
         // when arrow mode is `.display`, scroll is
@@ -341,7 +341,7 @@ public struct TextArea: TerminalView {
         return rows
             .foreground(isEnabled ? appTheme.foreground : appTheme.foregroundMuted)
             .focusable()
-            .onKeyPress { [text, state, arrowMode, boundaryHit] event in
+            .onKeyPress { [text, state, arrowMode, textEditing] event in
                 Self.handleKey(
                     event,
                     text: text,
@@ -349,7 +349,7 @@ public struct TextArea: TerminalView {
                     visibleHeight: visibleHeight,
                     arrowMode: arrowMode,
                     wrapWidth: wrapWidth,
-                    boundaryHit: boundaryHit
+                    textEditing: textEditing
                 )
             }
             .onPaste { [text, state, visibleHeight] payload in
@@ -380,7 +380,7 @@ public struct TextArea: TerminalView {
         let segments = normalised.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
 
         var editorState = state.get()
-        var lines = splitLines(text.get())
+        var lines = TextLines.split(text.get())
         var cursor = clampCursor(editorState.cursor, lines: lines)
 
         // Snapshot pre-paste state for undo. Pastes are atomic edits —
@@ -431,7 +431,7 @@ public struct TextArea: TerminalView {
             currentScroll: editorState.scrollOffset,
             visibleHeight: visibleHeight
         )
-        text.set(joinLines(lines))
+        text.set(TextLines.join(lines))
         state.set(editorState)
     }
 
@@ -486,12 +486,6 @@ public struct TextArea: TerminalView {
     }
 
     // MARK: - Line Splitting
-
-    static func splitLines(_ text: String) -> [String] {
-        if text.isEmpty { return [""] }
-        let parts = text.split(separator: "\n", omittingEmptySubsequences: false)
-        return parts.map(String.init)
-    }
 
     // MARK: - Cursor Clamping
 
@@ -1004,15 +998,13 @@ public struct TextArea: TerminalView {
         visibleHeight: Int,
         arrowMode: TextAreaArrowMode = .logical,
         wrapWidth: Int = 0,
-        boundaryHit: BoundaryHitAction = EnvironmentValues().boundaryHit
+        textEditing: TextEditingContext = EnvironmentValues().textEditing
     ) -> KeyEventResult {
         var editorState = state.get()
         let content = text.get()
-        var lines = splitLines(content)
+        var lines = TextLines.split(content)
         var cursor = clampCursor(editorState.cursor, lines: lines)
         let hasShift = event.modifiers.contains(.shift)
-        let hasCtrl = event.modifiers.contains(.ctrl)
-
 
         // Capture anchor for selection before any movement
         let anchorBeforeMove = cursor
@@ -1058,8 +1050,46 @@ public struct TextArea: TerminalView {
                 currentScroll: editorState.scrollOffset,
                 visibleHeight: visibleHeight
             )
-            text.set(joinLines(lines))
+            text.set(TextLines.join(lines))
             state.set(editorState)
+        }
+
+        if let command = textEditing.keymap.command(for: event) {
+            if command == .undo {
+                applyUndo(text: text, state: state, visibleHeight: visibleHeight)
+                return .handled
+            }
+            if command == .redo {
+                applyRedo(text: text, state: state, visibleHeight: visibleHeight)
+                return .handled
+            }
+            // A deletion with text selected takes the selection instead.
+            if command.isDeletion, let selection = editorState.selection, !selection.isEmpty {
+                pushUndoSnapshot()
+                deleteSelection(lines: &lines, selection: selection, cursor: &cursor)
+                commitTextEdit()
+                return .handled
+            }
+            var buffer = TextEditingBuffer(text: Array(content),
+                                           cursor: TextLines.offset(row: cursor.row, col: cursor.col, in: lines))
+            let result = textEditing.perform(command, on: &buffer)
+            switch result {
+            case .unsupported, .unchanged:
+                return .ignored
+            case .edited:
+                pushUndoSnapshot()
+                lines = TextLines.split(String(buffer.text))
+            case .moved, .hitWall:
+                editorState.desiredCol = nil
+            }
+            let position = TextLines.position(of: buffer.cursor, in: lines)
+            cursor = TextAreaCursor(row: position.row, col: position.col)
+            if case .edited = result {
+                commitTextEdit()
+            } else {
+                commitCursorMove()
+            }
+            return .handled
         }
 
         switch event.key {
@@ -1067,38 +1097,10 @@ public struct TextArea: TerminalView {
         // MARK: Character Input
 
         case .character(let c):
-            if hasCtrl {
-                switch c {
-                case "a":
-                    cursor.col = 0
-                    editorState.desiredCol = nil
-                    commitCursorMove()
-                    return .handled
-                case "e":
-                    cursor.col = lines[cursor.row].count
-                    editorState.desiredCol = nil
-                    commitCursorMove()
-                    return .handled
-                case "z":
-                    // Ctrl+Z = undo, Ctrl+Shift+Z = redo. Common
-                    // editor binding (matches macOS / Linux text
-                    // editors). Ctrl+Y is also a redo alias.
-                    if hasShift {
-                        applyRedo(text: text, state: state, visibleHeight: visibleHeight)
-                    } else {
-                        applyUndo(text: text, state: state, visibleHeight: visibleHeight)
-                    }
-                    return .handled
-                case "y":
-                    // Redo alias used by some terminals (Windows-style).
-                    applyRedo(text: text, state: state, visibleHeight: visibleHeight)
-                    return .handled
-                default:
-                    return .ignored
-                }
+            // Chords no command claims bubble to the parent.
+            guard !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) else {
+                return .ignored
             }
-
-            guard !event.modifiers.contains(.alt) else { return .ignored }
 
             // Snapshot BEFORE mutating so Ctrl+Z restores this state.
             pushUndoSnapshot()
@@ -1120,88 +1122,6 @@ public struct TextArea: TerminalView {
             }
             insertNewline(at: &cursor, in: &lines)
             commitTextEdit()
-            return .handled
-
-        // MARK: Backspace
-
-        case .backspace:
-            if let sel = editorState.selection, !sel.isEmpty {
-                pushUndoSnapshot()
-                deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
-                commitTextEdit()
-                return .handled
-            }
-            // Snapshot only when the operation will actually mutate —
-            // performBackspace returns false at the (0, 0) wall.
-            let preBackspaceContent = content
-            let preBackspaceCursor = editorState.cursor
-            let preBackspaceSelection = editorState.selection
-            guard performBackspace(at: &cursor, in: &lines) else { return .handled }
-            editorState.undoStack.push(TextAreaSnapshot(
-                text: preBackspaceContent,
-                cursor: preBackspaceCursor,
-                selection: preBackspaceSelection
-            ))
-            commitTextEdit()
-            return .handled
-
-        // MARK: Delete
-
-        case .delete:
-            if let sel = editorState.selection, !sel.isEmpty {
-                pushUndoSnapshot()
-                deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
-                commitTextEdit()
-                return .handled
-            }
-            // Snapshot only when the operation will actually mutate.
-            let preDeleteContent = content
-            let preDeleteCursor = editorState.cursor
-            let preDeleteSelection = editorState.selection
-            guard performDeleteForward(at: &cursor, in: &lines) else { return .handled }
-            editorState.undoStack.push(TextAreaSnapshot(
-                text: preDeleteContent,
-                cursor: preDeleteCursor,
-                selection: preDeleteSelection
-            ))
-            commitTextEdit()
-            return .handled
-
-        // MARK: Arrow Left
-
-        case .left:
-            if hasCtrl {
-                cursor = wordLeft(from: cursor, in: lines)
-            } else if cursor.col > 0 {
-                cursor.col -= 1
-            } else if cursor.row > 0 {
-                cursor.row -= 1
-                cursor.col = lines[cursor.row].count
-            } else {
-                // Wall: cursor is at (0, 0). Emit and stay put.
-                boundaryHit(.leftEdge)
-            }
-            editorState.desiredCol = nil
-            commitCursorMove()
-            return .handled
-
-        // MARK: Arrow Right
-
-        case .right:
-            let lineLen = lines[cursor.row].count
-            if hasCtrl {
-                cursor = wordRight(from: cursor, in: lines)
-            } else if cursor.col < lineLen {
-                cursor.col += 1
-            } else if cursor.row < lines.count - 1 {
-                cursor.row += 1
-                cursor.col = 0
-            } else {
-                // Wall: cursor at end of last row. Emit and stay put.
-                boundaryHit(.rightEdge)
-            }
-            editorState.desiredCol = nil
-            commitCursorMove()
             return .handled
 
         // MARK: Arrow Up
@@ -1250,7 +1170,7 @@ public struct TextArea: TerminalView {
                 } else {
                     // Wall: row 0 + chunk 0, displayArrowUp returned
                     // (curChunk, currentCol) — no destination.
-                    boundaryHit(.topEdge)
+                    textEditing.boundaryHit(.topEdge)
                 }
                 editorState.desiredCol = desired
             } else if cursor.row > 0 {
@@ -1260,7 +1180,7 @@ public struct TextArea: TerminalView {
                 editorState.desiredCol = desired
             } else {
                 // .logical mode at row 0 — buffer-top wall.
-                boundaryHit(.topEdge)
+                textEditing.boundaryHit(.topEdge)
             }
             commitCursorMove()
             return .handled
@@ -1305,7 +1225,7 @@ public struct TextArea: TerminalView {
                     )
                 } else {
                     // Wall: last row + last chunk — no destination.
-                    boundaryHit(.bottomEdge)
+                    textEditing.boundaryHit(.bottomEdge)
                 }
                 editorState.desiredCol = desired
             } else if cursor.row < lines.count - 1 {
@@ -1315,22 +1235,8 @@ public struct TextArea: TerminalView {
                 editorState.desiredCol = desired
             } else {
                 // .logical mode at last row — buffer-bottom wall.
-                boundaryHit(.bottomEdge)
+                textEditing.boundaryHit(.bottomEdge)
             }
-            commitCursorMove()
-            return .handled
-
-        // MARK: Home / End
-
-        case .home:
-            cursor.col = 0
-            editorState.desiredCol = nil
-            commitCursorMove()
-            return .handled
-
-        case .end:
-            cursor.col = lines[cursor.row].count
-            editorState.desiredCol = nil
             commitCursorMove()
             return .handled
 
@@ -1376,43 +1282,6 @@ public struct TextArea: TerminalView {
         cursor.col = 0
     }
 
-    /// Delete one character before the cursor. Returns `true` if a deletion occurred.
-    static func performBackspace(at cursor: inout TextAreaCursor, in lines: inout [String]) -> Bool {
-        if cursor.col > 0 {
-            var line = lines[cursor.row]
-            let removeAt = line.index(line.startIndex, offsetBy: cursor.col - 1)
-            line.remove(at: removeAt)
-            lines[cursor.row] = line
-            cursor.col -= 1
-            return true
-        } else if cursor.row > 0 {
-            let prevLen = lines[cursor.row - 1].count
-            lines[cursor.row - 1] += lines[cursor.row]
-            lines.remove(at: cursor.row)
-            cursor.row -= 1
-            cursor.col = prevLen
-            return true
-        }
-        return false
-    }
-
-    /// Delete one character at the cursor. Returns `true` if a deletion occurred.
-    static func performDeleteForward(at cursor: inout TextAreaCursor, in lines: inout [String]) -> Bool {
-        let lineLen = lines[cursor.row].count
-        if cursor.col < lineLen {
-            var line = lines[cursor.row]
-            let removeAt = line.index(line.startIndex, offsetBy: cursor.col)
-            line.remove(at: removeAt)
-            lines[cursor.row] = line
-            return true
-        } else if cursor.row < lines.count - 1 {
-            lines[cursor.row] += lines[cursor.row + 1]
-            lines.remove(at: cursor.row + 1)
-            return true
-        }
-        return false
-    }
-
     /// Delete a selection range. Sets cursor to the selection start.
     static func deleteSelection(
         lines: inout [String],
@@ -1440,48 +1309,6 @@ public struct TextArea: TerminalView {
         cursor = first
     }
 
-    static func joinLines(_ lines: [String]) -> String {
-        lines.joined(separator: "\n")
-    }
-
-    // MARK: - Word Navigation
-
-    static func wordLeft(from pos: TextAreaCursor, in lines: [String]) -> TextAreaCursor {
-        var row = pos.row
-        var col = pos.col
-
-        if col == 0 {
-            if row > 0 {
-                row -= 1
-                col = lines[row].count
-            }
-            return TextAreaCursor(row: row, col: col)
-        }
-
-        let chars = Array(lines[row])
-        while col > 0 && chars[col - 1].isWhitespace { col -= 1 }
-        while col > 0 && !chars[col - 1].isWhitespace { col -= 1 }
-        return TextAreaCursor(row: row, col: col)
-    }
-
-    static func wordRight(from pos: TextAreaCursor, in lines: [String]) -> TextAreaCursor {
-        var row = pos.row
-        var col = pos.col
-        let lineLen = lines[row].count
-
-        if col >= lineLen {
-            if row < lines.count - 1 {
-                row += 1
-                col = 0
-            }
-            return TextAreaCursor(row: row, col: col)
-        }
-
-        let chars = Array(lines[row])
-        while col < chars.count && !chars[col].isWhitespace { col += 1 }
-        while col < chars.count && chars[col].isWhitespace { col += 1 }
-        return TextAreaCursor(row: row, col: col)
-    }
 }
 
 /// A text area's visible rows, drawn as a view of their own under the

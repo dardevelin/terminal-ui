@@ -148,7 +148,7 @@ struct TextAreaWrapTests {
         // should produce the same row count as TextLayout.wrapWords
         // when given a single long logical line.
         let long = "type a very long line and see if it will properly wrap"
-        let lines = TextArea.splitLines(long)
+        let lines = TextLines.split(long)
         let cursor = TextAreaCursor(row: 0, col: 0)
         let spans = TextArea.buildDisplaySpans(
             lines: lines,

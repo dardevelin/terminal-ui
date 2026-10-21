@@ -256,6 +256,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// The environment's `\.bell` in every frame this runtime draws. Built
     /// once, so the environment holds the same value frame to frame.
     private let bellAction: BellAction
+    /// The environment's `\.killBuffer` in every frame: one for the app, so
+    /// a kill in one input can be yanked into another.
+    private let killBuffer = KillBuffer()
     private var outputBuffer = OutputBuffer()
     private let graph: AttributeGraph
     private let debugPanel = DebugPanel()
@@ -957,6 +960,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
         env.bell = bellAction
+        env.killBuffer = killBuffer
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
@@ -1057,6 +1061,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
         env.bell = bellAction
+        env.killBuffer = killBuffer
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {

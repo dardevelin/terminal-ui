@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -804,6 +804,15 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     }
                 TextInput(text: $other)
                     .boundaryFeedback(.bell)
+                """)
+        case .textKeymap: return PageInfo(id: self, category: .modifiers, name: ".textKeymap",
+            summary: "Every text input edits with readline's keys — Ctrl+A/E line ends, Alt+B/F words, Ctrl+K/U/W kill, Ctrl+Y yank, Ctrl+Z/Ctrl+Shift+Z undo/redo. A subtree rebinds any of them; macOS terminals send Cmd+Left as Ctrl+A.",
+            code: """
+                TextInput(text: $line)            // the standard keymap
+                TextArea(text: $notes, state: $notesState)
+                    .textKeymap(.standard.merging([
+                        .keyboard(.character("y"), .ctrl): .redo,
+                    ]))
                 """)
         case .modal: return PageInfo(id: self, category: .modifiers, name: ".modal",
             summary: "Presents a floating panel over the screen and confines keyboard focus to it — Tab cycles inside the dialog and cannot reach the dimmed content behind it.",

@@ -6,7 +6,7 @@ import Testing
 // Each text-mutating key (character, enter, backspace, delete,
 // selection-replace, paste) pushes a snapshot of (text, cursor,
 // selection) BEFORE the mutation. Ctrl+Z restores the prior
-// snapshot; Ctrl+Shift+Z (or Ctrl+Y) re-applies a popped snapshot.
+// snapshot; Ctrl+Shift+Z re-applies a popped snapshot.
 //
 // Tests follow the live edit path through `TextArea.handleKey` so
 // the wiring (snapshot point + Ctrl+Z dispatch) is what's pinned.

@@ -160,6 +160,15 @@ public struct EnvironmentValues: Sendable {
     /// app supplies its own, for every frame it draws.
     public var bell = BellAction {}
 
+    /// Which key performs which text-editing command in this subtree's
+    /// inputs. Set with `.textKeymap(_:)`.
+    public var textKeymap: TextKeymap = .standard
+
+    /// The text killed last, which yank puts back — see ``KillBuffer``. A
+    /// running app supplies one for every frame, so a kill in one input can
+    /// be yanked into another.
+    public var killBuffer: KillBuffer = .detached
+
     /// Whether interactive subtrees are live. Default `true`.
     /// `.disabled(_)` writes `false`, which gates handler registration
     /// (`onKeyPress` / `onClick` / `onHover`) and removes focusables

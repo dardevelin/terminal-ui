@@ -463,6 +463,8 @@ public struct PromptInputState: Equatable, Sendable {
 ///   walks back toward the live input.
 /// - Large pastes collapse to a `[Pasted text #N +M lines]` marker per
 ///   ``PasteMode``; pasting the same content again expands it.
+/// - Edits with the environment's ``TextKeymap``, ``TextKeymap/standard``
+///   unless a subtree sets one.
 /// - Optional context badge on the right (project name, mode).
 ///
 /// Usage — the Chat example's prompt bar, bound to an `@Observable` model:
@@ -511,10 +513,11 @@ public struct PromptInput: TerminalView {
     /// before this runs; empty or whitespace-only input never fires it.
     public let onSubmit: ((String) -> Void)?
 
-    /// What a wall hit does here — the feedback mode, any `.onBoundaryHit`
-    /// callback and the bell. Read at body-eval time for the handlers, which
-    /// run when no environment is bound. Set with `.boundaryFeedback(_:)`.
-    @TerminalEnvironment(\.boundaryHit) var boundaryHit
+    /// The keymap, kill ring and boundary feedback the prompt edits with.
+    /// Read at body-eval time for the handlers, which run when no
+    /// environment is bound. Set with `.textKeymap(_:)` and
+    /// `.boundaryFeedback(_:)`.
+    @TerminalEnvironment(\.textEditing) var textEditing
 
     /// Paste presentation mode. Default `.claudeCode` collapses
     /// pastes with newlines or > 200 chars into a marker. Override
@@ -582,7 +585,7 @@ public struct PromptInput: TerminalView {
         // Capture boundary-feedback env at body-eval time; the GR
         // closure runs later when GraphContext.currentEnvironment may
         // be nil (`feedback_bindings_in_geometryreader.md`).
-        let boundaryHit = self.boundaryHit
+        let textEditing = self.textEditing
         // Capture the hint visibility + localizer up-front so the
         // VStack body sees a stable value (the GR closure inside
         // would re-read env at rebuild time, which is later than
@@ -603,7 +606,7 @@ public struct PromptInput: TerminalView {
         // the cursor sits at the right edge of a collapsed
         // reference. `.pasteHint(.hidden)` opts out per-subtree.
         return VStack {
-            inputReader(boundaryHit: boundaryHit)
+            inputReader(textEditing: textEditing)
             if hintVisible && cursorAdjacentToCollapsed {
                 Text(hintLocalizer.pasteAgainHint())
                     .foreground(theme.foregroundMuted)
@@ -614,16 +617,16 @@ public struct PromptInput: TerminalView {
     /// The reader the input is built inside, chosen by height policy — see
     /// the comment in `body`.
     @TerminalViewBuilder
-    private func inputReader(boundaryHit: BoundaryHitAction) -> some TerminalView {
+    private func inputReader(textEditing: TextEditingContext) -> some TerminalView {
         if maxVisibleLines == nil, heightPolicy.readsContainer {
             GeometryReader { size in
                 self.inputField(width: size.width, containerHeight: size.height,
-                                boundaryHit: boundaryHit)
+                                textEditing: textEditing)
             }
         } else {
             WidthReader { width in
                 self.inputField(width: width, containerHeight: 0,
-                                boundaryHit: boundaryHit)
+                                textEditing: textEditing)
             }
         }
     }
@@ -632,7 +635,7 @@ public struct PromptInput: TerminalView {
     /// a width and, under the policies that read it, the container's height.
     /// `containerHeight` is 0 when the prompt's policy does not depend on it.
     private func inputField(width: Int, containerHeight: Int,
-                            boundaryHit: BoundaryHitAction) -> some TerminalView {
+                            textEditing: TextEditingContext) -> some TerminalView {
         let prefix = resolvedPrefix
         let contentWidth = max(1, width - prefix.width)
         let st = self.state.get()
@@ -647,7 +650,7 @@ public struct PromptInput: TerminalView {
             buffers: st.buffers,
             localizer: localizer
         )
-        let lines = Self.splitLines(projection.displayText)
+        let lines = TextLines.split(projection.displayText)
         let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
         let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
         let ceiling = Self.resolveCeiling(
@@ -676,14 +679,14 @@ public struct PromptInput: TerminalView {
         )
         return rows
             .focusable()
-            .onKeyPress { [text, state, onSubmit, arrowMode, boundaryHit] event in
+            .onKeyPress { [text, state, onSubmit, arrowMode, textEditing] event in
                 Self.handleKey(
                     event, text: text, state: state,
                     onSubmit: onSubmit, promptWidth: prefix.width,
                     maxVisibleLines: renderedHeight,
                     wrapWidth: contentWidth,
                     arrowMode: arrowMode,
-                    boundaryHit: boundaryHit
+                    textEditing: textEditing
                 )
             }
             .onPaste { [text, state, pasteMode] payload in
@@ -706,14 +709,12 @@ public struct PromptInput: TerminalView {
     /// non-expanded reference.
     static func isCursorAtCollapsedRightEdge(state: PromptInputState, expandedText: String) -> Bool {
         guard !state.references.isEmpty else { return false }
-        let lines = splitLines(expandedText)
+        let lines = TextLines.split(expandedText)
         let row = min(state.cursorRow, max(0, lines.count - 1))
         let col = min(state.cursorCol, lines[row].count)
-        var absOffset = 0
-        for r in 0..<row { absOffset += lines[r].count + 1 }
-        absOffset += col
+        let offset = TextLines.offset(row: row, col: col, in: lines)
         return state.references.contains { ref in
-            !ref.isExpanded && (ref.start + ref.length) == absOffset
+            !ref.isExpanded && (ref.start + ref.length) == offset
         }
     }
 
@@ -953,14 +954,13 @@ public struct PromptInput: TerminalView {
         // position past their start. The cursor never lives INSIDE a
         // collapsed range (input handlers snap to edges),
         // so a single-pass delta lookup is sufficient.
-        let expandedLines = splitLines(rows.text)
+        let expandedLines = TextLines.split(rows.text)
         let cursorRowInExpanded = min(st.cursorRow, max(0, expandedLines.count - 1))
         let cursorColInExpanded = min(st.cursorCol, expandedLines[cursorRowInExpanded].count)
-        var expandedOffset = 0
-        for r in 0..<cursorRowInExpanded { expandedOffset += expandedLines[r].count + 1 }
-        expandedOffset += cursorColInExpanded
+        let expandedOffset = TextLines.offset(row: cursorRowInExpanded, col: cursorColInExpanded,
+                                              in: expandedLines)
         let displayOffset = translateOffset(expandedOffset, deltas: projection.deltas)
-        let (cursorRow, cursorCol) = absoluteOffsetToRowCol(displayOffset, lines: lines)
+        let (cursorRow, cursorCol) = TextLines.position(of: displayOffset, in: lines)
         let (cursorDisplayRow, cursorDisplayCol) = projectCursor(
             logicalRow: cursorRow, logicalCol: cursorCol, wraps: wraps
         )
@@ -1185,7 +1185,7 @@ public struct PromptInput: TerminalView {
             .replacingOccurrences(of: "\r", with: "\n")
 
         var st = state.get()
-        var lines = splitLines(text.get())
+        var lines = TextLines.split(text.get())
 
         st.cursorRow = min(st.cursorRow, lines.count - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
@@ -1215,7 +1215,7 @@ public struct PromptInput: TerminalView {
             // Move cursor to the end of the now-expanded range.
             let range = st.references[adjacentIdx]
             let endOffset = range.start + range.length
-            (st.cursorRow, st.cursorCol) = absoluteOffsetToRowCol(endOffset, lines: lines)
+            (st.cursorRow, st.cursorCol) = TextLines.position(of: endOffset, in: lines)
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return
@@ -1278,25 +1278,9 @@ public struct PromptInput: TerminalView {
         }
 
         st.historyIndex = -1
-        text.set(lines.joined(separator: "\n"))
+        text.set(TextLines.join(lines))
         adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
         state.set(st)
-    }
-
-    /// Convert an absolute character offset (counting `\n` as one
-    /// character) back to `(row, col)` against `lines`. Used by the
-    /// "paste again to expand" path to position the cursor at the
-    /// end of the newly expanded range.
-    static func absoluteOffsetToRowCol(_ offset: Int, lines: [String]) -> (row: Int, col: Int) {
-        var remaining = offset
-        for (i, line) in lines.enumerated() {
-            if remaining <= line.count {
-                return (i, remaining)
-            }
-            remaining -= line.count + 1   // +1 for the joining `\n`
-        }
-        let lastIdx = max(0, lines.count - 1)
-        return (lastIdx, lines[lastIdx].count)
     }
 
     // MARK: - Key Handling
@@ -1310,17 +1294,49 @@ public struct PromptInput: TerminalView {
         maxVisibleLines: Int,
         wrapWidth: Int = .max,
         arrowMode: PromptArrowMode = .display,
-        boundaryHit: BoundaryHitAction = EnvironmentValues().boundaryHit
+        textEditing: TextEditingContext = EnvironmentValues().textEditing
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
-        var lines = splitLines(content)
-        let lineCount = lines.count
+        var lines = TextLines.split(content)
 
         // Clamp cursor
-        st.cursorRow = min(st.cursorRow, lineCount - 1)
+        st.cursorRow = min(st.cursorRow, lines.count - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
 
+        if let command = textEditing.keymap.command(for: event) {
+            let cursor = TextLines.offset(row: st.cursorRow, col: st.cursorCol, in: lines)
+            // A collapsed marker stands for text the user never sees: an edit
+            // takes all of it or none, and the cursor never stops inside it.
+            let markers = st.references.filter { !$0.isExpanded }.map { $0.start..<($0.start + $0.length) }
+            var buffer = TextEditingBuffer(text: Array(content), cursor: cursor, atomicRanges: markers)
+            switch textEditing.perform(command, on: &buffer) {
+            case .unsupported, .unchanged:
+                return .ignored
+            case .moved, .hitWall:
+                break
+            case .edited(let replaced, let insertedCount):
+                // The buffers stay in the pool; a reference the edit took
+                // goes, and those after it move with the text.
+                st.references = st.references.compactMap { reference in
+                    TextEditingBuffer.range(reference.start..<(reference.start + reference.length),
+                                            after: replaced, insertedCount: insertedCount)
+                        .map { moved in
+                            var reference = reference
+                            reference.start = moved.lowerBound
+                            return reference
+                        }
+                }
+                st.historyIndex = -1
+                let edited = String(buffer.text)
+                lines = TextLines.split(edited)
+                text.set(edited)
+            }
+            (st.cursorRow, st.cursorCol) = TextLines.position(of: buffer.cursor, in: lines)
+            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+            state.set(st)
+            return .handled
+        }
 
         switch event.key {
         // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
@@ -1336,7 +1352,7 @@ public struct PromptInput: TerminalView {
             lines.insert(after, at: st.cursorRow + 1)
             st.cursorRow += 1
             st.cursorCol = 0
-            text.set(lines.joined(separator: "\n"))
+            text.set(TextLines.join(lines))
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
@@ -1378,114 +1394,7 @@ public struct PromptInput: TerminalView {
             lines[st.cursorRow] = String(line[..<idx]) + String(c) + String(line[idx...])
             st.cursorCol += 1
             st.historyIndex = -1
-            text.set(lines.joined(separator: "\n"))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        // MARK: Backspace
-        case .backspace:
-            // Atomic delete of a collapsed marker: if cursor sits at
-            // the right edge of a collapsed reference, remove the
-            // ENTIRE underlying range instead of one character. The
-            // buffer stays in the pool.
-            //
-            // Compute current absolute cursor offset.
-            var absCursor = 0
-            for r in 0..<st.cursorRow { absCursor += lines[r].count + 1 }
-            absCursor += st.cursorCol
-            if let refIdx = st.references.firstIndex(where: {
-                !$0.isExpanded && $0.start + $0.length == absCursor
-            }) {
-                let ref = st.references[refIdx]
-                // Splice the underlying range out of `lines`.
-                var joined = lines.joined(separator: "\n")
-                let lo = joined.index(joined.startIndex, offsetBy: ref.start)
-                let hi = joined.index(joined.startIndex, offsetBy: ref.start + ref.length)
-                joined.removeSubrange(lo..<hi)
-                lines = splitLines(joined)
-                // Cursor lands where the marker used to start.
-                (st.cursorRow, st.cursorCol) = absoluteOffsetToRowCol(ref.start, lines: lines)
-                // Shift later refs left by `ref.length`. Remove this ref.
-                let length = ref.length
-                st.references.remove(at: refIdx)
-                for i in 0..<st.references.count where st.references[i].start > ref.start {
-                    st.references[i].start -= length
-                }
-                st.historyIndex = -1
-                text.set(joined)
-                adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-                state.set(st)
-                return .handled
-            }
-
-            if st.cursorCol > 0 {
-                let line = lines[st.cursorRow]
-                let delIdx = line.index(line.startIndex, offsetBy: st.cursorCol - 1)
-                let endIdx = line.index(line.startIndex, offsetBy: st.cursorCol)
-                lines[st.cursorRow] = String(line[..<delIdx]) + String(line[endIdx...])
-                st.cursorCol -= 1
-            } else if st.cursorRow > 0 {
-                // Merge with previous line
-                let prevLen = lines[st.cursorRow - 1].count
-                lines[st.cursorRow - 1] += lines[st.cursorRow]
-                lines.remove(at: st.cursorRow)
-                st.cursorRow -= 1
-                st.cursorCol = prevLen
-            }
-            // After a single-char delete, shift any reference whose
-            // range starts after the deletion offset left by 1.
-            for i in 0..<st.references.count {
-                if st.references[i].start > absCursor - 1 {
-                    st.references[i].start -= 1
-                }
-            }
-            text.set(lines.joined(separator: "\n"))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        // MARK: Delete
-        case .delete:
-            let line = lines[st.cursorRow]
-            if st.cursorCol < line.count {
-                let delIdx = line.index(line.startIndex, offsetBy: st.cursorCol)
-                let endIdx = line.index(after: delIdx)
-                lines[st.cursorRow] = String(line[..<delIdx]) + String(line[endIdx...])
-            } else if st.cursorRow < lineCount - 1 {
-                lines[st.cursorRow] += lines[st.cursorRow + 1]
-                lines.remove(at: st.cursorRow + 1)
-            }
-            text.set(lines.joined(separator: "\n"))
-            state.set(st)
-            return .handled
-
-        // MARK: Cursor movement
-        case .left:
-            if st.cursorCol > 0 {
-                st.cursorCol -= 1
-            } else if st.cursorRow > 0 {
-                st.cursorRow -= 1
-                st.cursorCol = lines[st.cursorRow].count
-            } else {
-                // Wall: cursor at (0, 0).
-                boundaryHit(.leftEdge)
-            }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        case .right:
-            let lineLen = lines[st.cursorRow].count
-            if st.cursorCol < lineLen {
-                st.cursorCol += 1
-            } else if st.cursorRow < lineCount - 1 {
-                st.cursorRow += 1
-                st.cursorCol = 0
-            } else {
-                // Wall: cursor at end of last logical row.
-                boundaryHit(.rightEdge)
-            }
+            text.set(TextLines.join(lines))
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
             return .handled
@@ -1509,7 +1418,7 @@ public struct PromptInput: TerminalView {
                         // raw paste content. Buffers stay in pool
                         // throughout, so re-binding by ID is enough.
                         st.references = entry.references
-                        let newLines = splitLines(entry.text)
+                        let newLines = TextLines.split(entry.text)
                         st.cursorRow = newLines.count - 1
                         st.cursorCol = newLines.last?.count ?? 0
                         recalled = true
@@ -1518,7 +1427,7 @@ public struct PromptInput: TerminalView {
             }
             if !moved && !recalled {
                 // Wall: arrow couldn't navigate AND no older history.
-                boundaryHit(.topEdge)
+                textEditing.boundaryHit(.topEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
             state.set(st)
@@ -1532,14 +1441,14 @@ public struct PromptInput: TerminalView {
                 if st.historyIndex < 0 {
                     text.set(st.savedInput)
                     st.references = []
-                    let newLines = splitLines(st.savedInput)
+                    let newLines = TextLines.split(st.savedInput)
                     st.cursorRow = newLines.count - 1
                     st.cursorCol = newLines.last?.count ?? 0
                 } else {
                     let entry = st.history[st.historyIndex]
                     text.set(entry.text)
                     st.references = entry.references
-                    let newLines = splitLines(entry.text)
+                    let newLines = TextLines.split(entry.text)
                     st.cursorRow = newLines.count - 1
                     st.cursorCol = newLines.last?.count ?? 0
                 }
@@ -1547,19 +1456,9 @@ public struct PromptInput: TerminalView {
             }
             if !moved && !advanced {
                 // Wall: arrow couldn't navigate AND no newer history.
-                boundaryHit(.bottomEdge)
+                textEditing.boundaryHit(.bottomEdge)
             }
             adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        case .home:
-            st.cursorCol = 0
-            state.set(st)
-            return .handled
-
-        case .end:
-            st.cursorCol = lines[st.cursorRow].count
             state.set(st)
             return .handled
 
@@ -1569,11 +1468,6 @@ public struct PromptInput: TerminalView {
     }
 
     // MARK: - Helpers
-
-    static func splitLines(_ text: String) -> [String] {
-        if text.isEmpty { return [""] }
-        return text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-    }
 
     /// Moves the cursor up one step under the selected arrow mode. Returns
     /// false if it could not move (already at top) so the caller can fall
