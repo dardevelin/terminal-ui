@@ -2,8 +2,9 @@
 
 Design:
 - One request per call, one response per call, framed as JSON lines over
-  AF_UNIX. The framework pumps the socket once per frame so every call
-  synchronizes on the next rendered frame.
+  AF_UNIX. The framework serves the socket before each frame's event drain —
+  an idle app wakes for it — so a call sent after a key is answered after
+  that key's frame.
 - Responses parse into small frozen dataclasses so tests use dot-access
   instead of dict indexing.
 - The default socket path is ``<diag_dir>/remote/latest.sock``. Pass
@@ -330,6 +331,41 @@ class Client:
         # ESC[200~ start, ESC[201~ end. Bytes go straight to stdin.
         payload = f"\x1b[200~{text}\x1b[201~".encode("utf-8")
         os.write(self._master_fd, payload)
+
+    def resize_terminal(self, cols: int, rows: int) -> None:
+        """Change the spawned app's terminal size as a terminal emulator
+        does: set the PTY's window size, then send SIGWINCH. The runner
+        starts the app in its own session without making the PTY its
+        controlling terminal, so the kernel would not send the signal."""
+        import signal
+
+        if self._master_fd is None or self.pid is None:
+            raise RemoteError("resize_terminal() needs the runner's PTY and pid")
+        set_window_size(self._master_fd, cols, rows)
+        os.kill(self.pid, signal.SIGWINCH)
+
+    def cpu_seconds(self) -> float:
+        """User plus system CPU time the app has used so far, from `/proc`
+        on Linux and `ps` elsewhere. `ps -o time` prints
+        `[[dd-]hh:]mm:ss.cc`."""
+        if self.pid is None:
+            raise RemoteError("cpu_seconds() needs the runner's pid")
+        stat = Path(f"/proc/{self.pid}/stat")
+        if stat.exists():
+            # Fields 14 and 15 (utime, stime), counted after the parenthesised
+            # command name, which may itself contain spaces.
+            fields = stat.read_text().rsplit(")", 1)[1].split()
+            ticks = int(fields[11]) + int(fields[12])
+            return ticks / os.sysconf("SC_CLK_TCK")
+        import subprocess
+
+        text = subprocess.run(["ps", "-o", "time=", "-p", str(self.pid)],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        days, _, clock = text.rpartition("-")
+        seconds = 0.0
+        for part in clock.split(":"):
+            seconds = seconds * 60 + float(part)
+        return seconds + (int(days) * 86400 if days else 0)
 
     def write_raw(self, data: bytes) -> None:
         """Write raw bytes to the master PTY exactly as a real terminal
@@ -876,3 +912,12 @@ def _probe_from_impl(data: Optional[Mapping[str, Any]]) -> Probe:
         declared=dict(data.get("declared") or {}),
         modifier_chain=tuple(data.get("modifier_chain") or ()),
     )
+
+
+def set_window_size(fd: int, cols: int, rows: int) -> None:
+    """Set a PTY's window size. `struct winsize` puts rows before columns."""
+    import fcntl
+    import struct
+    import termios
+
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))

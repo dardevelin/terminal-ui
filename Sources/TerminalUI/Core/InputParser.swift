@@ -144,9 +144,10 @@ private enum UTF8 {
 public enum InputParser {
 
     /// Read one event from stdin, blocking up to the raw-mode read timeout
-    /// (~100 ms). Returns `nil` on timeout with no input — the runtime's
-    /// input task simply loops. Requires raw mode; under normal terminal
-    /// line-buffering nothing arrives until Enter.
+    /// (~100 ms). Returns `nil` on timeout with no input. The runtime calls
+    /// it only once `poll()` reports input, so it does not wait. Requires
+    /// raw mode; under normal terminal line-buffering nothing arrives until
+    /// Enter.
     public static func readEvent() -> TerminalEvent? {
         #if DEBUG
         // When DEBUG + events trace are on, wrap the stdin source so we

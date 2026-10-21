@@ -283,8 +283,8 @@ owning PID is dead; `list` is read-only.
 
 A typed Python client + PTY runner live in `tools/terminalui/` (`client.py`,
 `runner.py`); smoke/integration harnesses in `tools/scripts/`. Protocol: strict
-one-request/one-response JSON lines over an AF_UNIX socket, pumped once per
-frame. Spawn Storybook via PTY only.
+one-request/one-response JSON lines over an AF_UNIX socket, served before each
+frame's event drain; an idle app wakes for it. Spawn Storybook via PTY only.
 
 ## Documentation (DocC → GitHub Pages)
 

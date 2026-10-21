@@ -31,7 +31,15 @@ public final class AttributeGraph: @unchecked Sendable {
     }
 
     /// Creates an empty graph; the first ``update(from:)`` builds the tree.
-    public init() {}
+    public convenience init() {
+        self.init(wake: nil)
+    }
+
+    /// A graph whose observed-state changes raise `wake`, so the runtime's
+    /// frame loop can sleep until one arrives.
+    init(wake: WakeSignal?) {
+        invalidations = InvalidationInbox(wake: wake)
+    }
 
     // MARK: - Dirty queue (in-place drain)
     //
@@ -66,7 +74,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Nodes invalidated since the last update or drain, by `onChange` on
     /// any thread or by the main actor. The main actor moves them into the
     /// dirty queue at the start of its next ``update(from:)`` or ``drain()``.
-    private let invalidations = InvalidationInbox()
+    private let invalidations: InvalidationInbox
 
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {

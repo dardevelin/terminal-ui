@@ -145,6 +145,21 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An idle app costs nothing.** An `.onDemand` app — documented as zero CPU
+  when idle — polled for work every millisecond, every app polled for a
+  resize every 16ms, and the input thread woke ten times a second. Now an
+  event, a change to observed state, a resize and a remote command each wake
+  the frame loop, which otherwise sleeps; the input thread blocks in one
+  `poll()` between events, and SIGWINCH writes to a pipe it watches. A capped
+  mode such as the default `.fps60` sleeps the same way and still draws at
+  most one frame per interval. An idle `.onDemand` app went from about 2% of
+  a core to nothing measurable. `TerminalRuntimeError.wakePipeUnavailable` is
+  new: the runtime throws it when it cannot open those pipes, and
+  `Terminal.checkResize()` is deprecated, since nothing needs to poll.
+- **A remote command reaches an idle app.** `swtui ctl inspector-toggle`, a
+  focus set and a screenshot changed what is drawn but asked for no frame,
+  and `invoke_action app.quit` fired a quit only a key's handling looked for,
+  so an idle `.onDemand` app did neither until the next keypress.
 - **A modal presented from inside a modal is drawn.** A presentation is drawn
   after the tree, over the whole screen; one declared while drawing another
   was added to a list that had already been read, so an alert raised from a

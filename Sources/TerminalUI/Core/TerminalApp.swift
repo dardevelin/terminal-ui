@@ -14,8 +14,9 @@ import Synchronization
 /// Everything the runtime can deliver to `onEvent(_:)` — one enum, one
 /// handler.
 ///
-/// Events are produced off the main actor (stdin parser, timer tasks, resize
-/// poller), queued, and drained on the MainActor once per frame. Returning
+/// Events are produced off the main actor (the input task, which also turns
+/// SIGWINCH into a resize, and timer tasks), queued, and drained on the
+/// MainActor once per frame. Returning
 /// `false` from `onEvent(_:)` for any event quits the app; view-level
 /// handlers still run for events the app-level handler lets through.
 public enum TerminalEvent: Sendable {
@@ -47,9 +48,17 @@ public enum TerminalEvent: Sendable {
 /// Thread-safe event queue. Producers push, main actor drains.
 final class EventQueue: Sendable {
     private let buffer = Mutex<[TerminalEvent]>([])
+    /// Raised on every push, so a frame loop with nothing to do sleeps until
+    /// an event arrives.
+    private let wake: WakeSignal
+
+    init(wake: WakeSignal) {
+        self.wake = wake
+    }
 
     func push(_ event: TerminalEvent) {
         buffer.withLock { $0.append(event) }
+        wake.wake()
     }
 
     func drain() -> [TerminalEvent] {
@@ -92,12 +101,12 @@ public struct TerminalTimer: Sendable {
 /// How the frame loop paces rendering — the CPU/latency trade-off knob.
 ///
 /// Set via `TerminalAppProtocol.renderMode` (default `.fps60`). In every
-/// mode, unchanged state costs nothing beyond the pacing check itself: a
-/// frame only does graph work when input arrived or an `@Observable`
-/// property changed. `.capped` sleeps the remaining frame budget; `.onDemand`
-/// drops the frame clock entirely and is the right choice for apps that
-/// should be invisible in `top` while idle. `.uncapped` exists for
-/// benchmarking, not production.
+/// mode but `.uncapped`, an app with nothing to do sleeps: the frame loop
+/// waits until input, a resize, an `@Observable` change or a timer wakes it,
+/// so an idle app is invisible in `top`. `.capped` then draws at most one
+/// frame per interval, holding back a burst of changes; `.onDemand` draws as
+/// soon as there is work. `.uncapped` exists for benchmarking, not
+/// production.
 public enum RenderMode: Sendable {
     /// Render as fast as possible — no sleep between frames.
     case uncapped
@@ -152,9 +161,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var needsRender: Bool = true
     private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
-    private let eventQueue = EventQueue()
+    /// Raised by every source of work, so the frame loop sleeps while there
+    /// is none.
+    private let wake = WakeSignal()
+    private let eventQueue: EventQueue
     private var outputBuffer = OutputBuffer()
-    private let graph = AttributeGraph()
+    private let graph: AttributeGraph
     private let debugPanel = DebugPanel()
     private let debugOverlay = DebugOverlay()
     private let inspector = Inspector()
@@ -201,8 +213,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     #if DEBUG
     /// Remote-control server. Nil unless `.terminalui/terminalui.toml`
     /// enables the `remote_control` feature — zero overhead otherwise. Pumped
-    /// once per frame before event drain so injected keystrokes land in the
-    /// same frame they arrive.
+    /// before each event drain, so injected keystrokes land in the frame they
+    /// arrive in, and whenever its socket wakes an idle loop.
     private var remoteControl: RemoteControlServer?
     #endif
 
@@ -225,6 +237,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         },
         @TerminalViewBuilder content: @escaping () -> RootView
     ) {
+        self.eventQueue = EventQueue(wake: wake)
+        self.graph = AttributeGraph(wake: wake)
         self.buildView = content
         self.onEvent = onEvent
         self.timers = timers
@@ -268,6 +282,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// Throws ``TerminalRuntimeError/rawModeUnavailable`` — before touching
     /// the screen — when stdin isn't a TTY.
     public func run() async throws {
+        // Self-pipes wake the input task's poll(): one when the runtime
+        // shuts down — a blocked read() on stdin doesn't respect
+        // Task.cancel() on Linux — and one the SIGWINCH handler writes to.
+        // Made before anything touches the terminal, so failing leaves it
+        // as it was.
+        // Closed last, after the defer below has cleared the descriptors.
+        let shutdownPipe = try SelfPipe()
+        defer { shutdownPipe.close() }
+        let resizePipe = try SelfPipe()
+        defer { resizePipe.close() }
         Terminal.installResizeHandler()
         // Raw-mode setup can fail when stdin isn't a TTY (CI, headless,
         // shell pipe). Propagate as a typed error so callers — and the
@@ -326,16 +350,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         #endif
 
-        // Self-pipe for shutdown signaling.
-        // A blocked read() on STDIN doesn't respect Task.cancel() on Linux;
-        // we wake it by writing a byte to this pipe, which poll() sees.
-        var shutdownPipeFDs: [Int32] = [-1, -1]
-        let pipeResult = shutdownPipeFDs.withUnsafeMutableBufferPointer { buf in
-            pipe(buf.baseAddress)
-        }
-        if pipeResult == 0 {
-            StdinByteSource.shutdownReadFD = shutdownPipeFDs[0]
-        }
+        StdinByteSource.shutdownReadFD = shutdownPipe.read
+        Terminal.resizeWakeFD = resizePipe.write
 
         defer {
             tracer.writeSummary()
@@ -347,12 +363,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
 
-            // Tear down shutdown pipe. Clear the FD first so any lingering
-            // readByte() call falls back to the plain read() path instead of
-            // polling a closed fd.
+            // Cleared before the pipes close, so neither a lingering
+            // readByte() nor a late SIGWINCH uses a closed — or reopened —
+            // descriptor.
             StdinByteSource.shutdownReadFD = nil
-            if shutdownPipeFDs[0] >= 0 { close(shutdownPipeFDs[0]) }
-            if shutdownPipeFDs[1] >= 0 { close(shutdownPipeFDs[1]) }
+            Terminal.resizeWakeFD = nil
 
             #if DEBUG
             // drop the remote-control server explicitly so its
@@ -379,27 +394,37 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // `withValue`; the run-loop body runs inside this closure and
         // the binding restores on exit — no manual teardown needed.
         try await GraphContext.$currentFocusEngine.withValue(focusEngine) {
-            try await runFrameLoop(shutdownPipeFDs: shutdownPipeFDs)
+            try await runFrameLoop(shutdownPipe: shutdownPipe, resizePipe: resizePipe)
         }
     }
 
     /// Body of `run()` after raw-mode setup and the focus-engine
     /// binding. Extracted so `run()` can wrap it in
     /// `GraphContext.$currentFocusEngine.withValue`.
-    private func runFrameLoop(shutdownPipeFDs: [Int32]) async throws {
+    private func runFrameLoop(shutdownPipe: SelfPipe, resizePipe: SelfPipe) async throws {
         renderFullFrame()
 
         let queue = self.eventQueue
 
-        // Concurrent producers push events into the shared queue.
-        // Task.detached runs off MainActor — these are the only threads that
-        // touch the EventQueue (which is NSLock-protected).
-        // The main loop below drains the queue on MainActor.
+        // Producers push into the queue from their own threads — the input
+        // task, timers, the remote-control dispatcher — and the loop below
+        // drains it on the MainActor.
 
+        // Blocks in one poll() between events — no timeout — so an idle app's
+        // input thread sleeps; a resize arrives the same way, from SIGWINCH.
+        // Cancellation cannot interrupt poll(); the shutdown pipe ends it.
         let inputTask = Task.detached {
-            while !Task.isCancelled {
-                if let event = InputParser.readEvent() {
-                    queue.push(event)
+            while true {
+                switch StdinByteSource.waitForActivity(resize: resizePipe.read, shutdown: shutdownPipe.read) {
+                case .input:
+                    if let event = InputParser.readEvent() {
+                        queue.push(event)
+                    }
+                case .resize:
+                    let newSize = Terminal.size()
+                    queue.push(.resize(newSize.cols, newSize.rows))
+                case .shutdown:
+                    return
                 }
             }
         }
@@ -416,17 +441,6 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 }
             }
             timerTasks.append(task)
-        }
-
-        // Resize poller — uses atomic flag set by SIGWINCH handler
-        let resizeTask = Task.detached {
-            while !Task.isCancelled {
-                if Terminal.checkResize() {
-                    let newSize = Terminal.size()
-                    queue.push(.resize(newSize.cols, newSize.rows))
-                }
-                try? await Task.sleep(for: .milliseconds(16))
-            }
         }
 
         // Frame loop — runs on MainActor.
@@ -567,69 +581,40 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 }
             }
 
+            // An action can quit without a key: `invoke_action` from a remote
+            // client fires it outside event handling.
+            if pendingQuitSignal?.fired == true {
+                running = false
+            }
+
             // Render
             if running {
-                switch renderMode {
-                case .uncapped:
+                if case .uncapped = renderMode {
                     // Always render — for benchmarking max throughput
                     renderDiffFrame()
                     needsRender = false
                     await Task.yield()
-
-                case .capped(let interval):
-                    let frameStart = ContinuousClock.now
-                    // `hasDirtyNodes` is the atomic observation tracking sets
-                    // when an `@Observable` property changes, from whatever
-                    // thread changed it. Gating on `needsRender` alone meant
-                    // only *input* could produce a frame: state mutated by a
-                    // `Task` marked the graph dirty and the frame was dropped
-                    // until the user happened to press a key.
-                    if needsRender || graph.hasDirtyNodes {
-                        renderDiffFrame()
-                        needsRender = false
-                    }
-                    // Sleep only the remaining budget (interval minus work done)
-                    let elapsed = ContinuousClock.now - frameStart
-                    let remaining = interval - elapsed
+                    continue
+                }
+                let frameStart = ContinuousClock.now
+                if needsFrame {
+                    renderDiffFrame()
+                    needsRender = false
+                }
+                await waitForWork()
+                // `.capped` draws at most one frame per interval: woken early,
+                // it waits out the rest. After a long idle there is none left.
+                if case .capped(let interval) = renderMode {
+                    let remaining = interval - (ContinuousClock.now - frameStart)
                     if remaining > .zero {
                         try? await Task.sleep(for: remaining)
-                    }
-
-                case .onDemand:
-                    // Render if dirty, then wait for next event
-                    if needsRender || graph.hasDirtyNodes {
-                        renderDiffFrame()
-                        needsRender = false
-                    }
-                    // Wait for something to do. State counts as something to
-                    // do: an app whose only reactive input is a `Task` would
-                    // otherwise sit here forever with a screen it has already
-                    // been told is stale. Reading one atomic per poll leaves
-                    // the idle cost where it was.
-                    while running && !eventQueue.hasEvents && !graph.hasDirtyNodes {
-                        #if DEBUG
-                        // The socket must be serviced here too, not only at
-                        // the top of the outer loop. An idle `.onDemand` app
-                        // never reaches that point again, so a remote client's
-                        // commands are the only thing that could wake it — and
-                        // they arrive on the socket this loop would otherwise
-                        // stop reading. `pump()` never blocks, and this is
-                        // already a poll, so idle cost is unchanged.
-                        remoteControl?.pump()
-                        #endif
-                        try? await Task.sleep(for: .milliseconds(1))
                     }
                 }
             }
         }
 
-        inputTask.cancel()
-        // Wake the input task out of any blocked read() via the
-        // shutdown self-pipe so quit doesn't hang.
-        if shutdownPipeFDs[1] >= 0 {
-            var wake: UInt8 = 1
-            _ = write(shutdownPipeFDs[1], &wake, 1)
-        }
+        // Wake the input task out of its blocked poll() so quit doesn't hang.
+        shutdownPipe.signal()
         // `run()` clears the pipe's descriptor and closes the pipe as soon as
         // this returns, and the input task reads both on its own thread.
         // Unwaited, it could poll a closed descriptor, or one the cleanup that
@@ -637,7 +622,39 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // shell has taken back.
         await inputTask.value
         for t in timerTasks { t.cancel() }
-        resizeTask.cancel()
+    }
+
+    /// Whether the next frame has anything to draw: input or a remote
+    /// command asked for one, or `@Observable` state changed — from whatever
+    /// thread changed it. Gating on input alone meant state mutated by a
+    /// `Task` was not drawn until the user happened to press a key.
+    private var needsFrame: Bool {
+        needsRender || graph.hasDirtyNodes
+    }
+
+    /// Sleeps until there is something to do: an event, a frame to draw, a
+    /// quit fired outside event handling or — in a debug build — a remote
+    /// command, which the loop's one `pump()` serves before it drains events,
+    /// so a query is answered only after the keys sent before it are drawn.
+    private func waitForWork() async {
+        // Wakes raised while the loop was busy were for work it has just
+        // done; one left pending would only cost an empty pass.
+        wake.discardPending()
+        while !hasWork {
+            await wake.wait()
+            if Task.isCancelled { return }
+        }
+    }
+
+    private var hasWork: Bool {
+        if eventQueue.hasEvents || needsFrame || pendingQuitSignal?.fired == true {
+            return true
+        }
+        #if DEBUG
+        return remoteControl?.hasPendingActivity ?? false
+        #else
+        return false
+        #endif
     }
 
     // MARK: - Mouse-driven Routing
@@ -1160,12 +1177,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
     /// Attach a remote-control server to this runtime. Called by the runtime
     /// at startup in every debug build (zero opt-in) — the server is
-    /// non-blocking so a running app with no connected client has no
-    /// overhead beyond one `accept()` call per frame.
+    /// non-blocking, and an app with no connected client pays one `accept()`
+    /// per frame it draws and nothing while idle.
     public func attachRemoteControl(socketPath: String) {
+        let wake = self.wake
         remoteControl = RemoteControlServer(
             path: socketPath,
-            dispatcher: RuntimeRemoteDispatcher(runtime: self)
+            dispatcher: RuntimeRemoteDispatcher(runtime: self),
+            onActivity: { wake.wake() }
         )
     }
 
@@ -1215,7 +1234,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// Ask for a full-frame capture on the next render. The dispatcher
     /// returns the file path once the capture flushes. Matches the F4 debug
     /// key binding that already exists.
-    public func remoteRequestCapture() { captureCurrentFrame = true }
+    public func remoteRequestCapture() {
+        captureCurrentFrame = true
+        needsRender = true
+    }
+
+    /// A remote command changed what is drawn — focus, the inspector, an
+    /// action's effects — without an event or observed state to say so.
+    public func remoteRequestFrame() { needsRender = true }
 
     /// Current frame number — the dispatcher reports it for `wait_for_frame`
     /// bookkeeping on the client side. Pulled from the global `frameStats`
@@ -1242,6 +1268,9 @@ extension TerminalRuntime: RemoteControlRuntime {}
 /// Write a custom `@main` that catches it when you want richer fallback,
 /// e.g. rendering once via `TerminalApp.print(_:width:)` and exiting 0.
 public enum TerminalRuntimeError: Error, Equatable {
+    /// `pipe(2)` failed — the process is out of file descriptors. The runtime
+    /// needs two self-pipes to wake its input task.
+    case wakePipeUnavailable
     /// `Terminal.enableRawMode()` returned false — `tcgetattr` or
     /// `tcsetattr` failed (typically because stdin isn't a TTY).
     /// Without raw mode the input parser can't deliver per-keystroke
