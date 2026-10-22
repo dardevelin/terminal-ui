@@ -1054,28 +1054,157 @@ public struct TextArea: TerminalView {
             state.set(editorState)
         }
 
-        if let command = textEditing.keymap.command(for: event) {
-            if command == .undo {
+        /// What the editor does with `command`, or nil to pass it over.
+        func perform(_ command: TextEditCommand) -> KeyEventResult? {
+            switch command {
+            case .undo:
                 applyUndo(text: text, state: state, visibleHeight: visibleHeight)
                 return .handled
-            }
-            if command == .redo {
+            case .redo:
                 applyRedo(text: text, state: state, visibleHeight: visibleHeight)
                 return .handled
+            case .moveUp:
+                if arrowMode == .display && wrapWidth > 0 {
+                    // Project current cursor to (chunk, col) within the
+                    // current logical line, ask displayArrowUp for the
+                    // destination, and translate back to (row, col).
+                    let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
+                    let (curChunk, _) = projectCursor(
+                        logicalLine: lines[cursor.row],
+                        logicalCol: cursor.col,
+                        wrapWidth: wrapWidth
+                    )
+                    let desired = editorState.desiredCol ?? cursor.col
+                    let prevChunks: [String]? = cursor.row > 0
+                        ? TextLayout.wrapWords(lines[cursor.row - 1], width: wrapWidth)
+                        : nil
+                    let (newChunk, newCol) = displayArrowUp(
+                        currentChunk: curChunk,
+                        currentCol: cursor.col,
+                        chunksOfCurrentLine: currentChunks,
+                        chunksOfPreviousLine: prevChunks,
+                        desiredCol: desired
+                    )
+                    if newChunk == -1 {
+                        // Cross to previous logical line, last chunk.
+                        cursor.row -= 1
+                        let prev = prevChunks ?? []
+                        cursor.col = unprojectCursor(
+                            chunks: prev,
+                            chunkIndex: prev.count - 1,
+                            columnInChunk: newCol,
+                            logicalLine: lines[cursor.row]
+                        )
+                    } else if newChunk != curChunk {
+                        // Move within current logical line — translate
+                        // (chunk, col) back to logical col.
+                        cursor.col = unprojectCursor(
+                            chunks: currentChunks,
+                            chunkIndex: newChunk,
+                            columnInChunk: newCol,
+                            logicalLine: lines[cursor.row]
+                        )
+                    } else {
+                        // Wall: row 0 + chunk 0, displayArrowUp returned
+                        // (curChunk, currentCol) — no destination.
+                        textEditing.boundaryHit(.topEdge)
+                    }
+                    editorState.desiredCol = desired
+                } else if cursor.row > 0 {
+                    let desired = editorState.desiredCol ?? cursor.col
+                    cursor.row -= 1
+                    cursor.col = min(desired, lines[cursor.row].count)
+                    editorState.desiredCol = desired
+                } else {
+                    // .logical mode at row 0 — buffer-top wall.
+                    textEditing.boundaryHit(.topEdge)
+                }
+                commitCursorMove()
+                return .handled
+
+            case .moveDown:
+                if arrowMode == .display && wrapWidth > 0 {
+                    let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
+                    let (curChunk, _) = projectCursor(
+                        logicalLine: lines[cursor.row],
+                        logicalCol: cursor.col,
+                        wrapWidth: wrapWidth
+                    )
+                    let desired = editorState.desiredCol ?? cursor.col
+                    let nextChunks: [String]? = cursor.row + 1 < lines.count
+                        ? TextLayout.wrapWords(lines[cursor.row + 1], width: wrapWidth)
+                        : nil
+                    let (newChunk, newCol) = displayArrowDown(
+                        currentChunk: curChunk,
+                        currentCol: cursor.col,
+                        chunksOfCurrentLine: currentChunks,
+                        chunksOfNextLine: nextChunks,
+                        desiredCol: desired
+                    )
+                    if newChunk == -1 {
+                        // Cross to next logical line, chunk 0.
+                        cursor.row += 1
+                        let next = nextChunks ?? []
+                        cursor.col = unprojectCursor(
+                            chunks: next,
+                            chunkIndex: 0,
+                            columnInChunk: newCol,
+                            logicalLine: lines[cursor.row]
+                        )
+                    } else if newChunk != curChunk {
+                        cursor.col = unprojectCursor(
+                            chunks: currentChunks,
+                            chunkIndex: newChunk,
+                            columnInChunk: newCol,
+                            logicalLine: lines[cursor.row]
+                        )
+                    } else {
+                        // Wall: last row + last chunk — no destination.
+                        textEditing.boundaryHit(.bottomEdge)
+                    }
+                    editorState.desiredCol = desired
+                } else if cursor.row < lines.count - 1 {
+                    let desired = editorState.desiredCol ?? cursor.col
+                    cursor.row += 1
+                    cursor.col = min(desired, lines[cursor.row].count)
+                    editorState.desiredCol = desired
+                } else {
+                    // .logical mode at last row — buffer-bottom wall.
+                    textEditing.boundaryHit(.bottomEdge)
+                }
+                commitCursorMove()
+                return .handled
+
+            case .pageUp, .pageDown:
+                let jump = max(1, visibleHeight) * (command == .pageUp ? -1 : 1)
+                cursor.row = min(lines.count - 1, max(0, cursor.row + jump))
+                cursor.col = min(cursor.col, lines[cursor.row].count)
+                commitCursorMove()
+                return .handled
+            default:
+                break
             }
-            // A deletion with text selected takes the selection instead.
-            if command.isDeletion, let selection = editorState.selection, !selection.isEmpty {
+            guard command.isBufferCommand else { return nil }
+            // With text selected, a deletion takes the selection, and a line
+            // break or a yank replaces it.
+            let selection = editorState.selection.flatMap { $0.isEmpty ? nil : $0 }
+            if let selection, command.isDeletion {
                 pushUndoSnapshot()
                 deleteSelection(lines: &lines, selection: selection, cursor: &cursor)
                 commitTextEdit()
                 return .handled
             }
-            var buffer = TextEditingBuffer(text: Array(content),
+            let before = (lines: lines, cursor: cursor)
+            if let selection, command == .insertNewline || command == .yank {
+                deleteSelection(lines: &lines, selection: selection, cursor: &cursor)
+            }
+            var buffer = TextEditingBuffer(text: Array(TextLines.join(lines)),
                                            cursor: TextLines.offset(row: cursor.row, col: cursor.col, in: lines))
             let result = textEditing.perform(command, on: &buffer)
             switch result {
             case .unsupported, .unchanged:
-                return .ignored
+                (lines, cursor) = before
+                return nil
             case .edited:
                 pushUndoSnapshot()
                 lines = TextLines.split(String(buffer.text))
@@ -1092,173 +1221,28 @@ public struct TextArea: TerminalView {
             return .handled
         }
 
-        switch event.key {
-
-        // MARK: Character Input
-
-        case .character(let c):
-            // Chords no command claims bubble to the parent.
-            guard !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) else {
-                return .ignored
+        let commands = textEditing.keymap.commands(for: event)
+        if !commands.isEmpty {
+            // The first command that applies wins; each runs at most once.
+            for command in commands {
+                if let result = perform(command) { return result }
             }
-
-            // Snapshot BEFORE mutating so Ctrl+Z restores this state.
-            pushUndoSnapshot()
-            // Replace selection with typed character
-            if let sel = editorState.selection, !sel.isEmpty {
-                deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
-            }
-
-            insertCharacter(c, at: &cursor, in: &lines)
-            commitTextEdit()
-            return .handled
-
-        // MARK: Enter
-
-        case .enter:
-            pushUndoSnapshot()
-            if let sel = editorState.selection, !sel.isEmpty {
-                deleteSelection(lines: &lines, selection: sel, cursor: &cursor)
-            }
-            insertNewline(at: &cursor, in: &lines)
-            commitTextEdit()
-            return .handled
-
-        // MARK: Arrow Up
-
-        case .up:
-            if arrowMode == .display && wrapWidth > 0 {
-                // Project current cursor to (chunk, col) within the
-                // current logical line, ask displayArrowUp for the
-                // destination, and translate back to (row, col).
-                let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
-                let (curChunk, _) = projectCursor(
-                    logicalLine: lines[cursor.row],
-                    logicalCol: cursor.col,
-                    wrapWidth: wrapWidth
-                )
-                let desired = editorState.desiredCol ?? cursor.col
-                let prevChunks: [String]? = cursor.row > 0
-                    ? TextLayout.wrapWords(lines[cursor.row - 1], width: wrapWidth)
-                    : nil
-                let (newChunk, newCol) = displayArrowUp(
-                    currentChunk: curChunk,
-                    currentCol: cursor.col,
-                    chunksOfCurrentLine: currentChunks,
-                    chunksOfPreviousLine: prevChunks,
-                    desiredCol: desired
-                )
-                if newChunk == -1 {
-                    // Cross to previous logical line, last chunk.
-                    cursor.row -= 1
-                    let prev = prevChunks ?? []
-                    cursor.col = unprojectCursor(
-                        chunks: prev,
-                        chunkIndex: prev.count - 1,
-                        columnInChunk: newCol,
-                        logicalLine: lines[cursor.row]
-                    )
-                } else if newChunk != curChunk {
-                    // Move within current logical line — translate
-                    // (chunk, col) back to logical col.
-                    cursor.col = unprojectCursor(
-                        chunks: currentChunks,
-                        chunkIndex: newChunk,
-                        columnInChunk: newCol,
-                        logicalLine: lines[cursor.row]
-                    )
-                } else {
-                    // Wall: row 0 + chunk 0, displayArrowUp returned
-                    // (curChunk, currentCol) — no destination.
-                    textEditing.boundaryHit(.topEdge)
-                }
-                editorState.desiredCol = desired
-            } else if cursor.row > 0 {
-                let desired = editorState.desiredCol ?? cursor.col
-                cursor.row -= 1
-                cursor.col = min(desired, lines[cursor.row].count)
-                editorState.desiredCol = desired
-            } else {
-                // .logical mode at row 0 — buffer-top wall.
-                textEditing.boundaryHit(.topEdge)
-            }
-            commitCursorMove()
-            return .handled
-
-        // MARK: Arrow Down
-
-        case .down:
-            if arrowMode == .display && wrapWidth > 0 {
-                let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
-                let (curChunk, _) = projectCursor(
-                    logicalLine: lines[cursor.row],
-                    logicalCol: cursor.col,
-                    wrapWidth: wrapWidth
-                )
-                let desired = editorState.desiredCol ?? cursor.col
-                let nextChunks: [String]? = cursor.row + 1 < lines.count
-                    ? TextLayout.wrapWords(lines[cursor.row + 1], width: wrapWidth)
-                    : nil
-                let (newChunk, newCol) = displayArrowDown(
-                    currentChunk: curChunk,
-                    currentCol: cursor.col,
-                    chunksOfCurrentLine: currentChunks,
-                    chunksOfNextLine: nextChunks,
-                    desiredCol: desired
-                )
-                if newChunk == -1 {
-                    // Cross to next logical line, chunk 0.
-                    cursor.row += 1
-                    let next = nextChunks ?? []
-                    cursor.col = unprojectCursor(
-                        chunks: next,
-                        chunkIndex: 0,
-                        columnInChunk: newCol,
-                        logicalLine: lines[cursor.row]
-                    )
-                } else if newChunk != curChunk {
-                    cursor.col = unprojectCursor(
-                        chunks: currentChunks,
-                        chunkIndex: newChunk,
-                        columnInChunk: newCol,
-                        logicalLine: lines[cursor.row]
-                    )
-                } else {
-                    // Wall: last row + last chunk — no destination.
-                    textEditing.boundaryHit(.bottomEdge)
-                }
-                editorState.desiredCol = desired
-            } else if cursor.row < lines.count - 1 {
-                let desired = editorState.desiredCol ?? cursor.col
-                cursor.row += 1
-                cursor.col = min(desired, lines[cursor.row].count)
-                editorState.desiredCol = desired
-            } else {
-                // .logical mode at last row — buffer-bottom wall.
-                textEditing.boundaryHit(.bottomEdge)
-            }
-            commitCursorMove()
-            return .handled
-
-        // MARK: Page Up / Down
-
-        case .pageUp:
-            let jump = max(1, visibleHeight)
-            cursor.row = max(0, cursor.row - jump)
-            cursor.col = min(cursor.col, lines[cursor.row].count)
-            commitCursorMove()
-            return .handled
-
-        case .pageDown:
-            let jump = max(1, visibleHeight)
-            cursor.row = min(lines.count - 1, cursor.row + jump)
-            cursor.col = min(cursor.col, lines[cursor.row].count)
-            commitCursorMove()
-            return .handled
-
-        default:
             return .ignored
         }
+
+        // Chords no command claims bubble to the parent.
+        guard case .character(let c) = event.key,
+              !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) else {
+            return .ignored
+        }
+        // Snapshot BEFORE mutating so Ctrl+Z restores this state.
+        pushUndoSnapshot()
+        if let selection = editorState.selection, !selection.isEmpty {
+            deleteSelection(lines: &lines, selection: selection, cursor: &cursor)
+        }
+        insertCharacter(c, at: &cursor, in: &lines)
+        commitTextEdit()
+        return .handled
     }
 
     // MARK: - Text Mutation
@@ -1269,17 +1253,6 @@ public struct TextArea: TerminalView {
         line.insert(ch, at: idx)
         lines[cursor.row] = line
         cursor.col += 1
-    }
-
-    static func insertNewline(at cursor: inout TextAreaCursor, in lines: inout [String]) {
-        let line = lines[cursor.row]
-        let splitAt = line.index(line.startIndex, offsetBy: min(cursor.col, line.count))
-        let before = String(line[line.startIndex..<splitAt])
-        let after = String(line[splitAt..<line.endIndex])
-        lines[cursor.row] = before
-        lines.insert(after, at: cursor.row + 1)
-        cursor.row += 1
-        cursor.col = 0
     }
 
     /// Delete a selection range. Sets cursor to the selection start.

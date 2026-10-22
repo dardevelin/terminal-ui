@@ -411,6 +411,8 @@ public struct PromptInputState: Equatable, Sendable {
     public var historyIndex: Int = -1
     /// Text saved when entering history so arrow-down can restore it.
     public var savedInput: String = ""
+    /// The paste markers in ``savedInput``, put back with it.
+    var savedReferences: [PasteReference] = []
     /// Buffer pool — append-only across the prompt's lifetime. References
     /// point into here; deleting a reference does NOT delete its buffer
     /// so it can be re-inserted. Indexed by `id`.
@@ -1304,20 +1306,31 @@ public struct PromptInput: TerminalView {
         st.cursorRow = min(st.cursorRow, lines.count - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
 
-        if let command = textEditing.keymap.command(for: event) {
-            let cursor = TextLines.offset(row: st.cursorRow, col: st.cursorCol, in: lines)
-            // A collapsed marker stands for text the user never sees: an edit
-            // takes all of it or none, and the cursor never stops inside it.
+        /// Shows `recalled` in place of the draft, its markers with it, the
+        /// cursor at its end.
+        func recall(_ recalled: String, references: [PasteReference]) {
+            text.set(recalled)
+            st.references = references
+            lines = TextLines.split(recalled)
+            (st.cursorRow, st.cursorCol) = TextLines.position(of: recalled.count, in: lines)
+        }
+
+        /// Performs a buffer command on the prompt's text. A collapsed marker
+        /// stands for text the user never sees: an edit takes all of it or
+        /// none, the cursor never stops inside it, and the markers after an
+        /// edit move with the text.
+        func edit(_ apply: (inout TextEditingBuffer) -> TextEditResult) -> KeyEventResult? {
             let markers = st.references.filter { !$0.isExpanded }.map { $0.start..<($0.start + $0.length) }
-            var buffer = TextEditingBuffer(text: Array(content), cursor: cursor, atomicRanges: markers)
-            switch textEditing.perform(command, on: &buffer) {
+            var buffer = TextEditingBuffer(text: Array(content),
+                                           cursor: TextLines.offset(row: st.cursorRow, col: st.cursorCol, in: lines),
+                                           atomicRanges: markers)
+            switch apply(&buffer) {
             case .unsupported, .unchanged:
-                return .ignored
+                return nil
             case .moved, .hitWall:
                 break
             case .edited(let replaced, let insertedCount):
-                // The buffers stay in the pool; a reference the edit took
-                // goes, and those after it move with the text.
+                // The buffers stay in the pool; only the references go.
                 st.references = st.references.compactMap { reference in
                     TextEditingBuffer.range(reference.start..<(reference.start + reference.length),
                                             after: replaced, insertedCount: insertedCount)
@@ -1333,138 +1346,85 @@ public struct PromptInput: TerminalView {
                 text.set(edited)
             }
             (st.cursorRow, st.cursorCol) = TextLines.position(of: buffer.cursor, in: lines)
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
             return .handled
         }
 
-        switch event.key {
-        // MARK: Submit (Enter) / Newline (Shift+Enter, Alt+Enter, Ctrl+Enter)
-        case .enter where !event.modifiers.isEmpty:
-            // Any modified Enter = insert newline (expand the input box).
-            // Option+Enter is the universal fallback — Terminal.app cannot
-            // distinguish Shift+Enter from plain Enter without kitty keyboard.
-            let line = lines[st.cursorRow]
-            let idx = line.index(line.startIndex, offsetBy: st.cursorCol)
-            let before = String(line[..<idx])
-            let after = String(line[idx...])
-            lines[st.cursorRow] = before
-            lines.insert(after, at: st.cursorRow + 1)
-            st.cursorRow += 1
-            st.cursorCol = 0
-            text.set(TextLines.join(lines))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        case .enter:
-            // Plain Enter = submit. The submitted text is the EXPANDED
-            // binding content; references are stripped before
-            // `onSubmit` fires (per design — receivers get pristine
-            // text, marker UX is purely a display concern). History
-            // entry preserves both so ↑-recall restores the marker
-            // view alongside the text.
-            let submitted = content.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !submitted.isEmpty {
-                let snapshot = PromptInputHistoryEntry(
-                    text: submitted,
-                    buffers: st.buffers,
-                    references: st.references
-                )
-                st.history.insert(snapshot, at: 0)
-                st.historyIndex = -1
-                st.savedInput = ""
-                onSubmit?(submitted)
-                text.set("")
-                st.cursorRow = 0
-                st.cursorCol = 0
-                st.scrollDisplayRow = 0
-                st.references = []  // Clear live references; buffers stay in pool.
-            }
-            state.set(st)
-            return .handled
-
-        // MARK: Character input
-        case .character(let c):
-            guard !event.modifiers.contains(.ctrl) && !event.modifiers.contains(.alt) else {
-                return .ignored
-            }
-            let line = lines[st.cursorRow]
-            let idx = line.index(line.startIndex, offsetBy: st.cursorCol)
-            lines[st.cursorRow] = String(line[..<idx]) + String(c) + String(line[idx...])
-            st.cursorCol += 1
-            st.historyIndex = -1
-            text.set(TextLines.join(lines))
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        case .up:
-            let moved = moveCursorUp(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
-            var recalled = false
-            if !moved {
-                // At the visual top of the current input → recall history.
-                if !st.history.isEmpty {
-                    if st.historyIndex == -1 {
-                        st.savedInput = text.get()
-                    }
-                    let nextIdx = min(st.historyIndex + 1, st.history.count - 1)
-                    if nextIdx != st.historyIndex {
-                        st.historyIndex = nextIdx
-                        let entry = st.history[nextIdx]
-                        text.set(entry.text)
-                        // Restore reference-set snapshot too — markers
-                        // re-appear on recall instead of devolving into
-                        // raw paste content. Buffers stay in pool
-                        // throughout, so re-binding by ID is enough.
-                        st.references = entry.references
-                        let newLines = TextLines.split(entry.text)
-                        st.cursorRow = newLines.count - 1
-                        st.cursorCol = newLines.last?.count ?? 0
-                        recalled = true
-                    }
+        /// What the prompt does with `command`, or nil to pass it over.
+        func perform(_ command: TextEditCommand) -> KeyEventResult? {
+            switch command {
+            case .submit:
+                // The submitted text is the expanded content, references
+                // stripped: receivers get pristine text, and markers are a
+                // display concern. The history entry keeps both, so recall
+                // brings the markers back with the text.
+                let submitted = content.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !submitted.isEmpty {
+                    st.history.insert(PromptInputHistoryEntry(text: submitted, buffers: st.buffers,
+                                                              references: st.references), at: 0)
+                    st.historyIndex = -1
+                    st.savedInput = ""
+                    st.savedReferences = []
+                    onSubmit?(submitted)
+                    text.set("")
+                    st.cursorRow = 0
+                    st.cursorCol = 0
+                    st.scrollDisplayRow = 0
+                    st.references = []
                 }
-            }
-            if !moved && !recalled {
-                // Wall: arrow couldn't navigate AND no older history.
-                textEditing.boundaryHit(.topEdge)
-            }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        case .down:
-            let moved = moveCursorDown(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode)
-            var advanced = false
-            if !moved && st.historyIndex >= 0 {
+                return .handled
+            case .moveUp:
+                return moveCursorUp(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode) ? .handled : nil
+            case .moveDown:
+                return moveCursorDown(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode) ? .handled : nil
+            case .previousHistory:
+                guard st.historyIndex + 1 < st.history.count else {
+                    textEditing.boundaryHit(.topEdge)
+                    return .handled
+                }
+                if st.historyIndex == -1 {
+                    st.savedInput = content
+                    st.savedReferences = st.references
+                }
+                st.historyIndex += 1
+                let entry = st.history[st.historyIndex]
+                recall(entry.text, references: entry.references)
+                return .handled
+            case .nextHistory:
+                guard st.historyIndex >= 0 else {
+                    textEditing.boundaryHit(.bottomEdge)
+                    return .handled
+                }
                 st.historyIndex -= 1
                 if st.historyIndex < 0 {
-                    text.set(st.savedInput)
-                    st.references = []
-                    let newLines = TextLines.split(st.savedInput)
-                    st.cursorRow = newLines.count - 1
-                    st.cursorCol = newLines.last?.count ?? 0
+                    recall(st.savedInput, references: st.savedReferences)
                 } else {
                     let entry = st.history[st.historyIndex]
-                    text.set(entry.text)
-                    st.references = entry.references
-                    let newLines = TextLines.split(entry.text)
-                    st.cursorRow = newLines.count - 1
-                    st.cursorCol = newLines.last?.count ?? 0
+                    recall(entry.text, references: entry.references)
                 }
-                advanced = true
+                return .handled
+            default:
+                guard command.isBufferCommand else { return nil }
+                return edit { textEditing.perform(command, on: &$0) }
             }
-            if !moved && !advanced {
-                // Wall: arrow couldn't navigate AND no newer history.
-                textEditing.boundaryHit(.bottomEdge)
-            }
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
-            state.set(st)
-            return .handled
-
-        default:
-            return .ignored
         }
+
+        let commands = textEditing.keymap.commands(for: event)
+        var result: KeyEventResult?
+        if !commands.isEmpty {
+            // The first command that applies wins; each runs at most once.
+            for command in commands {
+                result = perform(command)
+                if result != nil { break }
+            }
+        } else if case .character(let c) = event.key,
+                  !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) {
+            result = edit { $0.insert([c]) } ?? .handled
+        }
+        // Otherwise a chord no command claims, which bubbles to the parent.
+        guard let result else { return .ignored }
+        adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+        state.set(st)
+        return result
     }
 
     // MARK: - Helpers

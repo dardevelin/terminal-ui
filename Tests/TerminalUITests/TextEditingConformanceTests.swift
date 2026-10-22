@@ -127,6 +127,12 @@ private let multilineCases: [EditCase] = [
     EditCase(label: "Ctrl+K kills to the line's end", keys: [ctrl("k")], start: "one\nt|wo\nthree", expected: "one\nt|\nthree"),
     EditCase(label: "Ctrl+K at a line's end joins the next", keys: [ctrl("k")], start: "one|\ntwo", expected: "one|two"),
     EditCase(label: "Ctrl+U at a line's start joins the previous", keys: [ctrl("u")], start: "one\n|two", expected: "one|two"),
+    EditCase(label: "Ctrl+P up a row", keys: [ctrl("p")], start: "one\ntw|o", expected: "on|e\ntwo"),
+    EditCase(label: "Ctrl+N down a row", keys: [ctrl("n")], start: "o|ne\ntwo", expected: "one\nt|wo"),
+    EditCase(label: "Ctrl+Home to the text's start", keys: [key(.home, .ctrl)], start: "one\ntw|o", expected: "|one\ntwo"),
+    EditCase(label: "Alt+> to the text's end", keys: [alt(">")], start: "o|ne\ntwo", expected: "one\ntwo|"),
+    EditCase(label: "Shift+Enter starts a new line", keys: [key(.enter, .shift)], start: "one|two", expected: "one\n|two"),
+    EditCase(label: "Ctrl+Shift+Enter starts a new line", keys: [key(.enter, [.ctrl, .shift])], start: "one|two", expected: "one\n|two"),
 ]
 
 @Suite("Every text input edits the same way")
@@ -165,12 +171,104 @@ struct TextEditingConformanceTests {
         #expect(result == .ignored)
     }
 
+    @Test("A single-line field leaves Return and the rows to the app")
+    func singleLineFieldPassesRowsAndReturnOn() {
+        var text = "line"
+        var cursor = 2
+        for event in [key(.enter), key(.up), ctrl("p"), key(.down)] {
+            let result = TextInput.handleKey(event, text: Binding(get: { text }, set: { text = $0 }),
+                                             cursor: Binding(get: { cursor }, set: { cursor = $0 }),
+                                             maxLength: nil, textEditing: isolatedEditing())
+            #expect(result == .ignored, "\(event.key)")
+        }
+    }
+
+    @Test("A prompt can send on Shift+Enter and take Enter as a new line")
+    func promptSubmitRebound() {
+        let rebound = isolatedEditing(.standard.merging([
+            .keyboard(.enter, []): [.insertNewline],
+            .keyboard(.enter, .shift): [.submit],
+        ]))
+        var text = "one"
+        var state = PromptInputState()
+        state.cursorCol = 3
+        var sent: [String] = []
+        let textBinding = Binding(get: { text }, set: { text = $0 })
+        let stateBinding = Binding(get: { state }, set: { state = $0 })
+        func press(_ event: KeyEvent) {
+            _ = PromptInput.handleKey(event, text: textBinding, state: stateBinding,
+                                      onSubmit: { sent.append($0) },
+                                      promptWidth: 2, maxVisibleLines: 10, textEditing: rebound)
+        }
+        press(key(.enter))
+        press(key(.character("2")))
+        #expect(text == "one\n2")
+        #expect(sent.isEmpty)
+        press(key(.enter, .shift))
+        #expect(sent == ["one\n2"])
+    }
+
     @Test("An app can rebind a key")
     func rebinding() {
-        let rebound = isolatedEditing(.standard.merging([.keyboard(.character("k"), .ctrl): nil]))
+        let rebound = isolatedEditing(.standard.merging([.keyboard(.character("k"), .ctrl): []]))
         for input in inputs {
             let result = input.press([ctrl("k")], on: "alpha|beta", textEditing: rebound)
             #expect(result == "alpha|beta", "\(input.name): an unbound Ctrl+K is ignored")
         }
+    }
+}
+
+@Suite("A prompt's paste markers move with its text")
+struct PromptMarkerTests {
+
+    /// A prompt holding `text`, its cursor at `cursor`, with one collapsed
+    /// marker over `marker`.
+    private func prompt(_ text: String, cursor: Int, marker: Range<Int>) -> (String, PromptInputState) {
+        var state = PromptInputState()
+        state.cursorCol = cursor
+        state.references = [PasteReference(id: 1, bufferID: 1, start: marker.lowerBound,
+                                           length: marker.count)]
+        return (text, state)
+    }
+
+    private func press(_ events: [KeyEvent], text: inout String, state: inout PromptInputState) {
+        let textEditing = isolatedEditing()
+        var current = text
+        var currentState = state
+        let textBinding = Binding(get: { current }, set: { current = $0 })
+        let stateBinding = Binding(get: { currentState }, set: { currentState = $0 })
+        for event in events {
+            _ = PromptInput.handleKey(event, text: textBinding, state: stateBinding, onSubmit: nil,
+                                      promptWidth: 2, maxVisibleLines: 10, textEditing: textEditing)
+        }
+        text = current
+        state = currentState
+    }
+
+    @Test("A character typed before a marker moves it")
+    func typingBeforeAMarker() {
+        var (text, state) = prompt("ab<pasted>", cursor: 0, marker: 2..<10)
+        press([key(.character("x"))], text: &text, state: &state)
+        #expect(text == "xab<pasted>")
+        #expect(state.references.first?.start == 3)
+    }
+
+    @Test("A new line before a marker moves it")
+    func newLineBeforeAMarker() {
+        var (text, state) = prompt("ab<pasted>", cursor: 0, marker: 2..<10)
+        press([key(.enter, .alt)], text: &text, state: &state)
+        #expect(text == "\nab<pasted>")
+        #expect(state.references.first?.start == 3)
+    }
+
+    @Test("Going into history and back restores the draft's markers")
+    func draftMarkersSurviveHistory() {
+        var (text, state) = prompt("ab<pasted>", cursor: 10, marker: 2..<10)
+        state.history = [PromptInputHistoryEntry(text: "older", buffers: [], references: [])]
+        press([key(.up)], text: &text, state: &state)
+        #expect(text == "older")
+        press([key(.down)], text: &text, state: &state)
+        #expect(text == "ab<pasted>")
+        #expect(state.references.map(\.start) == [2])
     }
 }

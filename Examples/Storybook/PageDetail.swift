@@ -853,7 +853,7 @@ struct PreviewPane: TerminalView {
                          state: Binding(get: { state.keymapNotesState },
                                           set: { state.keymapNotesState = $0 }),
                          visibleHeight: 3)
-                    .textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): .redo]))
+                    .textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): [.redo]]))
             }
         case .modal:
             VStack {
