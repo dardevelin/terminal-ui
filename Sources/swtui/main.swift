@@ -55,6 +55,8 @@ case "clean":
     cleanCommand()
 case "ctl":
     ctlCommand(args: Array(args.dropFirst()))
+case "keys":
+    keysCommand(args: Array(args.dropFirst()))
 case "help", "--help", "-h":
     printUsage()
 default:
@@ -311,6 +313,7 @@ func printUsage() {
         ("config",               "Print current config file"),
         ("clean",                "Remove all diagnostic output"),
         ("ctl <cmd> [...]",      "Drive a running debug build (see `swtui ctl`)"),
+        ("keys [--check <file>]", "List the text-editing commands and keys, or check a keys.toml"),
         ("help",                 "Show this help"),
     ]
     for (cmd, desc) in rows {

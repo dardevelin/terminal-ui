@@ -188,6 +188,13 @@ struct TextKeymapTests {
         }
     }
 
+    @Test("Every command the standard keymap binds is declared, once")
+    func declaredCoversTheStandardKeymap() {
+        let bound = Set(TextKeymap.standard.bindings.values.flatMap { $0 })
+        #expect(bound.isSubset(of: Set(TextEditCommand.declared)))
+        #expect(Set(TextEditCommand.declared).count == TextEditCommand.declared.count)
+    }
+
     @Test("A typed character is not a command")
     func plainCharacters() {
         #expect(command(.character("k")) == nil)

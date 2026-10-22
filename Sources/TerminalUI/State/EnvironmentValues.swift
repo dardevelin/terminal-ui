@@ -164,6 +164,15 @@ public struct EnvironmentValues: Sendable {
     /// inputs. Set with `.textKeymap(_:)`.
     public var textKeymap: TextKeymap = .standard
 
+    /// The user's own bindings, laid over ``textKeymap``: the file an app
+    /// that opts in reads at launch. Read it to show the user its
+    /// ``UserKeymap/problems``.
+    public var userKeymap: UserKeymap = .none
+
+    /// Whether the user's own bindings apply in this subtree. Set with
+    /// `.allowsUserKeymap(_:)`.
+    public var allowsUserKeymap = true
+
     /// The text killed last, which yank puts back — see ``KillBuffer``. A
     /// running app supplies one for every frame, so a kill in one input can
     /// be yanked into another.

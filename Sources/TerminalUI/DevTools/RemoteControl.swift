@@ -8,6 +8,7 @@ import Darwin
 
 import Foundation
 import Synchronization
+import TerminalUIConfig
 
 // MARK: - Wire protocol (JSON lines)
 
@@ -662,7 +663,10 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         guard let key = parseKey(keyName) else {
             return RemoteResponse(id: request.id, ok: false, error: "unknown key: \(keyName)")
         }
-        let modifiers = parseModifiers(request.modifiers ?? [])
+        guard let modifiers = parseModifiers(request.modifiers ?? []) else {
+            return RemoteResponse(id: request.id, ok: false,
+                                  error: "unknown modifier in \(request.modifiers ?? [])")
+        }
         // `source: .remote` tags every dispatcher-injected event so the
         // debug input log + downstream audit machinery can distinguish MCP
         // from stdin presses without heuristics.
@@ -698,7 +702,10 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         guard let x = request.x, let y = request.y else {
             return RemoteResponse(id: request.id, ok: false, error: "send_mouse requires `x` + `y`")
         }
-        let modifiers = parseModifiers(request.modifiers ?? [])
+        guard let modifiers = parseModifiers(request.modifiers ?? []) else {
+            return RemoteResponse(id: request.id, ok: false,
+                                  error: "unknown modifier in \(request.modifiers ?? [])")
+        }
         let buttonName = request.button ?? "left"
         let button: MouseButton
         switch buttonName {
@@ -1238,43 +1245,22 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
 
     // MARK: Helpers
 
+    /// A key by the name ``KeyCombo`` gives it, or a single character, kept
+    /// in its case: `send-key A` types a capital.
     private func parseKey(_ name: String) -> Key? {
-        switch name.lowercased() {
-        case "enter", "return": return .enter
-        case "tab": return .tab
-        case "escape", "esc": return .escape
-        case "backspace": return .backspace
-        case "delete", "del": return .delete
-        case "up": return .up
-        case "down": return .down
-        case "left": return .left
-        case "right": return .right
-        case "home": return .home
-        case "end": return .end
-        case "pageup": return .pageUp
-        case "pagedown": return .pageDown
-        default:
-            // Function keys — "f1".."f12"
-            if name.hasPrefix("f"), let n = Int(name.dropFirst()) {
-                return .f(n)
-            }
-            // Single-character form — "a", "A", " ", etc.
-            if name.count == 1 { return .character(name.first!) }
-            return nil
-        }
+        if name.count == 1, let character = name.first { return .character(character) }
+        return KeyCombo.keyName(named: name).map(Key.init)
     }
 
-    private func parseModifiers(_ names: [String]) -> KeyModifiers {
-        var mods: KeyModifiers = []
+    /// Modifiers by the names ``KeyCombo`` gives them; nil if one is not a
+    /// modifier.
+    private func parseModifiers(_ names: [String]) -> KeyModifiers? {
+        var modifiers: KeyModifiers = []
         for name in names {
-            switch name.lowercased() {
-            case "shift": mods.insert(.shift)
-            case "alt", "option", "meta": mods.insert(.alt)
-            case "ctrl", "control": mods.insert(.ctrl)
-            default: break
-            }
+            guard let modifier = KeyCombo.modifier(named: name) else { return nil }
+            modifiers.insert(KeyModifiers(modifier))
         }
-        return mods
+        return modifiers
     }
 
     private func parseRect(_ raw: [Int]?, defaultWidth: Int, defaultHeight: Int) -> (Int, Int, Int, Int) {

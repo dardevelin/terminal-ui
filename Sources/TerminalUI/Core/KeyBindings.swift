@@ -85,39 +85,10 @@ public final class KeyBindings {
             guard let action = KeyAction.fromConfigName(actionName),
                   let combo = KeyCombo.parse(keyString) else { continue }
 
-            let (key, mods) = comboToKeyAndModifiers(combo)
-            bind(key, modifiers: mods, to: action)
+            bind(Key(combo.key), modifiers: KeyModifiers(combo), to: action)
         }
     }
 
-    /// Convert a KeyCombo (from TerminalUIConfig) to the framework's Key + KeyModifiers.
-    private func comboToKeyAndModifiers(_ combo: KeyCombo) -> (Key, KeyModifiers) {
-        let key: Key
-        switch combo.key {
-        case .character(let c): key = .character(c)
-        case .f(let n): key = .f(n)
-        case .enter: key = .enter
-        case .tab: key = .tab
-        case .escape: key = .escape
-        case .backspace: key = .backspace
-        case .delete: key = .delete
-        case .up: key = .up
-        case .down: key = .down
-        case .left: key = .left
-        case .right: key = .right
-        case .home: key = .home
-        case .end: key = .end
-        case .pageUp: key = .pageUp
-        case .pageDown: key = .pageDown
-        }
-
-        var mods: KeyModifiers = []
-        if combo.ctrl { mods.insert(.ctrl) }
-        if combo.alt { mods.insert(.alt) }
-        if combo.shift { mods.insert(.shift) }
-
-        return (key, mods)
-    }
     #endif
 
     /// Bind `key` + `modifiers` to `action`, replacing any chord previously

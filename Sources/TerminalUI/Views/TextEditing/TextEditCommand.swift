@@ -77,6 +77,17 @@ public struct TextEditCommand: RawRepresentable, Hashable, Sendable, Expressible
     /// Redo the last undone edit.
     public static let redo: TextEditCommand = "redo"
 
+    /// Every command the framework's inputs perform, in the order a listing
+    /// of them reads best.
+    public static let declared: [TextEditCommand] = [
+        .moveBackward, .moveForward, .moveWordBackward, .moveWordForward,
+        .moveToLineStart, .moveToLineEnd, .moveUp, .moveDown, .pageUp, .pageDown,
+        .moveToDocumentStart, .moveToDocumentEnd, .previousHistory, .nextHistory,
+        .insertNewline, .submit, .deleteBackward, .deleteForward, .deleteWordBackward,
+        .deleteWordForward, .deleteToWhitespaceBackward, .deleteToLineStart, .deleteToLineEnd,
+        .yank, .undo, .redo,
+    ]
+
     private static let movements: Set<TextEditCommand> = [
         .moveBackward, .moveForward, .moveWordBackward, .moveWordForward,
         .moveToLineStart, .moveToLineEnd, .moveUp, .moveDown, .pageUp, .pageDown,
@@ -126,7 +137,8 @@ public struct TextEditCommand: RawRepresentable, Hashable, Sendable, Expressible
 ///             .keyboard(.enter, .shift): [.submit],
 ///         ]))
 public struct TextKeymap: Sendable, Equatable {
-    private var bindings: [InputBinding: [TextEditCommand]]
+    /// Each bound key with the commands it tries, in order.
+    public private(set) var bindings: [InputBinding: [TextEditCommand]]
 
     /// A keymap with exactly `bindings`.
     public init(_ bindings: [InputBinding: [TextEditCommand]]) {
@@ -289,7 +301,8 @@ struct TextEditingContext: Sendable {
 
 extension EnvironmentValues {
     var textEditing: TextEditingContext {
-        TextEditingContext(keymap: textKeymap, killBuffer: killBuffer, boundaryHit: boundaryHit)
+        let keymap = allowsUserKeymap ? userKeymap.applied(to: textKeymap) : textKeymap
+        return TextEditingContext(keymap: keymap, killBuffer: killBuffer, boundaryHit: boundaryHit)
     }
 }
 
