@@ -806,12 +806,12 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     .boundaryFeedback(.bell)
                 """)
         case .textKeymap: return PageInfo(id: self, category: .modifiers, name: ".textKeymap",
-            summary: "Every text input edits with readline's keys — Ctrl+A/E line ends, Alt+B/F words, Ctrl+K/U/W kill, Ctrl+Y yank, Ctrl+Z/Ctrl+Shift+Z undo/redo. A subtree rebinds any of them; macOS terminals send Cmd+Left as Ctrl+A.",
+            summary: "Every text input edits with readline's keys — Ctrl+A/E line ends, Alt+B/F words, Ctrl+K/U/W kill, Ctrl+Y yank, Ctrl+P/N rows then history, Enter sends or breaks a line, Ctrl+Z/Ctrl+Shift+Z undo/redo. A subtree rebinds any of them; macOS terminals send Cmd+Left as Ctrl+A.",
             code: """
                 TextInput(text: $line)            // the standard keymap
                 TextArea(text: $notes, state: $notesState)
                     .textKeymap(.standard.merging([
-                        .keyboard(.character("y"), .ctrl): .redo,
+                        .keyboard(.character("y"), .ctrl): [.redo],
                     ]))
                 """)
         case .modal: return PageInfo(id: self, category: .modifiers, name: ".modal",

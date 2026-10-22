@@ -143,8 +143,13 @@ struct TextEditingCommandTests {
 @Suite("TextKeymap — the standard bindings are readline's")
 struct TextKeymapTests {
 
+    private func commands(_ key: Key, _ modifiers: KeyModifiers = []) -> [TextEditCommand] {
+        TextKeymap.standard.commands(for: KeyEvent(key: key, modifiers: modifiers))
+    }
+
     private func command(_ key: Key, _ modifiers: KeyModifiers = []) -> TextEditCommand? {
-        TextKeymap.standard.command(for: KeyEvent(key: key, modifiers: modifiers))
+        let bound = commands(key, modifiers)
+        return bound.count == 1 ? bound[0] : nil
     }
 
     @Test("Each command has the keys Claude Code, Crush and readline give it")
@@ -166,6 +171,21 @@ struct TextKeymapTests {
         #expect(command(.character("y"), .ctrl) == .yank)
         #expect(command(.character("z"), .ctrl) == .undo)
         #expect(command(.character("z"), [.ctrl, .shift]) == .redo)
+    }
+
+    @Test("A key can try several commands, the first that applies winning")
+    func chains() {
+        #expect(commands(.enter) == [.submit, .insertNewline])
+        #expect(commands(.up) == [.moveUp, .previousHistory])
+        #expect(commands(.character("p"), .ctrl) == [.moveUp, .previousHistory])
+        #expect(commands(.down) == [.moveDown, .nextHistory])
+    }
+
+    @Test("Enter with any modifier, or any mix of them, is a new line")
+    func modifiedEnter() {
+        for modifiers: KeyModifiers in [.shift, .alt, .ctrl, [.shift, .ctrl], [.alt, .ctrl], [.shift, .alt, .ctrl]] {
+            #expect(command(.enter, modifiers) == .insertNewline)
+        }
     }
 
     @Test("A typed character is not a command")

@@ -8,7 +8,8 @@ import Synchronization
 /// Open, like ``ActionID``: the raw value is the command's name, so a
 /// command added later, or one an app defines, is just another name, and a
 /// keymap can bind it without the framework knowing it in advance. An input
-/// ignores a command it does not perform, and the key passes on.
+/// passes over a command it does not perform — to the next one bound to the
+/// key, and after the last, to the app.
 public struct TextEditCommand: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
     public let rawValue: String
 
@@ -32,6 +33,28 @@ public struct TextEditCommand: RawRepresentable, Hashable, Sendable, Expressible
     public static let moveToLineStart: TextEditCommand = "moveToLineStart"
     /// To the end of the current line.
     public static let moveToLineEnd: TextEditCommand = "moveToLineEnd"
+    /// Up a row, in an input that holds more than one.
+    public static let moveUp: TextEditCommand = "moveUp"
+    /// Down a row, in an input that holds more than one.
+    public static let moveDown: TextEditCommand = "moveDown"
+    /// Up a screenful, in an input that scrolls.
+    public static let pageUp: TextEditCommand = "pageUp"
+    /// Down a screenful, in an input that scrolls.
+    public static let pageDown: TextEditCommand = "pageDown"
+    /// To the start of the text.
+    public static let moveToDocumentStart: TextEditCommand = "moveToDocumentStart"
+    /// To the end of the text.
+    public static let moveToDocumentEnd: TextEditCommand = "moveToDocumentEnd"
+    /// The previous entry of a prompt's history — readline's
+    /// `previous-history`.
+    public static let previousHistory: TextEditCommand = "previousHistory"
+    /// The next entry of a prompt's history, and after the newest, the draft
+    /// the user left — readline's `next-history`.
+    public static let nextHistory: TextEditCommand = "nextHistory"
+    /// A new line, in an input that holds more than one.
+    public static let insertNewline: TextEditCommand = "insertNewline"
+    /// Send what was typed, in an input that sends: a prompt.
+    public static let submit: TextEditCommand = "submit"
     /// Delete the character before the cursor.
     public static let deleteBackward: TextEditCommand = "deleteBackward"
     /// Delete the character after the cursor.
@@ -56,13 +79,22 @@ public struct TextEditCommand: RawRepresentable, Hashable, Sendable, Expressible
 
     private static let movements: Set<TextEditCommand> = [
         .moveBackward, .moveForward, .moveWordBackward, .moveWordForward,
-        .moveToLineStart, .moveToLineEnd,
+        .moveToLineStart, .moveToLineEnd, .moveUp, .moveDown, .pageUp, .pageDown,
+        .moveToDocumentStart, .moveToDocumentEnd,
     ]
 
     private static let deletions: Set<TextEditCommand> = [
         .deleteBackward, .deleteForward, .deleteWordBackward, .deleteWordForward,
         .deleteToWhitespaceBackward, .deleteToLineStart, .deleteToLineEnd,
     ]
+
+    /// What ``TextEditingBuffer`` performs; the rest — rows, pages, history,
+    /// submit, undo — belong to an input that has them.
+    private static let bufferCommands: Set<TextEditCommand> = deletions.union([
+        .moveBackward, .moveForward, .moveWordBackward, .moveWordForward,
+        .moveToLineStart, .moveToLineEnd, .moveToDocumentStart, .moveToDocumentEnd,
+        .yank, .insertNewline,
+    ])
 
     /// Whether the command only moves the cursor — so Shift with its key
     /// extends a selection.
@@ -71,44 +103,56 @@ public struct TextEditCommand: RawRepresentable, Hashable, Sendable, Expressible
     /// Whether the command deletes — so, with text selected, it takes the
     /// selection instead.
     var isDeletion: Bool { Self.deletions.contains(self) }
+
+    /// Whether ``TextEditingBuffer`` performs the command.
+    var isBufferCommand: Bool { Self.bufferCommands.contains(self) }
 }
 
-/// Which key performs which ``TextEditCommand``: data, apart from the
+/// Which keys perform which ``TextEditCommand``s: data, apart from the
 /// commands, as an Emacs keymap or Cocoa's `DefaultKeyBinding.dict` is.
 ///
-/// Inputs read it from the environment, so a subtree can bind differently:
+/// A key binds an ordered list of commands, and the focused input performs
+/// the first that means something to it — as a key goes up Cocoa's responder
+/// chain. Enter is `[.submit, .insertNewline]`: a prompt sends, an editor
+/// starts a line, and a single-line field, performing neither, leaves the
+/// key to the app.
+///
+/// Inputs read it from the environment, so a subtree can bind differently —
+/// here, a prompt that takes Enter as a new line and sends on Shift+Enter:
 ///
 ///     PromptInput(text: $draft)
-///         .textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): .redo]))
+///         .textKeymap(.standard.merging([
+///             .keyboard(.enter, []): [.insertNewline],
+///             .keyboard(.enter, .shift): [.submit],
+///         ]))
 public struct TextKeymap: Sendable, Equatable {
-    private var bindings: [InputBinding: TextEditCommand]
+    private var bindings: [InputBinding: [TextEditCommand]]
 
     /// A keymap with exactly `bindings`.
-    public init(_ bindings: [InputBinding: TextEditCommand]) {
+    public init(_ bindings: [InputBinding: [TextEditCommand]]) {
         self.bindings = bindings
     }
 
-    /// The command `event` performs, if any. Shift held with a movement key
-    /// is the same movement, extending a selection in an input that keeps
-    /// one: Shift+Left is Left.
-    public func command(for event: KeyEvent) -> TextEditCommand? {
-        if let command = bindings[.keyboard(event.key, event.modifiers)] {
-            return command
+    /// The commands `event` performs, in the order an input tries them;
+    /// empty when it is not bound. Shift held with a movement key is the same
+    /// movement, extending a selection in an input that keeps one.
+    public func commands(for event: KeyEvent) -> [TextEditCommand] {
+        if let commands = bindings[.keyboard(event.key, event.modifiers)] {
+            return commands
         }
         guard event.modifiers.contains(.shift),
-              let command = bindings[.keyboard(event.key, event.modifiers.subtracting(.shift))],
-              command.isMovement else {
-            return nil
+              let unshifted = bindings[.keyboard(event.key, event.modifiers.subtracting(.shift))] else {
+            return []
         }
-        return command
+        return unshifted.filter(\.isMovement)
     }
 
-    /// This keymap with `overrides` applied: a command binds its key, `nil`
-    /// unbinds it.
-    public func merging(_ overrides: [InputBinding: TextEditCommand?]) -> TextKeymap {
+    /// This keymap with `overrides` applied: each key gets its list of
+    /// commands, and an empty list unbinds it.
+    public func merging(_ overrides: [InputBinding: [TextEditCommand]]) -> TextKeymap {
         var merged = self
-        for (binding, command) in overrides {
-            merged.bindings[binding] = command
+        for (binding, commands) in overrides {
+            merged.bindings[binding] = commands.isEmpty ? nil : commands
         }
         return merged
     }
@@ -118,46 +162,74 @@ public struct TextKeymap: Sendable, Equatable {
     /// Command and Option chords — Cmd+Left arrives as Ctrl+A, Option+Left
     /// as Alt+B:
     ///
-    /// | Keys | Command |
-    /// |------|---------|
+    /// | Keys | Commands |
+    /// |------|----------|
     /// | Left, Ctrl+B / Right, Ctrl+F | a character back / forward |
     /// | Alt+Left, Alt+B, Ctrl+Left / Alt+Right, Alt+F, Ctrl+Right | a word |
     /// | Home, Ctrl+A / End, Ctrl+E | the line's start / end |
+    /// | Up, Ctrl+P / Down, Ctrl+N | a row, then a prompt's history |
+    /// | Page Up / Page Down | a screenful |
+    /// | Ctrl+Home, Alt+< / Ctrl+End, Alt+> | the text's start / end |
+    /// | Enter | submit, or a new line |
+    /// | Enter with any modifier | a new line |
     /// | Backspace, Ctrl+H / Delete, Ctrl+D | delete a character |
     /// | Alt+Backspace / Alt+D, Alt+Delete | kill a word back / forward |
     /// | Ctrl+W | kill back to whitespace |
     /// | Ctrl+U / Ctrl+K | kill to the line's start / end |
     /// | Ctrl+Y | yank |
     /// | Ctrl+Z / Ctrl+Shift+Z | undo / redo |
-    public static let standard = TextKeymap([
-        .keyboard(.left, []): .moveBackward,
-        .keyboard(.character("b"), .ctrl): .moveBackward,
-        .keyboard(.right, []): .moveForward,
-        .keyboard(.character("f"), .ctrl): .moveForward,
-        .keyboard(.left, .alt): .moveWordBackward,
-        .keyboard(.left, .ctrl): .moveWordBackward,
-        .keyboard(.character("b"), .alt): .moveWordBackward,
-        .keyboard(.right, .alt): .moveWordForward,
-        .keyboard(.right, .ctrl): .moveWordForward,
-        .keyboard(.character("f"), .alt): .moveWordForward,
-        .keyboard(.home, []): .moveToLineStart,
-        .keyboard(.character("a"), .ctrl): .moveToLineStart,
-        .keyboard(.end, []): .moveToLineEnd,
-        .keyboard(.character("e"), .ctrl): .moveToLineEnd,
-        .keyboard(.backspace, []): .deleteBackward,
-        .keyboard(.character("h"), .ctrl): .deleteBackward,
-        .keyboard(.delete, []): .deleteForward,
-        .keyboard(.character("d"), .ctrl): .deleteForward,
-        .keyboard(.backspace, .alt): .deleteWordBackward,
-        .keyboard(.character("d"), .alt): .deleteWordForward,
-        .keyboard(.delete, .alt): .deleteWordForward,
-        .keyboard(.character("w"), .ctrl): .deleteToWhitespaceBackward,
-        .keyboard(.character("u"), .ctrl): .deleteToLineStart,
-        .keyboard(.character("k"), .ctrl): .deleteToLineEnd,
-        .keyboard(.character("y"), .ctrl): .yank,
-        .keyboard(.character("z"), .ctrl): .undo,
-        .keyboard(.character("z"), [.ctrl, .shift]): .redo,
-    ])
+    public static let standard: TextKeymap = {
+        var bindings: [InputBinding: [TextEditCommand]] = [
+            .keyboard(.left, []): [.moveBackward],
+            .keyboard(.character("b"), .ctrl): [.moveBackward],
+            .keyboard(.right, []): [.moveForward],
+            .keyboard(.character("f"), .ctrl): [.moveForward],
+            .keyboard(.left, .alt): [.moveWordBackward],
+            .keyboard(.left, .ctrl): [.moveWordBackward],
+            .keyboard(.character("b"), .alt): [.moveWordBackward],
+            .keyboard(.right, .alt): [.moveWordForward],
+            .keyboard(.right, .ctrl): [.moveWordForward],
+            .keyboard(.character("f"), .alt): [.moveWordForward],
+            .keyboard(.home, []): [.moveToLineStart],
+            .keyboard(.character("a"), .ctrl): [.moveToLineStart],
+            .keyboard(.end, []): [.moveToLineEnd],
+            .keyboard(.character("e"), .ctrl): [.moveToLineEnd],
+            .keyboard(.up, []): [.moveUp, .previousHistory],
+            .keyboard(.character("p"), .ctrl): [.moveUp, .previousHistory],
+            .keyboard(.down, []): [.moveDown, .nextHistory],
+            .keyboard(.character("n"), .ctrl): [.moveDown, .nextHistory],
+            .keyboard(.pageUp, []): [.pageUp],
+            .keyboard(.pageDown, []): [.pageDown],
+            .keyboard(.home, .ctrl): [.moveToDocumentStart],
+            .keyboard(.character("<"), .alt): [.moveToDocumentStart],
+            .keyboard(.end, .ctrl): [.moveToDocumentEnd],
+            .keyboard(.character(">"), .alt): [.moveToDocumentEnd],
+            .keyboard(.enter, []): [.submit, .insertNewline],
+            .keyboard(.backspace, []): [.deleteBackward],
+            .keyboard(.character("h"), .ctrl): [.deleteBackward],
+            .keyboard(.delete, []): [.deleteForward],
+            .keyboard(.character("d"), .ctrl): [.deleteForward],
+            .keyboard(.backspace, .alt): [.deleteWordBackward],
+            .keyboard(.character("d"), .alt): [.deleteWordForward],
+            .keyboard(.delete, .alt): [.deleteWordForward],
+            .keyboard(.character("w"), .ctrl): [.deleteToWhitespaceBackward],
+            .keyboard(.character("u"), .ctrl): [.deleteToLineStart],
+            .keyboard(.character("k"), .ctrl): [.deleteToLineEnd],
+            .keyboard(.character("y"), .ctrl): [.yank],
+            .keyboard(.character("z"), .ctrl): [.undo],
+            .keyboard(.character("z"), [.ctrl, .shift]): [.redo],
+        ]
+        // Every modified Enter is a new line. Terminal.app cannot tell
+        // Shift+Enter from Enter without the kitty keyboard protocol, so
+        // Option+Enter is the one that works in every terminal.
+        let modifiers: [KeyModifiers] = [.shift, .alt, .ctrl]
+        for mask in 1..<(1 << modifiers.count) {
+            let held = modifiers.indices.filter { mask & (1 << $0) != 0 }
+                .reduce(into: KeyModifiers()) { $0.insert(modifiers[$1]) }
+            bindings[.keyboard(.enter, held)] = [.insertNewline]
+        }
+        return TextKeymap(bindings)
+    }()
 }
 
 /// The text killed last, which ``TextEditCommand/yank`` puts back — Cocoa's

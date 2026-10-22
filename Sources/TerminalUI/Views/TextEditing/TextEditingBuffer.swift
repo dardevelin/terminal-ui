@@ -23,8 +23,9 @@ enum TextEditResult: Equatable {
     /// nothing killed — so the key can mean something else to the app, as
     /// Ctrl+D on an empty line means end of input to readline.
     case unchanged
-    /// Not a command the buffer performs: undo and redo belong to the
-    /// input's own history, and a name no input declares to the app.
+    /// Not a command the buffer performs: rows, pages, history, submit,
+    /// undo and redo belong to the input, and a name no input declares to
+    /// the app.
     case unsupported
 }
 
@@ -45,6 +46,10 @@ extension TextEditingBuffer {
             return move(to: lineStart(of: cursor), forward: false)
         case .moveToLineEnd:
             return move(to: lineEnd(of: cursor), forward: true)
+        case .moveToDocumentStart:
+            return move(to: 0, forward: false)
+        case .moveToDocumentEnd:
+            return move(to: text.count, forward: true)
         case .deleteBackward:
             return delete(max(0, cursor - 1)..<cursor, killBuffer: nil)
         case .deleteForward:
@@ -62,16 +67,24 @@ extension TextEditingBuffer {
             let end = lineEnd(of: cursor)
             return delete(cursor..<(end == cursor ? min(text.count, cursor + 1) : end), killBuffer: killBuffer)
         case .yank:
-            let yanked = killBuffer.lastKill
-            guard !yanked.isEmpty else { return .unchanged }
-            let replaced = cursor..<cursor
-            text.insert(contentsOf: yanked, at: cursor)
-            cursor += yanked.count
-            keepAtomicRanges(after: replaced, insertedCount: yanked.count)
-            return .edited(replaced: replaced, insertedCount: yanked.count)
+            return insert(killBuffer.lastKill)
+        case .insertNewline:
+            return insert([Self.lineBreak])
         default:
             return .unsupported
         }
+    }
+
+    /// Inserts `characters` at the cursor and moves the cursor past them —
+    /// typing, a yank, a line break: one path, so whatever an input keeps
+    /// over its text moves with it.
+    mutating func insert(_ characters: [Character]) -> TextEditResult {
+        guard !characters.isEmpty else { return .unchanged }
+        let replaced = cursor..<cursor
+        text.insert(contentsOf: characters, at: cursor)
+        cursor += characters.count
+        keepAtomicRanges(after: replaced, insertedCount: characters.count)
+        return .edited(replaced: replaced, insertedCount: characters.count)
     }
 
     /// Where `range` lies after `replaced` came to hold `insertedCount`

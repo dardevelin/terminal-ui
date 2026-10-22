@@ -16,29 +16,19 @@ All notable changes to TerminalUI are documented here. Format based on
   Ctrl+Z / Ctrl+Shift+Z to undo and redo — through one engine. These are
   readline's keys, which Claude Code, Codex and Crush follow, and which macOS
   terminals send for Command and Option chords: Cmd+← arrives as Ctrl+A.
-  `TextKeymap.standard` holds them; `.textKeymap(_:)` rebinds keys for a
-  subtree, and `merging(_:)` adds or, with `nil`, removes bindings.
-  `TextEditCommand` is an open name, as `ActionID` is, so a keymap can bind
-  a command the framework does not declare. One `KillBuffer` serves the app,
-  so a kill in one input yanks into another; `\.killBuffer` gives a subtree
-  its own. A key whose command has nothing to do passes on to the app, as
-  Ctrl+D on an empty line does in readline.
-- **`TerminalAppProtocol.willTerminate(_:)`** — called once the app has torn
-  down, with a `TerminationReason`: `.quit`, `.signal(_:)` or
-  `.terminalHungUp`. The place to save what must outlive the process, such as
-  an unsent draft when the connection drops. It returns how the process ends:
-  `.conventional`, the default — a quit exits 0, a signal is re-raised, a
-  hung-up terminal ends by SIGHUP — or `.exit(code:)`.
-- **`TerminalRuntime.run()` returns the `TerminationReason`** instead of
-  ending the process itself, so a hand-written `main()` gets control back;
-  `reason.end()` then ends it as the default `main()` does.
-- **The terminal bell, `@TerminalEnvironment(\.bell)`** — a `BellAction` a
-  handler calls, as SwiftUI's `openURL` is: a running app writes BEL with its
-  next frame, and outside one it does nothing. Replace it for a subtree with
-  `.environment(\.bell, BellAction { ... })` to signal some other way.
-- **`@TerminalEnvironment(\.boundaryHit)`** — what an input does at a wall,
-  read in one piece: the `.boundaryFeedback` mode, the `.onBoundaryHit`
-  callback and the bell. A custom input calls `boundaryHit(.leftEdge)`.
+  `TextKeymap.standard` holds them, and `.textKeymap(_:)` rebinds keys for
+  a subtree. A key binds an ordered list of commands, and the focused input
+  performs the first that means something to it, as a key goes up Cocoa's
+  responder chain: Enter is `[.submit, .insertNewline]`, so a prompt sends,
+  an editor starts a line, and a single-line field leaves Enter to the app;
+  Up and Ctrl+P are `[.moveUp, .previousHistory]`; Enter with any modifier
+  is a new line. A prompt that takes Enter as a new line and sends on
+  Shift+Enter is two bindings. `merging(_:)` replaces a key's list, and an
+  empty list unbinds it. `TextEditCommand` is an open name, as `ActionID`
+  is, so a keymap can bind a command the framework does not declare. One
+  `KillBuffer` serves the app, so a kill in one input yanks into another;
+  `\.killBuffer` gives a subtree its own. A key whose commands have nothing
+  to do passes on to the app, as Ctrl+D on an empty line does in readline.
 - **A `crash` remote command** (debug builds) — the app raises SIGSEGV on its
   own main thread, as a fault in its code would; the Python client's `crash()`
   sends it. Crash tests that sent the signal with `kill` passed or failed by
@@ -123,7 +113,7 @@ All notable changes to TerminalUI are documented here. Format based on
 
 - **Ctrl+Y yanks in TextArea; redo is Ctrl+Shift+Z.** Ctrl+Y was a redo
   alias there, and nowhere else. To keep it,
-  `.textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): .redo]))`.
+  `.textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): [.redo]]))`.
 - **Word movement in TextArea goes by letters and digits**, as Alt+B/F do in
   readline and Emacs: Ctrl+←/→ stopped only at whitespace, so `path/to/file`
   was one word. Ctrl+W still deletes back to whitespace.

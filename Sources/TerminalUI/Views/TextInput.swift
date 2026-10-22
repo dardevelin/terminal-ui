@@ -298,12 +298,15 @@ public struct TextInput: TerminalView {
         let value = text.get()
         let pos = resolveCursor(cursor.get(), valueCount: value.count)
 
-        if let command = textEditing.keymap.command(for: event) {
+        /// What the field does with `command`, or nil to pass it over: a
+        /// single line takes no new line, rows or history.
+        func perform(_ command: TextEditCommand) -> KeyEventResult? {
+            guard command.isBufferCommand, command != .insertNewline else { return nil }
             // A yank is a paste of the last kill: held to maxLength, its line
             // breaks made spaces.
             if command == .yank {
                 let yanked = textEditing.killBuffer.lastKill
-                guard !yanked.isEmpty else { return .ignored }
+                guard !yanked.isEmpty else { return nil }
                 handlePaste(String(yanked), text: text, cursor: cursor,
                             maxLength: maxLength, boundaryHit: textEditing.boundaryHit)
                 return .handled
@@ -311,7 +314,7 @@ public struct TextInput: TerminalView {
             var buffer = TextEditingBuffer(text: Array(value), cursor: pos)
             switch textEditing.perform(command, on: &buffer) {
             case .unsupported, .unchanged:
-                return .ignored
+                return nil
             case .moved, .hitWall:
                 cursor.set(buffer.cursor)
             case .edited:
@@ -321,9 +324,18 @@ public struct TextInput: TerminalView {
             return .handled
         }
 
+        let commands = textEditing.keymap.commands(for: event)
+        if !commands.isEmpty {
+            // The first command that applies wins; each runs at most once.
+            for command in commands {
+                if let result = perform(command) { return result }
+            }
+            return .ignored
+        }
+
         guard case .character(let c) = event.key,
               !event.modifiers.contains(.ctrl), !event.modifiers.contains(.alt) else {
-            // Enter, and chords no command claims, bubble to the parent.
+            // Chords no command claims bubble to the parent.
             return .ignored
         }
         // maxLength is a hard ceiling on value.count. When the buffer is
