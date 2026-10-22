@@ -160,6 +160,10 @@ public struct EnvironmentValues: Sendable {
     /// app supplies its own, for every frame it draws.
     public var bell = BellAction {}
 
+    /// The focused cursor's flash at a wall — see ``CursorFlash``. A running
+    /// app supplies one; with none, `.bounce` lights nothing.
+    public var cursorFlash: CursorFlash?
+
     /// Which key performs which text-editing command in this subtree's
     /// inputs. Set with `.textKeymap(_:)`.
     public var textKeymap: TextKeymap = .standard

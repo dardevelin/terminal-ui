@@ -930,6 +930,29 @@ def storybook_textinput_boundary_rings_the_bell(app: Client) -> None:
     assert_true(rang == 1, f"Left at an empty .bell TextInput must write one BEL; wrote {rang}")
 
 
+# SGR background colours (ECMA-48 8.3.117): the default theme's warning is
+# yellow, its accent cyan.
+WARNING_BACKGROUND = b"\x1b[43m"
+ACCENT_BACKGROUND = b"\x1b[46m"
+
+
+def storybook_textarea_wall_flashes_the_cursor(app: Client) -> None:
+    """`.bounce`, the default boundary feedback, lights the cursor in the
+    theme's warning colour for a moment at a wall, then the accent comes
+    back — the timed redraw an idle app makes on its own. Regression:
+    `.bounce` drew nothing at all."""
+    app.goto_page("TextArea")
+    app.send_key("tab")
+    app.wait_for_frame(1, timeout=0.5)
+    start = len(app.pty_output())
+    app.send_key("left")
+    assert_true(app.wait_until(lambda c: WARNING_BACKGROUND in c.pty_output()[start:], timeout=2.0),
+                "Left at the first character should light the cursor in the warning colour")
+    lit = start + app.pty_output()[start:].index(WARNING_BACKGROUND)
+    assert_true(app.wait_until(lambda c: ACCENT_BACKGROUND in c.pty_output()[lit:], timeout=2.0),
+                "the cursor should go back to the accent once the flash is over")
+
+
 def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     """TextInput cursor model: typing 'AC', then Left, then 'B' must
     produce 'ABC' (mid-buffer insert), not 'ACB' (legacy append-only).
@@ -2127,6 +2150,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.textinput_cursor_mid_buffer_edit", "Storybook", storybook_textinput_cursor_mid_buffer_edit),
     SmokeCase("storybook.textinput_boundary_emits_under_modal", "Storybook", storybook_textinput_boundary_emits_under_modal),
     SmokeCase("storybook.textinput_boundary_rings_the_bell", "Storybook", storybook_textinput_boundary_rings_the_bell),
+    SmokeCase("storybook.textarea_wall_flashes_the_cursor", "Storybook", storybook_textarea_wall_flashes_the_cursor),
     SmokeCase("storybook.a_hung_up_terminal_quits_the_app", "Storybook", storybook_a_hung_up_terminal_quits_the_app),
     SmokeCase("storybook.scrollview_tab_focuses_and_scrolls", "Storybook", storybook_scrollview_tab_focuses_and_scrolls),
     SmokeCase("storybook.geometryreader_reports_size", "Storybook", storybook_geometryreader_reports_size),

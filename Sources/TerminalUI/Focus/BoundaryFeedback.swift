@@ -8,9 +8,9 @@ import Synchronization
 /// ``EnvironmentValues/boundaryHit`` action, at every wall they hit. Set it
 /// for a subtree with `.boundaryFeedback(_:)`.
 public enum BoundaryFeedback: Sendable, Equatable {
-    /// The default. Routes to ``BoundaryFeedbackEmitter/bounceSink``, which
-    /// draws nothing unless an app installs one: no input animates its
-    /// cursor yet, so a hit under `.bounce` is silent.
+    /// The default: the focused cursor lights for a moment in the theme's
+    /// warning colour — see ``CursorFlash`` — and an app's
+    /// ``BoundaryFeedbackEmitter/bounceSink``, if it installed one, is called.
     case bounce
     /// Rings the environment's ``BellAction`` — in a running app, BEL to
     /// the terminal, which beeps, flashes or ignores it as configured.
@@ -115,6 +115,7 @@ public struct BoundaryHitAction: Sendable {
     /// environment, comparing what an input read byte for byte, would see a
     /// change on every frame.
     private let bounce: (@Sendable (BoundaryHitReason) -> Void)?
+    private let flash: CursorFlash?
     /// The feedback mode in effect where the action was read. Declared last:
     /// the environment compares what an input read byte for byte, and the
     /// padding after a one-byte field ahead of the others holds whatever the
@@ -124,11 +125,13 @@ public struct BoundaryHitAction: Sendable {
     init(mode: BoundaryFeedback,
          callback: BoundaryHitCallback?,
          bell: BellAction,
-         bounce: (@Sendable (BoundaryHitReason) -> Void)? = nil) {
+         bounce: (@Sendable (BoundaryHitReason) -> Void)? = nil,
+         flash: CursorFlash? = nil) {
         self.mode = mode
         self.callback = callback
         self.bell = bell
         self.bounce = bounce
+        self.flash = flash
     }
 
     /// Gives the feedback `mode` calls for.
@@ -137,6 +140,7 @@ public struct BoundaryHitAction: Sendable {
         case .bell:
             bell()
         case .bounce:
+            flash?.light()
             (bounce ?? BoundaryFeedbackEmitter.shared.bounceSink)(reason)
         case .modal:
             callback?(reason)
@@ -150,13 +154,14 @@ extension EnvironmentValues {
     /// The boundary-hit action for this subtree, assembled from
     /// ``boundaryFeedback``, ``onBoundaryHit`` and ``bell``.
     public var boundaryHit: BoundaryHitAction {
-        BoundaryHitAction(mode: boundaryFeedback, callback: onBoundaryHit, bell: bell)
+        BoundaryHitAction(mode: boundaryFeedback, callback: onBoundaryHit, bell: bell, flash: cursorFlash)
     }
 }
 
 // MARK: - Emitter
 
-/// Holds the `.bounce` hook, ``bounceSink``.
+/// Holds ``bounceSink``, an app's own hook for `.bounce` hits, called after
+/// the framework's ``CursorFlash`` lights.
 ///
 /// It routed every boundary hit before the environment carried a
 /// ``BoundaryHitAction``; ``emit(reason:env:callback:)`` and ``bellSink``
@@ -185,8 +190,9 @@ public final class BoundaryFeedbackEmitter: Sendable {
         set { sinks.withLock { $0.bell = newValue } }
     }
 
-    /// Called for every hit under `.bounce`, the default mode. No-op until
-    /// an app installs one; the framework draws no bounce of its own yet.
+    /// Called for every hit under `.bounce`, the default mode, with its
+    /// reason, after the cursor flash lights. No-op until an app installs
+    /// one.
     public var bounceSink: @Sendable (BoundaryHitReason) -> Void {
         get { sinks.withLock { $0.bounce } }
         set { sinks.withLock { $0.bounce = newValue } }
