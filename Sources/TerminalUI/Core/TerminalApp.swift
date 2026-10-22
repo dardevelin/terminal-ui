@@ -259,6 +259,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// The environment's `\.killBuffer` in every frame: one for the app, so
     /// a kill in one input can be yanked into another.
     private let killBuffer = KillBuffer()
+    /// The environment's `\.cursorFlash` in every frame.
+    private let cursorFlash = CursorFlash()
     /// The user's own bindings, laid over every frame's keymap.
     private var userKeymap: UserKeymap
     private var outputBuffer = OutputBuffer()
@@ -974,6 +976,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.terminalSize = size
         env.bell = bellAction
         env.killBuffer = killBuffer
+        env.cursorFlash = cursorFlash
         env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
@@ -1076,6 +1079,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.terminalSize = size
         env.bell = bellAction
         env.killBuffer = killBuffer
+        env.cursorFlash = cursorFlash
         env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {

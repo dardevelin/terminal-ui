@@ -347,3 +347,11 @@ extension Theme {
     @available(*, deprecated, renamed: "foregroundMuted")
     public var muted: Color { foregroundMuted }
 }
+
+extension Theme {
+    /// The colour an input marks its cursor with: the accent, or the warning
+    /// while a ``CursorFlash`` is lit — a key refused at a wall.
+    func cursorColor(lit: Bool) -> Color {
+        lit ? warning : accent
+    }
+}

@@ -795,7 +795,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     })
                 """)
         case .boundaryFeedback: return PageInfo(id: self, category: .modifiers, name: ".boundaryFeedback",
-            summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. Pair .modal mode with .onBoundaryHit { ... } to react in app code, or ring the terminal bell with .bell.",
+            summary: "TextInput emits .leftEdge / .rightEdge when the cursor hits a wall. The default, .bounce, lights the cursor for a moment; pair .modal with .onBoundaryHit { ... } to react in app code, or ring the terminal bell with .bell.",
             code: """
                 TextInput(text: $value)
                     .boundaryFeedback(.modal)

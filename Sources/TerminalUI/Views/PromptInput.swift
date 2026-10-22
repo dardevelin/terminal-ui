@@ -946,7 +946,8 @@ public struct PromptInput: TerminalView {
     /// The spans for `rows`, drawn for whether the prompt holds focus: the
     /// prefix on every row, the text, the placeholder when there is none,
     /// the cursor only while focused, and reserved rows past the text.
-    fileprivate static func buildDisplay(_ rows: PromptRows, isFocused: Bool, theme: any Theme) -> [TextSpan] {
+    fileprivate static func buildDisplay(_ rows: PromptRows, isFocused: Bool, cursorLit: Bool,
+                                         theme: any Theme) -> [TextSpan] {
         let st = rows.state
         let lines = rows.lines
         let wraps = rows.wraps
@@ -970,7 +971,8 @@ public struct PromptInput: TerminalView {
         // Flatten (logicalRow, chunkIndex) pairs for the visible window.
         let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
         let endDisplayRow = min(rows.totalDisplayRows, startDisplayRow + rows.visibleLines)
-        let cursorStyle = (foreground: theme.foregroundEmphasis, background: theme.accent)
+        let cursorStyle = (foreground: theme.foregroundEmphasis,
+                           background: theme.cursorColor(lit: cursorLit))
 
         var spans: [TextSpan] = []
         var currentDisplayRow = 0
@@ -1578,8 +1580,10 @@ struct PromptRows: TerminalView {
 
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.theme) var theme
+    @TerminalEnvironment(\.cursorFlash) var cursorFlash
 
     var body: some TerminalView {
-        Text(spans: PromptInput.buildDisplay(self, isFocused: isFocused, theme: theme))
+        Text(spans: PromptInput.buildDisplay(self, isFocused: isFocused,
+                                             cursorLit: isFocused && cursorFlash?.isLit == true, theme: theme))
     }
 }

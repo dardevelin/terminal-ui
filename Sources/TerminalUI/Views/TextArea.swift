@@ -697,6 +697,7 @@ public struct TextArea: TerminalView {
         highlighter: (any SyntaxHighlighter)? = nil,
         theme: SyntaxTheme = .defaultDark,
         showsCursor: Bool = true,
+        cursorLit: Bool = false,
         chrome: any Theme = DefaultTheme()
     ) -> [TextSpan] {
         // The editor's own marks take theme roles, as `PromptInput`'s do: the
@@ -704,7 +705,7 @@ public struct TextArea: TerminalView {
         // selection is the selected background, the gutter is chrome and the
         // rows past the end are the quietest step.
         let cursorFg = chrome.foregroundEmphasis
-        let cursorBg = chrome.accent
+        let cursorBg = chrome.cursorColor(lit: cursorLit)
         let selectionBg = chrome.backgroundSelected
         let lineNumberFg = chrome.foregroundMuted
         let emptyRowMarkerFg = chrome.foregroundFaint
@@ -1302,6 +1303,7 @@ struct TextAreaRows: TerminalView {
 
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.theme) var chrome
+    @TerminalEnvironment(\.cursorFlash) var cursorFlash
 
     var body: some TerminalView {
         Text(spans: TextArea.buildDisplaySpans(
@@ -1315,6 +1317,9 @@ struct TextAreaRows: TerminalView {
             highlighter: highlighter,
             theme: theme,
             showsCursor: isFocused,
+            // Only while focused: a read is a subscription, and an unfocused
+            // editor would rebuild its rows at each hit for nothing.
+            cursorLit: isFocused && cursorFlash?.isLit == true,
             chrome: chrome
         ))
     }

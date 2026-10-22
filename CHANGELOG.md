@@ -8,6 +8,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`CursorFlash`, as `@TerminalEnvironment(\.cursorFlash)`** — the focused
+  cursor's flash at a wall, which a running app supplies. An input that draws
+  a cursor of its own reads `isLit` while it holds focus, as the framework's
+  inputs do.
 - **Users can keep their own editing keys, if the app lets them.** An app
   opts in with `TerminalAppProtocol.userKeymap` — `.configFile(named:)` for
   `keys.toml` in the user's config directory (`$XDG_CONFIG_HOME`, or
@@ -203,6 +207,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **`.boundaryFeedback(.bounce)`, the default, shows something.** It called
+  a hook nothing filled, so a wall hit in any input was silent. Now the
+  focused cursor lights in the theme's warning colour for a tenth of a
+  second, and an app's own `bounceSink` is still called. `.bell` and `.none`
+  remain a modifier away.
 - **Text inputs no longer re-run on every frame.** Since the bell came
   through the environment, the editing context every input reads compared
   as changed from one frame to the next — a closure made afresh on each

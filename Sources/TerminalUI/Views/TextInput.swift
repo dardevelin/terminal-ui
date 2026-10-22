@@ -648,12 +648,29 @@ struct TextInputRow: TerminalView {
     let caret: Int?
 
     @TerminalEnvironment(\.isFocused) var isFocused
+    @TerminalEnvironment(\.cursorFlash) var cursorFlash
+    @TerminalEnvironment(\.theme) var theme
 
     var body: some TerminalView {
+        // Only the focused field reads the flash, and the theme only while it
+        // is lit: a read is a subscription, and every other field would
+        // redraw at each hit for nothing.
+        let lit = isFocused && cursorFlash?.isLit == true
+        return Text(spans: Self.visibleSpans(spans, caret: caret, isFocused: isFocused,
+                                             litColor: lit ? theme.cursorColor(lit: true) : nil))
+    }
+
+    /// `spans` as drawn: the caret dropped while the field is not focused,
+    /// and in `litColor` while the cursor flash is lit.
+    static func visibleSpans(_ spans: [TextSpan], caret: Int?, isFocused: Bool,
+                             litColor: Color?) -> [TextSpan] {
         var visible = spans
-        if !isFocused, let caret {
+        guard let caret else { return visible }
+        if !isFocused {
             visible.remove(at: caret)
+        } else if let litColor {
+            visible[caret].foreground = litColor
         }
-        return Text(spans: visible)
+        return visible
     }
 }
