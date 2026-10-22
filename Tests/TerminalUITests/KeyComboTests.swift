@@ -77,7 +77,12 @@ struct KeyComboTests {
     @Test("reject unknown modifier")
     func rejectUnknownModifier() {
         #expect(KeyCombo.parse("super+a") == nil)
-        #expect(KeyCombo.parse("meta+a") == nil)
+        #expect(KeyCombo.parse("hyper+a") == nil)
+    }
+
+    @Test("meta is Alt, as readline and Emacs name it")
+    func metaIsAlt() {
+        #expect(KeyCombo.parse("meta+a") == KeyCombo(key: .character("a"), alt: true))
     }
 
     @Test("reject empty string")

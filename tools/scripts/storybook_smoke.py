@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,12 +55,24 @@ class SmokeCase:
     # only if the runner objects to how the app ended, in words containing
     # every one of these phrases.
     expected_objections: tuple[str, ...] = ()
+    # Files the app finds in its user's config directory, as (path under it,
+    # contents): the case runs with XDG_CONFIG_HOME at a fresh directory
+    # holding only these, never the developer's own.
+    config_files: tuple[tuple[str, str], ...] = ()
 
     def execute(self, cols: int = 140, rows: int = 40,
                 build_dir: Optional[str] = None) -> CaseResult:
+        with tempfile.TemporaryDirectory(prefix="terminalui-config-") as config_home:
+            for relative, contents in self.config_files:
+                path = Path(config_home) / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(contents)
+            return self._run(config_home, cols, rows, build_dir)
+
+    def _run(self, config_home: str, cols: int, rows: int, build_dir: Optional[str]) -> CaseResult:
         try:
-            with spawn_and_connect(self.app, build_dir=build_dir,
-                                   cols=cols, rows=rows) as (_, client):
+            with spawn_and_connect(self.app, build_dir=build_dir, cols=cols, rows=rows,
+                                   env={"XDG_CONFIG_HOME": config_home}) as (_, client):
                 client.wait_for_frame(1, timeout=1.0)
                 self.run(client)
             if self.expected_objections:
@@ -1847,6 +1860,24 @@ def coder_readline_keys_edit_the_draft(app: Client) -> None:
                 "Ctrl+E then Ctrl+Y should yank the kill back onto the end")
 
 
+def coder_reads_the_users_keymap(app: Client) -> None:
+    """Coder opts into a user keymap, `keys.toml` in its config directory:
+    the case's runner points XDG_CONFIG_HOME at one that binds Ctrl+O to
+    kill to the end of the line and unbinds Ctrl+K. The user's bindings lie
+    over the app's, so Ctrl+O kills and Ctrl+K no longer does."""
+    app.send_text("keep this gone")
+    app.wait_for_frame(1, timeout=0.5)
+    app.write_raw(b"\x01")
+    app.write_raw(b"\x1bf")
+    app.write_raw(b"\x0b")
+    app.wait_for_frame(1, timeout=0.5)
+    assert_true("> keep this gone" in app.cells().text(), "Ctrl+K is unbound by the user's file")
+    app.write_raw(b"\x0f")
+    assert_true(app.wait_until(lambda c: "> keep" in c.cells().text()
+                               and "this gone" not in c.cells().text(), timeout=2.0),
+                "Ctrl+O, bound by the user's file, should kill to the end of the line")
+
+
 def coder_enter_sends_the_draft(app: Client) -> None:
     """Enter sends the draft into the transcript and empties the composer,
     which shows its placeholder again."""
@@ -2144,6 +2175,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
     SmokeCase("coder.readline_keys_edit_the_draft", "Coder", coder_readline_keys_edit_the_draft),
+    SmokeCase("coder.reads_the_users_keymap", "Coder", coder_reads_the_users_keymap,
+              config_files=(("coder/keys.toml", '[text]\n"ctrl+o" = "deleteToLineEnd"\n"ctrl+k" = []\n'),)),
     SmokeCase("coder.opens_on_the_latest_entry", "Coder", coder_opens_on_the_latest_entry),
     SmokeCase("coder.enter_sends_the_draft", "Coder", coder_enter_sends_the_draft),
     SmokeCase("coder.edit_card_shows_diff", "Coder", coder_edit_card_shows_diff),

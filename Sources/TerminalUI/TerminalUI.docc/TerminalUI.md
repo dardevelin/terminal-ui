@@ -91,6 +91,7 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``TextArea``
 - ``Toggle``
 - ``PromptInput``
+- <doc:EditingKeys>
 
 ### Display
 

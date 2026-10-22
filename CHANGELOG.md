@@ -8,6 +8,20 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **Users can keep their own editing keys, if the app lets them.** An app
+  opts in with `TerminalAppProtocol.userKeymap` — `.configFile(named:)` for
+  `keys.toml` in the user's config directory (`$XDG_CONFIG_HOME`, or
+  `~/.config`), `.file(at:)` for any other — and the file's bindings lie over
+  the app's keymap. The file is TOML, keys written as `ctrl+k` or
+  `shift+enter`; a line that cannot be read is printed with its number and
+  the rest still applies. `.allowsUserKeymap(false)` keeps a subtree's keys
+  the app's. Coder reads `~/.config/coder/keys.toml`. `swtui keys` lists the
+  commands and their keys, and `swtui keys --check <file>` checks a file.
+  An app reads the file's problems from `@TerminalEnvironment(\.userKeymap)`
+  to show them, as stderr is hidden once it has the screen.
+  `InputBinding(keySpec:)` reads a chord as a person writes it, and
+  `TOMLParser.document(_:)` reads quoted keys, string arrays and comments
+  after a value, with the line of each.
 - **One keymap for text editing, the same in every input.** TextInput,
   TextArea and PromptInput perform one set of named `TextEditCommand`s —
   Ctrl+A/E and Home/End to the line's ends, Alt+B/F and Alt+←/→ by word,
@@ -111,6 +125,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **One spelling for keys.** The debug keybindings, `swtui bind`, a user's
+  `keys.toml` and the remote control's `send-key` read keys through one
+  grammar, `KeyCombo`, where each had its own and they disagreed: `meta` is
+  Alt everywhere now, `space` and `F13`–`F24` are keys everywhere, and an
+  unknown modifier in `send-key` is an error where it was dropped.
+- **`terminalui.toml` is read as TOML.** A comment after a value is no
+  longer part of it, and quoted keys and escapes are read; a value TOML
+  cannot read — an unquoted word — is skipped where it used to be taken as
+  text.
 - **Ctrl+Y yanks in TextArea; redo is Ctrl+Shift+Z.** Ctrl+Y was a redo
   alias there, and nowhere else. To keep it,
   `.textKeymap(.standard.merging([.keyboard(.character("y"), .ctrl): [.redo]]))`.
@@ -180,6 +203,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Text inputs no longer re-run on every frame.** Since the bell came
+  through the environment, the editing context every input reads compared
+  as changed from one frame to the next — a closure made afresh on each
+  read, and padding bytes after a one-byte field — so each TextInput,
+  TextArea and PromptInput rebuilt its body on every active frame.
 - **An app quits when its terminal goes away.** The kernel sends SIGHUP only
   to a terminal's controlling process; an app without one — started by a
   harness, or in a detached multiplexer pane — learned of the hang-up from

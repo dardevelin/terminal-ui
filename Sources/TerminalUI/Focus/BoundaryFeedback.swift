@@ -108,18 +108,23 @@ public struct BoundaryHitCallback: Sendable {
 ///     // in a key handler, at the wall:
 ///     boundaryHit(.leftEdge)
 public struct BoundaryHitAction: Sendable {
-    /// The feedback mode in effect where the action was read.
-    public let mode: BoundaryFeedback
     private let callback: BoundaryHitCallback?
     private let bell: BellAction
-    private let bounce: @Sendable (BoundaryHitReason) -> Void
+    /// Nil is the shared emitter's hook, looked up when a hit comes. A
+    /// closure made here would be a new one on every read, and the
+    /// environment, comparing what an input read byte for byte, would see a
+    /// change on every frame.
+    private let bounce: (@Sendable (BoundaryHitReason) -> Void)?
+    /// The feedback mode in effect where the action was read. Declared last:
+    /// the environment compares what an input read byte for byte, and the
+    /// padding after a one-byte field ahead of the others holds whatever the
+    /// memory held, so two reads of one value would differ.
+    public let mode: BoundaryFeedback
 
     init(mode: BoundaryFeedback,
          callback: BoundaryHitCallback?,
          bell: BellAction,
-         bounce: @escaping @Sendable (BoundaryHitReason) -> Void = { reason in
-             BoundaryFeedbackEmitter.shared.bounceSink(reason)
-         }) {
+         bounce: (@Sendable (BoundaryHitReason) -> Void)? = nil) {
         self.mode = mode
         self.callback = callback
         self.bell = bell
@@ -132,7 +137,7 @@ public struct BoundaryHitAction: Sendable {
         case .bell:
             bell()
         case .bounce:
-            bounce(reason)
+            (bounce ?? BoundaryFeedbackEmitter.shared.bounceSink)(reason)
         case .modal:
             callback?(reason)
         case .none:

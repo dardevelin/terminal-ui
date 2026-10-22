@@ -17,6 +17,9 @@ struct CoderMain: TerminalAppProtocol {
         true
     }
 
+    /// The user's own editing keys, in `~/.config/coder/keys.toml`.
+    static var userKeymap: UserKeymapSource { .configFile(named: "coder") }
+
     static func content() -> some TerminalView {
         CoderApp(state: coderState)
     }

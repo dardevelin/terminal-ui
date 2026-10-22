@@ -164,3 +164,62 @@ struct TOMLParserTests {
         #expect(result[""]?.count == 2)
     }
 }
+
+// The keymap file needs what the diagnostics config never did: quoted keys
+// ("ctrl+k" is not a bare TOML key), arrays of strings, comments after a
+// value, and the line of every entry, so a mistake can be pointed at.
+@Suite("TOMLParser.document — keys, arrays, and where each line is")
+struct TOMLDocumentTests {
+
+    @Test("Quoted keys, strings, arrays, booleans and integers, each with its line")
+    func values() {
+        let document = TOMLParser.document("""
+        [text]
+        "ctrl+k" = "deleteToLineEnd"
+        "enter" = ["insertNewline", "submit"]
+        bare_key = true
+        count = 3
+        """)
+        #expect(document.problems.isEmpty)
+        #expect(document.entries == [
+            .init(section: "text", key: "ctrl+k", value: .string("deleteToLineEnd"), line: 2),
+            .init(section: "text", key: "enter", value: .strings(["insertNewline", "submit"]), line: 3),
+            .init(section: "text", key: "bare_key", value: .bool(true), line: 4),
+            .init(section: "text", key: "count", value: .integer(3), line: 5),
+        ])
+    }
+
+    @Test("An empty array, and comments after a value or on their own line")
+    func emptyArrayAndComments() {
+        let document = TOMLParser.document("""
+        # whole-line comment
+        "ctrl+w" = []   # unbind
+        "#" = "a # inside a string"
+        """)
+        #expect(document.problems.isEmpty)
+        #expect(document.entries.map(\.value) == [.strings([]), .string("a # inside a string")])
+        #expect(document.entries.map(\.key) == ["ctrl+w", "#"])
+    }
+
+    @Test("Escapes in strings and keys")
+    func escapes() {
+        let document = TOMLParser.document(#""a\"b" = "x\\y\tz""#)
+        #expect(document.entries.first?.key == "a\"b")
+        #expect(document.entries.first?.value == .string("x\\y\tz"))
+    }
+
+    @Test("A malformed line is reported with its line, and the rest still loads")
+    func problems() {
+        let document = TOMLParser.document("""
+        [text]
+        "ctrl+k" = "deleteToLineEnd"
+        no equals sign here
+        "ctrl+u" = "unterminated
+        "ctrl+y" = yank
+        "ctrl+a" = "moveToLineStart"
+        """)
+        #expect(document.entries.map(\.key) == ["ctrl+k", "ctrl+a"])
+        #expect(document.problems.map(\.line) == [3, 4, 5])
+    }
+}
+

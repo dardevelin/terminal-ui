@@ -259,6 +259,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// The environment's `\.killBuffer` in every frame: one for the app, so
     /// a kill in one input can be yanked into another.
     private let killBuffer = KillBuffer()
+    /// The user's own bindings, laid over every frame's keymap.
+    private var userKeymap: UserKeymap
     private var outputBuffer = OutputBuffer()
     private let graph: AttributeGraph
     private let debugPanel = DebugPanel()
@@ -319,11 +321,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// and an `onEvent` that quits on `q` or Escape (return `false` from your
     /// own closure to quit). `devTrace` overrides the `.terminalui/` file
     /// config when non-nil; nil means "use the file config in DEBUG, nothing
-    /// in release."
+    /// in release." `userKeymap` says where the app's users keep their own
+    /// key bindings; the file is read here, its problems logged to stderr
+    /// before the app takes the terminal.
     public init(
         renderMode: RenderMode = .fps60,
         timers: [TerminalTimer] = [],
         devTrace: DevTraceConfig? = nil,
+        userKeymap: UserKeymapSource = .none,
         onEvent: @escaping (TerminalEvent) -> Bool = { event in
             if case .key(let k) = event, k.key == .character("q") { return false }
             if case .key(let k) = event, k.key == .escape { return false }
@@ -340,6 +345,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
         self.onEvent = onEvent
         self.timers = timers
         self.renderMode = renderMode
+        let url = userKeymap.url()
+        self.userKeymap = url.flatMap(UserKeymap.init(contentsOf:)) ?? .none
+        if let url {
+            let log = Log("TerminalUI")
+            for problem in self.userKeymap.problems {
+                log.warn("\(url.path): \(problem)")
+            }
+        }
         self.tracer = DevTracer.shared
         self.size = Terminal.size()
 
@@ -961,6 +974,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.terminalSize = size
         env.bell = bellAction
         env.killBuffer = killBuffer
+        env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
@@ -1062,6 +1076,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.terminalSize = size
         env.bell = bellAction
         env.killBuffer = killBuffer
+        env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
             GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
@@ -1497,6 +1512,11 @@ public protocol TerminalAppProtocol {
     /// must outlive the process, such as an unsent draft when the connection
     /// drops. Returns how the process ends. The default is `.conventional`.
     static func willTerminate(_ reason: TerminationReason) -> TerminationEnding
+    /// Where the app's users keep their own key bindings — see
+    /// ``UserKeymap``. The default, `.none`, reads no file: an app opts
+    /// in, and says where. Read once, before the app takes the terminal;
+    /// what cannot be read is printed to stderr and the rest applies.
+    static var userKeymap: UserKeymapSource { get }
     /// Builds the root view. Re-invoked whenever the runtime needs a
     /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
@@ -1529,6 +1549,9 @@ extension TerminalAppProtocol {
         return true
     }
 
+    /// Default: no user keymap.
+    public static var userKeymap: UserKeymapSource { .none }
+
     /// Default: end as the parent would have seen without the runtime.
     public static func willTerminate(_ reason: TerminationReason) -> TerminationEnding {
         .conventional
@@ -1543,6 +1566,7 @@ extension TerminalAppProtocol {
             renderMode: renderMode,
             timers: timers,
             devTrace: devTrace,
+            userKeymap: userKeymap,
             onEvent: { onEvent($0) },
             content: { content() }
         )
