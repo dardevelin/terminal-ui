@@ -7,7 +7,8 @@ import Testing
 // hits a wall. It reads the subtree's `BoundaryFeedback` mode and routes:
 //
 //   .bell    → rings the environment's `BellAction` (BEL in a running app)
-//   .bounce  → the shared emitter's `bounceSink`, a no-op until installed
+//   .bounce  → the subtree's own bounce hook, else the shared emitter's
+//              `bounceSink`, a no-op until an app installs one
 //   .modal   → invokes the .onBoundaryHit callback if registered
 //   .none    → silent
 //
@@ -37,55 +38,45 @@ struct BoundaryHitReasonTests {
     }
 }
 
-@Suite("BoundaryFeedbackEmitter — routes per env value")
+// Each mode routes a hit to one place. A subtree can carry its own `.bounce`
+// hook in the environment, and its hits go there instead of to the shared
+// emitter's: suites that drove inputs into walls each swapped the one
+// process-wide hook, and run side by side, one suite's hits reached another's
+// recorder.
+@Suite("The boundary-hit action routes by the subtree's mode")
 @MainActor
-struct BoundaryFeedbackEmitterTests {
+struct BoundaryHitRoutingTests {
 
-    @Test(".bell route increments the bell counter")
-    func bellRoutes() {
-        var env = EnvironmentValues()
-        env.boundaryFeedback = .bell
-        let probe = BoundaryFeedbackProbe()
-        probe.emit(reason: .rightEdge, env: env, callback: nil)
-        #expect(probe.bellCount == 1,
-                ".bell mode must increment bellCount; got \(probe.bellCount)")
-        #expect(probe.callbackCount == 0)
+    private func hit(_ reason: BoundaryHitReason, under mode: BoundaryFeedback) -> BoundaryRecorder {
+        let recorder = BoundaryRecorder()
+        var env = recorder.environment
+        env.boundaryFeedback = mode
+        env.boundaryHit(reason)
+        return recorder
     }
 
-    @Test(".modal route invokes the registered callback")
-    func modalRoutes() {
-        var env = EnvironmentValues()
-        env.boundaryFeedback = .modal
-        let probe = BoundaryFeedbackProbe()
-        // The probe + the framework treat the callback as Sendable.
-        // Use a class-typed box so the @Sendable closure can mutate
-        // shared state without sendability-violation noise.
-        final class Box: @unchecked Sendable { var reason: BoundaryHitReason? }
-        let captured = Box()
-        let cb = BoundaryHitCallback { reason in captured.reason = reason }
-        probe.emit(reason: .maxLength, env: env, callback: cb)
-        #expect(probe.callbackCount == 1)
-        #expect(captured.reason == .maxLength)
+    @Test func bellRingsTheBell() {
+        let recorder = hit(.rightEdge, under: .bell)
+        #expect(recorder.bell == 1)
+        #expect(recorder.bounce.isEmpty && recorder.modal.isEmpty)
     }
 
-    @Test(".none route is silent")
-    func noneRoutes() {
-        var env = EnvironmentValues()
-        env.boundaryFeedback = .none
-        let probe = BoundaryFeedbackProbe()
-        probe.emit(reason: .leftEdge, env: env, callback: nil)
-        #expect(probe.bellCount == 0)
-        #expect(probe.callbackCount == 0)
+    @Test func modalCallsTheCallback() {
+        let recorder = hit(.maxLength, under: .modal)
+        #expect(recorder.modal == [.maxLength])
+        #expect(recorder.bell == 0 && recorder.bounce.isEmpty)
     }
 
-    @Test(".bounce route bumps the bounce counter (visual hook for components)")
-    func bounceRoutes() {
-        var env = EnvironmentValues()
-        env.boundaryFeedback = .bounce
-        let probe = BoundaryFeedbackProbe()
-        probe.emit(reason: .topEdge, env: env, callback: nil)
-        #expect(probe.bounceCount == 1,
-                ".bounce mode must signal bounceCount for the component-side animator")
+    @Test func noneIsSilent() {
+        let recorder = hit(.leftEdge, under: .none)
+        #expect(recorder.bell == 0 && recorder.bounce.isEmpty && recorder.modal.isEmpty)
+    }
+
+    @Test func bounceCallsTheSubtreesHookOverTheSharedOne() {
+        #expect(EnvironmentValues().boundaryBounce == nil, "with none, a hit goes to the shared emitter's hook")
+        let recorder = hit(.topEdge, under: .bounce)
+        #expect(recorder.bounce == [.topEdge])
+        #expect(recorder.bell == 0 && recorder.modal.isEmpty)
     }
 }
 
@@ -97,7 +88,7 @@ struct OnBoundaryHitModifierTests {
     func onBoundaryHitAttaches() {
         // Sanity: the modifier compiles and produces a chainable
         // ModifiedView. Behavioural assertion that the callback is
-        // invoked via .modal lives in the emitter test above.
+        // invoked via .modal lives in the routing tests above.
         let view = Text("x").onBoundaryHit { _ in }
         _ = view
     }

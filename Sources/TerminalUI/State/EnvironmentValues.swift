@@ -156,6 +156,11 @@ public struct EnvironmentValues: Sendable {
     /// `.none`).
     public var onBoundaryHit: BoundaryHitCallback? = nil
 
+    /// This subtree's own hook for `.bounce` hits, called after the cursor
+    /// flash lights. Nil sends them to ``BoundaryFeedbackEmitter/bounceSink``,
+    /// the one an app installs for the whole process.
+    var boundaryBounce: (@Sendable (BoundaryHitReason) -> Void)? = nil
+
     /// The terminal's bell — see ``BellAction``. Silent until a running
     /// app supplies its own, for every frame it draws.
     public var bell = BellAction {}

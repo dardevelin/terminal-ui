@@ -4,35 +4,9 @@ import Testing
 // `maxLength` is a hard ceiling on the value's character count. When
 // the buffer is full, `.character` insertions are blocked at the
 // handler and the `.maxLength` boundary reason fires through the
-// shared emitter — symmetric to the cursor-wall emits in
+// environment's boundary-hit action — symmetric to the cursor-wall emits in
 // `TextInputBoundaryTests`. Backspace still works (the ceiling is
 // not a one-way ratchet), and retyping after a backspace fits.
-
-/// Same shared-singleton recorder pattern as TextInputBoundaryTests.
-/// Captured here too so the maxLength suite is self-contained — copy
-/// is cheap, and stitching the two suites together would couple
-/// otherwise-independent suites.
-private final class SharedEmitterRecorder: @unchecked Sendable {
-    nonisolated(unsafe) var bell = 0
-    nonisolated(unsafe) var bounce: [BoundaryHitReason] = []
-    private let savedBounce: @Sendable (BoundaryHitReason) -> Void
-
-    init() {
-        savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bounceSink = { [weak self] reason in
-            self?.bounce.append(reason)
-        }
-    }
-
-    /// The bell to put in the environment a test drives, counting rings.
-    var bellAction: BellAction {
-        BellAction { [weak self] in self?.bell += 1 }
-    }
-
-    func restore() {
-        BoundaryFeedbackEmitter.shared.bounceSink = savedBounce
-    }
-}
 
 @MainActor
 private func driveTextInput(text: Binding<String>,
@@ -72,15 +46,13 @@ struct TextInputMaxLengthTests {
                 "typing past maxLength=3 should leave value='abc'; got '\(value)'")
     }
 
-    @Test("blocked insert fires .maxLength via the emitter (.bounce mode)")
+    @Test("blocked insert fires .maxLength through the boundary-hit action (.bounce mode)")
     func blockedInsertEmitsMaxLength() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = ""
         let textBinding = Binding(get: { value }, set: { value = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         // Fill to ceiling (3 chars), then 2 more chars should each
@@ -95,26 +67,19 @@ struct TextInputMaxLengthTests {
 
     @Test("blocked insert under .modal mode dispatches to .onBoundaryHit")
     func blockedInsertModalCallback() {
-        final class Box: @unchecked Sendable {
-            var reasons: [BoundaryHitReason] = []
-        }
-        let captured = Box()
-
+        let recorder = BoundaryRecorder()
         var value = "ab"
         let textBinding = Binding(get: { value }, set: { value = $0 })
-        var env = EnvironmentValues()
+        var env = recorder.environment
         env.boundaryFeedback = .modal
-        env.onBoundaryHit = BoundaryHitCallback { reason in
-            captured.reasons.append(reason)
-        }
 
         // Already at ceiling (maxLength=2, value="ab"). One more char
         // should fire .maxLength to the callback.
         driveTextInput(text: textBinding, maxLength: 2, env: env,
                        keys: [.character("c")])
         #expect(value == "ab")
-        #expect(captured.reasons == [.maxLength],
-                ".modal mode should dispatch .maxLength to onBoundaryHit; got \(captured.reasons)")
+        #expect(recorder.modal == [.maxLength],
+                ".modal mode should dispatch .maxLength to onBoundaryHit; got \(recorder.modal)")
     }
 
     @Test("backspace + retype works — ceiling is not a one-way ratchet")
@@ -147,13 +112,11 @@ struct TextInputMaxLengthTests {
 
     @Test("mid-buffer insert respects maxLength")
     func midBufferInsertRespectsCeiling() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ac"
         let textBinding = Binding(get: { value }, set: { value = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         // maxLength=3, value="ac" (2 chars). Cursor at end. Move

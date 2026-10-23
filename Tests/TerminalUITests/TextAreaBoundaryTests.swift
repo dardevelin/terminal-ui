@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// TextArea → BoundaryFeedbackEmitter wiring. Mirrors the TextInput
+// TextArea → boundary-hit wiring. Mirrors the TextInput
 // suite (TextInputBoundaryTests) but exercises the four buffer-edge walls instead
 // of two:
 //
@@ -14,28 +14,6 @@ import Testing
 // ceiling concept. Mid-row Left/Right that crosses logical lines
 // (col=0 on row=2 + Left) MUST NOT fire .leftEdge — it's a
 // legitimate movement to the previous row's tail.
-
-private final class SharedEmitterRecorder: @unchecked Sendable {
-    nonisolated(unsafe) var bell = 0
-    nonisolated(unsafe) var bounce: [BoundaryHitReason] = []
-    private let savedBounce: @Sendable (BoundaryHitReason) -> Void
-
-    init() {
-        savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bounceSink = { [weak self] reason in
-            self?.bounce.append(reason)
-        }
-    }
-
-    /// The bell to put in the environment a test drives, counting rings.
-    var bellAction: BellAction {
-        BellAction { [weak self] in self?.bell += 1 }
-    }
-
-    func restore() {
-        BoundaryFeedbackEmitter.shared.bounceSink = savedBounce
-    }
-}
 
 /// Drive a TextArea with the given env, focus its node, dispatch keys.
 @MainActor
@@ -64,15 +42,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Left at (0,0) fires .leftEdge under .bounce")
     func leftEdgeAtOrigin() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "hello"
         var st = TextAreaState()  // cursor at (0, 0)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -83,15 +59,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Right at (lastRow, lastCol) fires .rightEdge under .bounce")
     func rightEdgeAtEnd() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"  // 2 logical rows, "cd" is last
         var st = TextAreaState(); st.cursor = TextAreaCursor(row: 1, col: 2)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -102,15 +76,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Up on row 0 fires .topEdge under .bounce")
     func topEdgeOnFirstRow() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"
         var st = TextAreaState()  // (0, 0)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -121,15 +93,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Down on last row fires .bottomEdge under .bounce")
     func bottomEdgeOnLastRow() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"
         var st = TextAreaState(); st.cursor = TextAreaCursor(row: 1, col: 0)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -140,15 +110,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Left at (1, 0) does NOT fire .leftEdge — it crosses to previous row's tail")
     func leftAtRowStartCrossesUpwards() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"
         var st = TextAreaState(); st.cursor = TextAreaCursor(row: 1, col: 0)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -159,15 +127,13 @@ struct TextAreaBoundaryEmitTests {
 
     @Test("Right at end-of-row when more rows exist — NO emit (crosses to next row)")
     func rightAtRowEndCrossesDownwards() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"
         var st = TextAreaState(); st.cursor = TextAreaCursor(row: 0, col: 2)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
@@ -178,41 +144,32 @@ struct TextAreaBoundaryEmitTests {
 
     @Test(".modal mode dispatches each wall to .onBoundaryHit")
     func modalDispatch() {
-        final class Box: @unchecked Sendable {
-            var reasons: [BoundaryHitReason] = []
-        }
-        let captured = Box()
-
+        let recorder = BoundaryRecorder()
         var value = "ab"  // single row "ab" — all four walls reachable from (0,0)/(0,2)
         var st = TextAreaState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
+        var env = recorder.environment
         env.boundaryFeedback = .modal
-        env.onBoundaryHit = BoundaryHitCallback { reason in
-            captured.reasons.append(reason)
-        }
 
         // (0,0): Left → .leftEdge, Up → .topEdge.
         // Move to end (right twice gets to col 2 — that's the wall),
         // and Right + Down → .rightEdge + .bottomEdge.
         driveTextArea(text: textBinding, state: stateBinding, env: env,
                       keys: [.left, .up, .end, .right, .down])
-        #expect(captured.reasons == [.leftEdge, .topEdge, .rightEdge, .bottomEdge],
-                ".modal must dispatch each wall reason; got \(captured.reasons)")
+        #expect(recorder.modal == [.leftEdge, .topEdge, .rightEdge, .bottomEdge],
+                ".modal must dispatch each wall reason; got \(recorder.modal)")
     }
 
     @Test(".none mode at the wall is silent")
     func noneSilent() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "x"
         var st = TextAreaState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .none
 
         driveTextArea(text: textBinding, state: stateBinding, env: env,
