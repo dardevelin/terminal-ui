@@ -207,6 +207,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Input is read in chunks.** Every byte from the terminal cost a `poll()`
+  and a `read()`, so a 10 KB paste took twenty thousand system calls. The
+  input task now keeps one buffered source: a read takes everything waiting,
+  up to 4 KiB, and the bytes past one event serve the next. A bare Escape
+  still waits the same 100ms to be told from a sequence.
+  `InputParser.readEvent()` makes a source per call, so it still reads a
+  byte at a time and never reads past its event. A hang-up is now noted on
+  the source that saw it, not in a flag that outlived the runtime.
 - **`.boundaryFeedback(.bounce)`, the default, shows something.** It called
   a hook nothing filled, so a wall hit in any input was silent. Now the
   focused cursor lights in the theme's warning colour for a tenth of a

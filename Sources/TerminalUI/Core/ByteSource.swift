@@ -5,7 +5,7 @@ import Darwin
 #endif
 import Synchronization
 
-/// A synchronous, one-byte-at-a-time input stream for ``InputParser``.
+/// A synchronous input stream that hands ``InputParser`` one byte at a time.
 ///
 /// Decouples InputParser's state machine from stdin. The parser calls
 /// `readByte()` synchronously — `nil` means "no byte available right now"
@@ -19,7 +19,8 @@ public protocol ByteSource {
     mutating func readByte() -> UInt8?
 }
 
-/// Runtime source — reads one byte at a time from STDIN in raw mode.
+/// Runtime source — reads STDIN in raw mode: a chunk at a time when
+/// buffered, as the runtime's input task keeps it, a byte at a time otherwise.
 ///
 /// Between events the runtime waits in
 /// ``waitForActivity(input:resize:terminate:shutdown:)``.
@@ -48,39 +49,66 @@ public struct StdinByteSource: ByteSource {
     /// Whether a read found the terminal hung up. The parser takes the `nil`
     /// that read returns for a timeout, so the input task asks here before it
     /// queues what the parser made of a sequence the hang-up cut short.
-    static var inputHungUp: Bool {
-        get { hungUp.load(ordering: .acquiring) }
-        set { hungUp.store(newValue, ordering: .releasing) }
-    }
-    private static let hungUp = Atomic<Bool>(false)
+    private(set) var hungUp = false
 
     /// The descriptor read: stdin, or a test's terminal.
     private let input: Int32
 
-    /// Creates the stdin-backed source. Stateless — all state lives in
-    /// the file descriptors it reads.
+    /// How much one read may take. A terminal delivers a keypress, a mouse
+    /// report or a paste as one burst; 4 KiB holds a burst, and keeps a
+    /// paste to a few reads where a byte at a time made it two system calls
+    /// per byte.
+    private static let chunkCapacity = 4096
+
+    /// 1 for a source made per event, which must not read ahead: the bytes
+    /// past its event would go with it.
+    private let readSize: Int
+    /// Bytes read and not yet handed out.
+    private var pending: ArraySlice<UInt8> = []
+
+    /// Creates a stdin source that reads a byte at a time, for a caller that
+    /// makes one per event, as ``InputParser/readEvent()`` does.
     public init() {
         self.init(input: STDIN_FILENO)
     }
 
-    init(input: Int32) {
+    /// `buffered` reads everything waiting at once and serves it from memory,
+    /// across events — for a caller that keeps the source, as the runtime's
+    /// input task does.
+    init(input: Int32, buffered: Bool = false) {
         self.input = input
+        self.readSize = buffered ? Self.chunkCapacity : 1
+    }
+
+    /// Whether bytes already read are waiting to be handed out.
+    var hasBufferedInput: Bool {
+        !pending.isEmpty
     }
 
     /// One byte from stdin, or `nil` on a poll/read timeout (pacing) or a
     /// shutdown-pipe wake.
     public mutating func readByte() -> UInt8? {
-        if let shutdownFD = Self.shutdownReadFD {
-            return readByteWithShutdown(shutdownFD: shutdownFD)
+        guard hasBufferedInput || refill() else { return nil }
+        return pending.popFirst()
+    }
+
+    /// Wait for input as the parser needs — at most 100ms — and take what
+    /// is waiting, up to `readSize`. False on a timeout, a hang-up or a
+    /// shutdown wake.
+    private mutating func refill() -> Bool {
+        if let shutdownFD = Self.shutdownReadFD, !waitForInput(shutdownFD: shutdownFD) {
+            return false
         }
-        var byte: UInt8 = 0
-        let bytesRead = read(input, &byte, 1)
-        return bytesRead == 1 ? byte : nil
+        let chunk = [UInt8](unsafeUninitializedCapacity: readSize) { bytes, count in
+            count = max(read(input, bytes.baseAddress, readSize), 0)
+        }
+        pending = chunk[...]
+        return !chunk.isEmpty
     }
 
     /// poll() wakes on either stdin input OR the shutdown pipe.
     /// POSIX guarantees pollfd layout across Darwin and Glibc.
-    private func readByteWithShutdown(shutdownFD: Int32) -> UInt8? {
+    private mutating func waitForInput(shutdownFD: Int32) -> Bool {
         var fds = [
             pollfd(fd: input, events: Int16(POLLIN), revents: 0),
             pollfd(fd: shutdownFD, events: Int16(POLLIN), revents: 0),
@@ -89,26 +117,21 @@ public struct StdinByteSource: ByteSource {
         // Timeout matches VTIME=1 (100ms) so callers that loop on nil still
         // make progress on cancellation checks without a pipe write.
         let ready = poll(&fds, nfds_t(fds.count), 100)
-        guard ready > 0 else { return nil }
+        guard ready > 0 else { return false }
 
         // The wake byte stays in the pipe: every later poll returns at once,
         // so a sequence the parser is part-way through gives up its retries
         // immediately instead of waiting out a 100ms poll for each, and the
         // input task reaches its cancellation check without delay.
         if fds[1].revents & Int16(POLLIN) != 0 {
-            return nil
+            return false
         }
 
         if fds[0].revents & Int16(POLLHUP) != 0 {
-            Self.inputHungUp = true
-            return nil
+            hungUp = true
+            return false
         }
-        if fds[0].revents & Int16(POLLIN) != 0 {
-            var byte: UInt8 = 0
-            let bytesRead = read(input, &byte, 1)
-            return bytesRead == 1 ? byte : nil
-        }
-        return nil
+        return fds[0].revents & Int16(POLLIN) != 0
     }
 }
 
@@ -137,8 +160,9 @@ extension StdinByteSource {
     /// between events there is nothing to tell apart.
     ///
     /// When several are ready: shutdown, then terminate, then hang-up, then
-    /// resize, then input. Shutdown's byte stays in the pipe, as in
-    /// `readByte()`. A resize empties its pipe, so several signals before the
+    /// resize, then input. Input already read goes before all of them — the
+    /// input task asks only once its buffer is empty, at most a chunk later.
+    /// Shutdown's byte stays in the pipe, as in `readByte()`. A resize empties its pipe, so several signals before the
     /// task looks are one resize. A hang-up goes before input because macOS
     /// reports a hung-up terminal readable as well as hung up, and a read of
     /// it returns nothing: taken for input, it would wake the task at once,

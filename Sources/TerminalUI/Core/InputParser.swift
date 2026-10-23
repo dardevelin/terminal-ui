@@ -138,17 +138,25 @@ private enum UTF8 {
 /// Parses raw terminal bytes into KeyEvents or MouseEvents.
 /// Handles ANSI escape sequences, SGR 1006 mouse protocol, kitty keyboard protocol, and UTF-8.
 ///
-/// The state machine is decoupled from the byte source via `ByteSource`. Runtime
-/// callers use the no-arg `readEvent()` / `readKey()` shims, which wrap stdin.
-/// Tests drive `parseEvent(from:)` directly with an `ArrayByteSource`.
+/// The state machine is decoupled from the byte source via `ByteSource`. The
+/// runtime keeps one buffered stdin source; the no-arg `readEvent()` /
+/// `readKey()` shims make one per call. Tests drive `parseEvent(from:)`
+/// directly with an `ArrayByteSource`.
 public enum InputParser {
 
     /// Read one event from stdin, blocking up to the raw-mode read timeout
-    /// (~100 ms). Returns `nil` on timeout with no input. The runtime calls
-    /// it only once `poll()` reports input, so it does not wait. Requires
-    /// raw mode; under normal terminal line-buffering nothing arrives until
-    /// Enter.
+    /// (~100 ms). Returns `nil` on timeout with no input. Requires raw mode;
+    /// under normal terminal line-buffering nothing arrives until Enter.
     public static func readEvent() -> TerminalEvent? {
+        var source = StdinByteSource()
+        return readEvent(from: &source)
+    }
+
+    /// Read one event from `source`, which the caller keeps from one event
+    /// to the next — the runtime's input task does, so the bytes a buffered
+    /// read took ahead are not lost. The task calls it once `poll()` reports
+    /// input, or with input already buffered, so it does not wait.
+    static func readEvent(from source: inout StdinByteSource) -> TerminalEvent? {
         #if DEBUG
         // When DEBUG + events trace are on, wrap the stdin source so we
         // can record the exact byte sequence that produced each event.
@@ -156,14 +164,14 @@ public enum InputParser {
         // level. The wrapper is only constructed in DEBUG —
         // release builds get the bare StdinByteSource path with zero
         // recording overhead.
-        var source = RecordingByteSource(StdinByteSource())
-        let event = parseEvent(from: &source)
-        if let event, !source.consumed.isEmpty {
-            DevTracer.shared.traceInputBytes(source.consumed, decoded: describeEvent(event))
+        var recording = RecordingByteSource(source)
+        let event = parseEvent(from: &recording)
+        source = recording.inner
+        if let event, !recording.consumed.isEmpty {
+            DevTracer.shared.traceInputBytes(recording.consumed, decoded: describeEvent(event))
         }
         return event
         #else
-        var source = StdinByteSource()
         return parseEvent(from: &source)
         #endif
     }
