@@ -8,6 +8,8 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`DiffLine` is `Equatable`**, so a model holding a diff can be too, and a
+  view handed one compares it by value.
 - **`.prefersDefaultFocus(_:)`** — a view asks for keyboard focus when
   nothing holds it, at launch most of all; without one, the first focusable
   in Tab order takes it, as before. A chat whose transcript comes before its

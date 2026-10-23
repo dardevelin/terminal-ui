@@ -7,7 +7,7 @@
 /// number for additions, no new number for removals). Build these yourself
 /// only when adapting an external diff source; otherwise let ``DiffEngine``
 /// or `DiffView(original:modified:)` compute them.
-public struct DiffLine: Identifiable, Sendable {
+public struct DiffLine: Identifiable, Sendable, Equatable {
     /// Stable position of this line in the diff output.
     public let id: Int
     /// Whether the line was added, removed, or left unchanged.
@@ -20,7 +20,7 @@ public struct DiffLine: Identifiable, Sendable {
     public let newLineNumber: Int?
 
     /// Classification of a diff line.
-    public enum Kind: Sendable {
+    public enum Kind: Sendable, Equatable {
         /// Present on both sides — renders undecorated.
         case unchanged
         /// Present only in the modified file — renders in the theme's success colour with `+`.
