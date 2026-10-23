@@ -290,7 +290,12 @@ owning PID is dead; `list` is read-only.
 A typed Python client + PTY runner live in `tools/terminalui/` (`client.py`,
 `runner.py`); smoke/integration harnesses in `tools/scripts/`. Protocol: strict
 one-request/one-response JSON lines over an AF_UNIX socket, served before each
-frame's event drain; an idle app wakes for it. Spawn Storybook via PTY only.
+frame's event drain; an idle app wakes for it. So a reply comes after every key
+sent before it is drawn, and the client's `paste`/`write_raw`/`resize_terminal`
+return only once the app has taken their input, and the app draws its first
+frame before it answers anything: assert straight after input or spawn, never
+sleep. Wait only for what lands in its own time, a `Task` or a timer, with
+`wait_until(predicate)`. Spawn Storybook via PTY only.
 
 ## Documentation (DocC → GitHub Pages)
 

@@ -160,7 +160,6 @@ def case_kill_with_pid_against_alive_process() -> None:
     `status=quit-sent`. This pins the command side only; that the target
     actually dies is the case below."""
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
         assert diag_dir is not None, "runner did not record diag_dir"
         result = _swtui_ctl(
@@ -189,7 +188,6 @@ def case_kill_with_pid_actually_exits() -> None:
     process. What a user means by `swtui ctl kill` is that the app stops, and
     a queued quit that nothing wakes is indistinguishable from a hang."""
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
         assert diag_dir is not None, "runner did not record diag_dir"
         result = _swtui_ctl(
@@ -250,7 +248,6 @@ def case_kill_with_pid_against_dead_unlinks() -> None:
 
 def case_reap_preserves_live_sockets() -> None:
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         live_sock = Path(client.socket_path)
         assert live_sock.exists(), f"live socket missing at {live_sock} before reap"
         result = _swtui_ctl("--dir", str(live_sock.parent), "reap")
@@ -343,7 +340,6 @@ def case_clients_connecting_at_once_are_all_served() -> None:
     """Eight clients connect to an app at once, then each sends a ping;
     every one gets its reply."""
     with spawn_and_connect("Navigation") as (_proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         path = client.socket_path
         clients = []
         try:

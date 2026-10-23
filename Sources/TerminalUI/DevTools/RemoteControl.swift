@@ -33,7 +33,7 @@ public enum RemoteControlProtocol {
 /// Recognized verbs: `ping`, `send_key`, `send_text`, `send_mouse`,
 /// `focus_get`, `focus_set`, `query_cells`, `query_tree`,
 /// `inspector_probe`, `inspector_move`, `inspector_toggle`,
-/// `inspect_range`, `scan`, `frame_number`, `screenshot`, `list_actions`,
+/// `inspect_range`, `scan`, `frame_number`, `terminal_input`, `screenshot`, `list_actions`,
 /// `invoke_action`, `quit`, `crash`. The typed Python client in
 /// `tools/terminalui/client.py` speaks this same shape.
 public struct RemoteRequest: Codable, Sendable {
@@ -125,6 +125,8 @@ public struct RemoteResult: Codable, Sendable {
     public var tree: GraphDebugNode?
     /// `frame_number`'s answer — the current frame counter.
     public var frame: Int?
+    /// `terminal_input`'s answer — what the app has taken from its terminal.
+    public var terminalInput: TerminalInputTaken?
     /// `screenshot`'s answer — path of the written capture file.
     public var screenshotPath: String?
     /// `inspector_probe`'s answer — one probe at the requested cell.
@@ -143,6 +145,7 @@ public struct RemoteResult: Codable, Sendable {
                 cells: CellSlice? = nil,
                 tree: GraphDebugNode? = nil,
                 frame: Int? = nil,
+                terminalInput: TerminalInputTaken? = nil,
                 screenshotPath: String? = nil,
                 inspector: InspectorProbe? = nil,
                 probes: [InspectorProbe]? = nil,
@@ -152,6 +155,7 @@ public struct RemoteResult: Codable, Sendable {
         self.cells = cells
         self.tree = tree
         self.frame = frame
+        self.terminalInput = terminalInput
         self.screenshotPath = screenshotPath
         self.inspector = inspector
         self.probes = probes
@@ -246,6 +250,27 @@ public struct FocusInfo: Codable, Sendable {
     public var rect: [Int]
     /// The node's payload summary — text content, label, etc.
     public var value: String?
+}
+
+/// What an app has taken from its terminal — `terminal_input`'s result: the
+/// bytes it has turned into events, and the size of the last resize. A
+/// client that typed into the terminal, or resized it, waits for this to
+/// reach what it did; the reply to its next request then shows it drawn.
+public struct TerminalInputTaken: Codable, Sendable, Equatable {
+    /// Bytes read from the terminal whose events are queued or handled,
+    /// counting those that made none.
+    public var bytes: Int
+    /// Columns of the last resize taken, nil before the first.
+    public var cols: Int?
+    /// Rows of the last resize taken, nil before the first.
+    public var rows: Int?
+
+    /// A record of `bytes` taken and the last resize, if any.
+    public init(bytes: Int = 0, cols: Int? = nil, rows: Int? = nil) {
+        self.bytes = bytes
+        self.cols = cols
+        self.rows = rows
+    }
 }
 
 /// A rectangular region of the screen as text — `query_cells`' result.
@@ -607,6 +632,11 @@ public protocol RemoteControlRuntime: AnyObject {
     func remoteRequestFrame()
     /// The monotonic frame counter — clients poll it to await a render.
     func remoteCurrentFrameNumber() -> Int
+    /// What the app has taken from its terminal. A client that typed into
+    /// the terminal or resized it polls this to know the app has the input:
+    /// requests are served before each drain, so the next one is answered
+    /// after those events are drawn.
+    func remoteTerminalInputTaken() -> TerminalInputTaken
     /// Build the framework's default action scope (Ctrl+C → Action.quit,
     /// Esc → Action.dismissOrQuit) so `list_actions` / `invoke_action`
     /// can route through the same data the runtime dispatch uses.
@@ -650,6 +680,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case "inspect_range":   return inspectRange(request, runtime: runtime)
         case "scan":            return scan(request, runtime: runtime)
         case "frame_number":return frameNumber(request, runtime: runtime)
+        case "terminal_input": return terminalInput(request, runtime: runtime)
         case "screenshot":  return screenshot(request, runtime: runtime)
         case "quit":        return quit(request, runtime: runtime)
         case "crash":       return crash(request)
@@ -1051,6 +1082,11 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
     private func frameNumber(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
         let n = runtime.remoteCurrentFrameNumber()
         return RemoteResponse(id: request.id, ok: true, result: RemoteResult(frame: n))
+    }
+
+    private func terminalInput(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        RemoteResponse(id: request.id, ok: true,
+                       result: RemoteResult(terminalInput: runtime.remoteTerminalInputTaken()))
     }
 
     private func screenshot(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {

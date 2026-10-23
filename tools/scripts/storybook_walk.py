@@ -56,8 +56,6 @@ def walk(app: Client, out_dir: Path) -> list[tuple[str, str]]:
     the first would sweep the full list twice over.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    app.wait_for_frame(1, timeout=2.0)
-
     results: list[tuple[str, str]] = []
     seen: set[str] = set()
 
@@ -76,8 +74,6 @@ def walk(app: Client, out_dir: Path) -> list[tuple[str, str]]:
         print(f"  {'✗' if detail else '✓'} {index:02d} {page:<22} {detail or 'ok'}")
 
         app.send_key("down")
-        app.wait_for_frame(1, timeout=0.5)
-
     _assert_catalog_exhausted(app, [page for page, _ in results])
     return results
 

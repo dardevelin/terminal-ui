@@ -35,14 +35,10 @@ TAB_PRESSES = 8
 
 def verify(app: Client) -> list[str]:
     failures: list[str] = []
-    app.wait_for_frame(1)
-
     outside = app.focus().node_id
 
     # 'h' toggles the help modal, which carries a single [ Close ] button.
     app.send_text("h")
-    app.wait_for_frame(2, timeout=1.5)
-
     if "Keyboard Shortcuts" not in app.text():
         return ["help modal did not present — nothing to verify"]
 
@@ -57,7 +53,6 @@ def verify(app: Client) -> list[str]:
     landed = set()
     for i in range(TAB_PRESSES):
         app.tab()
-        app.wait_for_frame(1, timeout=1.0)
         node = app.focus().node_id
         landed.add(node)
         if node == outside:
@@ -73,12 +68,10 @@ def verify(app: Client) -> list[str]:
 
     # Activating [ Close ] dismisses, and the background becomes live again.
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
     if "Keyboard Shortcuts" in app.text():
         failures.append("Enter on [ Close ] did not dismiss the dialog")
     else:
         app.tab()
-        app.wait_for_frame(1, timeout=1.0)
         if app.focus().node_id is None:
             failures.append("focus was not restored to the background after dismissal")
 

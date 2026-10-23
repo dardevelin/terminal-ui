@@ -108,7 +108,14 @@ enum ProcessEnding: Equatable {
 
 /// Thread-safe event queue. Producers push, main actor drains.
 final class EventQueue: Sendable {
-    private let buffer = Mutex<[TerminalEvent]>([])
+    private struct Contents {
+        var events: [TerminalEvent] = []
+        #if DEBUG
+        var terminalInput = TerminalInputTaken()
+        #endif
+    }
+
+    private let contents = Mutex(Contents())
     /// Raised on every push, so a frame loop with nothing to do sleeps until
     /// an event arrives.
     private let wake: WakeSignal
@@ -118,21 +125,56 @@ final class EventQueue: Sendable {
     }
 
     func push(_ event: TerminalEvent) {
-        buffer.withLock { $0.append(event) }
+        contents.withLock { $0.events.append(event) }
         wake.wake()
     }
 
+    /// Queues what the terminal's input made of its bytes up to
+    /// `bytesConsumed` — nothing, for a sequence the parser dropped — or of
+    /// a resize. A debug build records both under the same lock as the
+    /// event, so whoever reads a record that includes a byte or a size finds
+    /// its event already queued.
+    func pushTerminalInput(_ event: TerminalEvent?, bytesConsumed: Int) {
+        #if DEBUG
+        contents.withLock { contents in
+            if let event {
+                contents.events.append(event)
+                if case .resize(let cols, let rows) = event {
+                    contents.terminalInput.cols = cols
+                    contents.terminalInput.rows = rows
+                }
+            }
+            contents.terminalInput.bytes = bytesConsumed
+        }
+        if event != nil {
+            wake.wake()
+        }
+        #else
+        if let event {
+            push(event)
+        }
+        #endif
+    }
+
     func drain() -> [TerminalEvent] {
-        buffer.withLock { buffer in
-            let events = buffer
-            buffer.removeAll(keepingCapacity: true)
+        contents.withLock { contents in
+            let events = contents.events
+            contents.events.removeAll(keepingCapacity: true)
             return events
         }
     }
 
     var hasEvents: Bool {
-        buffer.withLock { !$0.isEmpty }
+        contents.withLock { !$0.events.isEmpty }
     }
+
+    #if DEBUG
+    /// What the queue has taken from the terminal: its events are queued or
+    /// drained.
+    var terminalInputTaken: TerminalInputTaken {
+        contents.withLock { $0.terminalInput }
+    }
+    #endif
 }
 
 /// A wheel notch scrolls three lines, as terminals and most platforms do.
@@ -475,19 +517,6 @@ public final class TerminalRuntime<RootView: TerminalView> {
             #if DEBUG
             // Hand the terminal back; warnings can return to stderr now.
             DebugStream.shared.setLiveTUI(false)
-            #endif
-            Terminal.disableBracketedPaste()
-            Terminal.exitAlternateScreen()
-            Terminal.disableRawMode()
-
-            // Cleared before the pipes close, so neither a lingering
-            // readByte() nor a late SIGWINCH uses a closed — or reopened —
-            // descriptor.
-            StdinByteSource.shutdownReadFD = nil
-            Terminal.resizeWakeFD = nil
-            Terminal.terminateWakeFD = nil
-
-            #if DEBUG
             // drop the remote-control server explicitly so its deinit
             // unlinks the PID socket. Without this, killing the app left
             // stale sockets that confused the next debug run. Clearing the
@@ -499,8 +528,23 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // handle — orphan dirs are recoverable, live ones are not,
             // so cleanupOwnDir intentionally only touches the dir whose
             // PID matches the calling process.
+            // Both go while the terminate pipe is still set: until it is
+            // cleared below, a terminating signal only asks the app to
+            // quit, which it is doing. After, the signal ends the process
+            // at once, and SIGTERM sent to an app quitting on its own left
+            // the dir behind.
             DiagPaths.cleanupOwnDir()
             #endif
+            Terminal.disableBracketedPaste()
+            Terminal.exitAlternateScreen()
+            Terminal.disableRawMode()
+
+            // Cleared before the pipes close, so neither a lingering
+            // readByte() nor a late SIGWINCH uses a closed — or reopened —
+            // descriptor.
+            StdinByteSource.shutdownReadFD = nil
+            Terminal.resizeWakeFD = nil
+            Terminal.terminateWakeFD = nil
         }
 
         // Make focus engine accessible during graph construction.
@@ -518,7 +562,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// binding. Extracted so `run()` can wrap it in
     /// `GraphContext.$currentFocusEngine.withValue`.
     private func runFrameLoop(shutdownPipe: SelfPipe, resizePipe: SelfPipe, terminatePipe: SelfPipe) async throws {
-        renderFullFrame()
+        // The first frame, drawn before the loop's first `pump()`: no remote
+        // request is answered, and no key handled, before the app is on
+        // screen with its first focusable focused. It takes the path every
+        // frame takes; a separate one for the first skipped auto-focus, and
+        // the app came up unfocused until the loop drew again.
+        renderDiffFrame()
+        needsRender = false
 
         let queue = self.eventQueue
 
@@ -549,12 +599,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         wake.wake()
                         return
                     }
-                    if let event {
-                        queue.push(event)
-                    }
+                    queue.pushTerminalInput(event, bytesConsumed: source.bytesConsumed)
                 case .resize:
                     let newSize = Terminal.size()
-                    queue.push(.resize(newSize.cols, newSize.rows))
+                    queue.pushTerminalInput(.resize(newSize.cols, newSize.rows), bytesConsumed: source.bytesConsumed)
                 case .hangUp:
                     Terminal.recordHangUp()
                     fallthrough
@@ -966,89 +1014,6 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
     // MARK: - Rendering (@MainActor)
 
-    private func renderFullFrame() {
-        frameCounter.beginFrame()
-        tracer.beginFrame()
-
-        let buildStart = monotonicNanoseconds()
-
-        // Set environment for body evaluation. `terminalSize` flows in
-        // from the runtime; modifiers can layer additional values on
-        // top during graph descent. Wrap the entire frame in nested
-        // `withValue` so reads from any callee — body evaluation,
-        // measurement, layout, render — observe the same bindings.
-        graph.focusMoved(to: focusEngine.keyboardFocusID)
-        var env = GraphContext.currentEnvironment ?? EnvironmentValues()
-        env.terminalSize = size
-        env.bell = bellAction
-        env.killBuffer = killBuffer
-        env.cursorFlash = cursorFlash
-        env.userKeymap = userKeymap
-        env.focusedID = focusEngine.keyboardFocusID
-        GraphContext.$currentEnvironment.withValue(env) {
-            GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
-                renderFullFrameBody(buildStart: buildStart)
-            }
-        }
-    }
-
-    private func renderFullFrameBody(buildStart: UInt64) {
-        // Build/update the attribute graph from the view tree
-        let view = buildView()
-        graph.update(from: view)
-
-        // Adjust scroll offsets to keep focused child visible — must run before render
-        GraphRenderer.adjustScrollForFocus(
-            root: graph.root, focusedID: focusEngine.keyboardFocusID,
-            viewportWidth: size.cols, viewportHeight: size.rows
-        )
-        GraphRenderer.adjustScrollForExplicitTarget(
-            root: graph.root,
-            viewportWidth: size.cols, viewportHeight: size.rows
-        )
-
-        // Phase separation: layout fires GR rebuilders + stamps rects
-        // ahead of render so the render walk is a pure draw.
-        // GraphRenderer.render no longer invokes geometryRebuilder.
-        renderBuffer.resize(width: size.cols, height: size.rows)
-        let context = RenderContext(rect: Rect(x: 0, y: 0, width: size.cols, height: size.rows))
-        if let root = graph.root {
-            Layout.measureAndPlace(graph: root, in: context.rect)
-            GraphRenderer.render(root, into: &renderBuffer, context: context)
-        }
-
-        // Focus indicators
-        GraphRenderer.renderFocusIndicators(into: &renderBuffer, focusEngine: focusEngine, root: graph.root)
-
-        // Debug overlays — render directly into buffer, bypass graph
-        #if DEBUG
-        debugOverlay.render(into: &renderBuffer, stats: frameStats)
-        debugPanel.render(into: &renderBuffer, graph: graph, stats: frameStats)
-        inspector.render(into: &renderBuffer, graph: graph)
-        #endif
-
-        renderBuffer.renderFull(into: &outputBuffer)
-        if bell.take() { outputBuffer.write(TerminalBell.sequence) }
-        let buildEnd = monotonicNanoseconds()
-
-        outputBuffer.flush()
-        let flushEnd = monotonicNanoseconds()
-
-        let totalCells = renderBuffer.width * renderBuffer.height
-        tracer.endFrame(buffer: renderBuffer, previousBuffer: previousBuffer)
-        let stats = frameCounter.endFrame(
-            cellsChanged: totalCells, totalCells: totalCells,
-            buildNs: buildEnd - buildStart, flushNs: flushEnd - buildEnd,
-            bytesWritten: outputBuffer.size
-        )
-        frameStats = stats
-        #if DEBUG
-        let buildMs = Double(buildEnd - buildStart) / 1_000_000.0
-        debugPanel.recordFrameTime(buildMs)
-        #endif
-        previousBuffer = renderBuffer
-    }
-
     private func renderDiffFrame() {
         frameCounter.beginFrame()
         tracer.beginFrame()
@@ -1408,6 +1373,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// bookkeeping on the client side. Pulled from the global `frameStats`
     /// updated once per frame by `FrameCounter.endFrame`.
     public func remoteCurrentFrameNumber() -> Int { frameStats.frameCount }
+
+    public func remoteTerminalInputTaken() -> TerminalInputTaken { eventQueue.terminalInputTaken }
     #endif
 }
 

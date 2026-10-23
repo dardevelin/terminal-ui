@@ -150,6 +150,12 @@ class RemoteError(RuntimeError):
     """Raised when the socket reports ``ok: false`` or connection fails."""
 
 
+# How long the app may take to take in input written to its terminal, or a
+# resize, before the client calls it stuck. Reached only when it is:
+# a sanitizer build on a loaded machine takes a fraction of this.
+INPUT_TIMEOUT = 10.0
+
+
 # ---------------------------------------------------------------------------
 # Client
 # ---------------------------------------------------------------------------
@@ -195,6 +201,9 @@ class Client:
         # ESC[200~/ESC[201~ wrappers because they're a TTY-level protocol,
         # not an InputParser-level one.
         self._master_fd: Optional[int] = None
+        # Bytes written to that terminal, which the app counts as it turns
+        # them into events.
+        self._terminal_bytes_written = 0
         # Set by the runner: the spawned app's process id, and a callable
         # returning every byte it has written to its terminal so far — what
         # a case needs to check what the app leaves the terminal in when it
@@ -296,7 +305,11 @@ class Client:
     def send_key(self, key: str, *modifiers: str) -> None:
         """Inject a single key event. ``key`` accepts named keys (tab, enter,
         up/down/left/right, home/end, pageup/pagedown, f1..f12, escape) or a
-        single character. Modifiers: shift, alt/option/meta, ctrl."""
+        single character. Modifiers: shift, alt/option/meta, ctrl.
+
+        Like every way of sending input, it needs no wait after it: the app
+        serves requests before it handles the events queued, so the reply to
+        the next request comes after this key is drawn."""
         self._call("send_key", key=key, modifiers=list(modifiers) or None)
 
     def send_text(self, text: str) -> None:
@@ -315,6 +328,7 @@ class Client:
         The runner calls this after spawn; tests invoking ``Client``
         without the runner (rare) can pass their own FD."""
         self._master_fd = master_fd
+        self._terminal_bytes_written = 0
 
     def forget_pty(self) -> None:
         """Drop the master FD once the terminal has hung up: its number may
@@ -334,23 +348,26 @@ class Client:
         because each character arrives as a typed event, not a paste
         burst — bracketed paste is what disambiguates the two.
         """
-        if self._master_fd is None:
-            raise RemoteError("paste() requires attach_pty(master_fd) — runner hooks this up automatically")
         # ESC[200~ start, ESC[201~ end. Bytes go straight to stdin.
-        payload = f"\x1b[200~{text}\x1b[201~".encode("utf-8")
-        os.write(self._master_fd, payload)
+        self.write_raw(f"\x1b[200~{text}\x1b[201~".encode("utf-8"))
 
     def resize_terminal(self, cols: int, rows: int) -> None:
         """Change the spawned app's terminal size as a terminal emulator
         does: set the PTY's window size, then send SIGWINCH. The runner
         starts the app in its own session without making the PTY its
-        controlling terminal, so the kernel would not send the signal."""
+        controlling terminal, so the kernel would not send the signal.
+        Returns once the app has taken the resize, as ``write_raw`` returns
+        once it has taken the bytes."""
         import signal
 
         if self._master_fd is None or self.pid is None:
             raise RemoteError("resize_terminal() needs the runner's PTY and pid")
         set_window_size(self._master_fd, cols, rows)
         os.kill(self.pid, signal.SIGWINCH)
+        def taken() -> bool:
+            terminal_input = self._terminal_input()
+            return (terminal_input.get("cols"), terminal_input.get("rows")) == (cols, rows)
+        self._wait_for(taken, f"the app to take the resize to {cols}x{rows}")
 
     def cpu_seconds(self) -> float:
         """User plus system CPU time the app has used so far, from `/proc`
@@ -387,10 +404,24 @@ class Client:
         this in a smoke test, write those exact bytes — anything that
         wraps or transforms them won't reach the InputParser the way
         the real terminal does.
+
+        Returns once the app has turned all of it into events, which the
+        next request then sees drawn, as it would after ``send_key``.
         """
         if self._master_fd is None:
-            raise RemoteError("write_raw() requires attach_pty(master_fd) — runner hooks this up automatically")
-        os.write(self._master_fd, data)
+            raise RemoteError("typing into the terminal needs the runner's PTY")
+        view = memoryview(data)
+        while view:
+            view = view[os.write(self._master_fd, view):]
+        self._terminal_bytes_written += len(data)
+        written = self._terminal_bytes_written
+        self._wait_for(lambda: self._terminal_input()["bytes"] >= written,
+                       f"the app to take in the {written} bytes typed into its terminal")
+
+    def _terminal_input(self) -> Mapping[str, Any]:
+        """What the app has taken from its terminal: ``bytes`` turned into
+        events, and the ``cols`` and ``rows`` of the last resize."""
+        return self._call("terminal_input").result["terminal_input"]
 
     def mouse_move(self, x: int, y: int, *modifiers: str) -> None:
         """Inject a mouse-move event at (x, y). 0-indexed cell coordinates.
@@ -422,18 +453,12 @@ class Client:
         self._call("send_mouse", kind=kind, x=x, y=y,
                    modifiers=list(modifiers) or None)
 
-    def press_many(self, key: str, count: int, *modifiers: str,
-                   sleep_between: float = 0.02) -> None:
-        """Convenience: send ``key`` ``count`` times with a small pause to
-        give each frame time to process. ``sleep_between`` defaults to ~20ms
-        which is long enough for default ``.fps60`` render mode."""
+    def press_many(self, key: str, count: int, *modifiers: str) -> None:
+        """Send ``key`` ``count`` times."""
         for _ in range(count):
             self.send_key(key, *modifiers)
-            if sleep_between > 0:
-                time.sleep(sleep_between)
 
-    def send_keys(self, sequence: Iterable[Any],
-                  sleep_between: float = 0.02) -> None:
+    def send_keys(self, sequence: Iterable[Any]) -> None:
         """Inject an ordered sequence of key events. Each entry may be:
 
         * a bare string — a single key name (``"tab"``, ``"enter"``, ``"a"``)
@@ -441,10 +466,7 @@ class Client:
         * a tuple ``(key, [modifiers])`` — same spelling as ``send_key``
 
         Useful for multi-step compose sequences: ``send_keys(["ctrl+x",
-        "ctrl+c"])`` fires the two chords in order, waiting one render tick
-        between them. Returns after the last key has been queued; callers
-        should follow with ``wait_for_frame`` if they need to observe the
-        post-sequence state.
+        "ctrl+c"])`` fires the two chords in order.
         """
         for item in sequence:
             if isinstance(item, str):
@@ -455,10 +477,8 @@ class Client:
             else:
                 raise TypeError(f"invalid key sequence entry: {item!r}")
             self.send_key(key, *modifiers)
-            if sleep_between > 0:
-                time.sleep(sleep_between)
 
-    def chord(self, *chords: str, sleep_between: float = 0.02) -> None:
+    def chord(self, *chords: str) -> None:
         """Fire a chord or a sequence of chords written as ``mod+mod+key``.
 
         Examples::
@@ -475,21 +495,13 @@ class Client:
                 raise ValueError("empty chord")
             key, modifiers = _parse_key_expression(chord)
             self.send_key(key, *modifiers)
-            if sleep_between > 0:
-                time.sleep(sleep_between)
 
     def tab(self, count: int = 1, reverse: bool = False) -> None:
         """Advance keyboard focus by ``count`` tab stops (positive integer).
-        Pass ``reverse=True`` for Shift+Tab. Settles one render tick per
-        press so the focus-change lands before the next call."""
+        Pass ``reverse=True`` for Shift+Tab."""
         if count < 0:
             raise ValueError("count must be non-negative")
-        for _ in range(count):
-            if reverse:
-                self.send_key("tab", "shift")
-            else:
-                self.send_key("tab")
-            time.sleep(0.02)
+        self.press_many("tab", count, *(("shift",) if reverse else ()))
 
     def focus(self) -> Focus:
         data = self._call("focus_get").result.get("focus") or {}
@@ -572,32 +584,14 @@ class Client:
                    interval: float = 0.04) -> bool:
         """Poll until ``predicate(client)`` returns True or ``timeout``
         elapses. Returns the last predicate result — True on success,
-        False on timeout. Replaces ``wait_for_frame`` guesses with a
-        real condition wait for flakiness-prone assertions."""
+        False on timeout. For what lands in its own time — a ``Task``, a
+        timer, an animation; input needs no wait."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if predicate(self):
                 return True
             time.sleep(interval)
         return predicate(self)
-
-    def goto_storybook_page(self, index: int) -> None:
-        """Drive Storybook's sidebar to the page at ``index`` (0-based).
-        Sends ``index`` down-arrow events back-to-back and then waits
-        one frame for the final page's body to render. Previous versions
-        slept 40ms between each press — unnecessary, the runtime drains
-        the event queue in a single frame tick and any work done inside
-        a page's body is already deterministic.
-
-        DEPRECATED for new tests — prefer :py:meth:`goto_page` which
-        navigates by name. Hardcoded indices break silently when the
-        page list is reordered (regression seen 2026-05-05 when three
-        primitives were added under .primitives but cases sat at the
-        tail of the enum). Index-based tests cannot detect visual-vs-
-        declaration order divergence by construction."""
-        for _ in range(index):
-            self.send_key("down")
-        self.wait_for_frame(1, timeout=1.0)
 
     # Storybook page-title rect. PageDetail.body renders:
     #   row 0: divider line from Sidebar/PageDetail HStack
@@ -678,7 +672,6 @@ class Client:
         seen = {titles[0]}
         for _ in range(max_pages):
             self.send_key("down")
-            self.wait_for_frame(1, timeout=0.5)
             title = self.storybook_page_title()
             if title == titles[-1]:
                 self._assert_catalog_exhausted(titles)
@@ -716,9 +709,8 @@ class Client:
 
         Resilient against enum reordering — name-based navigation
         finds the right page regardless of where it sits in the
-        declaration. Replaces hardcoded indices like ``goto_storybook_page(9)``
-        which encode the enum order at test-write time and break
-        silently when the order changes.
+        declaration, where an index encodes the enum order at
+        test-write time and breaks silently when the order changes.
 
         Raises ``RuntimeError`` if the page can't be reached within
         ``max_steps`` presses in either direction."""
@@ -726,14 +718,12 @@ class Client:
             return
         for _ in range(max_steps):
             self.send_key("down")
-            self.wait_for_frame(1, timeout=0.5)
             if self.storybook_page_title() == name:
                 return
         # Forward sweep didn't find it — try backward (in case we
         # started below the target page).
         for _ in range(max_steps):
             self.send_key("up")
-            self.wait_for_frame(1, timeout=0.5)
             if self.storybook_page_title() == name:
                 return
         raise RuntimeError(
@@ -806,21 +796,12 @@ class Client:
     def frame_number(self) -> int:
         return int(self._call("frame_number").result.get("frame", 0))
 
-    def wait_for_frame(self,
-                       frames_ahead: int = 1,
-                       timeout: float = 2.0) -> int:
-        """Block until the runtime has rendered ``frames_ahead`` more frames
-        than the current number, or until ``timeout`` elapses. Returns the
-        new frame number. Removes the need for ``sleep`` guesses in tests."""
-        start = self.frame_number()
-        target = start + frames_ahead
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            current = self.frame_number()
-            if current >= target:
-                return current
-            time.sleep(0.02)
-        return self.frame_number()
+    def _wait_for(self, condition: Callable[[], bool], what: str) -> None:
+        """Poll ``condition`` until it holds; raise ``RemoteError`` naming
+        ``what`` was awaited if it does not within ``INPUT_TIMEOUT``. An
+        acknowledgement is usually there at the first or second poll."""
+        if not self.wait_until(lambda _: condition(), timeout=INPUT_TIMEOUT, interval=0.005):
+            raise RemoteError(f"timed out after {INPUT_TIMEOUT}s waiting for {what}")
 
     def screenshot(self) -> None:
         """Ask the runtime to capture the next rendered frame to disk.

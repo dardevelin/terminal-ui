@@ -8,6 +8,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **Remote control: input of every kind is drawn before the next reply.** The
+  new `terminal_input` command reports what a debug app has taken from its
+  terminal: how many bytes it has turned into events, and the size of the last
+  resize. The Python client's `paste`, `write_raw` and `resize_terminal` return
+  once the app has taken their input, as socket input already did. A test can
+  assert straight after typing, with no wait or sleep. `wait_for_frame`, which
+  returned quietly when no frame came, is gone; for work that lands in its own
+  time, wait on a condition with `wait_until`. The smoke suite dropped 183
+  waits and now runs in 10s instead of 25s.
 - **`CursorFlash`, as `@TerminalEnvironment(\.cursorFlash)`** — the focused
   cursor's flash at a wall, which a running app supplies. An input that draws
   a cursor of its own reads `isLit` while it holds focus, as the framework's
@@ -207,6 +216,16 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An app comes up focused.** The first frame, drawn before the event loop
+  starts, took a render path of its own that skipped auto-focus. Every app
+  drew an unfocused first frame and focused only on the loop's next one, and
+  a key that arrived in between went nowhere. The first frame now takes the
+  path every other frame takes.
+- **A debug app quitting on its own still removes its data dir when a
+  terminating signal arrives.** Teardown cleared the descriptor through
+  which a signal asks the app to quit before it removed the dir. A SIGTERM
+  sent in between ended the process at once and left the dir behind. The
+  dir and socket now go first.
 - **Clients connecting at once are all served.** The control socket
   listened with a backlog of one, so when two `swtui ctl` calls or harness
   clients connected between frames, macOS refused the second. It now queues

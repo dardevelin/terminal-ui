@@ -51,7 +51,6 @@ def check(mode: str) -> list[str]:
     env = {"TUI_RENDER_MODE": mode} if mode else None
     label = mode or "capped"
     with spawn_and_connect("AsyncState", cols=60, rows=14, env=env) as (_proc, app):
-        app.wait_for_frame(1)
         first = count(app)
         if first is None:
             return [f"[{label}] the app did not render its counter at all"]

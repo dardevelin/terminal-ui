@@ -40,8 +40,6 @@ def summary_line(app: Client, key: str) -> str:
 
 def verify(app: Client) -> list[str]:
     failures: list[str] = []
-    app.wait_for_frame(1)
-
     screen = app.text()
     for expected in ("Settings", "Theme", "Density", "Telemetry", "Editor"):
         if expected not in screen:
@@ -55,7 +53,6 @@ def verify(app: Client) -> list[str]:
         failures.append(f"unexpected initial theme line: {before!r}")
 
     app.send_key("right")
-    app.wait_for_frame(1, timeout=1.0)
     after = summary_line(app, "theme=")
     if after == before:
         failures.append(
@@ -65,19 +62,15 @@ def verify(app: Client) -> list[str]:
         failures.append(f"segmented Right landed on the wrong option: {after!r}")
 
     app.send_key("left")
-    app.wait_for_frame(1, timeout=1.0)
     if "theme=dark" not in summary_line(app, "theme="):
         failures.append("segmented Left did not move back to the previous option")
 
     # --- dropdown: opens, moves, commits, and closes ---
     app.tab()
-    app.wait_for_frame(1, timeout=1.0)
-
     if "Comfortable" in app.text():
         failures.append("dropdown was already expanded before being opened")
 
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
     if "Comfortable" not in app.text():
         failures.append("Enter did not open the dropdown list")
         return failures
@@ -85,10 +78,7 @@ def verify(app: Client) -> list[str]:
     # The second key is the one that matters: it must reach the *open*
     # list, which only exists in a tree built after the first keypress.
     app.send_key("down")
-    app.wait_for_frame(1, timeout=1.0)
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
-
     committed = summary_line(app, "density=")
     if "density=comfortable" not in committed:
         failures.append(
@@ -99,14 +89,11 @@ def verify(app: Client) -> list[str]:
 
     # Esc must abandon rather than commit.
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
     if "Compact" not in app.text():
         failures.append("dropdown did not reopen")
     else:
         app.send_key("up")
-        app.wait_for_frame(1, timeout=1.0)
         app.send_key("escape")
-        app.wait_for_frame(2, timeout=1.5)
         if "density=comfortable" not in summary_line(app, "density="):
             failures.append("Esc committed the highlighted option instead of abandoning")
 
