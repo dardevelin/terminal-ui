@@ -203,6 +203,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Deprecated
 
+- **`BoundaryFeedbackProbe`.** The environment's `boundaryHit` action already
+  routes a hit to the subtree's bell and `.onBoundaryHit` callback; a test
+  supplies those and reads what they received. It keeps working until the
+  next major version.
 - **`StdinByteSource.shutdownReadFD`.** The runtime's input source now owns
   its wake pipes, and nothing sets this global any more. A source made
   without pipes still honours it until the next major version.

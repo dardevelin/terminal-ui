@@ -1,7 +1,7 @@
 import Testing
 @testable import TerminalUI
 
-// PromptInput → BoundaryFeedbackEmitter wiring. Mirrors TextArea
+// PromptInput → boundary-hit wiring. Mirrors TextArea
 // (TextAreaBoundaryTests) but with two PromptInput-specific quirks:
 //
 //   1. Plain Enter submits — it doesn't fall through to a wall
@@ -18,28 +18,6 @@ import Testing
 //   * cursor at (lastRow, lastCol), Right → .rightEdge
 //   * Up at top + no older history → .topEdge
 //   * Down at bottom + no newer history (historyIndex < 0) → .bottomEdge
-
-private final class SharedEmitterRecorder: @unchecked Sendable {
-    nonisolated(unsafe) var bell = 0
-    nonisolated(unsafe) var bounce: [BoundaryHitReason] = []
-    private let savedBounce: @Sendable (BoundaryHitReason) -> Void
-
-    init() {
-        savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bounceSink = { [weak self] reason in
-            self?.bounce.append(reason)
-        }
-    }
-
-    /// The bell to put in the environment a test drives, counting rings.
-    var bellAction: BellAction {
-        BellAction { [weak self] in self?.bell += 1 }
-    }
-
-    func restore() {
-        BoundaryFeedbackEmitter.shared.bounceSink = savedBounce
-    }
-}
 
 @MainActor
 private func drivePromptInput(text: Binding<String>,
@@ -67,15 +45,13 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Left at (0, 0) fires .leftEdge under .bounce")
     func leftEdgeAtOrigin() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "hi"
         var st = PromptInputState()  // cursor at (0, 0)
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -86,16 +62,14 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Right at end of last logical row fires .rightEdge under .bounce")
     func rightEdgeAtEnd() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab"  // single row, length 2
         var st = PromptInputState()
         st.cursorCol = 2  // at end
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -106,16 +80,14 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Left at (1, 0) does NOT fire .leftEdge — crosses to previous row's tail")
     func leftAtRowStartCrossesUp() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "ab\ncd"
         var st = PromptInputState()
         st.cursorRow = 1; st.cursorCol = 0
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -126,15 +98,13 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Up at top with no history fires .topEdge under .bounce")
     func topEdgeNoHistory() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "single"
         var st = PromptInputState()  // cursor (0, 0), no history
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -145,16 +115,14 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Up at top WITH history does NOT fire — history recall takes priority")
     func upWithHistorySilent() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "live"
         var st = PromptInputState()
         st.history = [PromptInputHistoryEntry(text: "older command")]  // one entry available
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -168,8 +136,7 @@ struct PromptInputBoundaryEmitTests {
 
     @Test("Down at bottom with historyIndex < 0 fires .bottomEdge")
     func bottomEdgeNoHistoryNav() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "hello"
         var st = PromptInputState()
@@ -178,8 +145,7 @@ struct PromptInputBoundaryEmitTests {
         st.cursorCol = 5
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .bounce
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
@@ -190,40 +156,31 @@ struct PromptInputBoundaryEmitTests {
 
     @Test(".modal mode dispatches each wall to .onBoundaryHit")
     func modalDispatch() {
-        final class Box: @unchecked Sendable {
-            var reasons: [BoundaryHitReason] = []
-        }
-        let captured = Box()
-
+        let recorder = BoundaryRecorder()
         var value = "ab"
         var st = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
+        var env = recorder.environment
         env.boundaryFeedback = .modal
-        env.onBoundaryHit = BoundaryHitCallback { reason in
-            captured.reasons.append(reason)
-        }
 
         // (0,0): Left → .leftEdge, Up → .topEdge.
         // End → cursor at 2; Right → .rightEdge; Down → .bottomEdge.
         drivePromptInput(text: textBinding, state: stateBinding, env: env,
                          keys: [.left, .up, .end, .right, .down])
-        #expect(captured.reasons == [.leftEdge, .topEdge, .rightEdge, .bottomEdge],
-                ".modal must dispatch each wall reason; got \(captured.reasons)")
+        #expect(recorder.modal == [.leftEdge, .topEdge, .rightEdge, .bottomEdge],
+                ".modal must dispatch each wall reason; got \(recorder.modal)")
     }
 
     @Test(".none mode at the wall is silent")
     func noneSilent() {
-        let recorder = SharedEmitterRecorder()
-        defer { recorder.restore() }
+        let recorder = BoundaryRecorder()
 
         var value = "x"
         var st = PromptInputState()
         let textBinding = Binding(get: { value }, set: { value = $0 })
         let stateBinding = Binding(get: { st }, set: { st = $0 })
-        var env = EnvironmentValues()
-        env.bell = recorder.bellAction
+        var env = recorder.environment
         env.boundaryFeedback = .none
 
         drivePromptInput(text: textBinding, state: stateBinding, env: env,

@@ -110,10 +110,10 @@ public struct BoundaryHitCallback: Sendable {
 public struct BoundaryHitAction: Sendable {
     private let callback: BoundaryHitCallback?
     private let bell: BellAction
-    /// Nil is the shared emitter's hook, looked up when a hit comes. A
-    /// closure made here would be a new one on every read, and the
-    /// environment, comparing what an input read byte for byte, would see a
-    /// change on every frame.
+    /// The subtree's own bounce hook, or nil for the shared emitter's, looked
+    /// up when a hit comes. A closure made here would be a new one on every
+    /// read, and the environment, comparing what an input read byte for
+    /// byte, would see a change on every frame.
     private let bounce: (@Sendable (BoundaryHitReason) -> Void)?
     private let flash: CursorFlash?
     /// The feedback mode in effect where the action was read. Declared last:
@@ -152,9 +152,10 @@ public struct BoundaryHitAction: Sendable {
 
 extension EnvironmentValues {
     /// The boundary-hit action for this subtree, assembled from
-    /// ``boundaryFeedback``, ``onBoundaryHit`` and ``bell``.
+    /// ``boundaryFeedback``, ``onBoundaryHit``, ``bell`` and its bounce hook.
     public var boundaryHit: BoundaryHitAction {
-        BoundaryHitAction(mode: boundaryFeedback, callback: onBoundaryHit, bell: bell, flash: cursorFlash)
+        BoundaryHitAction(mode: boundaryFeedback, callback: onBoundaryHit, bell: bell,
+                          bounce: boundaryBounce, flash: cursorFlash)
     }
 }
 
@@ -211,9 +212,9 @@ public final class BoundaryFeedbackEmitter: Sendable {
 }
 
 #if DEBUG
-/// Test seam: a boundary-hit action with counters attached. Used by
-/// `BoundaryFeedbackEmitterTests` to assert dispatch without touching
-/// shared state; each probe counts on its own.
+/// Test seam: a boundary-hit action with counters attached, each probe
+/// counting on its own.
+@available(*, deprecated, message: "Read hits through the environment: give it a BellAction and an .onBoundaryHit callback, set the mode, and call its boundaryHit action.")
 public final class BoundaryFeedbackProbe: @unchecked Sendable {
     /// Times `.bell` mode dispatched through this probe.
     public private(set) var bellCount = 0

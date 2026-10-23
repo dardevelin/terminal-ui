@@ -142,15 +142,8 @@ struct TextInputPasteTests {
 
     @Test("maxLength truncates and emits .maxLength boundary")
     func maxLengthTruncates() {
-        final class Recorder: @unchecked Sendable {
-            nonisolated(unsafe) var hits: [BoundaryHitReason] = []
-        }
-        let recorder = Recorder()
-        let savedBounce = BoundaryFeedbackEmitter.shared.bounceSink
-        BoundaryFeedbackEmitter.shared.bounceSink = { reason in
-            recorder.hits.append(reason)
-        }
-        defer { BoundaryFeedbackEmitter.shared.bounceSink = savedBounce }
+        let recorder = BoundaryRecorder()
+        let env = recorder.environment
 
         var value = "ab"
         let textBinding = Binding(get: { value }, set: { value = $0 })
@@ -161,11 +154,11 @@ struct TextInputPasteTests {
                               text: textBinding,
                               cursor: cursorBinding,
                               maxLength: 5,
-                              boundaryHit: EnvironmentValues().boundaryHit)
+                              boundaryHit: env.boundaryHit)
 
         #expect(value == "abXXX")  // 5-char ceiling → 3 chars accepted
         #expect(cursorState == 5)
-        #expect(recorder.hits == [.maxLength])
+        #expect(recorder.bounce == [.maxLength])
     }
 
     @Test("Empty payload is a no-op")
