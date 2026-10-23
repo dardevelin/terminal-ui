@@ -93,7 +93,7 @@ public struct HitResult {
         case .modifier(let effect):
             switch effect {
             case .foreground(let c): values.append(("modifier", "foreground(\(c))"))
-            case .background(let c): values.append(("modifier", "background(\(c))"))
+            case .background(let c): values.append(("modifier", "background(\(c.groundDescription))"))
             case .bold: values.append(("modifier", "bold"))
             case .italic: values.append(("modifier", "italic"))
             case .underline: values.append(("modifier", "underline"))
@@ -137,7 +137,7 @@ public struct HitResult {
             if case .modifier(let effect) = ancestor.kind {
                 switch effect {
                 case .foreground(let c): return "fg(\(c))"
-                case .background(let c): return "bg(\(c))"
+                case .background(let c): return "bg(\(c.groundDescription))"
                 case .bold: return "bold"
                 case .italic: return "italic"
                 case .underline: return "underline"

@@ -344,7 +344,7 @@ struct PickerBody: TerminalView {
                         Text(Self.segmentLabel(entry.element,
                                                isFirst: entry.offset == 0,
                                                isLast: entry.offset == titles.count - 1))
-                            .background(entry.offset == selected ? theme.backgroundSelected : theme.background)
+                            .background(orInherit: entry.offset == selected ? theme.backgroundSelected : nil)
                     }
                 }
                 .focusable()

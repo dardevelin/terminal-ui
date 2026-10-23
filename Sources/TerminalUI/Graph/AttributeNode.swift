@@ -571,11 +571,17 @@ public struct Size: Equatable, Sendable {
 /// `.frame`, `.flexible`) when measuring. Handler-shaped cases carry no
 /// payload — the closure lives on the node or on `FocusEngine`, keeping this
 /// enum free of generic parameters.
+extension Optional where Wrapped == Color {
+    /// A background effect's colour as the debug tools print it.
+    var groundDescription: String { map { "\($0)" } ?? "inherited" }
+}
+
 public enum ModifierEffect {
     /// Sets the foreground (text) color for the subtree's styled cells.
     case foreground(Color)
-    /// Sets the background color for the subtree's styled cells.
-    case background(Color)
+    /// Sets the background color for the subtree's styled cells; `nil`
+    /// leaves them on the ground they inherit.
+    case background(Color?)
     /// Renders the subtree's text bold.
     case bold
     /// Renders the subtree's text italic.

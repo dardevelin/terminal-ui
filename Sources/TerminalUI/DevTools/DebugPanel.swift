@@ -390,7 +390,7 @@ public final class DebugPanel {
         case .modifier(let effect):
             switch effect {
             case .foreground(let c): kind = "fg"; detail = "\(c)"
-            case .background(let c): kind = "bg"; detail = "\(c)"
+            case .background(let c): kind = "bg"; detail = c.groundDescription
             case .bold: kind = "B"; detail = ""
             case .italic: kind = "I"; detail = ""
             case .underline: kind = "U"; detail = ""

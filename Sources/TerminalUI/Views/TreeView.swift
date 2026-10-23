@@ -381,14 +381,12 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             isSelected: isSelected
         )
 
-        let bg: Color = isSelected ? (style.selectedBackground ?? .default) : .default
-
         return HStack {
             Text(spans: connectorSpans + [indicatorSpan])
             content(row.item)
         }
         .foreground(isSelected ? style.selectedForeground(in: theme) : theme.foreground)
-        .background(bg)
+        .background(orInherit: isSelected ? style.selectedBackground : nil)
     }
 }
 

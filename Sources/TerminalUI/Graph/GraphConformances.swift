@@ -156,7 +156,7 @@ extension ModifiedView: _GraphModified {
     func graphEffect() -> ModifierEffect {
         switch modifier {
         case let fg as ForegroundModifier: .foreground(fg.color)
-        case let bg as BackgroundModifier: .background(bg.color)
+        case let bg as BackgroundModifier: .background(bg.fill)
         case is BoldModifier: .bold
         case is ItalicModifier: .italic
         case is UnderlineModifier: .underline

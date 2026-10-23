@@ -1487,7 +1487,9 @@ public enum GraphRenderer {
             renderNode(child, into: &buffer, context: ctx)
 
         case .background(let color):
-            ctx.style.background = color
+            if let color {
+                ctx.style.background = color
+            }
             renderNode(child, into: &buffer, context: ctx)
 
         case .bold:

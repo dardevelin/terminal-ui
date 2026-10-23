@@ -18,6 +18,8 @@ private struct LoudTheme: Theme {
     var foregroundFaint: Color = .rgb(31, 32, 33)
     var separator: Color = .rgb(13, 14, 15)
     var backgroundRaised: Color = .rgb(16, 17, 18)
+    var background: Color = .rgb(34, 35, 36)
+    var backgroundSelected: Color = .rgb(37, 38, 39)
     var success: Color = .rgb(19, 20, 21)
     var error: Color = .rgb(22, 23, 24)
     var info: Color = .rgb(25, 26, 27)
@@ -103,6 +105,42 @@ struct ComponentThemeTests {
         #expect(foreground(of: "root", in: buffer) == theme.foregroundEmphasis)
         #expect(foreground(of: "▾", in: buffer) == theme.accent)
         #expect(foreground(of: "└", in: buffer) == theme.separator)
+    }
+
+    /// A row paints no ground of its own unless the style gives the selected
+    /// one a fill: on a themed panel, the panel shows through every row.
+    @Test func treeRowsLetTheirPanelShowThrough() {
+        let panel = Color.rgb(40, 41, 42)
+        let buffer = render(VStack {
+            TreeView(tree, children: \.children) { Text($0.id) }
+        }.background(panel))
+        #expect(cell(at: "root", in: buffer)?.style.background == panel)
+        #expect(cell(at: "leaf", in: buffer)?.style.background == panel)
+    }
+
+    @Test func aSelectedFillTheStyleStatesIsPainted() {
+        var style = TreeViewStyle()
+        style.selectedBackground = .blue
+        let buffer = render(VStack {
+            TreeView(tree, children: \.children, style: style) { Text($0.id) }
+        }.background(.rgb(40, 41, 42)))
+        #expect(cell(at: "root", in: buffer)?.style.background == .blue)
+        #expect(cell(at: "leaf", in: buffer)?.style.background == .rgb(40, 41, 42))
+    }
+
+    /// The segmented picker's unselected segments painted the theme's window
+    /// ground, so on a raised panel each one was a hole down to the window.
+    @Test func unselectedSegmentsLetTheirPanelShowThrough() {
+        let panel = Color.rgb(40, 41, 42)
+        let buffer = render(VStack {
+            Picker("Theme", selection: Binding(get: { "dark" }, set: { _ in })) {
+                Text("Dark").tag("dark")
+                Text("Light").tag("light")
+            }
+            .pickerStyle(.segmented)
+        }.background(panel))
+        #expect(cell(at: "Light", in: buffer)?.style.background == panel)
+        #expect(cell(at: "Dark", in: buffer)?.style.background == LoudTheme().backgroundSelected)
     }
 
     @Test func aColourTheStyleStatesWinsOverTheTheme() {
