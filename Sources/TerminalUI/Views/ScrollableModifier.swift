@@ -51,6 +51,7 @@ public struct ScrollableScrollView<Content: TerminalView>: TerminalView {
 /// node's cached rect — render sets it each frame, so by the time a
 /// key arrives we already have the viewport geometry.
 private func handleScrollKey(_ event: KeyEvent, axis: ScrollAxis) -> KeyEventResult {
+    guard !event.isModifiedNavigation else { return .ignored }
     guard let engine = GraphContext.currentFocusEngine else { return .ignored }
     // Prefer the routing-target node (set by FocusEngine.routeKeyEvent
     // during dispatch) over keyboardFocusID. Wheel events route to the

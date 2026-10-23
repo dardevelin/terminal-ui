@@ -143,7 +143,7 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
             value.set(scale.value(atFraction: V(clamped) / V(lastIndex)))
         }
         .onKeyPress { event in
-            guard interactive else { return .ignored }
+            guard interactive, !event.isModifiedNavigation else { return .ignored }
             let delta = scale.resolvedStep(step)
             switch event.key {
             case .left:
@@ -320,7 +320,7 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
             }
         }
         .onKeyPress { event in
-            guard interactive else { return .ignored }
+            guard interactive, !event.isModifiedNavigation else { return .ignored }
             switch event.key {
             case .left, .character("-"):
                 value.set(clamp(value.get().advanced(by: -step)))

@@ -329,7 +329,7 @@ struct TabBar: TerminalView {
         tabCount: Int,
         onSelect: (Int) -> Void
     ) -> KeyEventResult {
-        guard tabCount > 0 else { return .ignored }
+        guard tabCount > 0, !event.isModifiedNavigation else { return .ignored }
 
         switch event.key {
         case .left:

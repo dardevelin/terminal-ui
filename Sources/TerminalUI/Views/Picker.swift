@@ -310,7 +310,7 @@ struct PickerBody: TerminalView {
         }
         .focusable()
         .onKeyPress { event in
-            guard isEnabled else { return .ignored }
+            guard isEnabled, !event.isModifiedNavigation else { return .ignored }
             if let moved = Self.verticalMove(event.key, cursor) { return moved }
             switch event.key {
             case .enter, .character(" "), .activate:
@@ -349,7 +349,7 @@ struct PickerBody: TerminalView {
                 }
                 .focusable()
                 .onKeyPress { event in
-                    guard isEnabled else { return .ignored }
+                    guard isEnabled, !event.isModifiedNavigation else { return .ignored }
                     switch event.key {
                     case .left:
                         guard let next = cursor.move(by: -1) else { return .ignored }
@@ -423,7 +423,7 @@ struct PickerBody: TerminalView {
         }
         .focusable()
         .onKeyPress { event in
-            guard isEnabled else { return .ignored }
+            guard isEnabled, !event.isModifiedNavigation else { return .ignored }
             if !isOpen {
                 switch event.key {
                 case .enter, .down, .character(" "), .activate:
