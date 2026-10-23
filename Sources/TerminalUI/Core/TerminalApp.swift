@@ -531,14 +531,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Cancellation cannot interrupt poll(); the shutdown pipe ends it.
         let wake = self.wake
         let inputTask = Task.detached {
+            // One source for the life of the task, reading in chunks: bytes a
+            // read took past the event it was for are the next event's.
+            var source = StdinByteSource(input: STDIN_FILENO, buffered: true)
             while true {
-                switch StdinByteSource.waitForActivity(resize: resizePipe.read, terminate: terminatePipe.read,
-                                                       shutdown: shutdownPipe.read) {
+                let activity: InputActivity = source.hasBufferedInput
+                    ? .input
+                    : StdinByteSource.waitForActivity(resize: resizePipe.read, terminate: terminatePipe.read,
+                                                      shutdown: shutdownPipe.read)
+                switch activity {
                 case .input:
-                    let event = InputParser.readEvent()
+                    let event = InputParser.readEvent(from: &source)
                     // A hang-up part-way through a sequence ends it early, and
                     // the parser makes a key of what it had: one nobody pressed.
-                    if StdinByteSource.inputHungUp {
+                    if source.hungUp {
                         Terminal.recordHangUp()
                         wake.wake()
                         return

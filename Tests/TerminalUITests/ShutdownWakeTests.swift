@@ -16,24 +16,21 @@ import Testing
 @Suite("A shutdown wake holds for every read that follows", .serialized)
 struct ShutdownWakeTests {
 
-    @Test func everyReadAfterTheWakeReturnsNilAtOnce() {
-        var pipeFDs: [Int32] = [-1, -1]
-        #expect(pipe(&pipeFDs) == 0)
+    @Test func everyReadAfterTheWakeReturnsNilAtOnce() throws {
+        let shutdown = try SelfPipe()
         defer {
             StdinByteSource.shutdownReadFD = nil
-            close(pipeFDs[0])
-            close(pipeFDs[1])
+            shutdown.close()
         }
-        StdinByteSource.shutdownReadFD = pipeFDs[0]
-        var wake: UInt8 = 1
-        #expect(write(pipeFDs[1], &wake, 1) == 1)
+        StdinByteSource.shutdownReadFD = shutdown.read
+        shutdown.signal()
 
         var source = StdinByteSource()
         for _ in 0..<5 {
             #expect(source.readByte() == nil)
         }
 
-        var stillWaking = pollfd(fd: pipeFDs[0], events: Int16(POLLIN), revents: 0)
+        var stillWaking = pollfd(fd: shutdown.read, events: Int16(POLLIN), revents: 0)
         #expect(poll(&stillWaking, 1, 0) == 1, "the wake byte must stay in the pipe")
     }
 
@@ -41,21 +38,19 @@ struct ShutdownWakeTests {
     // the parser makes a key of what it had: one nobody pressed. The read
     // says the terminal hung up, so the input task drops that key.
     @Test func aReadThatFindsTheTerminalHungUpSaysSo() throws {
-        var pipeFDs: [Int32] = [-1, -1]
-        #expect(pipe(&pipeFDs) == 0)
+        let shutdown = try SelfPipe()
         let terminal = try #require(PseudoTerminal())
         defer {
             StdinByteSource.shutdownReadFD = nil
-            StdinByteSource.inputHungUp = false
             terminal.closeReplica()
-            close(pipeFDs[0])
-            close(pipeFDs[1])
+            shutdown.close()
         }
-        StdinByteSource.shutdownReadFD = pipeFDs[0]
+        StdinByteSource.shutdownReadFD = shutdown.read
         terminal.hangUp()
 
         var source = StdinByteSource(input: terminal.replica)
         #expect(source.readByte() == nil)
-        #expect(StdinByteSource.inputHungUp)
+        #expect(source.hungUp)
+        #expect(!StdinByteSource(input: terminal.replica).hungUp, "another source has not seen it")
     }
 }
