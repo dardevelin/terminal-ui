@@ -8,6 +8,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`BorderStyle.halfBlock`** — a frame of half blocks, `▛▀▜ ▌ ▐ ▙▄▟`, each
+  leaning toward the content, so it hugs what it encloses. On the leading
+  edge alone, `.border(.halfBlock, edges: .leading)`, it is the thick `▌`
+  rail Crush marks a focused message with. A switch over `BorderStyle`
+  needs the new case.
+
 - **Remote control: input of every kind is drawn before the next reply.** The
   new `terminal_input` command reports what a debug app has taken from its
   terminal: how many bytes it has turned into events, and the size of the last

@@ -1733,44 +1733,43 @@ public enum GraphRenderer {
         let hasTop = edges.contains(.top), hasBottom = edges.contains(.bottom)
         let hasLeading = edges.contains(.leading), hasTrailing = edges.contains(.trailing)
 
+        // Each drawn edge's glyph, nil where the edge is not drawn.
+        let top = hasTop ? style.top : nil, bottom = hasBottom ? style.bottom : nil
+        let leading = hasLeading ? style.leading : nil, trailing = hasTrailing ? style.trailing : nil
+
         // Corners belong to whichever edges meet there. With both present the
         // corner glyph joins them; with one, that edge simply runs through, so
         // a lone `.top` is an unbroken rule rather than a rule with corner
         // pieces stuck on its ends.
-        func corner(_ both: Character, vertical: Bool, horizontal: Bool) -> Character? {
-            switch (vertical, horizontal) {
-            case (true, true): both
-            case (true, false): style.vertical
-            case (false, true): style.horizontal
-            case (false, false): nil
-            }
+        func corner(_ both: Character, _ side: Character?, _ end: Character?) -> Character? {
+            side != nil && end != nil ? both : side ?? end
         }
 
-        if let glyph = corner(style.topLeft, vertical: hasLeading, horizontal: hasTop) {
+        if let glyph = corner(style.topLeft, leading, top) {
             buffer[rx, ry] = Cell(character: glyph, style: glyphStyle)
         }
-        if let glyph = corner(style.topRight, vertical: hasTrailing, horizontal: hasTop) {
+        if let glyph = corner(style.topRight, trailing, top) {
             buffer[maxX, ry] = Cell(character: glyph, style: glyphStyle)
         }
-        if let glyph = corner(style.bottomLeft, vertical: hasLeading, horizontal: hasBottom) {
+        if let glyph = corner(style.bottomLeft, leading, bottom) {
             buffer[rx, maxY] = Cell(character: glyph, style: glyphStyle)
         }
-        if let glyph = corner(style.bottomRight, vertical: hasTrailing, horizontal: hasBottom) {
+        if let glyph = corner(style.bottomRight, trailing, bottom) {
             buffer[maxX, maxY] = Cell(character: glyph, style: glyphStyle)
         }
 
         // Runs between the corners. The ranges are empty when the rect is only
         // as wide or tall as its own corners, so no bounds guard is needed.
-        if hasTop || hasBottom {
+        if top != nil || bottom != nil {
             for x in (rx + 1)..<max(rx + 1, maxX) {
-                if hasTop { buffer[x, ry] = Cell(character: style.horizontal, style: glyphStyle) }
-                if hasBottom { buffer[x, maxY] = Cell(character: style.horizontal, style: glyphStyle) }
+                if let top { buffer[x, ry] = Cell(character: top, style: glyphStyle) }
+                if let bottom { buffer[x, maxY] = Cell(character: bottom, style: glyphStyle) }
             }
         }
-        if hasLeading || hasTrailing {
+        if leading != nil || trailing != nil {
             for y in (ry + 1)..<max(ry + 1, maxY) {
-                if hasLeading { buffer[rx, y] = Cell(character: style.vertical, style: glyphStyle) }
-                if hasTrailing { buffer[maxX, y] = Cell(character: style.vertical, style: glyphStyle) }
+                if let leading { buffer[rx, y] = Cell(character: leading, style: glyphStyle) }
+                if let trailing { buffer[maxX, y] = Cell(character: trailing, style: glyphStyle) }
             }
         }
     }

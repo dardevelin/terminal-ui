@@ -135,6 +135,29 @@ import Testing
         #expect(GraphMeasurer.measureHeight(bordered.root!, proposedWidth: 0) > 0)
     }
 
+    // MARK: - Half blocks
+
+    /// Half blocks lean toward the content on every side: a ring of them is
+    /// a solid frame hugging what it encloses, Crush's focused-message rail
+    /// on its leading edge.
+    @Test func aHalfBlockRingLeansTowardItsContent() {
+        let buffer = render(Text("ab").border(.halfBlock), width: 4, height: 3)
+        #expect(buffer.rowTexts == ["▛▀▀▜", "▌ab▐", "▙▄▄▟"])
+    }
+
+    @Test func aHalfBlockRailIsTheLeftHalfOfEachCell() {
+        let buffer = render(VStack(spacing: 0) { Text("one"); Text("two") }
+            .border(.halfBlock, edges: .leading), width: 6, height: 2)
+        #expect(buffer.rowTexts == ["▌one", "▌two"])
+    }
+
+    @Test func aHalfBlockEdgeAloneRunsThroughItsCorners() {
+        let top = render(Text("ab").border(.halfBlock, edges: .top), width: 2, height: 2)
+        #expect(top.text(row: 0) == "▀▀")
+        let trailing = render(Text("ab").border(.halfBlock, edges: .trailing), width: 3, height: 1)
+        #expect(trailing.text(row: 0) == "ab▐")
+    }
+
     /// A rail narrower than its own frame must not draw — and must not crash.
     @Test func aFrameWithNoRoomForItsEdgesDrawsNothing() {
         let buffer = render(Text("").border(.rounded), width: 1, height: 1)

@@ -1,9 +1,12 @@
 /// The character set used to draw a border: corners, horizontals, and
 /// verticals.
 ///
-/// Each border occupies one cell of thickness on every edge — the glyphs
-/// come from Unicode's Box Drawing block (except ``plain``, which is
-/// pure ASCII for terminals or fonts without box-drawing coverage).
+/// Each border occupies one cell of thickness on every edge. The line styles
+/// draw from Unicode's Box Drawing block (``plain`` is pure ASCII, for
+/// terminals or fonts without box-drawing coverage); ``halfBlock`` draws
+/// from Block Elements, whose glyphs fill the half of the cell nearer the
+/// content, so its bottom and trailing edges differ from its top and
+/// leading ones.
 /// Applied via the `.border(_:)` modifier and, for themed components,
 /// through ``Theme/border``.
 ///
@@ -22,6 +25,11 @@ public enum BorderStyle: Sendable {
     case heavy
     /// Double-line box drawing, square corners: `╔═╗ ║ ╚═╝`.
     case double
+    /// Half blocks from Unicode's Block Elements, each leaning toward the
+    /// content: `▛▀▜ ▌ ▐ ▙▄▟`. A solid frame with no gap to what it encloses.
+    /// On the leading edge alone it is the thick rail Crush marks a focused
+    /// message with.
+    case halfBlock
 
     var topLeft: Character {
         switch self {
@@ -29,6 +37,7 @@ public enum BorderStyle: Sendable {
         case .rounded: "╭"
         case .heavy: "┏"
         case .double: "╔"
+        case .halfBlock: "▛"
         }
     }
 
@@ -38,6 +47,7 @@ public enum BorderStyle: Sendable {
         case .rounded: "╮"
         case .heavy: "┓"
         case .double: "╗"
+        case .halfBlock: "▜"
         }
     }
 
@@ -47,6 +57,7 @@ public enum BorderStyle: Sendable {
         case .rounded: "╰"
         case .heavy: "┗"
         case .double: "╚"
+        case .halfBlock: "▙"
         }
     }
 
@@ -56,24 +67,44 @@ public enum BorderStyle: Sendable {
         case .rounded: "╯"
         case .heavy: "┛"
         case .double: "╝"
+        case .halfBlock: "▟"
         }
     }
 
-    var horizontal: Character {
+    // One glyph per edge: a line is the same on either side of the box, a
+    // half block is not — it fills the half of its cell nearer the content.
+
+    var top: Character {
         switch self {
         case .plain: "-"
         case .rounded: "─"
         case .heavy: "━"
         case .double: "═"
+        case .halfBlock: "▀"
         }
     }
 
-    var vertical: Character {
+    var bottom: Character {
+        switch self {
+        case .plain, .rounded, .heavy, .double: top
+        case .halfBlock: "▄"
+        }
+    }
+
+    var leading: Character {
         switch self {
         case .plain: "|"
         case .rounded: "│"
         case .heavy: "┃"
         case .double: "║"
+        case .halfBlock: "▌"
+        }
+    }
+
+    var trailing: Character {
+        switch self {
+        case .plain, .rounded, .heavy, .double: leading
+        case .halfBlock: "▐"
         }
     }
 }
