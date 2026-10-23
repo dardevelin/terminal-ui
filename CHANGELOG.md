@@ -223,6 +223,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A debug socket that cannot be opened says why.** A path too long for a
+  socket address, which `use_tmp = false` makes under a deep checkout, was
+  cut to fit, so the app listened, and `swtui ctl` connected, somewhere
+  other than the path. Remote control and the debug stream also said
+  nothing when they could not listen. Such a path is now refused, and the
+  new `FrameworkWarningCode.debugSocketUnavailable` warning says what
+  failed.
 - **A remote-control client that reads slowly no longer stalls a debug app.**
   A reply larger than the socket's buffer, such as a whole app's tree, was
   written in a loop that slept on the app's main thread until the client

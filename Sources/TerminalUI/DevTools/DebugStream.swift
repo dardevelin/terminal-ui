@@ -120,6 +120,12 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     /// framework shows a placeholder rather than a blank screen the user would
     /// read as a crash. Register a destination for that type.
     case navigationNoDestination
+    /// A debug socket — remote control or the debug stream — could not be
+    /// opened, so `swtui ctl` and the harness cannot reach the app. Most
+    /// often its path is too long for a socket address: `use_tmp = false`
+    /// puts it under a deep checkout, or `TERMINALUI_DATA_DIR` under a long
+    /// directory.
+    case debugSocketUnavailable
 }
 
 /// One emitted framework warning — the payload of
@@ -664,51 +670,21 @@ public final class SocketDebugSink: DebugSink, Sendable {
     private let path: String
 
     /// Binds a listening AF_UNIX socket at `path` (default: the
-    /// process's diagnostic socket path). Bind failure leaves an inert
-    /// sink rather than throwing.
+    /// process's diagnostic socket path). A socket that cannot be opened
+    /// leaves an inert sink, and a framework warning that says why.
     public init(path: String = DiagPaths.socketPath(useTmp: DiagPaths.loadConfig().useTmp)) {
         self.path = path
-        self.connection = Mutex(Connection(listenFd: Self.listeningSocket(at: path)))
-    }
-
-    /// A non-blocking listening socket bound at `path`, or -1 when it
-    /// cannot be created or bound.
-    private static func listeningSocket(at path: String) -> Int32 {
-        unlink(path)
-        #if canImport(Glibc)
-        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-        #else
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        #endif
-        guard fd >= 0 else { return -1 }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            let bound = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
-                strncpy(buf, path, 103)
-            }
-            _ = bound
+        var listenFd: Int32 = -1
+        do {
+            // One subscriber at a time, by design: the sink accepts only
+            // while it has none, so a longer queue would connect clients it
+            // never serves.
+            listenFd = try UnixSocket.listening(at: path, backlog: 1)
+        } catch {
+            DebugStream.shared.emitWarning(.debugSocketUnavailable,
+                                           message: "the debug stream has no socket at \(path): \(error)")
         }
-
-        let bindResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                bind(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-
-        if bindResult < 0 {
-            close(fd)
-            return -1
-        }
-
-        // One subscriber at a time, by design: the sink accepts only while it
-        // has none, so a longer queue would connect clients it never serves.
-        listen(fd, 1)
-
-        // Non-blocking accept
-        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
-        return fd
+        self.connection = Mutex(Connection(listenFd: listenFd))
     }
 
     public func receive(_ event: DebugEvent) {
@@ -770,6 +746,7 @@ public enum FrameworkWarningCode: String, Sendable, Hashable, Codable {
     case pickerDuplicateTags
     case boundedValueInvertedBounds
     case navigationNoDestination
+    case debugSocketUnavailable
 }
 public final class DebugStream: Sendable {
     public static let shared = DebugStream()
