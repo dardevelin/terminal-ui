@@ -283,7 +283,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             let expanded = expandedBinding.get()
             let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
             let total = rows.count
-            guard total > 0 else { return .ignored }
+            guard total > 0, !event.isModifiedNavigation else { return .ignored }
 
             let idx = selectedIdxBinding.get()
 

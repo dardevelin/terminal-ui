@@ -16,7 +16,8 @@
 /// - **Direct keys.** When the content has no focusable descendants there
 ///   is nothing for Tab to land on; add `.scrollable()` so the scroll
 ///   view itself takes focus and arrows / PageUp / PageDown / Home / End
-///   drive the offset.
+///   drive the offset. Only unmodified keys: Shift+↓ and the like go on to
+///   the app's own handlers.
 /// - **Programmatic.** `.scrollPosition(id:anchor:)` binds the offset to
 ///   the `.id(_:)` of a descendant, both ways, without touching keyboard
 ///   focus.

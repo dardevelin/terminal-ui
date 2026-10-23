@@ -199,6 +199,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                 data[data.index(data.startIndex, offsetBy: absoluteIndex)]
             }
 
+            guard !event.isModifiedNavigation else { return .ignored }
             switch event.key {
             case .up:
                 let newIdx = max(0, currentIdx - 1)

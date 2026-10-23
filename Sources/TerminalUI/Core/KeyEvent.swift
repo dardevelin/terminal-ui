@@ -94,6 +94,20 @@ public struct KeyEvent: Sendable {
     }
 }
 
+extension KeyEvent {
+    /// An arrow, PageUp, PageDown, Home or End with a modifier held. A view
+    /// that moves by these keys moves on the plain ones and passes this on:
+    /// views see a key before the app's bindings, so one that took Shift+↓
+    /// as ↓ would leave the app no way to bind it.
+    var isModifiedNavigation: Bool {
+        guard !modifiers.isEmpty else { return false }
+        switch key {
+        case .up, .down, .left, .right, .pageUp, .pageDown, .home, .end: return true
+        default: return false
+        }
+    }
+}
+
 /// Modifier keys held during a key press, as an option set.
 public struct KeyModifiers: OptionSet, Sendable, Hashable {
     public let rawValue: UInt8

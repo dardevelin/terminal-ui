@@ -251,6 +251,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Views leave modified navigation keys to the app.** A scrollable
+  `ScrollView`, `List`, `TreeView`, `DiffView`, `HunkDiffView`, `Picker`,
+  `TabView`, `Slider` and `Stepper` took Shift+↓, Ctrl+↑ or Alt+PageDown as
+  the plain key, and a view sees a key before the app's bindings, so an app
+  could not bind a modified arrow, PageUp, PageDown, Home or End anywhere a
+  focused view moves by them. They move on the plain keys only now.
 - **A TreeView or a segmented Picker on a themed panel no longer punches
   holes in it.** Every tree row, selected or not, painted the terminal's
   own ground, and every unselected segment the theme's window ground, so

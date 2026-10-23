@@ -381,6 +381,7 @@ public struct DiffView: TerminalView {
 
     private func scrollHandler() -> (KeyEvent) -> KeyEventResult {
         { [lines, $scrollOffset] event in
+            guard !event.isModifiedNavigation else { return .ignored }
             let total = lines.count
             let pageSize = 20
 

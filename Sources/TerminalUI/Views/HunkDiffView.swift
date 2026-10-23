@@ -203,7 +203,7 @@ public struct HunkDiffView: TerminalView {
         }
         .focusable()
         .onKeyPress { [cursorBinding, visualModeBinding, visualAnchorBinding, scrollBinding, onLineSelect, onRangeSelect, visibleCount, totalLines] event in
-            guard totalLines > 0 else { return .ignored }
+            guard totalLines > 0, !event.isModifiedNavigation else { return .ignored }
 
             let cur = cursorBinding.get()
             let isVisual = visualModeBinding.get()
