@@ -109,7 +109,6 @@ def case_verify_does_not_quit_live_process() -> None:
     `swtui ctl kill all` against the canonical dir, killing the live
     process; the new `reap_dead_apps()` must leave it alone."""
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
         assert diag_dir is not None, "runner did not record diag_dir"
         live_sock = Path(diag_dir) / "remote" / f"{proc.pid}.sock"
@@ -147,7 +146,6 @@ def case_verify_reaps_dead_sockets() -> None:
     from a live app's dir, so the test needs no copy of the hash."""
     fake_pid = _find_dead_pid()
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         live_dir = Path(client.diag_dir)
         prefix = live_dir.name.rsplit("-", 1)[0]
         dead_dir = live_dir.parent / f"{prefix}-{fake_pid}"

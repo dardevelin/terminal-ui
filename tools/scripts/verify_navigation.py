@@ -33,20 +33,16 @@ from terminalui.runner import spawn_and_connect  # noqa: E402
 
 def verify(app: Client) -> list[str]:
     failures: list[str] = []
-    app.wait_for_frame(1)
-
     if "Account" not in app.text() or "Home" not in app.text():
         return ["root screen did not render (no Account row / Home title)"]
 
     # Focus starts on the first link. Tab down to the second so pop-restores
     # can prove it returns *here*, not to the top.
     app.tab()
-    app.wait_for_frame(1, timeout=1.0)
     originating = app.focus().node_id
 
     # Push: Enter on the focused link.
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
     if "Inside Network" not in app.text():
         failures.append("Enter on a NavigationLink did not push its destination")
         return failures
@@ -54,14 +50,12 @@ def verify(app: Client) -> list[str]:
     # The pushed screen must confine focus — Tab cannot reach a root row.
     for _ in range(4):
         app.tab()
-        app.wait_for_frame(1, timeout=1.0)
         if "Choose a destination" in app.text() and app.focus().node_id == originating:
             failures.append("Tab escaped the pushed screen back to the root")
             break
 
     # Pop: Esc returns to the root, focus on the row we came from.
     app.send_key("escape")
-    app.wait_for_frame(2, timeout=1.5)
     if "Inside Network" in app.text():
         failures.append("Esc did not pop the pushed screen")
     if app.focus().node_id != originating:
@@ -74,9 +68,7 @@ def verify(app: Client) -> list[str]:
     # navigation, and its Form still aligns its label column there. Focus was
     # just restored to Network (the second link), so Settings is one Tab away.
     app.tab()
-    app.wait_for_frame(1, timeout=1.0)
     app.send_key("enter")
-    app.wait_for_frame(2, timeout=1.5)
     if "APPEARANCE" not in app.text():
         failures.append("Settings screen not reachable through navigation")
 

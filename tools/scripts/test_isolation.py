@@ -77,7 +77,6 @@ def case_smoke_child_uses_isolated_dir() -> None:
         runtime created the dir and wrote its socket into it
     """
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         # The runner exposes the resolved diag dir on the Client so tests
         # can introspect the path the child actually used.
         diag_dir = getattr(client, "diag_dir", None)
@@ -115,7 +114,6 @@ def case_smoke_child_uses_framework_default_path() -> None:
     — every TerminalUI process gets the same per-PID treatment.
     """
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         diag_dir = getattr(client, "diag_dir", None)
         assert diag_dir is not None
         assert diag_dir.startswith("/tmp/terminalui-"), (
@@ -159,7 +157,6 @@ def case_pty_mouse_cleanup_on_abort() -> None:
     runner.set_pty_cleanup_observer(_capture_cleanup)
     try:
         with spawn_and_connect("Storybook") as (proc, client):
-            client.wait_for_frame(1, timeout=2.0)
             # Simulate abort by raising INSIDE the with-block. The runner's
             # finally must still post mouse-cleanup.
             raise KeyboardInterrupt("simulated abort")

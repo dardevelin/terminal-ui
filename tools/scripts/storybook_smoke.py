@@ -76,7 +76,6 @@ class SmokeCase:
         try:
             with spawn_and_connect(self.app, build_dir=build_dir, cols=cols, rows=rows,
                                    env={"XDG_CONFIG_HOME": config_home}) as (_, client):
-                client.wait_for_frame(1, timeout=1.0)
                 self.run(client)
             if self.expected_objections:
                 return CaseResult(self.name, False, "the runner accepted how the app ended")
@@ -129,7 +128,6 @@ def storybook_arrow_navigation(app: Client) -> None:
     }
     for n, title in expected_after_n_presses.items():
         app.send_key("down")
-        app.wait_for_frame(1, timeout=0.5)
     # n == 3 at this point
     snap = app.cells()
     # Sidebar is 28 cols wide; preview title sits around col 30
@@ -213,10 +211,8 @@ def storybook_tab_crosses_to_preview(app: Client) -> None:
     (the hint-line handler) and Tab reaches the preview in one press."""
     # Button page is index 9 in declaration order (0=VStack, ..., 9=Button).
     app.goto_page("Button")
-    app.wait_for_frame(1, timeout=0.5)
     initial = app.focus()
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     after = app.focus()
     assert_true(
         initial.node_id != after.node_id,
@@ -230,13 +226,11 @@ def storybook_focusable_rows_read_their_focus(app: Client) -> None:
     could tell it held focus."""
     app.goto_page(".focusable")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true("▸ press Tab to focus me" in preview,
                 f"the first row should show it holds focus: {preview!r}")
     assert_true("▸ then me" not in preview, "only the focused row is marked")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true("▸ then me" in preview and "▸ press Tab" not in preview,
                 f"Tab should move the mark to the second row: {preview!r}")
@@ -251,12 +245,11 @@ def storybook_theme_switch_reaches_unchanged_views(app: Client) -> None:
     preview = app.preview_text()
     assert_true("accent is cyan" in preview, f"the default theme's accent: {preview!r}")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key(" ")
-    assert_true(app.wait_until(lambda c: "accent is magenta" in c.preview_text(), timeout=1.0),
+    assert_true("accent is magenta" in app.preview_text(),
                 f"switching to the loud theme should reach the swatch: {app.preview_text()!r}")
     app.send_key(" ")
-    assert_true(app.wait_until(lambda c: "accent is cyan" in c.preview_text(), timeout=1.0),
+    assert_true("accent is cyan" in app.preview_text(),
                 f"switching back should too: {app.preview_text()!r}")
 
 
@@ -268,9 +261,8 @@ def storybook_anchored_scroll_follows_its_tail(app: Client) -> None:
     assert_true("line 12" in preview and "line 1 " not in preview,
                 f"the log should open on its tail: {preview!r}")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    assert_true(app.wait_until(lambda c: "line 13" in c.preview_text(), timeout=1.0),
+    assert_true("line 13" in app.preview_text(),
                 f"an appended line should come into view: {app.preview_text()!r}")
 
 
@@ -283,17 +275,14 @@ def storybook_sidebar_scrolls_away_from_the_selection(app: Client) -> None:
     assert_true(len(first) > 0, "the sidebar should list pages")
     for _ in range(12):
         app.mouse_wheel("down", 4, 10)
-    app.wait_for_frame(1, timeout=0.5)
     scrolled = app.storybook_sidebar_rows()
     assert_true(first[0] not in scrolled,
                 f"the wheel should scroll the selected page out of sight: {scrolled!r}")
-    app.wait_for_frame(2, timeout=0.5)
     assert_true(app.storybook_sidebar_rows() == scrolled,
                 "the list should stay where the reader scrolled it")
     app.send_key("down")
-    assert_true(app.wait_until(lambda c: c.storybook_sidebar_rows()[:1] != scrolled[:1]
-                               and "▸" in c.cells(rect=c._STORYBOOK_SIDEBAR_RECT).text(),
-                               timeout=1.0),
+    assert_true(app.storybook_sidebar_rows()[:1] != scrolled[:1]
+                and "▸" in app.cells(rect=app._STORYBOOK_SIDEBAR_RECT).text(),
                 "choosing a page brings its row back into sight")
 
 
@@ -302,10 +291,9 @@ def storybook_scroll_position_binds_both_ways(app: Client) -> None:
     scrolls to the top; the wheel scrolls and the readout follows it."""
     app.goto_page(".scrollPosition")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    assert_true(app.wait_until(lambda c: "row 25" in c.preview_text()
-                               and "position: 25" in c.preview_text(), timeout=1.0),
+    preview = app.preview_text()
+    assert_true("row 25" in preview and "position: 25" in preview,
                 f"the button should bring row 25 into sight: {app.preview_text()!r}")
     # The code listing above names row 25 too; the row itself sits right
     # after the preview's frame.
@@ -314,13 +302,9 @@ def storybook_scroll_position_binds_both_ways(app: Client) -> None:
     x = cells.rows[y].index("row 25")
     app.mouse_wheel("up", cells.x + x, cells.y + y)
 
-    def reports_top_row(client: Client) -> bool:
-        rows = client.preview_cells().rows
-        top = next((row.split("│ row ")[1].split()[0] for row in rows
-                    if row.lstrip().startswith("│ row ")), None)
-        return top is not None and top != "25" and f"position: {top}" in client.preview_text()
-
-    assert_true(app.wait_until(reports_top_row, timeout=1.0),
+    top = next((row.split("│ row ")[1].split()[0] for row in app.preview_cells().rows
+                if row.lstrip().startswith("│ row ")), None)
+    assert_true(top is not None and top != "25" and f"position: {top}" in app.preview_text(),
                 f"scrolling should report the row now at the top: {app.preview_text()!r}")
 
 
@@ -332,19 +316,15 @@ def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     dead because the gate swallowed in-stack arrows too."""
     # Button is the tenth page in declaration order (index 9).
     app.goto_page("Button")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("tab")  # sidebar → preview
-    app.wait_for_frame(1, timeout=0.5)
     first = app.focus()
     app.send_key("down")
-    app.wait_for_frame(1, timeout=0.5)
     second = app.focus()
     assert_true(
         first.node_id != second.node_id,
         f"Down arrow did not move focus within Button VStack (stuck on {first.node_id})",
     )
     app.send_key("up")
-    app.wait_for_frame(1, timeout=0.5)
     back = app.focus()
     assert_true(
         back.node_id == first.node_id,
@@ -360,7 +340,7 @@ def storybook_walks_past_promptinput(app: Client) -> None:
     # If the app crashed the next call will raise RemoteError. Catch it here
     # so the failure message names the scenario rather than "server closed".
     try:
-        app.wait_for_frame(1, timeout=1.0)
+        app.ping()
     except Exception as exc:
         raise CaseFailed(f"app crashed on navigate-to-PromptInput: {exc}") from exc
 
@@ -380,19 +360,15 @@ def storybook_button_click_updates_message(app: Client) -> None:
     path that was broken when arrow policy landed."""
     app.goto_page("Button")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Focus should now be on the first Button ("OK").
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "OK clicked" in app.text(),
         "pressing Enter on OK button didn't update the message text",
     )
     # Down arrow to sibling + Space → "Cancel clicked".
     app.send_key("down")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key(" ")  # Space also activates
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "Cancel clicked" in app.text(),
         "pressing Space on Cancel button didn't update the message text",
@@ -405,17 +381,14 @@ def storybook_toggle_alternates_state(app: Client) -> None:
     off → on → off → on."""
     app.goto_page("Toggle")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     initial_text = app.text()
     # Default is off. Press space; expect 'on'.
     app.send_key(" ")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "→ on" in app.text(),
         f"space on Toggle didn't flip to 'on'; text: {initial_text!r} → {app.text()[:200]!r}",
     )
     app.send_key(" ")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "→ off" in app.text(),
         "second space should return Toggle to 'off'",
@@ -432,15 +405,12 @@ def storybook_textinput_validation_colors(app: Client) -> None:
     — using ``app.text()`` would always match the snippet."""
     app.goto_page("TextInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("hello")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "missing @" in app.preview_text(),
         "validator error message should render after typing a bad value",
     )
     app.send_text("@")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "missing @" not in app.preview_text(),
         "error row should disappear once the value is valid",
@@ -456,9 +426,7 @@ def storybook_promptinput_long_input_soft_wraps(app: Client) -> None:
     scrolled out; wrapping is the invariant we actually care about)."""
     app.goto_page("PromptInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("abcdefghijklmnopqrstuvwxyz0123456789" * 3)
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     content_rows = [
         row for row in preview.splitlines()
@@ -476,11 +444,8 @@ def storybook_promptinput_submit_clears(app: Client) -> None:
     state reset — the same cycle that crashed in an earlier commit."""
     app.goto_page("PromptInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("hello world")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "hello world" in app.text(),
         "last submitted line should include the submitted text",
@@ -500,9 +465,7 @@ def storybook_prompt_prefix_follows_focus(app: Client) -> None:
                 f"an unfocused composer should be three ::: rows: {preview!r}")
     assert_true("Ask anything, or / for commands" in preview, "the placeholder shows while empty")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("quit queue")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true("> quit queue" in preview, f"focused, the first row reads '> ' then the text: {preview!r}")
 
@@ -513,22 +476,19 @@ def storybook_list_selection_advances(app: Client) -> None:
     List's keyboard nav + selection binding. Page index 14."""
     app.goto_page("List")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Selection starts at index 0 ("alpha"); cursor is `▸ alpha`.
     assert_true(
         "▸ alpha" in app.text(),
         "initial List selection should be on alpha",
     )
     # Two down presses → gamma.
-    app.press_many("down", 2, sleep_between=0.05)
-    app.wait_for_frame(1, timeout=0.5)
+    app.press_many("down", 2)
     assert_true(
         "▸ gamma" in app.text(),
         "after 2 down presses List selection should be on gamma",
     )
     # Up back to beta.
     app.send_key("up")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "▸ beta" in app.text(),
         "after 1 up press List selection should be on beta",
@@ -541,7 +501,6 @@ def storybook_tabview_cycles_tabs(app: Client) -> None:
     Page index 16."""
     app.goto_page("TabView")
     app.send_key("tab")  # sidebar → preview (tab bar focused)
-    app.wait_for_frame(1, timeout=0.5)
     # Default tab selection is 0 → "first page content".
     assert_true(
         "first page content" in app.text(),
@@ -549,14 +508,12 @@ def storybook_tabview_cycles_tabs(app: Client) -> None:
     )
     # Right arrow advances to the second tab.
     app.send_key("right")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "second page content" in app.text(),
         "after → TabView should show Second content",
     )
     # Digit "3" jumps directly to Third.
     app.send_key("3")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "third page content" in app.text(),
         "digit 3 should jump directly to Third tab",
@@ -570,7 +527,6 @@ def storybook_treeview_expand_collapse(app: Client) -> None:
     Left collapses. Page index 17."""
     app.goto_page("TreeView")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "TerminalUI" in app.text(),
         "initial TreeView should show the Sources subtree expanded",
@@ -579,7 +535,6 @@ def storybook_treeview_expand_collapse(app: Client) -> None:
     # Actually TreeView selection starts on Sources (index 0). Just
     # press Left to collapse the currently-selected (Sources) node.
     app.send_key("left")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "TerminalUI" not in app.text() or "▸" in app.text(),
         "Left arrow on an expanded TreeView node should collapse it",
@@ -593,10 +548,7 @@ def storybook_sidebar_autoscrolls_with_selection(app: Client) -> None:
     only the bottom hint row was focusable, so adjustScrollForFocus
     never had a moving target."""
     # Press Down 35 times — past the ~33-row visible window.
-    for _ in range(35):
-        app.send_key("down")
-        time.sleep(0.03)
-    app.wait_for_frame(1, timeout=0.5)
+    app.press_many("down", 35)
     # Scrape sidebar column (left ~30 cells) and confirm ▸ is visible.
     rendered = app.text()
     sidebar_cols = [line[:30] for line in rendered.splitlines()]
@@ -615,7 +567,6 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     Page index 11."""
     app.goto_page("TextArea")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     initial = app.text()
     assert_true(
         "Hello" in initial,
@@ -624,9 +575,7 @@ def storybook_textarea_accepts_input(app: Client) -> None:
     # Type a distinctive string at the end — TextArea places cursor at
     # the end on focus, so appending is safe.
     app.send_key("end")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("!xyz!")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "!xyz!" in app.text(),
         "typed text should appear in TextArea buffer",
@@ -642,7 +591,7 @@ def storybook_textinput_cursor_follows_focus(app: Client) -> None:
     assert_true("type an email" in preview and "│type an email" not in preview,
                 f"no caret before the field holds focus: {preview!r}")
     app.send_key("tab")
-    assert_true(app.wait_until(lambda c: "│type an email" in c.preview_text(), timeout=1.0),
+    assert_true("│type an email" in app.preview_text(),
                 f"the caret should appear with focus: {app.preview_text()!r}")
 
 
@@ -652,9 +601,7 @@ def storybook_textinput_paste_inserts(app: Client) -> None:
     produce visible new rows in the preview pane."""
     app.goto_page("TextInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.paste("PASTED-TEXT")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "PASTED-TEXT" in app.preview_text(),
         f"TextInput should show pasted payload; got:\n{app.preview_text()}",
@@ -666,15 +613,11 @@ def storybook_textarea_paste_splits_lines(app: Client) -> None:
     distinct logical rows. Visible in the preview pane after gutter."""
     app.goto_page("TextArea")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("end")
-    app.wait_for_frame(1, timeout=0.5)
     # Newline before the multi-line paste so pasted rows don't merge
     # with the seeded "Hello" line.
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     app.paste("alphaPaste\nbetaPaste\ngammaPaste")
-    app.wait_for_frame(1, timeout=0.5)
     rendered = app.text()
     for token in ("alphaPaste", "betaPaste", "gammaPaste"):
         assert_true(
@@ -693,11 +636,9 @@ def storybook_large_paste_does_not_corrupt_ui(app: Client) -> None:
          viewport doesn't flood with raw paste content."""
     app.goto_page("PromptInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # 100-line blob ≈ 3KB. Realistic for clipboard contents.
     blob = "\n".join(f"line{i:03d} alpha beta gamma delta epsilon" for i in range(100))
     app.paste(blob)
-    app.wait_for_frame(2, timeout=1.0)
     rendered = app.text()
     assert_true(
         "TerminalUI Storybook" in rendered,
@@ -724,9 +665,7 @@ def storybook_promptinput_paste_creates_logical_rows(app: Client) -> None:
     is collapsed."""
     app.goto_page("PromptInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.paste("zenAlpha\nzenBeta\nzenGamma")
-    app.wait_for_frame(1, timeout=0.5)
     rendered = app.text()
     assert_true(
         "[Pasted text #" in rendered,
@@ -805,12 +744,10 @@ def storybook_hunkdiffview_navigates_lines(app: Client) -> None:
     otherwise untested in smoke."""
     app.goto_page("HunkDiffView")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true("example.swift" in preview, "HunkDiffView header missing")
     # Down shouldn't crash and should keep the hunk content visible.
     app.send_key("down")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "let x" in app.preview_text(),
         "HunkDiffView content disappeared after down",
@@ -886,12 +823,10 @@ def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
     visible as 'boundary: rightEdge' in the preview pane."""
     app.goto_page(".boundaryFeedback")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Empty value: cursor at 0, both Left and Right are walls. Press
     # Right — under .modal the onBoundaryHit callback fires and
     # writes "boundary: rightEdge" into state.boundaryHitMessage.
     app.send_key("right")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true(
         "boundary: rightEdge" in preview,
@@ -899,7 +834,6 @@ def storybook_textinput_boundary_emits_under_modal(app: Client) -> None:
     )
     # Now Left at cursor=0 fires .leftEdge.
     app.send_key("left")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true(
         "boundary: leftEdge" in preview,
@@ -918,14 +852,11 @@ def storybook_textinput_boundary_rings_the_bell(app: Client) -> None:
     on a frame's diff alone. The `.modal` input above must stay silent."""
     app.goto_page(".boundaryFeedback")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     start = len(app.pty_output())
     app.send_key("right")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(BEL not in app.pty_output()[start:],
                 "a wall hit under .modal must not ring the bell")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     start = len(app.pty_output())
     app.send_key("left")
     app.wait_until(lambda client: BEL in client.pty_output()[start:], timeout=2.0)
@@ -946,7 +877,6 @@ def storybook_textarea_wall_flashes_the_cursor(app: Client) -> None:
     `.bounce` drew nothing at all."""
     app.goto_page("TextArea")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     start = len(app.pty_output())
     app.send_key("left")
     assert_true(app.wait_until(lambda c: WARNING_BACKGROUND in c.pty_output()[start:], timeout=2.0),
@@ -963,17 +893,12 @@ def storybook_textinput_cursor_mid_buffer_edit(app: Client) -> None:
     Storybook TextInput page."""
     app.goto_page("TextInput")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Type "AC", then Left, then 'B'. With a real cursor model, 'B'
     # inserts between A and C, so the value is "ABC".
     app.send_key("A")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("C")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("left")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("B")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true(
         "→ ABC" in preview,
@@ -989,7 +914,6 @@ def storybook_disabled_skips_focus(app: Client) -> None:
     incremented by Tab/Enter cycles that would have hit Dead."""
     app.goto_page(".disabled")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Counter starts at 0 — read the preview pane.
     pre = app.preview_text()
     assert_true(
@@ -1003,7 +927,6 @@ def storybook_disabled_skips_focus(app: Client) -> None:
     # The Dead button should NOT be in tab order. Press Enter on the
     # current focus (which should be Live) — counter goes from 0 to 1.
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     after = app.preview_text()
     assert_true(
         "counter: 1" in after,
@@ -1021,14 +944,12 @@ def storybook_actioncontext_ctrl_r_enters_resize_mode(app: Client) -> None:
     label returns to `mode: default`."""
     app.goto_page(".actionContext")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     pre = app.preview_text()
     assert_true(
         "mode: default" in pre,
         f".actionContext preview should show 'mode: default' before any chord — got {pre[:300]!r}",
     )
     app.chord("ctrl+r")
-    app.wait_for_frame(1, timeout=0.5)
     after_enter = app.preview_text()
     assert_true(
         "mode: resize" in after_enter,
@@ -1036,7 +957,6 @@ def storybook_actioncontext_ctrl_r_enters_resize_mode(app: Client) -> None:
     )
     # Toggle: second Ctrl+R returns to default.
     app.chord("ctrl+r")
-    app.wait_for_frame(1, timeout=0.5)
     after_exit = app.preview_text()
     assert_true(
         "mode: default" in after_exit,
@@ -1066,7 +986,6 @@ def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
     app.goto_page("ScrollView")
     before = app.focus()
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     after = app.focus()
     assert_true(
         after.node_id != before.node_id,
@@ -1076,7 +995,6 @@ def storybook_scrollview_tab_focuses_and_scrolls(app: Client) -> None:
     app.send_key("down")
     app.send_key("down")
     app.send_key("down")
-    app.wait_for_frame(1, timeout=0.5)
     assert_true(
         "row 3" in app.preview_text() or "row 4" in app.preview_text(),
         "Down arrow on focused ScrollView should advance the viewport",
@@ -1226,7 +1144,6 @@ def storybook_focusable_joins_tab_order(app: Client) -> None:
     app.goto_page(".focusable")
     before = app.focus()
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     after = app.focus()
     assert_true(
         after.node_id != before.node_id,
@@ -1257,7 +1174,6 @@ def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
     # Mouse into the row — picking column 60 places the cursor inside
     # the bordered Preview pane on a wide-enough terminal.
     app.mouse_move(60, target_y)
-    app.wait_for_frame(1, timeout=0.5)
     after_enter = app.preview_text()
     assert_true(
         "hover indicator: hovering" in after_enter,
@@ -1266,7 +1182,6 @@ def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
 
     # Mouse out — far corner.
     app.mouse_move(0, 0)
-    app.wait_for_frame(1, timeout=0.5)
     after_leave = app.preview_text()
     assert_true(
         "hover indicator: left" in after_leave,
@@ -1309,7 +1224,6 @@ def storybook_layout_stable_under_mouse_hover(app: Client) -> None:
     text_before = app.text()
     width_before = _code_box_width(text_before)
     app.mouse_move(80, 10)
-    app.wait_for_frame(1, timeout=0.5)
     text_after = app.text()
     width_after = _code_box_width(text_after)
     assert_true(
@@ -1326,7 +1240,6 @@ def storybook_layout_stable_under_arrow_repeat(app: Client) -> None:
     width0 = _code_box_width(app.text())
     for _ in range(5):
         app.send_key("up")
-    app.wait_for_frame(1, timeout=0.5)
     widthN = _code_box_width(app.text())
     assert_true(
         width0 == widthN,
@@ -1353,7 +1266,6 @@ def storybook_treeview_click_expand(app: Client) -> None:
     should collapse it (children disappear), clicking again expands."""
     app.goto_page("TreeView")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     preview_before = app.preview_text()
     assert_true(
         "└── ▸ TerminalUI" in preview_before,
@@ -1365,7 +1277,6 @@ def storybook_treeview_click_expand(app: Client) -> None:
         x = f.rect[0] + 2
         y = f.rect[1]
         app.mouse_click(x, y)
-        app.wait_for_frame(1, timeout=0.5)
     preview_after = app.preview_text()
     assert_true(
         "└── ▸ TerminalUI" not in preview_after,
@@ -1381,14 +1292,12 @@ def storybook_treeview_keyboard_expand_collapse(app: Client) -> None:
     (Tests has TerminalUITests, so we look for the specific child)."""
     app.goto_page("TreeView")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     preview = app.preview_text()
     assert_true(
         "└── ▸ TerminalUI" in preview,
         "TreeView should boot with Sources expanded showing 'TerminalUI' child",
     )
     app.send_key("left")
-    app.wait_for_frame(1, timeout=0.5)
     collapsed = app.preview_text()
     assert_true(
         "└── ▸ TerminalUI" not in collapsed,
@@ -1399,7 +1308,6 @@ def storybook_treeview_keyboard_expand_collapse(app: Client) -> None:
         "Sources row should now show the collapsed glyph (▸)",
     )
     app.send_key("right")
-    app.wait_for_frame(1, timeout=0.5)
     expanded = app.preview_text()
     assert_true(
         "└── ▸ TerminalUI" in expanded,
@@ -1421,7 +1329,6 @@ def storybook_mouse_click_on_sidebar_navigates(app: Client) -> None:
     )
     # Sidebar layout: row 4=VStack, 5=HStack, 6=ZStack, 7=Spacer, ...
     app.mouse_click(2, 6)
-    app.wait_for_frame(1, timeout=0.5)
     title_after = app.text().splitlines()[1]
     assert_true(
         "ZStack" in title_after and "VStack" not in title_after,
@@ -1457,10 +1364,7 @@ def storybook_mouse_wheel_scrolls_hovered_scrollview(app: Client) -> None:
     # .ignored because keyboard focus is still on the sidebar; post-fix
     # routes through currentRoutingNodeID and scrolls the hovered view.
     app.mouse_move(target_x, target_y)
-    app.wait_for_frame(1, timeout=0.3)
     app.mouse_wheel("down", target_x, target_y)
-    app.wait_for_frame(2, timeout=0.5)
-
     text_after = app.preview_text()
     # Post-fix: viewport advances by 3 rows per wheel-down (the runtime
     # synthesises 3 arrow events). Earliest visible row should now be
@@ -1483,9 +1387,7 @@ def storybook_mouse_wheel_routes_to_hover_target(app: Client) -> None:
     selected_before = "VStack"
     # Sidebar focus, wheel-down over preview area (right half of screen)
     app.mouse_move(100, 20)
-    app.wait_for_frame(1, timeout=0.3)
     app.mouse_wheel("down", 100, 20)
-    app.wait_for_frame(1, timeout=0.5)
     after = app.text()[:200]
     # If wheel routed to focus (current bad behaviour), sidebar selection
     # advanced from VStack to HStack and the preview now reads "HStack".
@@ -1509,7 +1411,6 @@ def storybook_mouse_wheel_scrolls_hovered_sidebar(app: Client) -> None:
     mouse focus.\"*"""
     # Drive sidebar to the top so we have downward room.
     app.goto_page("Text")  # First page in the alphabet — sidebar at top.
-    app.wait_for_frame(1, timeout=0.5)
     rows_before = app.storybook_sidebar_rows()
     assert_true(
         len(rows_before) > 0,
@@ -1517,12 +1418,10 @@ def storybook_mouse_wheel_scrolls_hovered_sidebar(app: Client) -> None:
     )
     # Hover over a sidebar row well below any divider line.
     app.mouse_move(10, 10)
-    app.wait_for_frame(1, timeout=0.3)
     # Send wheel-down at the same coordinate. The runtime's
     # findScrollNodeAt fallback should locate the sidebar's scroll
     # layout and advance its offset by 3 rows.
     app.mouse_wheel("down", 10, 10)
-    app.wait_for_frame(2, timeout=0.5)
     rows_after = app.storybook_sidebar_rows()
     assert_true(
         rows_before != rows_after,
@@ -1542,11 +1441,9 @@ def storybook_mouse_click_locks_until_next_click(app: Client) -> None:
     app.goto_page("Table")
     # Tab into preview to give us a stable preview-focus baseline first
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     f_after_tab = app.focus()
     # Now move the mouse over the sidebar — focus must NOT migrate.
     app.mouse_move(5, 10)
-    app.wait_for_frame(1, timeout=0.3)
     f_after_move = app.focus()
     assert_true(
         f_after_tab.node_id == f_after_move.node_id,
@@ -1592,7 +1489,6 @@ def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
     → bound action perform closure → state mutation → re-render."""
     app.goto_page(".actions")
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     # Initial counter shows 0 in the page (search full text — preview
     # pane on this page is small enough that preview_text() crops it).
     initial = app.text()
@@ -1600,14 +1496,11 @@ def storybook_actions_modifier_fires_via_chord(app: Client) -> None:
                 f"actions page should start with 'counter: 0'; full text first 400: {initial[:400]}")
     # Fire the bound chord via the framework dispatch.
     app.send_key("p", "ctrl")
-    app.wait_for_frame(1, timeout=0.5)
-    import time
-    # Action mutates state via Task { @MainActor }, gives one frame to settle.
-    time.sleep(0.3)
-    app.wait_for_frame(1, timeout=0.5)
+    # The action mutates state from a `Task { @MainActor }`, after the key.
+    advanced = app.wait_until(lambda c: any(f"counter: {n}" in c.text() for n in range(1, 10)))
     after = app.text()
     assert_true(
-        any(f"counter: {n}" in after for n in range(1, 10)),
+        advanced,
         f"actions counter should be >0 after Ctrl+P; first 400: {after[:400]}"
     )
 
@@ -1652,7 +1545,6 @@ def gitclient_tab_focuses_diff(app: Client) -> None:
     so focus's x-coordinate must land beyond the file-tree pane's
     right edge (col 32 in our layout)."""
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     focus = app.focus()
     rect = getattr(focus, "rect", None)
     assert_true(rect is not None, "Tab should land on a focusable node")
@@ -1668,9 +1560,7 @@ def gitclient_s_stages_hunk(app: Client) -> None:
     "1 staged" hint appears after pressing `s` once."""
     # Tab to diff pane, then press `s` to stage the hunk under cursor.
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("s")
-    app.wait_for_frame(1, timeout=0.5)
     snap = app.cells()
     full = snap.text()
     assert_true(
@@ -1686,15 +1576,10 @@ def gitclient_commit_clears_staged(app: Client) -> None:
     PromptInput.onSubmit is the canonical commit channel — no
     global `c` chord that would swallow the letter while typing."""
     app.send_key("tab")              # focus diff
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("s")               # stage hunk
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("tab")              # focus commit prompt
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("test commit")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")            # PromptInput.onSubmit fires
-    app.wait_for_frame(1, timeout=0.5)
     snap = app.cells()
     full = snap.text()
     assert_true(
@@ -1704,12 +1589,13 @@ def gitclient_commit_clears_staged(app: Client) -> None:
 
 
 def gitclient_q_quits(app: Client) -> None:
-    """`q` exits the app cleanly. The runner's spawn_and_connect
-    context manager teardown will hang or raise if the process
-    doesn't actually exit — we just press `q` and let the harness
-    do the rest."""
+    """`q` exits the app, and the runner checks it went cleanly. The case
+    waits for the exit itself: the runner stops whatever is still running
+    with SIGTERM, so an app `q` left running would pass, and one that
+    finished quitting just as the SIGTERM went out reads as having
+    ignored it."""
     app.send_text("q")
-    # No assertion here: clean teardown is the success signal.
+    assert_true(app.wait_for_exit(5.0) is not None, "q should quit")
 
 
 # ---- Chat demo ---------------------------------------------------------
@@ -1738,11 +1624,8 @@ def chat_send_message_appends(app: Client) -> None:
     initial focus when scrollable)."""
     # Boot focus may sit on the scroll list; tab/click into prompt.
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("hello there")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     snap = app.cells()
     full = snap.text()
     assert_true("hello there" in full,
@@ -1757,21 +1640,13 @@ def chat_send_message_appends(app: Client) -> None:
 
 
 def chat_bot_reply_appears(app: Client) -> None:
-    """Bot replies after a short delay (driven by a TerminalTimer
-    tick). Submit a message, wait ~400ms, assert the bot's reply
-    appears tagged 'bot'."""
+    """Bot replies after a short delay, driven by a TerminalTimer tick:
+    submit a message, and the bot's reply appears tagged 'bot'."""
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("ping")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    # Bot reply is scheduled ~200ms after submit; wait two timer
-    # ticks to be safe.
-    import time as _time
-    _time.sleep(0.4)
-    snap = app.cells()
-    full = snap.text()
-    assert_true("bot" in full,
+    # The bot replies on a timer tick ~200ms after the submit.
+    assert_true(app.wait_until(lambda c: "bot" in c.cells().text()),
                 "bot reply (tagged 'bot') should appear after user message")
 
 
@@ -1781,11 +1656,8 @@ def chat_scroll_pins_to_bottom(app: Client) -> None:
     viewport; submitting a unique message should make IT visible
     even if the older messages are scrolled past."""
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("anchor message zzz")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_key("enter")
-    app.wait_for_frame(1, timeout=0.5)
     snap = app.cells()
     full = snap.text()
     assert_true("anchor message zzz" in full,
@@ -1798,10 +1670,8 @@ def chat_q_in_empty_prompt_quits(app: Client) -> None:
     unwriteable.) Boot focus is on the prompt-empty state, so a
     bare `q` press should exit cleanly."""
     app.send_key("tab")
-    app.wait_for_frame(1, timeout=0.5)
     app.send_text("q")
-    # No assertion — clean teardown via context manager is the
-    # success signal.
+    assert_true(app.wait_for_exit(5.0) is not None, "q in an empty prompt should quit")
 
 
 # ---- Coder demo --------------------------------------------------------
@@ -1826,7 +1696,6 @@ def _coder_scroll_until(app: Client, needle: str, what: str, *also: str) -> str:
     text = app.cells().text()
     while not all(part in text for part in (needle, *also)):
         app.mouse_wheel("up", *CODER_TRANSCRIPT_POINT)
-        app.wait_for_frame(1, timeout=0.5)
         after = app.cells().text()
         if after == text:
             raise CaseFailed(f"{what} never scrolled into view")
@@ -1861,7 +1730,6 @@ def coder_typing_reaches_the_prompt(app: Client) -> None:
     `q` in it closed the app and ran the rest of the line in the shell."""
     app.send_text("quit queue")
     app.send_key("escape")
-    app.wait_for_frame(1, timeout=0.5)
     app.ping()
     assert_true("> quit queue" in app.cells().text(),
                 "the typed text should sit in the composer after its `>`")
@@ -1873,16 +1741,12 @@ def coder_readline_keys_edit_the_draft(app: Client) -> None:
     Cmd+Left — Option+Right as `ESC f`, Ctrl+K, Ctrl+E, Ctrl+Y. Regression:
     no input knew Ctrl+K, and each kept its own handful of editing keys."""
     app.send_text("keep this gone")
-    app.wait_for_frame(1, timeout=0.5)
-    app.write_raw(b"\x01")
-    app.write_raw(b"\x1bf")
-    app.write_raw(b"\x0b")
-    assert_true(app.wait_until(lambda c: "> keep" in c.cells().text()
-                               and "this gone" not in c.cells().text(), timeout=2.0),
+    app.write_raw(b"\x01\x1bf\x0b")
+    draft = app.cells().text()
+    assert_true("> keep" in draft and "this gone" not in draft,
                 "Ctrl+A, a word forward, then Ctrl+K should leave `keep`")
-    app.write_raw(b"\x05")
-    app.write_raw(b"\x19")
-    assert_true(app.wait_until(lambda c: "> keep this gone" in c.cells().text(), timeout=2.0),
+    app.write_raw(b"\x05\x19")
+    assert_true("> keep this gone" in app.cells().text(),
                 "Ctrl+E then Ctrl+Y should yank the kill back onto the end")
 
 
@@ -1892,15 +1756,11 @@ def coder_reads_the_users_keymap(app: Client) -> None:
     kill to the end of the line and unbinds Ctrl+K. The user's bindings lie
     over the app's, so Ctrl+O kills and Ctrl+K no longer does."""
     app.send_text("keep this gone")
-    app.wait_for_frame(1, timeout=0.5)
-    app.write_raw(b"\x01")
-    app.write_raw(b"\x1bf")
-    app.write_raw(b"\x0b")
-    app.wait_for_frame(1, timeout=0.5)
+    app.write_raw(b"\x01\x1bf\x0b")
     assert_true("> keep this gone" in app.cells().text(), "Ctrl+K is unbound by the user's file")
     app.write_raw(b"\x0f")
-    assert_true(app.wait_until(lambda c: "> keep" in c.cells().text()
-                               and "this gone" not in c.cells().text(), timeout=2.0),
+    draft = app.cells().text()
+    assert_true("> keep" in draft and "this gone" not in draft,
                 "Ctrl+O, bound by the user's file, should kill to the end of the line")
 
 
@@ -1909,7 +1769,7 @@ def coder_enter_sends_the_draft(app: Client) -> None:
     which shows its placeholder again."""
     app.send_text("lands at the end")
     app.send_key("enter")
-    assert_true(app.wait_until(lambda c: "lands at the end" in c.cells().text(), timeout=1.0),
+    assert_true("lands at the end" in app.cells().text(),
                 "the sent message should come into view with nothing scrolled")
     assert_true("Ask anything" in app.cells().text(), "the composer empties after sending")
 
@@ -1934,7 +1794,6 @@ def coder_transcript_diff_takes_no_keys(app: Client) -> None:
     boot focus, and Down scrolled the edit's first line out of the card."""
     before = _coder_scroll_to_edit_card(app)
     app.press_many("down", 3)
-    app.wait_for_frame(1, timeout=0.5)
     after = app.cells().text()
     assert_true(CODER_DIFF_FIRST in after, "Down scrolled the diff inside its card")
     assert_true(after == before, "arrow keys changed the transcript")
@@ -1972,7 +1831,6 @@ def coder_wheel_burst_keeps_running(app: Client) -> None:
         direction = 64 if (step // 10) % 2 == 0 else 65
         app.write_raw(f"\x1b[<{direction};{x + 1};{y + 1}M".encode() * 20)
         time.sleep(0.02)
-    app.wait_for_frame(2, timeout=1.0)
     app.ping()
     assert_true("CODER" in app.cells().text(), "the app should still be drawing")
 
@@ -1984,8 +1842,6 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
     backtrace as a staircase over the last frame and the shell went on
     receiving mouse coordinates as typed text."""
     import signal
-
-    app.wait_for_frame(1, timeout=0.5)
     before = len(app.pty_output())
     app.expected_exit_signal = signal.SIGSEGV
     app.crash()
@@ -2003,7 +1859,6 @@ def idle_costs_nothing(app: Client) -> None:
     """An app with nothing to do sleeps until something happens. Regression:
     an `.onDemand` app — documented as zero CPU when idle — polled every
     millisecond for work, and every app polled for a resize every 16ms."""
-    app.wait_for_frame(1, timeout=1.0)
     time.sleep(1.0)
     before = app.cpu_seconds()
     time.sleep(4.0)
@@ -2016,34 +1871,69 @@ def navigation_a_remote_command_redraws_an_idle_app(app: Client) -> None:
     observed state, still gets its frame. Regression: an idle `.onDemand`
     app showed `inspector-toggle`, a focus set or a screenshot only at the
     next keypress."""
-    app.wait_for_frame(1, timeout=1.0)
     time.sleep(0.3)
     before = app.frame_number()
     app.inspector_toggle()
-    assert_true(app.wait_until(lambda client: client.frame_number() > before, timeout=2.0),
-                "toggling the inspector drew no frame")
+    assert_true(app.frame_number() > before, "toggling the inspector drew no frame")
 
 
 def navigation_invoke_action_quits_an_idle_app(app: Client) -> None:
     """`invoke_action app.quit` ends an idle app. Regression: the quit
     signal was read only while handling a key, so an idle app went on."""
-    app.wait_for_frame(1, timeout=1.0)
     time.sleep(0.3)
     assert_true(app.invoke_action("app.quit"), "app.quit did not fire")
     assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after app.quit")
 
 
+# ---------------------------------------------------------------------------
+# The harness contract: input is drawn before the next reply
+#
+# A case asserts straight after it types, with no wait between. Over the
+# socket the runtime serves requests before it drains events, so a reply
+# comes after the keys sent before it are drawn. Through the terminal,
+# `paste` and `write_raw` return once the app has turned every byte into
+# events, and `resize_terminal` once it has drawn the new size. Coder is the
+# target because it draws nothing while idle: a frame that came along anyway
+# cannot hide input that was not drawn yet.
+# ---------------------------------------------------------------------------
+
+
+def coder_the_first_reply_sees_the_first_frame(app: Client) -> None:
+    """The first request is answered after the first frame, focus and all.
+    Regression: the frame drawn before the loop skipped auto-focus, so a
+    request in the loop's first pass found nothing focused, and keys sent
+    then went nowhere."""
+    assert_true(app.focus().node_id is not None, "nothing was focused when the first request was answered")
+    assert_true("> " in app.text(), "the first frame should show the prompt")
+
+
+def _type_and_check_each_key(app: Client, type_key: Callable[[str], None]) -> None:
+    typed = ""
+    for key in "harness contract":
+        type_key(key)
+        typed += key
+        assert_true(f"> {typed}" in app.text(),
+                    f"the reply after typing {key!r} did not show it: {app.text()!r}")
+
+
+def coder_socket_input_is_drawn_before_the_next_reply(app: Client) -> None:
+    _type_and_check_each_key(app, app.send_text)
+
+
+def coder_terminal_input_is_drawn_before_the_next_reply(app: Client) -> None:
+    _type_and_check_each_key(app, lambda key: app.write_raw(key.encode()))
+    app.paste(" pasted")
+    assert_true("> harness contract pasted" in app.text(),
+                f"the reply after a paste did not show it: {app.text()!r}")
+
+
 def coder_a_resize_redraws_at_the_new_size(app: Client) -> None:
     """A terminal resize reaches an idle app and it redraws at the new
     size."""
-    def size(client: Client) -> tuple[int, int]:
-        frame = client.cells()
-        return frame.width, frame.height
-
     app.resize_terminal(100, 30)
-    if not app.wait_until(lambda client: size(client) == (100, 30), timeout=3.0):
-        width, height = size(app)
-        raise CaseFailed(f"after a resize to 100x30 the frame is {width}x{height}")
+    frame = app.cells()
+    assert_true((frame.width, frame.height) == (100, 30),
+                f"after a resize to 100x30 the frame is {frame.width}x{frame.height}")
 
 
 def storybook_a_hung_up_terminal_quits_the_app(app: Client) -> None:
@@ -2052,8 +1942,6 @@ def storybook_a_hung_up_terminal_quits_the_app(app: Client) -> None:
     Regression: the input thread spun a core on the hung-up terminal, and the
     app ran on for as long as nobody killed it."""
     import signal
-
-    app.wait_for_frame(1, timeout=0.5)
     app.expected_exit_signal = signal.SIGHUP
     app.hang_up()
     if app.wait_for_exit(5.0) is None:
@@ -2108,6 +1996,12 @@ CASES: list[SmokeCase] = [
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
               navigation_invoke_action_quits_an_idle_app),
     SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
+    SmokeCase("coder.the_first_reply_sees_the_first_frame", "Coder",
+              coder_the_first_reply_sees_the_first_frame),
+    SmokeCase("coder.socket_input_is_drawn_before_the_next_reply", "Coder",
+              coder_socket_input_is_drawn_before_the_next_reply),
+    SmokeCase("coder.terminal_input_is_drawn_before_the_next_reply", "Coder",
+              coder_terminal_input_is_drawn_before_the_next_reply),
     SmokeCase("storybook.arrow_navigation", "Storybook", storybook_arrow_navigation),
     SmokeCase("storybook.sidebar_order_matches_navigation", "Storybook", storybook_sidebar_order_matches_navigation),
     SmokeCase("storybook.a_client_that_hangs_up_leaves_the_app_running", "Storybook",

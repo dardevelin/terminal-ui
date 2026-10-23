@@ -68,7 +68,6 @@ def control_columns(app: Client) -> set[int]:
 def scroll_to_last_row(app: Client) -> bool:
     for _ in range(MAX_TABS):
         app.tab()
-        app.wait_for_frame(1, timeout=0.6)
         if LAST_ROW in window_text(app):
             return True
     return False
@@ -76,10 +75,7 @@ def scroll_to_last_row(app: Client) -> bool:
 
 def verify(app: Client) -> list[str]:
     failures: list[str] = []
-    app.wait_for_frame(1)
     app.goto_page("Form")
-    app.wait_for_frame(1, timeout=1.0)
-
     top = window_text(app)
     if FIRST_SECTION not in top or FIRST_ROW not in top:
         return ["Form page did not render its first section"]
@@ -120,7 +116,6 @@ def verify(app: Client) -> list[str]:
     # tabbed past the fold is stranded there.
     for _ in range(MAX_TABS):
         app.tab(reverse=True)
-        app.wait_for_frame(1, timeout=0.6)
         if FIRST_ROW in window_text(app):
             break
     else:

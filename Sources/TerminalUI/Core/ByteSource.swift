@@ -65,6 +65,8 @@ public struct StdinByteSource: ByteSource {
     private let readSize: Int
     /// Bytes read and not yet handed out.
     private var pending: ArraySlice<UInt8> = []
+    /// Every byte read from the input so far, handed out or not.
+    private var bytesRead = 0
 
     /// Creates a stdin source that reads a byte at a time, for a caller that
     /// makes one per event, as ``InputParser/readEvent()`` does.
@@ -85,6 +87,12 @@ public struct StdinByteSource: ByteSource {
         !pending.isEmpty
     }
 
+    /// Bytes handed to the parser so far. Those a chunked read took ahead
+    /// of it are not counted until it asks for them.
+    var bytesConsumed: Int {
+        bytesRead - pending.count
+    }
+
     /// One byte from stdin, or `nil` on a poll/read timeout (pacing) or a
     /// shutdown-pipe wake.
     public mutating func readByte() -> UInt8? {
@@ -103,6 +111,7 @@ public struct StdinByteSource: ByteSource {
             count = max(read(input, bytes.baseAddress, readSize), 0)
         }
         pending = chunk[...]
+        bytesRead += chunk.count
         return !chunk.isEmpty
     }
 

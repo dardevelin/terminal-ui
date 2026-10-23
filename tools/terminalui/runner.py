@@ -287,8 +287,8 @@ def spawn_and_connect(target: str,
             socket_dir=str(Path(diag_dir) / "remote"),
         )
         client.diag_dir = diag_dir
-        # Hand the master FD to the client so `paste()` can write
-        # bracketed-paste sequences straight into the app's stdin.
+        # Hand the master FD to the client, which types into the app's
+        # terminal and resizes it through it.
         client.attach_pty(master)
         client.pid = proc.pid
         client.pty_output = _output

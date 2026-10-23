@@ -37,8 +37,6 @@ IDLE_SECONDS = 1.0
 
 def verify(app: Client) -> list[str]:
     failures: list[str] = []
-    app.wait_for_frame(1)
-
     time.sleep(IDLE_SECONDS)
 
     # The app is now idle. Every call below reaches it only if the wait
@@ -50,7 +48,6 @@ def verify(app: Client) -> list[str]:
 
     try:
         app.send_key("down")
-        app.wait_for_frame(1, timeout=2.0)
     except Exception as exc:  # noqa: BLE001
         return [f"idle app did not process an injected key: {exc!r}"]
 

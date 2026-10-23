@@ -91,10 +91,7 @@ def case_two_instances_distinct_dirs() -> None:
     """Spawn A and B as nested context managers. Assert their diag
     dirs differ and both exist while both processes run."""
     with spawn_and_connect("Storybook") as (proc_a, client_a):
-        client_a.wait_for_frame(1, timeout=2.0)
         with spawn_and_connect("Storybook") as (proc_b, client_b):
-            client_b.wait_for_frame(1, timeout=2.0)
-
             dir_a = getattr(client_a, "diag_dir", None)
             dir_b = getattr(client_b, "diag_dir", None)
             assert dir_a and dir_b, f"diag_dir missing: a={dir_a!r}, b={dir_b!r}"
@@ -117,10 +114,7 @@ def case_default_socket_lookup_pid_specific() -> None:
     os.path.realpath, since /tmp is a link on macOS."""
     import os
     with spawn_and_connect("Storybook") as (proc_a, client_a):
-        client_a.wait_for_frame(1, timeout=2.0)
         with spawn_and_connect("Storybook") as (proc_b, client_b):
-            client_b.wait_for_frame(1, timeout=2.0)
-
             dir_a = client_a.diag_dir
             dir_b = client_b.diag_dir
 
@@ -160,10 +154,7 @@ def case_swtui_ctl_pid_targeted() -> None:
     socket and round-trip a JSON response. Both instances answer
     independently — neither query routes to the other."""
     with spawn_and_connect("Storybook") as (proc_a, client_a):
-        client_a.wait_for_frame(1, timeout=2.0)
         with spawn_and_connect("Storybook") as (proc_b, client_b):
-            client_b.wait_for_frame(1, timeout=2.0)
-
             dir_a = Path(client_a.diag_dir) / "remote"
             dir_b = Path(client_b.diag_dir) / "remote"
 
@@ -211,11 +202,7 @@ def case_kill_pid_a_leaves_b_alive() -> None:
     Asserts only that the kill is surgical (stdout reports
     `status=quit-sent`, B's socket and responsiveness are untouched)."""
     with spawn_and_connect("Storybook") as (proc_a, client_a):
-        client_a.wait_for_frame(1, timeout=2.0)
         with spawn_and_connect("Storybook") as (proc_b, client_b):
-            client_b.wait_for_frame(1, timeout=2.0)
-
-
             dir_a = Path(client_a.diag_dir) / "remote"
             dir_b = Path(client_b.diag_dir) / "remote"
             sock_b = dir_b / f"{proc_b.pid}.sock"
@@ -263,10 +250,8 @@ def case_bare_ctl_with_two_apps_names_both() -> None:
     `--pid` refuses and lists both. It used to pick the most recently
     started one, so an app the harness launched took over the
     developer's session — and left nothing to reach once it exited."""
-    with spawn_and_connect("Storybook") as (proc_a, client_a):
-        client_a.wait_for_frame(1, timeout=2.0)
-        with spawn_and_connect("Storybook") as (proc_b, client_b):
-            client_b.wait_for_frame(1, timeout=2.0)
+    with spawn_and_connect("Storybook") as (proc_a, _):
+        with spawn_and_connect("Storybook") as (proc_b, _):
             res = _swtui_ctl("ping")
             assert res.returncode == 2, (
                 f"a bare ctl call with two apps running must refuse; rc={res.returncode}, "
@@ -281,8 +266,7 @@ def case_bare_ctl_with_one_app_reaches_it() -> None:
     reaches it. A fresh directory stands for the checkout, so apps a
     developer has running from this one do not count."""
     with tempfile.TemporaryDirectory(prefix="terminalui-checkout-") as checkout:
-        with spawn_and_connect("Storybook", cwd=checkout) as (_, client):
-            client.wait_for_frame(1, timeout=2.0)
+        with spawn_and_connect("Storybook", cwd=checkout):
             res = _swtui_ctl("ping", cwd=checkout)
             assert res.returncode == 0, (
                 f"a bare ctl call with one app running must reach it; rc={res.returncode}, "
@@ -299,7 +283,6 @@ def case_sigterm_quits_through_the_apps_own_teardown() -> None:
     import signal
 
     with spawn_and_connect("Storybook") as (proc, client):
-        client.wait_for_frame(1, timeout=2.0)
         diag_dir = Path(client.diag_dir)
         assert diag_dir.is_dir(), f"the running app has no data dir at {diag_dir}"
         client.expected_exit_signal = signal.SIGTERM
