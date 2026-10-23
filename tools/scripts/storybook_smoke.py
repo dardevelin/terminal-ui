@@ -16,10 +16,13 @@ case here, add the case when you fix it so future regressions won't slip.
 
 from __future__ import annotations
 
+import argparse
+import os
 import re
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -2221,21 +2224,56 @@ CASES: list[SmokeCase] = [
 ]
 
 
+def _usable_cpus() -> int:
+    """The CPUs this process may run on — a container's share, not the host's."""
+    if hasattr(os, "process_cpu_count"):
+        return os.process_cpu_count() or 1
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
+
+
+def _tick(result: CaseResult) -> str:
+    return "✓" if result.ok else "✗"
+
+
+def _execute(case: SmokeCase, build_dir: Optional[str]) -> CaseResult:
+    # Printed when a worker takes the case, so a run cut off by a timeout
+    # shows which cases had started and not finished.
+    print(f"→ {case.name}", flush=True)
+    result = case.execute(build_dir=build_dir)
+    print(f"{_tick(result)} {case.name}", flush=True)
+    return result
+
+
 def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     # Optional build dir so the same suite can drive a Linux build from a
     # separate scratch path (tools/scripts/linux_harness.sh).
-    build_dir = argv[0] if argv else None
+    parser.add_argument("build_dir", nargs="?", default=None)
+    # Half the CPUs: every case is an app under a PTY plus its client, and a
+    # timing-sensitive case — an idle app's CPU, a burst of input — must not
+    # be starved by its neighbours. Each app owns its own data dir and socket.
+    parser.add_argument("--jobs", type=int, default=_usable_cpus() // 2,
+                        help="cases run at once (default: half the CPUs; 1 runs them in turn)")
+    args = parser.parse_args(argv)
 
-    results = []
-    for case in CASES:
-        print(f"→ {case.name}", flush=True)
-        results.append(case.execute(build_dir=build_dir))
+    pool = ThreadPoolExecutor(max_workers=max(1, args.jobs))
+    try:
+        futures = [pool.submit(_execute, case, args.build_dir) for case in CASES]
+        results = [future.result() for future in futures]
+    except KeyboardInterrupt:
+        # Without this, every queued case still ran — and spawned its app —
+        # before the interrupt took effect.
+        pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()
 
-    print()
     failed = [r for r in results if not r.ok]
-    for result in results:
-        tick = "✓" if result.ok else "✗"
-        print(f"  {tick} {result.name:<40} {result.detail}")
+    if failed:
+        print()
+    for result in failed:
+        print(f"  {_tick(result)} {result.name:<40} {result.detail}")
 
     print()
     print(f"{len(results) - len(failed)}/{len(results)} cases passed")

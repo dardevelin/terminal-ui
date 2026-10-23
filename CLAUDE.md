@@ -76,6 +76,7 @@ tools/scripts/linux_harness.sh storybook_smoke.py   # full behavioural suite
 # What CI actually gates on, runnable locally (see .github/workflows/ci.yml)
 python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
 python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
+                                           # cases run side by side, half the cores; --jobs N
 
 # The whole local gate in one command: build → test → smoke. Skips itself when
 # the turn touched no .swift / .py file. Builds into .build-automation/.
