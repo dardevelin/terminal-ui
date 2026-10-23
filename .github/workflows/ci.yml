@@ -58,6 +58,9 @@ jobs:
       - name: Walk every Storybook page
         run: python3 tools/scripts/storybook_walk.py
 
+      - name: Integration scripts
+        run: python3 tools/scripts/integration_suite.py
+
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py
 
@@ -126,6 +129,9 @@ jobs:
       - name: Walk every Storybook page
         run: python3 tools/scripts/storybook_walk.py
 
+      - name: Integration scripts
+        run: python3 tools/scripts/integration_suite.py
+
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py
 
@@ -163,6 +169,9 @@ jobs:
       # case that produced them.
       - name: Build examples
         run: swift build --sanitize=thread --scratch-path .build-tsan
+
+      - name: Integration scripts
+        run: python3 tools/scripts/integration_suite.py .build-tsan/debug
 
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py .build-tsan/debug

@@ -8,7 +8,7 @@ Storybook under PTY in a temp cwd whose ``.terminalui/terminalui.toml``
 opts the socket off, then asserts that the framework honored the
 gate: no ``<pid>.sock`` appears, and the app still boots normally.
 
-Run::   ``swift build && python3 tools/scripts/socket_disabled.py``
+Run::   ``swift build && python3 tools/scripts/verify_socket_disabled.py``
 Exit:   0 on pass, 1 on fail. Sibling of ``storybook_smoke.py``.
 """
 

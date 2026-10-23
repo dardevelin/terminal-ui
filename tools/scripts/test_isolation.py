@@ -29,38 +29,18 @@ Run::
 
     swift build && python3 tools/scripts/test_isolation.py
 
-Exit 0 on all green, 1 on any failure. The output format mirrors
-``storybook_smoke.py`` so a CI watcher can parse the same lines.
+Exit 0 on all green, 1 on any failure.
 """
 
 from __future__ import annotations
 
 import sys
-import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from terminalui.cases import run_cases  # noqa: E402
 from terminalui.runner import spawn_and_connect  # noqa: E402
-
-
-@dataclass
-class CaseResult:
-    name: str
-    ok: bool
-    detail: str
-
-
-def _run(name: str, fn: Callable[[], None]) -> CaseResult:
-    try:
-        fn()
-        return CaseResult(name, True, "ok")
-    except AssertionError as exc:
-        return CaseResult(name, False, str(exc))
-    except Exception as exc:  # noqa: BLE001
-        return CaseResult(name, False, f"{type(exc).__name__}: {exc}")
 
 
 # ---------------------------------------------------------------------------
@@ -185,20 +165,5 @@ CASES = [
 ]
 
 
-def main() -> int:
-    failures = 0
-    for name, fn in CASES:
-        result = _run(name, fn)
-        marker = "OK" if result.ok else "FAIL"
-        line = f"[{marker}] {result.name}"
-        if not result.ok:
-            line += f" — {result.detail}"
-            failures += 1
-        print(line)
-    print("---")
-    print(f"{len(CASES) - failures}/{len(CASES)} pass")
-    return 1 if failures else 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cases(CASES))

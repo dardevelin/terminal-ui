@@ -77,9 +77,11 @@ tools/scripts/linux_harness.sh storybook_smoke.py   # full behavioural suite
 python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
 python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
                                            # cases run side by side, half the cores; --jobs N
+python3 tools/scripts/integration_suite.py # every verify_*/test_* script, in turn
 
-# The whole local gate in one command: build → test → smoke. Skips itself when
-# the turn touched no .swift / .py file. Builds into .build-automation/.
+# The whole local gate in one command: build → test → walk → integration
+# scripts → smoke. Skips itself when the turn touched no .swift / .py file. Builds
+# into .build-automation/.
 python3 tools/scripts/verify.py
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
@@ -106,14 +108,16 @@ reason the harness cannot run inside the container — PTYs work fine there.
 
 **CI runs the same matrix twice, Linux (`swift:6.2` container) and macOS 15**,
 and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
-warnings-as-errors release → `storybook_walk.py` → `storybook_smoke.py`. The PTY
+warnings-as-errors release → `storybook_walk.py` → `storybook_smoke.py` →
+`integration_suite.py`, which finds and runs every `verify_*`/`test_*`
+script in `tools/scripts/`: name a new one that way and it gates. The PTY
 harness is a merge gate, not a local nicety — a change that renders differently
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the
 runner default ships Swift 6.1 and the manifest requires 6.2.
 
-A third CI job runs `swift test` and the smoke suite against a **Thread
-Sanitizer** build. It catches what a crash-based test only sometimes does: the
+A third CI job runs `swift test`, the smoke suite and the integration scripts
+against a **Thread Sanitizer** build. It catches what a crash-based test only sometimes does: the
 trace recorder's race crashed one smoke run in three, and TSan reports it on
 every run. Signal handlers must be installed with `sigaction` (see
 `installSignalDisposition` in Terminal.swift), never `signal()`: TSan

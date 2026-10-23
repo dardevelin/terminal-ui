@@ -22,9 +22,11 @@ from pathlib import Path
 from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import check_tracker_ids as checker  # noqa: E402
 from kanban import ID_PREFIX  # noqa: E402
+from terminalui.cases import run_cases  # noqa: E402
 
 BOARD_ID = f"{ID_PREFIX}-12"
 
@@ -103,19 +105,5 @@ CASES: list[tuple[str, Callable[[], None]]] = [
 ]
 
 
-def main() -> int:
-    failures = 0
-    for name, case in CASES:
-        try:
-            case()
-            print(f"[OK] {name}")
-        except Exception as error:  # noqa: BLE001 — report every case
-            failures += 1
-            print(f"[FAIL] {name} — {error!r}")
-    print("---")
-    print(f"{len(CASES) - failures}/{len(CASES)} pass")
-    return 1 if failures else 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(run_cases(CASES))
