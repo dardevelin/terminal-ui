@@ -11,46 +11,66 @@ import Testing
 // may be part-way through an escape sequence whose parser retries on nil, so
 // the wake has to hold for every read that follows, not only the first: the
 // byte stays in the pipe. Reading it away left each retry waiting out a full
-// 100ms poll of stdin.
+// 100ms poll of stdin. A terminating signal's byte on the terminate pipe
+// ends a read the same way: a bracketed paste the terminal never finished
+// held a Ctrl+C up for the 3s the parser gives a paste's end to arrive.
 
-@Suite("A shutdown wake holds for every read that follows", .serialized)
+@Suite("A wake to stop holds for every read that follows")
 struct ShutdownWakeTests {
 
-    @Test func everyReadAfterTheWakeReturnsNilAtOnce() throws {
-        let shutdown = try SelfPipe()
+    @Test func everyReadAfterAShutdownWakeReturnsNilAtOnce() throws {
+        let terminal = try SelfPipe()
+        let pipes = try InputWakePipes()
         defer {
-            StdinByteSource.shutdownReadFD = nil
-            shutdown.close()
+            terminal.close()
+            pipes.close()
         }
-        StdinByteSource.shutdownReadFD = shutdown.read
-        shutdown.signal()
+        pipes.shutdown.signal()
 
-        var source = StdinByteSource()
+        var source = StdinByteSource(input: terminal.read, wakes: pipes.wakes)
         for _ in 0..<5 {
             #expect(source.readByte() == nil)
         }
+        #expect(source.cutShort)
+        #expect(source.waitForActivity() == .shutdown, "the next wait says why")
 
-        var stillWaking = pollfd(fd: shutdown.read, events: Int16(POLLIN), revents: 0)
+        var stillWaking = pollfd(fd: pipes.shutdown.read, events: Int16(POLLIN), revents: 0)
         #expect(poll(&stillWaking, 1, 0) == 1, "the wake byte must stay in the pipe")
+    }
+
+    @Test func aTerminateEndsAPasteTheTerminalNeverFinished() async throws {
+        let terminal = try SelfPipe()
+        let pipes = try InputWakePipes()
+        defer {
+            terminal.close()
+            pipes.close()
+        }
+        terminal.send("\u{1B}[200~half a paste")
+        let reader = Task.detached {
+            var source = StdinByteSource(input: terminal.read, buffered: true, wakes: pipes.wakes)
+            _ = InputParser.readEvent(from: &source)
+            return source.cutShort && source.waitForActivity() == .terminate
+        }
+        try? await Task.sleep(for: .milliseconds(200))
+        pipes.terminate.signal()
+
+        #expect(await finishes(within: .seconds(1)) { _ = await reader.value })
+        #expect(await reader.value, "the read should say it was cut short, and the next wait why")
     }
 
     // A hang-up part-way through an escape sequence ends the read early, and
     // the parser makes a key of what it had: one nobody pressed. The read
-    // says the terminal hung up, so the input task drops that key.
+    // says it was cut short, so the input task drops that key, and its next
+    // wait reports the hang-up.
     @Test func aReadThatFindsTheTerminalHungUpSaysSo() throws {
-        let shutdown = try SelfPipe()
         let terminal = try #require(PseudoTerminal())
-        defer {
-            StdinByteSource.shutdownReadFD = nil
-            terminal.closeReplica()
-            shutdown.close()
-        }
-        StdinByteSource.shutdownReadFD = shutdown.read
+        defer { terminal.closeReplica() }
         terminal.hangUp()
 
         var source = StdinByteSource(input: terminal.replica)
         #expect(source.readByte() == nil)
-        #expect(source.hungUp)
-        #expect(!StdinByteSource(input: terminal.replica).hungUp, "another source has not seen it")
+        #expect(source.cutShort)
+        #expect(source.waitForActivity() == .hangUp)
+        #expect(!StdinByteSource(input: terminal.replica).cutShort, "another source has not seen it")
     }
 }

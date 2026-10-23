@@ -18,6 +18,8 @@ unittest, or whatever you prefer. The runner just handles boilerplate.
 
 from __future__ import annotations
 
+import functools
+import mmap
 import os
 import pty
 import select
@@ -147,6 +149,17 @@ def _repo_root() -> Path:
 # shadow memory. Three seconds failed the first case of a TSan run straight
 # after its build.
 BOOT_TIMEOUT = 15.0
+
+# The symbol each sanitizer's runtime starts from, found in a binary built
+# with it whether the runtime is linked in (Linux) or loaded (macOS).
+_SANITIZER_SYMBOLS = {"thread": b"__tsan_init", "address": b"__asan_init"}
+
+
+@functools.lru_cache(maxsize=None)
+def _sanitizer_of(exe: Path) -> Optional[str]:
+    """The sanitizer ``exe`` was built with, if any."""
+    with open(exe, "rb") as binary, mmap.mmap(binary.fileno(), 0, access=mmap.ACCESS_READ) as image:
+        return next((name for name, symbol in _SANITIZER_SYMBOLS.items() if image.find(symbol) >= 0), None)
 
 
 @contextmanager
@@ -291,6 +304,7 @@ def spawn_and_connect(target: str,
         # terminal and resizes it through it.
         client.attach_pty(master)
         client.pid = proc.pid
+        client.sanitizer = _sanitizer_of(exe)
         client.pty_output = _output
         client.hang_up = _hang_up
 

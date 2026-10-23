@@ -203,6 +203,9 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Deprecated
 
+- **`StdinByteSource.shutdownReadFD`.** The runtime's input source now owns
+  its wake pipes, and nothing sets this global any more. A source made
+  without pipes still honours it until the next major version.
 - **`BoundaryFeedbackEmitter.emit(reason:env:callback:)` and `bellSink`.** No
   input calls them any more: they read the environment's `boundaryHit`
   instead, and the bell is the environment's `\.bell`. `bounceSink` stays the
@@ -216,6 +219,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Ctrl+C, or any terminating signal, quits at once during a paste the
+  terminal never finished.** The parser gives a bracketed paste's end 3s to
+  arrive, and its reads watched stdin and the shutdown pipe but not the
+  signal's wake, so the quit waited all 3s. The input source now owns all of
+  its wake pipes, and a wake to stop ends a read at once. What the parser had
+  made of the unfinished sequence is dropped, as it is on a hang-up.
 - **An app comes up focused.** The first frame, drawn before the event loop
   starts, took a render path of its own that skipped auto-focus. Every app
   drew an unfocused first frame and focused only on the loop's next one, and

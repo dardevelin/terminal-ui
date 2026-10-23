@@ -119,6 +119,12 @@ every run. Signal handlers must be installed with `sigaction` (see
 `installSignalDisposition` in Terminal.swift), never `signal()`: TSan
 intercepts only `sigaction`, and a handler it does not know about runs inside
 whatever the thread was doing — in `free`, it aborted on TSan's own lock.
+TSan also runs a signal's handler only once the thread the signal reached
+calls into its runtime, and an idle app's threads sleep in the kernel: a
+sanitized app sent SIGTERM while idle does not act on it until something
+wakes it. The runner's stop works because closing its socket wakes the app;
+a case that signals an idle app on purpose raises `CaseSkipped` when
+`client.sanitizer == "thread"`.
 
 **Every app the harness spawns is checked on the way out**, in
 `tools/terminalui/runner.py`: a case fails, even with every assertion green,

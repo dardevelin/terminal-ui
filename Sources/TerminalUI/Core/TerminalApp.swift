@@ -449,12 +449,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // one a terminating signal writes to. Made before anything touches
         // the terminal, so failing leaves it as it was.
         // Closed last, after the defer below has cleared the descriptors.
-        let shutdownPipe = try SelfPipe()
-        defer { shutdownPipe.close() }
-        let resizePipe = try SelfPipe()
-        defer { resizePipe.close() }
-        let terminatePipe = try SelfPipe()
-        defer { terminatePipe.close() }
+        let wakePipes = try InputWakePipes()
+        defer { wakePipes.close() }
         Terminal.installResizeHandler()
         // Raw-mode setup can fail when stdin isn't a TTY (CI, headless,
         // shell pipe). Propagate as a typed error so callers — and the
@@ -508,9 +504,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         #endif
 
-        StdinByteSource.shutdownReadFD = shutdownPipe.read
-        Terminal.resizeWakeFD = resizePipe.write
-        Terminal.terminateWakeFD = terminatePipe.write
+        Terminal.resizeWakeFD = wakePipes.resize.write
+        Terminal.terminateWakeFD = wakePipes.terminate.write
 
         defer {
             tracer.writeSummary()
@@ -539,10 +534,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
 
-            // Cleared before the pipes close, so neither a lingering
-            // readByte() nor a late SIGWINCH uses a closed — or reopened —
-            // descriptor.
-            StdinByteSource.shutdownReadFD = nil
+            // Cleared before the pipes close, so a late signal does not write
+            // to a closed — or reopened — descriptor. The input task, which
+            // reads them, has ended: the loop waits for it.
             Terminal.resizeWakeFD = nil
             Terminal.terminateWakeFD = nil
         }
@@ -554,14 +548,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // `withValue`; the run-loop body runs inside this closure and
         // the binding restores on exit — no manual teardown needed.
         try await GraphContext.$currentFocusEngine.withValue(focusEngine) {
-            try await runFrameLoop(shutdownPipe: shutdownPipe, resizePipe: resizePipe, terminatePipe: terminatePipe)
+            try await runFrameLoop(wakePipes: wakePipes)
         }
     }
 
     /// Body of `run()` after raw-mode setup and the focus-engine
     /// binding. Extracted so `run()` can wrap it in
     /// `GraphContext.$currentFocusEngine.withValue`.
-    private func runFrameLoop(shutdownPipe: SelfPipe, resizePipe: SelfPipe, terminatePipe: SelfPipe) async throws {
+    private func runFrameLoop(wakePipes: InputWakePipes) async throws {
         // The first frame, drawn before the loop's first `pump()`: no remote
         // request is answered, and no key handled, before the app is on
         // screen with its first focusable focused. It takes the path every
@@ -583,21 +577,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let inputTask = Task.detached {
             // One source for the life of the task, reading in chunks: bytes a
             // read took past the event it was for are the next event's.
-            var source = StdinByteSource(input: STDIN_FILENO, buffered: true)
+            var source = StdinByteSource(input: STDIN_FILENO, buffered: true, wakes: wakePipes.wakes)
             while true {
-                let activity: InputActivity = source.hasBufferedInput
-                    ? .input
-                    : StdinByteSource.waitForActivity(resize: resizePipe.read, terminate: terminatePipe.read,
-                                                      shutdown: shutdownPipe.read)
+                let activity: InputActivity = source.hasBufferedInput ? .input : source.waitForActivity()
                 switch activity {
                 case .input:
                     let event = InputParser.readEvent(from: &source)
-                    // A hang-up part-way through a sequence ends it early, and
-                    // the parser makes a key of what it had: one nobody pressed.
-                    if source.hungUp {
-                        Terminal.recordHangUp()
-                        wake.wake()
-                        return
+                    // A hang-up or a wake to stop part-way through a sequence
+                    // ends it early, and the parser makes a key of what it
+                    // had: one nobody pressed. The next wait reports which.
+                    if source.cutShort {
+                        continue
                     }
                     queue.pushTerminalInput(event, bytesConsumed: source.bytesConsumed)
                 case .resize:
@@ -794,7 +784,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
 
         // Wake the input task out of its blocked poll() so quit doesn't hang.
-        shutdownPipe.signal()
+        wakePipes.shutdown.signal()
         // `run()` clears the pipe's descriptor and closes the pipe as soon as
         // this returns, and the input task reads both on its own thread.
         // Unwaited, it could poll a closed descriptor, or one the cleanup that

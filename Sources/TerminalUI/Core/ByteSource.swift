@@ -19,24 +19,70 @@ public protocol ByteSource {
     mutating func readByte() -> UInt8?
 }
 
+/// The pipes besides input that wake the input task, each by a byte written
+/// to it: SIGWINCH's handler writes to `resize`, a terminating signal's to
+/// `terminate`, and the runtime writes to `shutdown` as it quits.
+struct InputWakes: Sendable {
+    let resize: Int32
+    let terminate: Int32
+    let shutdown: Int32
+
+    /// No pipes: only input wakes the source. `poll()` ignores a negative
+    /// descriptor (POSIX.1-2008).
+    static let none = InputWakes(resize: -1, terminate: -1, shutdown: -1)
+}
+
+/// The pipes behind ``InputWakes``, as the runtime makes them for its input
+/// task. The write ends are the signal handlers' and the runtime's.
+struct InputWakePipes: Sendable {
+    let resize: SelfPipe
+    let terminate: SelfPipe
+    let shutdown: SelfPipe
+
+    /// Closes what it made when a later pipe cannot be.
+    init() throws(TerminalRuntimeError) {
+        resize = try SelfPipe()
+        do {
+            terminate = try SelfPipe()
+        } catch {
+            resize.close()
+            throw error
+        }
+        do {
+            shutdown = try SelfPipe()
+        } catch {
+            resize.close()
+            terminate.close()
+            throw error
+        }
+    }
+
+    /// The read ends, for the input task's source.
+    var wakes: InputWakes {
+        InputWakes(resize: resize.read, terminate: terminate.read, shutdown: shutdown.read)
+    }
+
+    func close() {
+        resize.close()
+        terminate.close()
+        shutdown.close()
+    }
+}
+
 /// Runtime source — reads STDIN in raw mode: a chunk at a time when
 /// buffered, as the runtime's input task keeps it, a byte at a time otherwise.
 ///
-/// Between events the runtime waits in
-/// ``waitForActivity(input:resize:terminate:shutdown:)``.
-/// A read waits at most 100ms (VTIME=1, or the same timeout on `poll()`),
-/// which the parser relies on part-way through an escape sequence. If
-/// `shutdownReadFD` is set, `poll()` watches both STDIN and the shutdown
-/// pipe; writing any byte to the pipe wakes a blocked readByte() and causes
-/// it to return nil — Task.cancel() can't interrupt a blocked read() syscall
-/// on Linux.
+/// Between events the input task waits in ``waitForActivity()``. A read
+/// waits at most 100ms, which the parser relies on part-way through an
+/// escape sequence, and ends at once on a wake to stop — a byte on the
+/// terminate or shutdown pipe — returning nil. The byte stays in its pipe, so
+/// every read after returns at once too, and the parser's retries do not
+/// hold the quit up: a paste the terminal never finished kept a Ctrl+C
+/// waiting 3s. Task.cancel() can't interrupt a blocked read() on Linux.
 public struct StdinByteSource: ByteSource {
-    /// Read end of a self-pipe used to wake a blocked readByte() at shutdown.
-    /// Shared state: TerminalApp.run() opens the pipe and stores the read end
-    /// here before starting the input task, then writes to the write end on
-    /// exit. nil when no runtime is active (tests, or before run() starts).
-    /// The input task reads it on its own thread while the runtime sets and
-    /// clears it, so it is held atomically.
+    /// Read end of a self-pipe that wakes a blocked readByte(), for a source
+    /// made without wakes. The runtime gives its source its pipes instead.
+    @available(*, deprecated, message: "The runtime's input source owns its wake pipes and ignores this; only a source made without them reads it.")
     public static var shutdownReadFD: Int32? {
         get {
             let fd = shutdownFD.load(ordering: .acquiring)
@@ -46,19 +92,27 @@ public struct StdinByteSource: ByteSource {
     }
     private static let shutdownFD = Atomic<Int32>(-1)
 
-    /// Whether a read found the terminal hung up. The parser takes the `nil`
-    /// that read returns for a timeout, so the input task asks here before it
-    /// queues what the parser made of a sequence the hang-up cut short.
-    private(set) var hungUp = false
+    /// Whether a read ended early — the terminal hung up, or a wake asked
+    /// the task to stop — rather than waiting out its timeout. The parser
+    /// takes the `nil` such a read returns for a pause, and makes an event
+    /// of what it had: one nobody sent. The input task drops it, and its next
+    /// ``waitForActivity()`` says what ended the read, since a hang-up and a
+    /// wake's byte both stay to be seen.
+    private(set) var cutShort = false
 
     /// The descriptor read: stdin, or a test's terminal.
     private let input: Int32
+    private let wakes: InputWakes
 
     /// How much one read may take. A terminal delivers a keypress, a mouse
     /// report or a paste as one burst; 4 KiB holds a burst, and keeps a
     /// paste to a few reads where a byte at a time made it two system calls
     /// per byte.
     private static let chunkCapacity = 4096
+
+    /// How long a read waits for a byte — the gap that tells a bare Escape
+    /// from the start of a sequence, as raw mode's VTIME=1 does.
+    private static let readTimeoutMilliseconds: Int32 = 100
 
     /// 1 for a source made per event, which must not read ahead: the bytes
     /// past its event would go with it.
@@ -76,10 +130,12 @@ public struct StdinByteSource: ByteSource {
 
     /// `buffered` reads everything waiting at once and serves it from memory,
     /// across events — for a caller that keeps the source, as the runtime's
-    /// input task does.
-    init(input: Int32, buffered: Bool = false) {
+    /// input task does. `wakes` are the pipes that end its waits.
+    init(input: Int32, buffered: Bool = false, wakes: InputWakes = .none) {
         self.input = input
         self.readSize = buffered ? Self.chunkCapacity : 1
+        let shutdown = wakes.shutdown >= 0 ? wakes.shutdown : Self.shutdownFD.load(ordering: .acquiring)
+        self.wakes = InputWakes(resize: wakes.resize, terminate: wakes.terminate, shutdown: shutdown)
     }
 
     /// Whether bytes already read are waiting to be handed out.
@@ -93,18 +149,23 @@ public struct StdinByteSource: ByteSource {
         bytesRead - pending.count
     }
 
-    /// One byte from stdin, or `nil` on a poll/read timeout (pacing) or a
-    /// shutdown-pipe wake.
+    /// One byte from stdin, or `nil` on a read timeout (pacing), a hang-up
+    /// or a wake to stop.
     public mutating func readByte() -> UInt8? {
         guard hasBufferedInput || refill() else { return nil }
         return pending.popFirst()
     }
 
-    /// Wait for input as the parser needs — at most 100ms — and take what
-    /// is waiting, up to `readSize`. False on a timeout, a hang-up or a
-    /// shutdown wake.
+    /// Wait for input as the parser needs and take what is waiting, up to
+    /// `readSize`. False on a timeout, or when the read was cut short.
     private mutating func refill() -> Bool {
-        if let shutdownFD = Self.shutdownReadFD, !waitForInput(shutdownFD: shutdownFD) {
+        switch pollActivity(watchingResize: false, timeoutMilliseconds: Self.readTimeoutMilliseconds) {
+        case nil:
+            return false
+        case .input:
+            break
+        case .resize, .terminate, .hangUp, .shutdown:
+            cutShort = true
             return false
         }
         let chunk = [UInt8](unsafeUninitializedCapacity: readSize) { bytes, count in
@@ -113,34 +174,6 @@ public struct StdinByteSource: ByteSource {
         pending = chunk[...]
         bytesRead += chunk.count
         return !chunk.isEmpty
-    }
-
-    /// poll() wakes on either stdin input OR the shutdown pipe.
-    /// POSIX guarantees pollfd layout across Darwin and Glibc.
-    private mutating func waitForInput(shutdownFD: Int32) -> Bool {
-        var fds = [
-            pollfd(fd: input, events: Int16(POLLIN), revents: 0),
-            pollfd(fd: shutdownFD, events: Int16(POLLIN), revents: 0),
-        ]
-
-        // Timeout matches VTIME=1 (100ms) so callers that loop on nil still
-        // make progress on cancellation checks without a pipe write.
-        let ready = poll(&fds, nfds_t(fds.count), 100)
-        guard ready > 0 else { return false }
-
-        // The wake byte stays in the pipe: every later poll returns at once,
-        // so a sequence the parser is part-way through gives up its retries
-        // immediately instead of waiting out a 100ms poll for each, and the
-        // input task reaches its cancellation check without delay.
-        if fds[1].revents & Int16(POLLIN) != 0 {
-            return false
-        }
-
-        if fds[0].revents & Int16(POLLHUP) != 0 {
-            hungUp = true
-            return false
-        }
-        return fds[0].revents & Int16(POLLIN) != 0
     }
 }
 
@@ -171,24 +204,36 @@ extension StdinByteSource {
     /// When several are ready: shutdown, then terminate, then hang-up, then
     /// resize, then input. Input already read goes before all of them — the
     /// input task asks only once its buffer is empty, at most a chunk later.
-    /// Shutdown's byte stays in the pipe, as in `readByte()`. A resize empties its pipe, so several signals before the
+    /// Shutdown's and terminate's bytes stay in their pipes, as in
+    /// `readByte()`. A resize empties its pipe, so several signals before the
     /// task looks are one resize. A hang-up goes before input because macOS
     /// reports a hung-up terminal readable as well as hung up, and a read of
     /// it returns nothing: taken for input, it would wake the task at once,
     /// forever. Linux reports the hang-up alone. Keys typed before it have no
     /// screen left to act on.
-    static func waitForActivity(input: Int32 = STDIN_FILENO, resize: Int32,
-                                terminate: Int32, shutdown: Int32) -> InputActivity {
+    func waitForActivity() -> InputActivity {
+        pollActivity(watchingResize: true, timeoutMilliseconds: -1) ?? .shutdown
+    }
+
+    /// What is ready, by the order ``waitForActivity()`` gives, or nil when
+    /// nothing is within the timeout; -1 waits for ever. A read part-way
+    /// through a sequence leaves a resize for later. POSIX guarantees pollfd
+    /// layout across Darwin and Glibc.
+    private func pollActivity(watchingResize: Bool, timeoutMilliseconds: Int32) -> InputActivity? {
         var fds = [
             pollfd(fd: input, events: Int16(POLLIN), revents: 0),
-            pollfd(fd: resize, events: Int16(POLLIN), revents: 0),
-            pollfd(fd: terminate, events: Int16(POLLIN), revents: 0),
-            pollfd(fd: shutdown, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: watchingResize ? wakes.resize : -1, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: wakes.terminate, events: Int16(POLLIN), revents: 0),
+            pollfd(fd: wakes.shutdown, events: Int16(POLLIN), revents: 0),
         ]
         // The task's pool thread blocks the signals the app handles, so they
         // reach it as pipe bytes; a poll() interrupted all the same returns
         // EINTR, whatever SA_RESTART says, and that is not activity.
-        while poll(&fds, nfds_t(fds.count), -1) < 0 && errno == EINTR {}
+        var ready: Int32
+        repeat {
+            ready = poll(&fds, nfds_t(fds.count), timeoutMilliseconds)
+        } while ready < 0 && errno == EINTR
+        guard ready > 0 else { return nil }
 
         if fds[3].revents != 0 { return .shutdown }
         if fds[2].revents & Int16(POLLIN) != 0 { return .terminate }
@@ -196,7 +241,7 @@ extension StdinByteSource {
         if fds[1].revents & Int16(POLLIN) != 0 {
             // One byte per SIGWINCH; one read takes every one written so far.
             var drained = [UInt8](repeating: 0, count: 64)
-            _ = read(resize, &drained, drained.count)
+            _ = read(wakes.resize, &drained, drained.count)
             return .resize
         }
         if fds[0].revents & Int16(POLLIN) != 0 { return .input }

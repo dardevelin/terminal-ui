@@ -209,6 +209,11 @@ class Client:
         # a case needs to check what the app leaves the terminal in when it
         # dies, which no socket call can report.
         self.pid: Optional[int] = None
+        # Set by the runner: the sanitizer the app was built with — "thread",
+        # "address" — or None. A sanitizer changes when some things happen:
+        # Thread Sanitizer runs a signal's handler only once the thread the
+        # signal reached calls into its runtime.
+        self.sanitizer: Optional[str] = None
         self.pty_output: Callable[[], bytes] = lambda: b""
         # The runner fails any app that dies on a signal. A case that kills
         # the app on purpose names the signal here, and the runner then
@@ -392,7 +397,7 @@ class Client:
             seconds = seconds * 60 + float(part)
         return seconds + (int(days) * 86400 if days else 0)
 
-    def write_raw(self, data: bytes) -> None:
+    def write_raw(self, data: bytes, *, unfinished: bool = False) -> None:
         """Write raw bytes to the master PTY exactly as a real terminal
         would emit them — NO bracketed-paste wrapping, NO escape
         coalescing. Use this to reproduce terminal byte streams that
@@ -406,7 +411,9 @@ class Client:
         the real terminal does.
 
         Returns once the app has turned all of it into events, which the
-        next request then sees drawn, as it would after ``send_key``.
+        next request then sees drawn, as it would after ``send_key``. Bytes
+        that stop part-way through a sequence make no event until the rest
+        arrives: say so with ``unfinished``, and it returns at once.
         """
         if self._master_fd is None:
             raise RemoteError("typing into the terminal needs the runner's PTY")
@@ -414,6 +421,8 @@ class Client:
         while view:
             view = view[os.write(self._master_fd, view):]
         self._terminal_bytes_written += len(data)
+        if unfinished:
+            return
         written = self._terminal_bytes_written
         self._wait_for(lambda: self._terminal_input()["bytes"] >= written,
                        f"the app to take in the {written} bytes typed into its terminal")
