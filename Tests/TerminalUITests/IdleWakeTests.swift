@@ -71,27 +71,22 @@ struct InputActivityTests {
 
     private struct Pipes {
         let input: SelfPipe
-        let resize: SelfPipe
-        let terminate: SelfPipe
-        let shutdown: SelfPipe
+        let wakePipes: InputWakePipes
+        var resize: SelfPipe { wakePipes.resize }
+        var shutdown: SelfPipe { wakePipes.shutdown }
 
         init() throws {
             input = try SelfPipe()
-            resize = try SelfPipe()
-            terminate = try SelfPipe()
-            shutdown = try SelfPipe()
+            wakePipes = try InputWakePipes()
         }
 
         func wait(input: Int32? = nil) -> InputActivity {
-            StdinByteSource.waitForActivity(input: input ?? self.input.read, resize: resize.read,
-                                            terminate: terminate.read, shutdown: shutdown.read)
+            StdinByteSource(input: input ?? self.input.read, wakes: wakePipes.wakes).waitForActivity()
         }
 
         func close() {
             input.close()
-            resize.close()
-            terminate.close()
-            shutdown.close()
+            wakePipes.close()
         }
     }
 

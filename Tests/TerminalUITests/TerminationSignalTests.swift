@@ -36,16 +36,18 @@ struct TerminationSignalTests {
     }
 
     @Test func theInputTaskReportsATerminationRequest() throws {
-        let input = try SelfPipe(), resize = try SelfPipe(), terminate = try SelfPipe(), shutdown = try SelfPipe()
-        defer { [input, resize, terminate, shutdown].forEach { $0.close() } }
+        let input = try SelfPipe(), pipes = try InputWakePipes()
+        defer {
+            input.close()
+            pipes.close()
+        }
+        let source = StdinByteSource(input: input.read, wakes: pipes.wakes)
         input.signal()
-        resize.signal()
-        terminate.signal()
-        #expect(StdinByteSource.waitForActivity(input: input.read, resize: resize.read,
-                                                terminate: terminate.read, shutdown: shutdown.read) == .terminate)
-        shutdown.signal()
-        #expect(StdinByteSource.waitForActivity(input: input.read, resize: resize.read,
-                                                terminate: terminate.read, shutdown: shutdown.read) == .shutdown)
+        pipes.resize.signal()
+        pipes.terminate.signal()
+        #expect(source.waitForActivity() == .terminate)
+        pipes.shutdown.signal()
+        #expect(source.waitForActivity() == .shutdown)
     }
 
     // A terminal that goes away hangs up the PTY; an app that is not its

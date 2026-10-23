@@ -42,11 +42,17 @@ class CaseFailed(Exception):
     """Raised inside a case to signal a deliberate failure with a message."""
 
 
+class CaseSkipped(Exception):
+    """Raised inside a case that cannot observe what it checks in the build
+    under test, with the reason."""
+
+
 @dataclass
 class CaseResult:
     name: str
     ok: bool
     detail: str
+    skipped: bool = False
 
 
 @dataclass
@@ -87,6 +93,8 @@ class SmokeCase:
             return CaseResult(self.name, False, f"AppExitedBadly: {objection}")
         except CaseFailed as failure:
             return CaseResult(self.name, False, str(failure))
+        except CaseSkipped as reason:
+            return CaseResult(self.name, True, f"skipped: {reason}", skipped=True)
         except Exception as exc:  # noqa: BLE001
             return CaseResult(self.name, False, f"{type(exc).__name__}: {exc}")
 
@@ -1936,6 +1944,25 @@ def coder_a_resize_redraws_at_the_new_size(app: Client) -> None:
                 f"after a resize to 100x30 the frame is {frame.width}x{frame.height}")
 
 
+def coder_sigterm_during_an_unfinished_paste_quits_at_once(app: Client) -> None:
+    """A terminating signal quits the app while a bracketed paste waits for
+    its end. Regression: the parser gives a paste's end 3s to arrive, and
+    the signal's wake was not among what its reads watched, so the quit
+    waited them out."""
+    import signal
+
+    if app.sanitizer == "thread":
+        raise CaseSkipped("Thread Sanitizer runs a signal's handler only once the thread it reached "
+                          "calls into its runtime, and an idle app's threads sleep in the kernel")
+    app.write_raw(b"\x1b[200~half a paste", unfinished=True)
+    # Not a settle: the parser has to be inside the paste when the signal
+    # comes, and nothing it does there can be observed.
+    time.sleep(0.3)
+    app.expected_exit_signal = signal.SIGTERM
+    os.kill(app.pid, signal.SIGTERM)
+    assert_true(app.wait_for_exit(1.0) is not None, "the app was still running 1s after SIGTERM")
+
+
 def storybook_a_hung_up_terminal_quits_the_app(app: Client) -> None:
     """Closing the terminal — its window, its SSH connection — quits the app
     through its teardown, which the runner checks, and ends it by SIGHUP.
@@ -1996,6 +2023,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
               navigation_invoke_action_quits_an_idle_app),
     SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
+    SmokeCase("coder.sigterm_during_an_unfinished_paste_quits_at_once", "Coder",
+              coder_sigterm_during_an_unfinished_paste_quits_at_once),
     SmokeCase("coder.the_first_reply_sees_the_first_frame", "Coder",
               coder_the_first_reply_sees_the_first_frame),
     SmokeCase("coder.socket_input_is_drawn_before_the_next_reply", "Coder",
@@ -2128,6 +2157,8 @@ def _usable_cpus() -> int:
 
 
 def _tick(result: CaseResult) -> str:
+    if result.skipped:
+        return "–"
     return "✓" if result.ok else "✗"
 
 
@@ -2164,13 +2195,15 @@ def main(argv: list[str]) -> int:
     pool.shutdown()
 
     failed = [r for r in results if not r.ok]
-    if failed:
+    skipped = [r for r in results if r.skipped]
+    if failed or skipped:
         print()
-    for result in failed:
+    for result in skipped + failed:
         print(f"  {_tick(result)} {result.name:<40} {result.detail}")
 
     print()
-    print(f"{len(results) - len(failed)}/{len(results)} cases passed")
+    passed = len(results) - len(failed) - len(skipped)
+    print(f"{passed}/{len(results)} cases passed" + (f", {len(skipped)} skipped" if skipped else ""))
     return 0 if not failed else 1
 
 
