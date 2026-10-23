@@ -140,6 +140,15 @@ def _repo_root() -> Path:
     return here
 
 
+# How long an app may take to make its data dir and socket. The wait ends as
+# soon as they appear, so a generous limit costs a fast start nothing — but
+# the first launch of a freshly linked binary is slow: macOS checks a new
+# executable before it first runs, and a Thread Sanitizer build maps its
+# shadow memory. Three seconds failed the first case of a TSan run straight
+# after its build.
+BOOT_TIMEOUT = 15.0
+
+
 @contextmanager
 def spawn_and_connect(target: str,
                       build_dir: Optional[str] = None,
@@ -147,7 +156,7 @@ def spawn_and_connect(target: str,
                       cwd: Optional[str] = None,
                       cols: int = 140,
                       rows: int = 40,
-                      connect_timeout: float = 3.0,
+                      connect_timeout: float = BOOT_TIMEOUT,
                       ) -> Iterator[Tuple[subprocess.Popen, Client]]:
     """Run ``<build_dir>/<target>`` in a pseudo-TTY, wait for its control
     socket, yield (process, connected Client). Kills + closes on exit.
