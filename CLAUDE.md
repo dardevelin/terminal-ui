@@ -78,9 +78,10 @@ python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
 python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
                                            # cases run side by side, half the cores; --jobs N
 python3 tools/scripts/integration_suite.py # every verify_*/test_* script, in turn
+python3 tools/scripts/tool_tests.py        # tests of the checks and the harness verdict
 
-# The whole local gate in one command: build → test → walk → integration
-# scripts → smoke. Skips itself when the turn touched no .swift / .py file. Builds
+# The whole local gate in one command: tooling tests and repository checks →
+# build → test → walk → integration scripts → smoke. Skips itself when the turn touched no .swift / .py file. Builds
 # into .build-automation/.
 python3 tools/scripts/verify.py
 
@@ -108,9 +109,13 @@ reason the harness cannot run inside the container — PTYs work fine there.
 
 **CI runs the same matrix twice, Linux (`swift:6.2` container) and macOS 15**,
 and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
-warnings-as-errors release → `storybook_walk.py` → `storybook_smoke.py` →
-`integration_suite.py`, which finds and runs every `verify_*`/`test_*`
-script in `tools/scripts/`: name a new one that way and it gates. The PTY
+warnings-as-errors release → `storybook_walk.py` → `integration_suite.py`,
+which finds and runs every `verify_*`/`test_*` script in `tools/scripts/`
+(name a new one that way and it gates) → `storybook_smoke.py`. Ahead of
+the build, the macOS leg runs `tool_tests.py` — every `tools/tests/test_*.py`,
+the tests of the checks and of the runner's exit verdict
+(`tools/terminalui/verdict.py`) — then the escape-hatch and tracker-id
+checks. The PTY
 harness is a merge gate, not a local nicety — a change that renders differently
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the
@@ -130,9 +135,9 @@ wakes it. The runner's stop works because closing its socket wakes the app;
 a case that signals an idle app on purpose raises `CaseSkipped` when
 `client.sanitizer == "thread"`.
 
-**Every app the harness spawns is checked on the way out**, in
-`tools/terminalui/runner.py`: a case fails, even with every assertion green,
-if the app crashed, ignored SIGTERM, left a DEC mode it set (alternate screen,
+**Every app the harness spawns is checked on the way out**, by
+`tools/terminalui/verdict.py`, which `runner.py` consults as each app ends: a
+case fails, even with every assertion green, if the app crashed, ignored SIGTERM, left a DEC mode it set (alternate screen,
 mouse tracking, bracketed paste, hidden cursor), left its data dir after
 stopping, or a sanitizer reported on it. A case that kills its app on purpose
 sets `client.expected_exit_signal`; one that tests a crash calls

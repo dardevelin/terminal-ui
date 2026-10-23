@@ -5,7 +5,8 @@ Each script pins a contract the smoke suite does not reach: navigation and
 modal focus, an idle app driven over its socket, `swtui ctl` refusing to
 kill without a PID, a client that does not read, apps running side by side.
 They ran only when someone remembered to; this is the one gate CI and
-verify.py call.
+verify.py call. The tooling's own tests, which need no app, are
+``tool_tests.py``'s.
 
 They run in turn, never side by side: the concurrent-instance cases count
 the apps running from this checkout, and another script's app would be one
