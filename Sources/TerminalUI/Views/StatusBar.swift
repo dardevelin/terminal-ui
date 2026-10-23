@@ -1,7 +1,7 @@
 // MARK: - Section model
 
 /// Describes which zone a section occupies in the ``StatusBar``.
-public enum StatusBarAlignment: Sendable {
+public enum StatusBarAlignment: Sendable, Equatable {
     /// Packed against the bar's left edge.
     case left
     /// Centered in the bar's full width.
@@ -16,7 +16,7 @@ public enum StatusBarAlignment: Sendable {
 /// `StatusBar { … }` block rather than constructed directly. Span style
 /// fields left `nil` inherit the bar's background/foreground, so sections
 /// blend into the bar unless they opt out.
-public struct StatusBarSection: Sendable {
+public struct StatusBarSection: Sendable, Equatable {
     /// Which zone this section occupies.
     public let alignment: StatusBarAlignment
     /// The section's styled content, concatenated left to right.
@@ -73,7 +73,8 @@ public struct StatusBarSectionBuilder {
 ///
 /// Renders exactly one terminal row and stretches to its container's full
 /// width, painting the gaps between sections in the bar's background color
-/// (a dark gray by default) so the strip reads as one solid band.
+/// (the theme's ``Theme/backgroundRaised`` unless the bar names its own) so
+/// the strip reads as one solid band.
 /// Sections are ``TextSpan`` content, not views: spans that leave style
 /// fields `nil` inherit the bar's colors. If content overflows the width,
 /// sections pack with single-space gaps and truncate on the right.
@@ -102,41 +103,74 @@ public struct StatusBarSectionBuilder {
 /// StatusBar.keyHints([("^C", "Quit"), ("Tab", "Focus")])
 /// ```
 public struct StatusBar: TerminalView {
-    let sections: [StatusBarSection]
-    let barBackground: Color
-    let barForeground: Color
+    let content: Content
+    let barBackground: Color?
+    let barForeground: Color?
+
+    @TerminalEnvironment(\.theme) private var theme
+
+    /// What the bar holds. Key hints stay bindings until the bar is drawn,
+    /// because the colour of their keys is the theme's, and only a view
+    /// being drawn can read it.
+    enum Content: Equatable {
+        case sections([StatusBarSection])
+        case keyHints([KeyHint], keyColor: Color?)
+    }
+
+    struct KeyHint: Equatable {
+        let key: String
+        let description: String
+    }
 
     /// Create a status bar with section content.
     /// - Parameters:
     ///   - background: Bar fill color, applied to gaps and to spans that
-    ///     don't override it (default dark gray, `.ansi256(238)`).
-    ///   - foreground: Default text color for spans that don't override it.
+    ///     don't override it; `nil` for the theme's ``Theme/backgroundRaised``.
+    ///   - foreground: Default text color for spans that don't override it;
+    ///     `nil` for the theme's ``Theme/foreground``.
     ///   - content: Sections, built via `StatusBar.Section(_:content:)`.
     public init(
-        background: Color = .ansi256(238),
-        foreground: Color = .white,
+        background: Color? = nil,
+        foreground: Color? = nil,
         @StatusBarSectionBuilder content: () -> [StatusBarSection]
     ) {
-        self.sections = content()
-        self.barBackground = background
-        self.barForeground = foreground
+        self.init(content: .sections(content()), background: background, foreground: foreground)
     }
 
-    /// Internal initializer for pre-built sections (used by keyHints).
-    init(
-        sections: [StatusBarSection],
-        background: Color = .ansi256(238),
-        foreground: Color = .white
-    ) {
-        self.sections = sections
+    init(content: Content, background: Color?, foreground: Color?) {
+        self.content = content
         self.barBackground = background
         self.barForeground = foreground
     }
 
     public var body: some TerminalView {
+        let theme = theme
+        let line = StatusBarLine(sections: sections(theme),
+                           foreground: barForeground ?? theme.foreground,
+                           background: barBackground ?? theme.backgroundRaised)
         WidthReader { width in
-            Text(spans: composeLine(width: width))
+            Text(spans: line.compose(width: width))
         }.frame(height: 1)
+    }
+
+    /// The bar's sections; key hints' keys in their own colour or the
+    /// theme's emphasis.
+    private func sections(_ theme: any Theme) -> [StatusBarSection] {
+        switch content {
+        case .sections(let sections):
+            return sections
+        case .keyHints(let hints, let keyColor):
+            let keyColor = keyColor ?? theme.foregroundEmphasis
+            var spans: [TextSpan] = []
+            for (index, hint) in hints.enumerated() {
+                if index > 0 {
+                    spans.append(TextSpan("  "))
+                }
+                spans.append(TextSpan(hint.key, foreground: keyColor, bold: true))
+                spans.append(TextSpan(" \(hint.description)"))
+            }
+            return [StatusBarSection(.left, spans: spans)]
+        }
     }
 
     // MARK: - Section factory
@@ -155,31 +189,34 @@ public struct StatusBar: TerminalView {
     /// A status bar pre-populated with key binding hints.
     /// Each tuple is (key, description), rendered as "key description" pairs
     /// separated by double spaces — keys bold in `keyColor`, descriptions
-    /// in the bar foreground, all left-aligned.
+    /// in the bar foreground, all left-aligned. A colour left `nil` is the
+    /// theme's: ``Theme/backgroundRaised`` for the bar,
+    /// ``Theme/foreground`` for descriptions, ``Theme/foregroundEmphasis``
+    /// for keys.
     public static func keyHints(
         _ bindings: [(String, String)],
-        background: Color = .ansi256(238),
-        foreground: Color = .white,
-        keyColor: Color = .brightWhite
+        background: Color? = nil,
+        foreground: Color? = nil,
+        keyColor: Color? = nil
     ) -> StatusBar {
-        var spans: [TextSpan] = []
-        for (i, binding) in bindings.enumerated() {
-            if i > 0 {
-                spans.append(TextSpan("  ", foreground: foreground))
-            }
-            spans.append(TextSpan(binding.0, foreground: keyColor, bold: true))
-            spans.append(TextSpan(" \(binding.1)", foreground: foreground))
-        }
-        let section = StatusBarSection(.left, spans: spans)
-        return StatusBar(sections: [section], background: background, foreground: foreground)
+        StatusBar(content: .keyHints(bindings.map { KeyHint(key: $0.0, description: $0.1) }, keyColor: keyColor),
+                  background: background, foreground: foreground)
     }
+}
 
-    // MARK: - Line composition
+// MARK: - Line composition
+
+/// One row of a status bar, its colours resolved: spans that state none are
+/// drawn in them, and the gaps between sections are filled with them.
+struct StatusBarLine {
+    let sections: [StatusBarSection]
+    let foreground: Color
+    let background: Color
 
     /// Build a single row of TextSpans that fills `width` columns.
     /// Left content is left-aligned, right content is right-aligned,
     /// center content is centered in the remaining space.
-    func composeLine(width: Int) -> [TextSpan] {
+    func compose(width: Int) -> [TextSpan] {
         guard width > 0 else { return [] }
 
         // Collect spans per alignment
@@ -266,8 +303,8 @@ public struct StatusBar: TerminalView {
         spans.map { span in
             TextSpan(
                 span.text,
-                foreground: span.foreground ?? barForeground,
-                background: span.background ?? barBackground,
+                foreground: span.foreground ?? foreground,
+                background: span.background ?? background,
                 bold: span.bold,
                 italic: span.italic,
                 underline: span.underline
@@ -279,8 +316,8 @@ public struct StatusBar: TerminalView {
     private func fillSpan(_ count: Int) -> TextSpan {
         TextSpan(
             String(repeating: " ", count: count),
-            foreground: barForeground,
-            background: barBackground
+            foreground: foreground,
+            background: background
         )
     }
 

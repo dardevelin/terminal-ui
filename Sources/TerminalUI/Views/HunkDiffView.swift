@@ -98,13 +98,15 @@ public enum HunkDiff {
 /// A hunk-based diff viewer with cursor navigation, visual selection mode,
 /// and locked ranges — modeled after GitHub PR review inline diff panels.
 ///
-/// Renders a bold file-name header, then each hunk under its magenta
-/// `@@ -old,count +new,count @@` header: dual line-number gutters, `+`
-/// lines green, `-` lines red, context gray. A `▸` cursor marks the
-/// current line (j/k or arrows move it); pressing `v` anchors a vim-style
-/// visual selection drawn with a `┃` bar (`v` again commits it via
-/// `onRangeSelect`, Escape cancels). A `lockedRange` renders with a yellow
-/// `┃` bar — for a range a committed review comment is pinned to.
+/// Renders a bold file-name header, then each hunk under its
+/// `@@ -old,count +new,count @@` header in the theme's ``Theme/info``:
+/// dual line-number gutters, `+` lines in ``Theme/success``, `-` lines in
+/// ``Theme/error``, context in ``Theme/foreground`` as ``DiffView`` draws it. A `▸` cursor in ``Theme/accent`` marks
+/// the current line (j/k or arrows move it); pressing `v` anchors a
+/// vim-style visual selection drawn with a `┃` bar (`v` again commits it
+/// via `onRangeSelect`, Escape cancels). A `lockedRange` renders with a `┃`
+/// bar in ``Theme/attention`` — for a range a committed review comment is
+/// pinned to.
 ///
 /// Reach for `HunkDiffView` when reviewing pre-hunked `git diff` output
 /// line by line; ``DiffView`` is the sibling that computes and displays a
@@ -126,7 +128,7 @@ public struct HunkDiffView: TerminalView {
     public let hunks: [HunkDiff.Hunk]
     /// Path shown in the header row.
     public let fileName: String
-    /// Global line-index range highlighted with the yellow locked bar,
+    /// Global line-index range highlighted with the locked bar,
     /// or `nil` for none. Indices count content lines across all hunks,
     /// starting at 0 (hunk headers excluded).
     public let lockedRange: (Int, Int)?
@@ -140,6 +142,7 @@ public struct HunkDiffView: TerminalView {
     @TerminalState private var visualMode: Bool = false
     @TerminalState private var visualAnchor: Int = 0
     @TerminalState private var scrollOffset: Int = 0
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Creates a hunk diff viewer.
     ///
@@ -181,16 +184,19 @@ public struct HunkDiffView: TerminalView {
             ? (min(visualAnchor, cursor), max(visualAnchor, cursor))
             : nil
 
+        let theme = theme
+
         // Build all display rows: hunk headers + content lines
         let rows = buildRows(
             scroll: scrollOffset,
             cursor: cursor,
-            selectionRange: selectionRange
+            selectionRange: selectionRange,
+            theme: theme
         )
 
         VStack {
             // File name header
-            Text(spans: renderFileHeader())
+            Text(spans: renderFileHeader(theme))
 
             // Diff content
             Text(spans: rows)
@@ -270,11 +276,11 @@ public struct HunkDiffView: TerminalView {
 
     // MARK: - File Header
 
-    private func renderFileHeader() -> [TextSpan] {
+    private func renderFileHeader(_ theme: any Theme) -> [TextSpan] {
         var spans: [TextSpan] = []
-        spans.append(TextSpan(fileName, foreground: .white, bold: true))
+        spans.append(TextSpan(fileName, foreground: theme.foregroundEmphasis, bold: true))
         if visualMode {
-            spans.append(TextSpan(" [VISUAL]", foreground: .cyan))
+            spans.append(TextSpan(" [VISUAL]", foreground: theme.accent))
         }
         return spans
     }
@@ -282,11 +288,12 @@ public struct HunkDiffView: TerminalView {
     // MARK: - Row Building
 
     /// Build the visible portion of the diff as TextSpan array.
-    /// Includes hunk headers (purple @@ lines) interleaved with content lines.
+    /// Includes hunk headers (@@ lines) interleaved with content lines.
     private func buildRows(
         scroll: Int,
         cursor: Int,
-        selectionRange: (Int, Int)?
+        selectionRange: (Int, Int)?,
+        theme: any Theme
     ) -> [TextSpan] {
         // First, build all display rows (headers + lines) with global line indices
         var allRows: [RowData] = []
@@ -318,7 +325,7 @@ public struct HunkDiffView: TerminalView {
 
             switch row {
             case .hunkHeader(let hunk):
-                spans.append(contentsOf: renderHunkHeader(hunk))
+                spans.append(contentsOf: renderHunkHeader(hunk, theme))
 
             case .line(let line, let globalIdx):
                 let isCursor = globalIdx == cursor
@@ -329,7 +336,8 @@ public struct HunkDiffView: TerminalView {
                     line,
                     isCursor: isCursor,
                     inSelection: inSelection,
-                    isLocked: locked
+                    isLocked: locked,
+                    theme: theme
                 ))
             }
         }
@@ -349,9 +357,9 @@ public struct HunkDiffView: TerminalView {
 
     // MARK: - Hunk Header
 
-    private func renderHunkHeader(_ hunk: HunkDiff.Hunk) -> [TextSpan] {
+    private func renderHunkHeader(_ hunk: HunkDiff.Hunk, _ theme: any Theme) -> [TextSpan] {
         let header = "@@ -\(hunk.oldStart),\(hunk.oldCount) +\(hunk.newStart),\(hunk.newCount) @@"
-        return [TextSpan(header, foreground: .magenta)]
+        return [TextSpan(header, foreground: theme.info)]
     }
 
     // MARK: - Line Rendering
@@ -360,12 +368,13 @@ public struct HunkDiffView: TerminalView {
         _ line: HunkDiff.Line,
         isCursor: Bool,
         inSelection: Bool,
-        isLocked: Bool
+        isLocked: Bool,
+        theme: any Theme
     ) -> [TextSpan] {
         var spans: [TextSpan] = []
 
         // Selection gutter (2 chars)
-        let gutterColor: Color = isLocked ? .yellow : .cyan
+        let gutterColor = isLocked ? theme.attention : theme.accent
         let gutterText: String
         if isLocked {
             gutterText = "\u{2503} "  // ┃ (locked indicator)
@@ -385,7 +394,7 @@ public struct HunkDiffView: TerminalView {
         } else {
             oldNum = "   "
         }
-        spans.append(TextSpan(oldNum + " ", foreground: .gray))
+        spans.append(TextSpan(oldNum + " ", foreground: theme.foregroundMuted))
 
         // New line number (3 chars + 1 space = 4 chars)
         let newNum: String
@@ -394,7 +403,7 @@ public struct HunkDiffView: TerminalView {
         } else {
             newNum = "   "
         }
-        spans.append(TextSpan(newNum + " ", foreground: .gray))
+        spans.append(TextSpan(newNum + " ", foreground: theme.foregroundMuted))
 
         // Line prefix and content
         let prefix: String
@@ -403,13 +412,13 @@ public struct HunkDiffView: TerminalView {
         switch line.type {
         case .add:
             prefix = "+"
-            contentColor = inSelection ? .white : .green
+            contentColor = inSelection ? theme.foregroundEmphasis : theme.success
         case .remove:
             prefix = "-"
-            contentColor = inSelection ? .white : .red
+            contentColor = inSelection ? theme.foregroundEmphasis : theme.error
         case .context:
             prefix = " "
-            contentColor = inSelection ? .white : .gray
+            contentColor = inSelection ? theme.foregroundEmphasis : theme.foreground
         }
 
         spans.append(TextSpan(prefix + line.content, foreground: contentColor))

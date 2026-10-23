@@ -7,7 +7,7 @@ same bridge our smoke tests use. Steps:
 1. Skip unless this turn touched a ``.swift`` or ``.py`` file.
 2. Tear down any leftover debug apps + stale sockets.
 3. Repository checks: the tooling's own tests (``tool_tests.py``), then the
-   escape-hatch and tracker-id checks they test.
+   escape-hatch, colour-literal and tracker-id checks they test.
 4. ``swift build`` — compile check (release build is deferred to CI).
 5. ``swift test`` — unit + component suites.
 6. ``storybook_walk.py`` — every Storybook page, as CI walks them.
@@ -129,6 +129,8 @@ REPOSITORY_CHECKS = (
      "a check the gate rests on misses a case"),
     ("escape hatches", "tools/scripts/check_escape_hatches.py",
      "a concurrency escape hatch is not listed with its guard"),
+    ("colour literals", "tools/scripts/check_colour_literals.py",
+     "drawing code names a colour the list does not"),
     ("tracker ids", "tools/scripts/check_tracker_ids.py",
      "a tracker id is in the repository"),
 )

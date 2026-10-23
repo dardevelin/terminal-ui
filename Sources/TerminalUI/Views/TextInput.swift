@@ -199,8 +199,9 @@ public struct TextInput: TerminalView {
         // Run validation once per render so severity drives both chrome
         // colour and the optional diagnostic row. Nil when no validator was
         // supplied — omit decoration entirely.
+        let theme = theme
         let validation = validate?(text.get())
-        let accent = validationColor(validation)
+        let accent = Self.validationColor(validation, theme: theme)
         // Capture env-driven line-break mode at body-eval time. The
         // GR closure runs at rebuild time when GraphContext's env may
         // be nil — projecting here mirrors the pattern documented in
@@ -245,7 +246,8 @@ public struct TextInput: TerminalView {
                     maxValueWidth: available,
                     mode: mode,
                     axis: axis,
-                    windowStart: windowStartBinding)
+                    windowStart: windowStartBinding,
+                    theme: theme)
                 return TextInputRow(spans: composed.spans, caret: composed.caret)
                     .focusable()
                     .onKeyPress { [text, cursorBinding, textEditing, maxLength] event in
@@ -431,7 +433,7 @@ public struct TextInput: TerminalView {
 
     /// Map validation severity to an accent colour. Returns `nil` when no
     /// validator was attached so the callers keep their default appearance.
-    private func validationColor(_ validation: TextInputValidation?) -> Color? {
+    private static func validationColor(_ validation: TextInputValidation?, theme: any Theme) -> Color? {
         guard let validation else { return nil }
         switch validation.severity {
         case .ok: return nil
@@ -463,22 +465,23 @@ public struct TextInput: TerminalView {
                                maxValueWidth: Int,
                                mode: LineBreakMode,
                                axis: TextInputAxis,
-                               windowStart: Binding<Int>) -> (spans: [TextSpan], caret: Int?) {
+                               windowStart: Binding<Int>,
+                               theme: any Theme) -> (spans: [TextSpan], caret: Int?) {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
-            spans.append(TextSpan(prompt, foreground: .gray))
+            spans.append(TextSpan(prompt, foreground: theme.foregroundMuted))
         }
         if showPlaceholder {
             // When field is empty, cursor at left then placeholder clipped to fit.
             let caret = spans.count
-            spans.append(TextSpan("│", foreground: .default))
+            spans.append(TextSpan("│"))
             let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
-            spans.append(TextSpan(clipped, foreground: .gray))
+            spans.append(TextSpan(clipped, foreground: theme.foregroundFaint))
             return (spans, caret)
         }
         if value.isEmpty {
             let caret = spans.count
-            spans.append(TextSpan("│", foreground: .default))
+            spans.append(TextSpan("│"))
             return (spans, caret)
         }
         // Reserve 1 cell for the cursor glyph so the visible value

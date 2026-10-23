@@ -138,6 +138,28 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Changed
 
+- **Every component draws in the app's theme.** TabView, TreeView,
+  HunkDiffView, StatusBar, TextInput's prompt and placeholder, Form's
+  section headers, the empty placeholder and Navigation's missing-screen
+  text drew gray, white, cyan, magenta and a fixed gray band whatever theme
+  was set. Tabs take `foregroundEmphasis`, `foregroundMuted` and
+  `separator`; a tree's arrows, connectors and rows take `foregroundMuted`,
+  `accent`, `separator`, `foregroundEmphasis` and `foreground`; a hunk
+  diff's lines take `success`, `error` and `foreground`, as `DiffView`'s
+  do, its headers `info`, its cursor `accent` and a locked range
+  `attention`; a status bar's band is `backgroundRaised` and its text
+  `foreground`, with key hints' keys in `foregroundEmphasis`; a field's
+  prompt is `foregroundMuted` and its placeholder `foregroundFaint`, as
+  PromptInput's are. A colour stated on the view still wins:
+  `StatusBar(background:foreground:)` and `keyHints`' colours now default
+  to `nil`, meaning the theme's, and a `TreeViewStyle` colour left unset is
+  the theme's — read unset, it gives the stock colour, as it did. On the
+  stock theme, whose raised ground is the terminal's own, a status bar has
+  no band and its text is the terminal's: pass `background:` to keep one.
+  Hunk headers are blue where they were magenta, a hunk diff's context
+  lines are the terminal's text colour where they were gray, and the tab
+  separator is gray where it was a darker gray. `StatusBarSection` and
+  `StatusBarAlignment` are `Equatable`.
 - **One spelling for keys.** The debug keybindings, `swtui bind`, a user's
   `keys.toml` and the remote control's `send-key` read keys through one
   grammar, `KeyCombo`, where each had its own and they disagreed: `meta` is

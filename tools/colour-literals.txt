@@ -1,0 +1,31 @@
+# Every colour the drawing code names, with the file it is in, how often it
+# appears there and why. tools/scripts/check_colour_literals.py fails when the
+# sources and this list disagree. Before adding a line, draw a theme role
+# instead: a component that names a colour ignores the app's theme.
+#
+# Format: <path> <literal> <count> <why>
+
+# Data, not chrome: the colours are what the view shows, and a caller passes
+# their own.
+Sources/TerminalUI/Views/Charts/HeatMap.swift .green 1 The default palette, a HeatMap.Palette case rather than a Color: the data's colour scale.
+Sources/TerminalUI/Views/Charts/MorseTicker.swift .rgb 2 Init defaults for the ticker's dot and ground colours, which a caller passes to restyle it.
+Sources/TerminalUI/Views/Charts/MorseTicker.swift .red 1 Init default for the ticker's dash colour.
+Sources/TerminalUI/Views/Charts/MorseTicker.swift .ansi256 1 Init default for the ticker's dim colour.
+
+# The theme reaches it already: `Theme.syntax` returns this stock palette, and
+# a theme states its own.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .magenta 1 SyntaxTheme.defaultDark keywords.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .red 1 SyntaxTheme.defaultDark strings.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .ansi256 2 SyntaxTheme.defaultDark comments and operators.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .yellow 1 SyntaxTheme.defaultDark numbers.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .cyan 1 SyntaxTheme.defaultDark types.
+Sources/TerminalUI/Views/SyntaxHighlighter.swift .blue 1 SyntaxTheme.defaultDark functions.
+
+# Never seen.
+Sources/TerminalUI/Rendering/SubCell/AlphaCell.swift .rgb 2 AlphaCell.empty's colours, which an alpha of 0 never shows.
+
+# No role or environment covers it yet; design/crush-parity.md lists each.
+Sources/TerminalUI/Graph/GraphRenderer.swift .black 1 The focus marker's text on the focus fill: no role pairs text with that fill (`onPrimary` pairs with `primary`).
+Sources/TerminalUI/Graph/GraphRenderer.swift .ansi256 1 The modal's dimming scrim: no role names a scrim.
+Sources/TerminalUI/Rendering/SubCell/Compositor+Alpha.swift .rgb 2 A partly transparent cell over one with no colour blends against black: the terminal's own ground is unknown, so a light one blends wrong.
+Sources/TerminalUIIO/ImageRenderingPipeline.swift .gray 1 The image placeholder's text: the pipeline draws into a CellBuffer and is handed no environment to read a theme from.

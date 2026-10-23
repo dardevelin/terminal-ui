@@ -393,6 +393,45 @@ did the job. Also not done: `TabView`, `TreeView`, `DiffView`, `HunkDiffView`,
 helpers or literal-defaulted style structs, and theming them changes signatures
 or public API. Left for when the demo puts one on screen.
 
+Since done, all six. `DiffView` and `PromptInput` when the demo put them on
+screen; the other four as core hardening, without changing a public type:
+`TreeViewStyle` keeps its `Color` properties, each now unset until stated
+and resolved against the theme where the tree is drawn. The stock theme's
+raised ground is the terminal's own, so a stock status bar lost its gray
+band. A stock gray was weighed and turned down: inline code in the stock
+blue, and default-coloured text on a light terminal, cannot be read on it.
+A band on a ground the theme does not know needs a text colour paired with
+it, which no role says yet.
+
+What is left, and why it waits:
+
+- **A view that should paint no ground cannot say so.** `.background` takes
+  a `Color`, and `.default` paints the terminal's ground: `TreeView`'s
+  unselected rows punch the terminal's colour through a themed panel. It
+  needs a fill that means "none" (`Color` has no `clear`), or a background
+  that takes an optional.
+- **Four marks still name colours**, each listed in
+  `tools/colour-literals.txt`, and `check_colour_literals.py` keeps anything
+  else from naming one: the focus marker's black text on the focus fill (no
+  role pairs text with that fill), the modal's 256-colour scrim (no scrim
+  role), a partly transparent cell blended over one with no colour (against
+  black, because the terminal's ground is unknown, so a light ground blends
+  wrong), and the image pipeline's placeholder text (the pipeline draws into
+  a `CellBuffer` and is handed no environment).
+- **A colour built away from a view cannot name a role.** `Color` resolves
+  eagerly, so a style struct, a static factory or a layout helper has no
+  theme to ask; each of `TreeViewStyle`, `StatusBar.keyHints` and the tab
+  bar works around it on its own. A `Color` case that names a role and is
+  resolved by the renderer against the node's environment would end that,
+  and adding a case to a public enum is a major release.
+- **A whole view's colour could name a role in 1.x.** An overload such as
+  `.foreground(_ role: KeyPath<any Theme, Color>)`, resolved by the renderer
+  against the node's environment, is additive. It would retire the small
+  views that exist only to read the theme for one `.foreground` —
+  `_SectionHeader`'s, `_EmptyPlaceholder`'s, Navigation's
+  `UnresolvedDestination` — though not a colour inside a `TextSpan`, which
+  still waits for the `Color` case.
+
 **L5. Colour had no arithmetic, so nothing could sweep.** *(G2 — built)*
 
 The wordmark and the diagonal header field are colour ramps over a run of
