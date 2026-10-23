@@ -443,6 +443,7 @@ extension NodeKind {
             case .modal: "modal"
             case .focusable: "focusable"
             case .focusScope: "focusScope"
+            case .prefersDefaultFocus: "prefersDefaultFocus"
             case .onKeyPress: "onKeyPress"
             case .onAppear: "onAppear"
             case .onChange: "onChange"
@@ -629,6 +630,9 @@ public enum ModifierEffect {
     /// Groups focusable descendants under one scope id: arrow navigation
     /// stays inside the scope, Tab still crosses it. No visual effect.
     case focusScope(String) // groups focusable descendants; arrows stay within
+    /// When true, marks the first focusable in the subtree as the one
+    /// focused when nothing is. No visual effect; Tab order is unchanged.
+    case prefersDefaultFocus(Bool)
     /// Attaches a key handler that fires while the subtree holds keyboard
     /// focus; render is a pass-through.
     case onKeyPress  // attaches a key handler (handler stored on FocusEngine, not here)
@@ -693,7 +697,7 @@ extension ModifierEffect {
         // inheriting whichever style happened to be the fallback.
         case .foreground, .background, .bold, .italic, .underline,
              .padding, .border, .frame, .flexible, .explicitID,
-             .focusable, .focusScope, .onKeyPress, .onAppear, .onChange,
+             .focusable, .focusScope, .prefersDefaultFocus, .onKeyPress, .onAppear, .onChange,
              .onDisappear, .onClick, .onHover, .onPaste, .actions,
              .environment, .task:
             .opaque

@@ -334,7 +334,7 @@ public enum Layout {
 
         case .foreground, .background, .bold, .italic, .underline,
              .flexible, .explicitID,
-             .focusable, .focusScope,
+             .focusable, .focusScope, .prefersDefaultFocus,
              .onKeyPress, .onAppear, .onChange, .onDisappear,
              .onClick, .onHover, .onPaste,
              .actions, .environment, .task,
