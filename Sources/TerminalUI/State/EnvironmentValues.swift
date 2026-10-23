@@ -91,6 +91,10 @@ public struct EnvironmentValues: Sendable {
     /// via `.scrollPosition(id:anchor:)` with a binding.
     public var scrollPosition: ScrollPositionBinding? = nil
 
+    /// Who the nearest enclosing `ScrollView` tells which of its tagged views
+    /// can be seen. Set via `.onScrollTargetVisibilityChange(idType:threshold:_:)`.
+    public var scrollTargetVisibility: ScrollTargetVisibility? = nil
+
     /// How `PromptInput` presents pasted content. Default
     /// `.placeholder(lines: 2, chars: 200)` mirrors Claude Code:
     /// pastes with a newline OR over 200 chars collapse to a marker.

@@ -18,6 +18,7 @@ Sources/TerminalUI/Graph/NodeID.swift PathComponent Immutable enum; the AnyHasha
 Sources/TerminalUI/Views/TreeView.swift AnyHashableID Immutable; its init requires ID: Sendable, so the AnyHashable it wraps is Sendable.
 Sources/TerminalUI/Views/ScrollView.swift ScrollTargetID Immutable AnyHashable; read by ScrollView on main.
 Sources/TerminalUI/Views/ScrollView.swift ScrollPositionBinding Immutable get/set closures over a Binding, called by ScrollView on main.
+Sources/TerminalUI/Views/ScrollView.swift ScrollTargetVisibility Immutable; its action is called by the runtime's post-render pass, on main.
 Sources/TerminalUI/Views/AlertPresentation.swift AlertDismissal Immutable; every call goes through MainActor.assumeIsolated, which traps off main.
 Sources/TerminalUI/Views/Navigation.swift NavigationPopBox Immutable; run() goes through MainActor.assumeIsolated, which traps off main.
 Sources/TerminalUI/Views/Navigation.swift NavigationPushAction Immutable closure called from key and click handlers on main; nothing enforces it.

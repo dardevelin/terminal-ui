@@ -791,6 +791,20 @@ struct PreviewPane: TerminalView {
                 .frame(width: 24, height: 5)
                 Text("position: \(state.positionedRow.map(String.init) ?? "none")").foreground(.gray)
             }
+        case .scrollTargetVisibility:
+            VStack {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(Array(0..<30), id: \.self) { row in
+                            Text("row \(row)").id(row)
+                        }
+                    }
+                }
+                .scrollable()
+                .onScrollTargetVisibilityChange(idType: Int.self) { state.visibleRows = $0 }
+                .frame(width: 24, height: 5)
+                Text("seen: \(state.visibleRows.map(String.init).joined(separator: ", "))").foreground(.gray)
+            }
         case .syntaxHighlighter:
             MarkdownView("""
                 ```ini

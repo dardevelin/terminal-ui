@@ -1149,6 +1149,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // walk. Render reads the resolved tree as a pure draw.
             Layout.measureAndPlace(graph: root, in: context.rect)
             GraphRenderer.render(root, into: &renderBuffer, context: context)
+            GraphRenderer.reportScrollTargetVisibility(root: root)
         }
 
         // Focus indicators

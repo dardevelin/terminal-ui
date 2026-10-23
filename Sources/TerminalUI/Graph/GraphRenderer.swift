@@ -851,8 +851,10 @@ public enum GraphRenderer {
             // translates back to screen coords after the content is
             // drawn.
             Layout.measureAndPlace(graph: contentChild, in: contentRect)
-            renderNode(contentChild, into: &contentBuffer,
-                   context: RenderContext(style: context.style, rect: contentRect))
+            withContentEnvironment(environment) {
+                renderNode(contentChild, into: &contentBuffer,
+                           context: RenderContext(style: context.style, rect: contentRect))
+            }
 
             // See the vertical branch: drawn, not declared.
             let drawnWidth = lastDrawnColumn(in: contentBuffer).map { $0 + 1 } ?? 0
@@ -928,8 +930,10 @@ public enum GraphRenderer {
             // Re-stamp from local-buffer origin (0, 0); offsetRects
             // below translates back to screen coords.
             Layout.measureAndPlace(graph: contentChild, in: contentRect)
-            renderNode(contentChild, into: &contentBuffer,
-                   context: RenderContext(style: context.style, rect: contentRect))
+            withContentEnvironment(environment) {
+                renderNode(contentChild, into: &contentBuffer,
+                           context: RenderContext(style: context.style, rect: contentRect))
+            }
 
             // What the content draws, not what it declares. The affordances
             // below answer "is there more to see", and rows padded out by a
@@ -1016,6 +1020,17 @@ public enum GraphRenderer {
     /// `.scrollIndicators`, `.scrollbarStyle` and a theme applied to one pane
     /// reach that pane rather than only working app-wide — the same rule the
     /// focus indicators follow.
+    /// Run `body`, which renders a scroll view's content, under that view's
+    /// environment without its visibility action: the action asks about this
+    /// scroll view, and a nested one inheriting it would answer with its own,
+    /// different set. Free unless the action is set.
+    private static func withContentEnvironment(_ environment: EnvironmentValues, _ body: () -> Void) {
+        guard environment.scrollTargetVisibility != nil else { return body() }
+        var content = environment
+        content.scrollTargetVisibility = nil
+        GraphContext.$currentEnvironment.withValue(content, operation: body)
+    }
+
     static func scrollEnvironment(of node: AttributeNode) -> EnvironmentValues {
         node._resolvedEnv ?? GraphContext.currentEnvironment ?? EnvironmentValues()
     }
@@ -1275,6 +1290,59 @@ public enum GraphRenderer {
                                               viewportWidth: viewportWidth,
                                               viewportHeight: viewportHeight,
                                               env: currentEnv)
+        }
+    }
+
+    /// Tell each `.onScrollTargetVisibilityChange` which of its scroll view's
+    /// tagged views the reader can see, when that has changed since it was
+    /// last told.
+    ///
+    /// Runs once a frame is drawn: a tail anchor settles a scroll view's
+    /// offset during render, and the content's rects are on screen then, so
+    /// what a tagged view shows is its rect's overlap with the viewport —
+    /// measured as laid out, at the width it wraps at. Render itself stays a
+    /// draw; the app's action runs here, and what it changes is drawn next.
+    /// The environment each scroll view saw is the one render stamped on it.
+    public static func reportScrollTargetVisibility(root: AttributeNode?) {
+        guard let root else { return }
+        if case .layout(let info) = root.kind,
+           case .scroll(let axis) = info.kind,
+           let visibility = root._resolvedEnv?.scrollTargetVisibility,
+           let content = root.children.first
+        {
+            reportVisibleTargets(visibility, of: root, axis: axis, content: content)
+        }
+        for child in root.children {
+            reportScrollTargetVisibility(root: child)
+        }
+    }
+
+    private static func reportVisibleTargets(_ visibility: ScrollTargetVisibility, of node: AttributeNode,
+                                             axis: ScrollAxis, content: AttributeNode) {
+        var seen: [AnyHashable] = []
+        forEachTaggedView(in: content) { id, rect in
+            let shown = rect.intersected(with: node.rect)
+            let (shownSize, size) = axis == .horizontal
+                ? (shown.width, rect.width)
+                : (shown.height, rect.height)
+            if shownSize > 0, Double(shownSize) >= visibility.threshold * Double(size) {
+                seen.append(id)
+            }
+        }
+        guard seen != node.scrollVisibleSeen else { return }
+        node.scrollVisibleSeen = seen
+        visibility.report(seen)
+    }
+
+    /// Every `.id(_:)`-tagged view under `node` with its drawn rect, in
+    /// order, stopping at a nested scroll view, whose tags are its own.
+    private static func forEachTaggedView(in node: AttributeNode, _ body: (AnyHashable, Rect) -> Void) {
+        if case .layout(let info) = node.kind, case .scroll = info.kind { return }
+        if case .modifier(.explicitID(let id)) = node.kind {
+            body(id, node.rect)
+        }
+        for child in node.children {
+            forEachTaggedView(in: child, body)
         }
     }
 

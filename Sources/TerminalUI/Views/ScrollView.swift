@@ -211,6 +211,19 @@ public struct ScrollPositionBinding: @unchecked Sendable {
     }
 }
 
+/// What `.onScrollTargetVisibilityChange(idType:threshold:_:)` asks of an
+/// enclosing `ScrollView`: the share of a tagged view that counts as seen,
+/// and who to tell.
+public struct ScrollTargetVisibility: @unchecked Sendable {
+    let threshold: Double
+    let report: ([AnyHashable]) -> Void
+
+    init<ID: Hashable>(idType: ID.Type, threshold: Double, action: @escaping ([ID]) -> Void) {
+        self.threshold = threshold
+        report = { ids in action(ids.compactMap { $0.base as? ID }) }
+    }
+}
+
 extension TerminalView {
     /// Show or hide the scroll-indicator glyphs on enclosed `ScrollView`s.
     public func scrollIndicators(_ visibility: ScrollIndicatorVisibility)
@@ -264,6 +277,26 @@ extension TerminalView {
     public func scrollPosition<ID: Hashable>(id: Binding<ID?>, anchor: Alignment? = nil)
         -> ModifiedView<Self, EnvironmentModifier<ScrollPositionBinding?>> {
         environment(\.scrollPosition, ScrollPositionBinding(id, anchor: anchor))
+    }
+
+    /// Call `action` with the `.id(_:)` of every view in an enclosing
+    /// `ScrollView` that the reader can see, whenever that set changes: as
+    /// the view scrolls, resizes, or its content grows. A view counts as seen
+    /// once `threshold` of it is inside the viewport, half by default. Ids
+    /// arrive in content order, and only those of type `ID`.
+    ///
+    /// Reported once a frame is drawn, so the offset a tail anchor or a
+    /// position binding settled on is the one reported. What `action` sets
+    /// is drawn in the next frame.
+    ///
+    /// SwiftUI parity: `View.onScrollTargetVisibilityChange(idType:threshold:_:)`
+    /// (iOS 18+ / macOS 15+), with `.id(_:)` marking the targets in place of
+    /// `scrollTargetLayout()`.
+    public func onScrollTargetVisibilityChange<ID: Hashable>(
+        idType: ID.Type, threshold: Double = 0.5, _ action: @escaping ([ID]) -> Void
+    ) -> ModifiedView<Self, EnvironmentModifier<ScrollTargetVisibility?>> {
+        environment(\.scrollTargetVisibility,
+                    ScrollTargetVisibility(idType: idType, threshold: threshold, action: action))
     }
 
     /// Scroll an enclosing `ScrollView` so the descendant tagged with
