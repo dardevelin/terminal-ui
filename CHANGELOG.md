@@ -223,6 +223,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A remote-control client that reads slowly no longer stalls a debug app.**
+  A reply larger than the socket's buffer, such as a whole app's tree, was
+  written in a loop that slept on the app's main thread until the client
+  read it. A client that never read froze the app. A reply now waits on its
+  own connection and goes out as the socket drains, and that client's next
+  request waits until it has taken it, as one request, one response
+  intends. A slow client holds up only itself, and one that never reads
+  costs one reply.
 - **Ctrl+C, or any terminating signal, quits at once during a paste the
   terminal never finished.** The parser gives a bracketed paste's end 3s to
   arrive, and its reads watched stdin and the shutdown pipe but not the
