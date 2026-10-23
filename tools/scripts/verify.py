@@ -11,7 +11,7 @@ same bridge our smoke tests use. Steps:
 4. ``swift build`` — compile check (release build is deferred to CI).
 5. ``swift test`` — unit + component suites.
 6. ``storybook_walk.py`` — every Storybook page, as CI walks them.
-7. ``integration_suite.py`` — every ``verify_*`` and ``test_*`` script.
+7. ``integration_suite.py`` — every ``test_*`` script.
 8. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
 
 Each failure prints the relevant output and exits with code 2 so the

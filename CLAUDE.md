@@ -49,7 +49,7 @@ swift run Coder              # agent-chat TUI — the Crush-parity forcing funct
 swift run swtui help         # developer CLI for the .terminalui/ diagnostic system
 
 # Single-purpose examples. These double as fixtures for the behavioural
-# harness (tools/scripts/verify_*.py drive them) — keep them runnable.
+# harness (storybook_smoke.py drives them) — keep them runnable.
 swift run Navigation ; swift run AsyncState ; swift run Settings
 
 # Work tracking — board is gitignored working state, the script is tracked
@@ -75,9 +75,9 @@ tools/scripts/linux_harness.sh storybook_smoke.py   # full behavioural suite
 
 # What CI actually gates on, runnable locally (see .github/workflows/ci.yml)
 python3 tools/scripts/storybook_walk.py    # every Storybook page, via PTY
-python3 tools/scripts/storybook_smoke.py   # behavioural suite vs Storybook + Demo
+python3 tools/scripts/storybook_smoke.py   # behavioural suite vs every example app
                                            # cases run side by side, half the cores; --jobs N
-python3 tools/scripts/integration_suite.py # every verify_*/test_* script, in turn
+python3 tools/scripts/integration_suite.py # every test_* script, in turn
 python3 tools/scripts/tool_tests.py        # tests of the checks and the harness verdict
 
 # The whole local gate in one command: tooling tests and repository checks →
@@ -110,8 +110,11 @@ reason the harness cannot run inside the container — PTYs work fine there.
 **CI runs the same matrix twice, Linux (`swift:6.2` container) and macOS 15**,
 and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
 warnings-as-errors release → `storybook_walk.py` → `integration_suite.py`,
-which finds and runs every `verify_*`/`test_*` script in `tools/scripts/`
-(name a new one that way and it gates) → `storybook_smoke.py`. Ahead of
+which finds and runs every `test_*` script in `tools/scripts/`
+(name a new one that way and it gates) → `storybook_smoke.py`. What one app
+driven by one client shows is a smoke case, its terminal, environment and
+project files set on the `SmokeCase`; only what takes several apps, `swtui`
+or verify.py itself is an integration script. Ahead of
 the build, the macOS leg runs `tool_tests.py` — every `tools/tests/test_*.py`,
 the tests of the checks and of the runner's exit verdict
 (`tools/terminalui/verdict.py`) — then the escape-hatch and tracker-id

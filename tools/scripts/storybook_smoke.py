@@ -30,7 +30,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui import Client, CellSlice, Probe  # noqa: E402
-from terminalui.runner import AppExitedBadly, spawn_and_connect  # noqa: E402
+from terminalui.runner import BOOT_TIMEOUT, AppExitedBadly, spawn_and_connect  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -68,20 +68,28 @@ class SmokeCase:
     # contents): the case runs with XDG_CONFIG_HOME at a fresh directory
     # holding only these, never the developer's own.
     config_files: tuple[tuple[str, str], ...] = ()
+    # Files in the project the app runs from, as (path under it, contents):
+    # with any, the case runs from a fresh directory holding only these,
+    # such as a `.terminalui/terminalui.toml`; with none, from the checkout.
+    project_files: tuple[tuple[str, str], ...] = ()
+    # Variables added to the app's environment.
+    env: tuple[tuple[str, str], ...] = ()
+    # False for an app that should open no socket: the case gets its client
+    # unconnected, with the app's terminal, process and data dir.
+    connects: bool = True
 
-    def execute(self, cols: int = 140, rows: int = 40,
-                build_dir: Optional[str] = None) -> CaseResult:
-        with tempfile.TemporaryDirectory(prefix="terminalui-config-") as config_home:
-            for relative, contents in self.config_files:
-                path = Path(config_home) / relative
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(contents)
-            return self._run(config_home, cols, rows, build_dir)
+    def execute(self, build_dir: Optional[str] = None) -> CaseResult:
+        with tempfile.TemporaryDirectory(prefix="terminalui-config-") as config_home, \
+                tempfile.TemporaryDirectory(prefix="terminalui-project-") as project:
+            _write_files(config_home, self.config_files)
+            _write_files(project, self.project_files)
+            return self._run(config_home, project if self.project_files else None, build_dir)
 
-    def _run(self, config_home: str, cols: int, rows: int, build_dir: Optional[str]) -> CaseResult:
+    def _run(self, config_home: str, cwd: Optional[str], build_dir: Optional[str]) -> CaseResult:
         try:
-            with spawn_and_connect(self.app, build_dir=build_dir, cols=cols, rows=rows,
-                                   env={"XDG_CONFIG_HOME": config_home}) as (_, client):
+            with spawn_and_connect(self.app, build_dir=build_dir, cwd=cwd,
+                                   env={**dict(self.env), "XDG_CONFIG_HOME": config_home},
+                                   connect=self.connects) as (_, client):
                 self.run(client)
             if self.expected_objections:
                 return CaseResult(self.name, False, "the runner accepted how the app ended")
@@ -97,6 +105,13 @@ class SmokeCase:
             return CaseResult(self.name, True, f"skipped: {reason}", skipped=True)
         except Exception as exc:  # noqa: BLE001
             return CaseResult(self.name, False, f"{type(exc).__name__}: {exc}")
+
+
+def _write_files(root: str, files: tuple[tuple[str, str], ...]) -> None:
+    for relative, contents in files:
+        path = Path(root) / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
 
 
 def assert_contains(snap: CellSlice, needle: str, context: str = "") -> None:
@@ -1874,13 +1889,28 @@ def idle_costs_nothing(app: Client) -> None:
     assert_true(used < 0.03, f"idle for 4s, the app used {used:.3f}s of CPU")
 
 
-def navigation_a_remote_command_redraws_an_idle_app(app: Client) -> None:
-    """A remote command that changes what is drawn, without an event or
-    observed state, still gets its frame. Regression: an idle `.onDemand`
-    app showed `inspector-toggle`, a focus set or a screenshot only at the
-    next keypress."""
-    time.sleep(0.3)
-    before = app.frame_number()
+# Long enough for an app to finish its startup frames and park in its idle
+# wait, which a remote command then has to wake.
+IDLE_SETTLE_SECONDS = 0.3
+
+
+def _settled_frame(app: Client) -> int:
+    """The frame an app shows once it has gone idle."""
+    time.sleep(IDLE_SETTLE_SECONDS)
+    return app.frame_number()
+
+
+def navigation_an_idle_app_acts_on_remote_commands(app: Client) -> None:
+    """An idle `.onDemand` app answers its socket, and draws what a command
+    changes. Regressions: its wait loop stopped reading the socket, the only
+    source of events an idle app has, so nothing could drive it; and a
+    command that changed what is drawn without an event or observed state —
+    `inspector-toggle`, a focus set, a screenshot — showed only at the next
+    keypress."""
+    before = _settled_frame(app)
+    app.send_key("down")
+    assert_true(app.frame_number() > before, "a key sent to the idle app drew no frame")
+    before = _settled_frame(app)
     app.inspector_toggle()
     assert_true(app.frame_number() > before, "toggling the inspector drew no frame")
 
@@ -1888,7 +1918,7 @@ def navigation_a_remote_command_redraws_an_idle_app(app: Client) -> None:
 def navigation_invoke_action_quits_an_idle_app(app: Client) -> None:
     """`invoke_action app.quit` ends an idle app. Regression: the quit
     signal was read only while handling a key, so an idle app went on."""
-    time.sleep(0.3)
+    time.sleep(IDLE_SETTLE_SECONDS)
     assert_true(app.invoke_action("app.quit"), "app.quit did not fire")
     assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after app.quit")
 
@@ -2010,6 +2040,210 @@ def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# The single-purpose examples
+#
+# Navigation, Settings and AsyncState each exist to put one framework
+# behaviour in front of a real terminal: the whole stack under test, input
+# parser to renderer, where a graph test sees only part of it.
+# ---------------------------------------------------------------------------
+
+
+def navigation_pop_restores_focus_to_the_pushing_link(app: Client) -> None:
+    """Enter on a NavigationLink pushes its screen, the pushed screen keeps
+    Tab to itself, and Esc pops back with focus on the link that pushed, not
+    the top of the list."""
+    screen = app.text()
+    assert_true("Account" in screen and "Home" in screen,
+                "the root screen did not render (no Account row or Home title)")
+    # Focus starts on the first link; from the second, a pop that lands on
+    # the top of the list is told apart from one that restores.
+    app.tab()
+    pushing = app.focus().node_id
+
+    app.send_key("enter")
+    assert_true(app.contains("Inside Network"), "Enter on a link did not push its destination")
+    for _ in range(4):
+        app.tab()
+        assert_true(not app.contains("Choose a destination"), "Tab escaped the pushed screen to the root")
+
+    app.send_key("escape")
+    assert_true(not app.contains("Inside Network"), "Esc did not pop the pushed screen")
+    restored = app.focus().node_id
+    assert_true(restored == pushing,
+                f"the pop did not restore focus to the pushing link (wanted {pushing!r}, got {restored!r})")
+
+    # Settings, one Tab on, is reached through navigation and still lays out
+    # its Form there.
+    app.tab()
+    app.send_key("enter")
+    assert_true(app.contains("APPEARANCE"), "Settings is not reachable through navigation")
+
+
+def _settings_model(app: Client) -> str:
+    """The `theme=… density=…` line Settings echoes from its model, which
+    proves a binding committed rather than that a control repainted."""
+    return next((line.strip() for line in app.text().splitlines() if "theme=" in line), "")
+
+
+def settings_pickers_commit_and_abandon(app: Client) -> None:
+    """A segmented picker commits as the arrows move; a dropdown opens on
+    Enter, commits the highlighted option on Enter and abandons it on Esc.
+    The dropdown matters most: opening it adds nodes to the tree, so a stale
+    focus index or a missed render sends the next key to the wrong
+    handler, which a graph test cannot see."""
+    screen = app.text()
+    for expected in ("Settings", "Theme", "Density", "Telemetry", "Editor"):
+        assert_true(expected in screen, f"the settings screen did not render (missing {expected!r})")
+
+    # The segmented picker is the first focusable, focused at boot.
+    model = _settings_model(app)
+    assert_true("theme=dark" in model, f"unexpected initial model: {model!r}")
+    app.send_key("right")
+    model = _settings_model(app)
+    assert_true("theme=auto" in model, f"segmented Right did not commit the next option: {model!r}")
+    app.send_key("left")
+    model = _settings_model(app)
+    assert_true("theme=dark" in model, f"segmented Left did not commit the previous option: {model!r}")
+
+    app.tab()
+    assert_true(not app.contains("Comfortable"), "the dropdown was expanded before it was opened")
+    app.send_key("enter")
+    assert_true(app.contains("Comfortable"), "Enter did not open the dropdown")
+    # The second key must reach the open list, which exists only in a tree
+    # built after the first.
+    app.send_key("down")
+    app.send_key("enter")
+    model = _settings_model(app)
+    assert_true("density=comfortable" in model, f"dropdown Enter did not commit the highlighted option: {model!r}")
+
+    app.send_key("enter")
+    assert_true(app.contains("Compact"), "Enter did not reopen the dropdown")
+    app.send_key("up")
+    app.send_key("escape")
+    model = _settings_model(app)
+    assert_true("density=comfortable" in model, f"Esc committed the highlighted option: {model!r}")
+
+
+def demo_a_modal_keeps_focus_until_dismissed(app: Client) -> None:
+    """Presenting the help modal moves focus into it, Tab never leaves it,
+    and dismissing it hands the background focus back. Demo, not
+    Storybook: `.modal` centres on the screen, and inside a Storybook page,
+    a ScrollView's buffer, it would centre on that clipped buffer."""
+    outside = app.focus().node_id
+    app.send_text("h")
+    assert_true(app.contains("Keyboard Shortcuts"), "h did not present the help modal")
+    inside = app.focus().node_id
+    assert_true(inside != outside, f"presenting did not move focus into the dialog (still {outside!r})")
+
+    # The modal holds one focusable, [ Close ], so every Tab re-selects it.
+    for press in range(1, 9):
+        app.tab()
+        landed = app.focus().node_id
+        assert_true(landed == inside, f"Tab #{press} left [ Close ] for {landed!r}")
+
+    app.send_key("enter")
+    assert_true(not app.contains("Keyboard Shortcuts"), "Enter on [ Close ] did not dismiss the dialog")
+    app.tab()
+    assert_true(app.focus().node_id is not None, "focus did not return to the background")
+
+
+# The form's first and last labelled rows, and the section header above the
+# first. Scrolling to the focused row brings back the row, not the header,
+# so the header is checked only at rest.
+FORM_FIRST_SECTION = "APPEARANCE"
+FORM_FIRST_ROW = "Theme"
+FORM_LAST_ROW = "History depth"
+# Tab visits eight controls before it leaves the preview; bounded so a form
+# that never scrolls fails rather than spins.
+FORM_MAX_TABS = 12
+
+
+def _form_window(app: Client) -> tuple[int, list[str], str]:
+    """The preview window's first screen row, its rows, and their text."""
+    first_row, rows = app.boxed_rows("Preview")
+    return first_row, rows, "\n".join(rows)
+
+
+def _form_label_columns(rows: list[str]) -> set[int]:
+    """The column of each Toggle's checkbox: the form's label column."""
+    return {row.index("[") for row in rows if "[" in row}
+
+
+def storybook_form_scrolls_to_the_focused_control(app: Client) -> None:
+    """Tab through a Form taller than its window scrolls each control into
+    view, keeps one label column, and Shift-Tab scrolls back. Rows below
+    the fold used to stay focusable while out of sight."""
+    app.goto_page("Form")
+    _, rows, text = _form_window(app)
+    assert_true(FORM_FIRST_SECTION in text and FORM_FIRST_ROW in text,
+                "the Form page did not render its first section")
+    assert_true(FORM_LAST_ROW not in text, "the form fits its window, so it cannot prove it scrolls")
+    columns = _form_label_columns(rows)
+
+    for _ in range(FORM_MAX_TABS):
+        app.tab()
+        first_row, rows, text = _form_window(app)
+        if FORM_LAST_ROW in text:
+            break
+    else:
+        raise CaseFailed(f"tabbing through the form never brought {FORM_LAST_ROW!r} into view")
+    assert_true(FORM_FIRST_ROW not in text, "the viewport never moved")
+
+    focus_y = app.focus().rect[1]
+    assert_true(first_row <= focus_y < first_row + len(rows),
+                f"the focused control sits outside the preview window "
+                f"(y={focus_y}, window rows {first_row}..{first_row + len(rows) - 1})")
+    # Before and after together: rows that disagree, or a column that moved
+    # as the rows scrolled past.
+    columns |= _form_label_columns(rows)
+    assert_true(len(columns) == 1, f"the controls do not share one label column: {sorted(columns)}")
+
+    for _ in range(FORM_MAX_TABS):
+        app.tab(reverse=True)
+        if FORM_FIRST_ROW in _form_window(app)[2]:
+            return
+    raise CaseFailed("Shift-Tab back through the form never returned to the first section")
+
+
+# Several of AsyncState's 60ms ticks.
+ASYNC_OBSERVE_SECONDS = 1.0
+
+
+def _async_count(app: Client) -> Optional[int]:
+    match = re.search(r"count=(\d+)", app.text())
+    return int(match[1]) if match else None
+
+
+def async_state_is_drawn_with_no_input(app: Client) -> None:
+    """A `Task` that changes observed state gets its frame with nothing else
+    happening, in either render mode: `.onDemand`'s idle wait has to be
+    woken by it. AsyncState declares no timer; Storybook's would set
+    `needsRender` every tick and hide the defect. One look after a quiet
+    interval, not `wait_until`: each query wakes the app, and an app that
+    slept through the change would draw it for the poll."""
+    first = _async_count(app)
+    assert_true(first is not None, "the app did not render its counter")
+    time.sleep(ASYNC_OBSERVE_SECONDS)
+    second = _async_count(app)
+    assert_true(second is not None, f"the counter vanished after {ASYNC_OBSERVE_SECONDS}s")
+    assert_true(second != first,
+                f"the count stayed at {first} for {ASYNC_OBSERVE_SECONDS}s with no input: "
+                f"the task marks the graph dirty and the loop drops the frame")
+
+
+def storybook_a_disabled_socket_is_never_opened(app: Client) -> None:
+    """`enabled = false` under `[socket]` in the project's config keeps the
+    app from opening its control socket, and the app runs as usual. The
+    runtime decides on the socket before its first frame, so once a frame
+    is on the terminal there is nothing left to wait for."""
+    assert_true(app.wait_until(lambda client: b"VStack" in client.pty_output(), timeout=BOOT_TIMEOUT),
+                "the app drew no frame")
+    remote = Path(app.diag_dir) / "remote"
+    sockets = sorted(str(path) for path in remote.glob("*.sock")) if remote.exists() else []
+    assert_true(not sockets, f"a socket was opened despite enabled = false: {sockets}")
+
+
+# ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
 
@@ -2018,8 +2252,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
     SmokeCase("navigation.idle_costs_nothing", "Navigation", idle_costs_nothing),
     SmokeCase("coder.idle_costs_nothing", "Coder", idle_costs_nothing),
-    SmokeCase("navigation.a_remote_command_redraws_an_idle_app", "Navigation",
-              navigation_a_remote_command_redraws_an_idle_app),
+    SmokeCase("navigation.an_idle_app_acts_on_remote_commands", "Navigation",
+              navigation_an_idle_app_acts_on_remote_commands),
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
               navigation_invoke_action_quits_an_idle_app),
     SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
@@ -2122,6 +2356,19 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.bot_reply_appears", "Chat", chat_bot_reply_appears),
     SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
+    SmokeCase("navigation.pop_restores_focus_to_the_pushing_link", "Navigation",
+              navigation_pop_restores_focus_to_the_pushing_link),
+    SmokeCase("settings.pickers_commit_and_abandon", "Settings", settings_pickers_commit_and_abandon),
+    SmokeCase("demo.a_modal_keeps_focus_until_dismissed", "Demo", demo_a_modal_keeps_focus_until_dismissed),
+    SmokeCase("storybook.form_scrolls_to_the_focused_control", "Storybook",
+              storybook_form_scrolls_to_the_focused_control),
+    SmokeCase("asyncstate.capped_is_drawn_with_no_input", "AsyncState",
+              async_state_is_drawn_with_no_input),
+    SmokeCase("asyncstate.ondemand_is_drawn_with_no_input", "AsyncState",
+              async_state_is_drawn_with_no_input, env=(("TUI_RENDER_MODE", "ondemand"),)),
+    SmokeCase("storybook.a_disabled_socket_is_never_opened", "Storybook",
+              storybook_a_disabled_socket_is_never_opened, connects=False,
+              project_files=((".terminalui/terminalui.toml", "[socket]\nenabled = false\n"),)),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
     SmokeCase("coder.readline_keys_edit_the_draft", "Coder", coder_readline_keys_edit_the_draft),

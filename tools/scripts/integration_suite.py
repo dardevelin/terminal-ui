@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Every single-purpose harness script, one after another.
 
-Each script pins a contract the smoke suite does not reach: navigation and
-modal focus, an idle app driven over its socket, `swtui ctl` refusing to
-kill without a PID, a client that does not read, apps running side by side.
+Each script pins a contract a smoke case, one app driven by one client,
+cannot reach: data dirs kept apart and apps running side by side take
+several apps, `swtui ctl` refusing to kill without a PID and a client that
+does not read take `swtui` or a raw socket, and verify.py leaving live apps
+alone takes verify.py.
 They ran only when someone remembered to; this is the one gate CI and
 verify.py call. The tooling's own tests, which need no app, are
 ``tool_tests.py``'s.
@@ -33,10 +35,9 @@ from terminalui.process import step  # noqa: E402
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Every single-purpose script, found rather than listed: a list is how
-# eleven of them came to gate nothing. `verify.py` is the gate itself, not one
-# of them.
-SCRIPTS = sorted(SCRIPT_DIR.glob("verify_*.py")) + sorted(SCRIPT_DIR.glob("test_*.py"))
+# Every script, found rather than listed: a list is how eleven of them came
+# to gate nothing.
+SCRIPTS = sorted(SCRIPT_DIR.glob("test_*.py"))
 
 # Each takes seconds, a sanitizer build ten or twenty times that; the limit
 # is for one that hangs, and stops it before the gate's own limit does.
