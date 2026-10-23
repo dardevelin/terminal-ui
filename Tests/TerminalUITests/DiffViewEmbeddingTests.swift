@@ -87,3 +87,16 @@ import Testing
         #expect(foreground(of: "\u{2502}", onRow: 2, in: buffer) == theme.separator)
     }
 }
+
+// A view holding diff lines compares them by value: an app's model of a
+// diff can be Equatable, so a row whose lines did not change is skipped
+// cheaply rather than compared field by field through reflection.
+@Suite("Diff lines compare by value")
+struct DiffLineEqualityTests {
+    @Test func identicalLinesAreEqualAndAnyDifferenceIsNot() {
+        let line = DiffLine(id: 1, kind: .added, text: "let x = 1", oldLineNumber: nil, newLineNumber: 3)
+        #expect(line == DiffLine(id: 1, kind: .added, text: "let x = 1", oldLineNumber: nil, newLineNumber: 3))
+        #expect(line != DiffLine(id: 1, kind: .removed, text: "let x = 1", oldLineNumber: nil, newLineNumber: 3))
+        #expect(line != DiffLine(id: 1, kind: .added, text: "let x = 2", oldLineNumber: nil, newLineNumber: 3))
+    }
+}
