@@ -377,10 +377,17 @@ public final class RemoteControlServer: @unchecked Sendable {
         self.path = path
         self.dispatcher = dispatcher
         self.onActivity = onActivity
-        if let fd = Self.listeningSocket(at: path) {
-            let listener = WatchedDescriptor(fd)
+        do {
+            // `pump()` accepts every waiting client when it runs, so the
+            // queue must hold all that connect between two runs. Past the
+            // backlog, macOS refuses a connection outright; Linux makes it
+            // wait.
+            let listener = WatchedDescriptor(try UnixSocket.listening(at: path, backlog: SOMAXCONN))
             self.listener = listener
             listenWatch = watch(listener, until: .readable)
+        } catch {
+            DebugStream.shared.emitWarning(.debugSocketUnavailable,
+                                           message: "remote control has no socket at \(path): \(error)")
         }
     }
 
@@ -392,39 +399,6 @@ public final class RemoteControlServer: @unchecked Sendable {
             self?.activity.store(true, ordering: .releasing)
             onActivity()
         }
-    }
-
-    private static func listeningSocket(at path: String) -> Int32? {
-        unlink(path)
-        #if canImport(Glibc)
-        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-        #else
-        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-        #endif
-        guard fd >= 0 else { return nil }
-
-        var addr = sockaddr_un()
-        addr.sun_family = sa_family_t(AF_UNIX)
-        withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-            _ = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
-                strncpy(buf, path, 103)
-            }
-        }
-        let bindResult = withUnsafePointer(to: &addr) { ptr in
-            ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                bind(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-            }
-        }
-        if bindResult < 0 {
-            close(fd)
-            return nil
-        }
-        // `pump()` accepts every waiting client when it runs, so the queue
-        // must hold all that connect between two runs. Past the backlog,
-        // macOS refuses a connection outright; Linux makes it wait.
-        listen(fd, SOMAXCONN)
-        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
-        return fd
     }
 
     /// Runtime hook — call once per frame BEFORE draining the event queue.

@@ -8,6 +8,7 @@ import Foundation
 import Synchronization
 import Testing
 @testable import TerminalUI
+import TerminalUIConfig
 
 // The control server answers on the main actor, between frames. A reply
 // larger than the socket's buffer used to be written in a loop that slept
@@ -40,16 +41,16 @@ struct RemoteControlBackpressureTests {
         let path = "/tmp/terminalui-test-\(getpid())-\(UInt32.random(in: 0...UInt32.max)).sock"
         let woken: (@Sendable () -> Void)? = watched ? { @Sendable in } : nil
         let server = RemoteControlServer(path: path, dispatcher: LargeReplies(), onActivity: woken)
-        let client = try #require(connectedSocket(to: path))
+        let client = try #require(UnixSocket.connected(to: path))
         defer { close(client) }
-        sendLine(#"{"id":1,"cmd":"ping"}"#, to: client)
+        _ = UnixSocket.sendLine(Array(#"{"id":1,"cmd":"ping"}"#.utf8), to: client)
 
         // The client starts reading only after a while, as a busy one might.
         let finished = ReadFinished()
         let reader = Task.detached { () -> Data in
             try? await Task.sleep(for: .milliseconds(150))
             defer { finished.flag.store(true, ordering: .releasing) }
-            return readLine(from: client)
+            return Data(UnixSocket.readLine(from: client))
         }
 
         var slowestPump = Duration.zero
@@ -77,15 +78,15 @@ struct RemoteControlBackpressureTests {
         let path = "/tmp/terminalui-test-\(getpid())-\(UInt32.random(in: 0...UInt32.max)).sock"
         let dispatcher = LargeReplies()
         let server = RemoteControlServer(path: path, dispatcher: dispatcher)
-        let client = try #require(connectedSocket(to: path))
+        let client = try #require(UnixSocket.connected(to: path))
         defer { close(client) }
-        sendLine(#"{"id":1,"cmd":"ping"}"# + "\n" + #"{"id":2,"cmd":"ping"}"#, to: client)
+        _ = UnixSocket.sendLine(Array((#"{"id":1,"cmd":"ping"}"# + "\n" + #"{"id":2,"cmd":"ping"}"#).utf8), to: client)
         for _ in 0..<20 {
             server.pump()
         }
         #expect(dispatcher.answered == 1)
 
-        let reader = Task.detached { readLine(from: client) }
+        let reader = Task.detached { UnixSocket.readLine(from: client) }
         while dispatcher.answered < 2 {
             server.pump()
             try? await Task.sleep(for: .milliseconds(1))
@@ -95,50 +96,37 @@ struct RemoteControlBackpressureTests {
     }
 }
 
+// A server that cannot listen used to say nothing: the app ran, and
+// `swtui ctl` found no socket. A path too long for a socket address — a deep
+// checkout with `use_tmp = false` — was cut to fit and bound elsewhere.
+@Suite("A debug server that cannot listen says why")
+@MainActor
+struct DebugSocketWarningTests {
+
+    @Test func aPathTooLongForAnAddressIsAWarning() {
+        let probe = WarningProbe()
+        DebugStream.shared.addSink(probe)
+        defer { DebugStream.shared.removeAllSinks() }
+        let path = "/tmp/\(String(repeating: "x", count: 200))-\(UInt32.random(in: 0...UInt32.max)).sock"
+
+        withExtendedLifetime(RemoteControlServer(path: path, dispatcher: LargeReplies())) {}
+
+        let warnings = probe.warnings.withLock { $0 }
+        #expect(warnings.contains { $0.code == .debugSocketUnavailable && $0.message.contains("longer than") },
+                "got \(warnings)")
+    }
+}
+
+private final class WarningProbe: DebugSink, Sendable {
+    let warnings = Mutex<[FrameworkWarningInfo]>([])
+
+    func receive(_ event: DebugEvent) {
+        guard case .frameworkWarning(let info) = event else { return }
+        warnings.withLock { $0.append(info) }
+    }
+}
+
 private final class ReadFinished: Sendable {
     let flag = Atomic(false)
-}
-
-private func connectedSocket(to path: String) -> Int32? {
-    #if canImport(Glibc)
-    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-    #else
-    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    #endif
-    guard fd >= 0 else { return nil }
-    var address = sockaddr_un()
-    address.sun_family = sa_family_t(AF_UNIX)
-    withUnsafeMutableBytes(of: &address.sun_path) { buffer in
-        let bytes = Array(path.utf8.prefix(buffer.count - 1))
-        buffer.copyBytes(from: bytes)
-    }
-    let connected = withUnsafePointer(to: &address) { pointer in
-        pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-            connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size))
-        }
-    }
-    guard connected == 0 else {
-        close(fd)
-        return nil
-    }
-    return fd
-}
-
-private func sendLine(_ line: String, to fd: Int32) {
-    writeAll(Array((line + "\n").utf8), to: fd)
-}
-
-/// Reads until a newline, blocking; the line without it.
-private func readLine(from fd: Int32) -> Data {
-    var line = Data()
-    var chunk = [UInt8](repeating: 0, count: 65_536)
-    while true {
-        let bytesRead = read(fd, &chunk, chunk.count)
-        guard bytesRead > 0 else { return line }
-        line.append(contentsOf: chunk[..<bytesRead])
-        if let newline = line.firstIndex(of: 0x0A) {
-            return line[..<newline]
-        }
-    }
 }
 #endif

@@ -164,7 +164,7 @@ This layering is the modularity strategy — not backend abstraction.
 |--------|-----------|---------|
 | `TerminalInk` | — | Zero-dep styled output: color model, capability detection, ANSI SGR. For tooling that needs styled stdout/stderr without a render runtime. |
 | `TerminalLog` | TerminalInk | Structured logging: leveled colored prefixes, console + file sinks, ANSI auto-stripping for non-TTY. |
-| `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only). Used by TerminalUI and the `swtui` CLI. |
+| `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in image/media: `ImageBuffer`, decoders, half-block/kitty renderers, a pure-Swift PNG inflate. Apps without image needs don't pay for it. |
 

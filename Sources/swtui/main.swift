@@ -543,55 +543,16 @@ private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
         log.error("failed to encode payload")
         exit(1)
     }
-    #if canImport(Glibc)
-    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-    #else
-    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    #endif
-    guard fd >= 0 else {
-        log.error("socket() failed")
-        exit(1)
-    }
-    defer { close(fd) }
-    var addr = sockaddr_un()
-    addr.sun_family = sa_family_t(AF_UNIX)
-    withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-        _ = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
-            strncpy(buf, socketPath, 103)
-        }
-    }
-    let connectResult = withUnsafePointer(to: &addr) { ptr in
-        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-            connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-        }
-    }
-    guard connectResult == 0 else {
+    guard let fd = UnixSocket.connected(to: socketPath) else {
         log.error("connect to \(socketPath) failed — is a debug app running?")
         exit(1)
     }
-    // Write payload + newline
-    var bytes = payloadData
-    bytes.append(0x0A)
-    _ = bytes.withUnsafeBytes { buf in
-        write(fd, buf.baseAddress!, buf.count)
+    defer { close(fd) }
+    guard UnixSocket.sendLine(Array(payloadData), to: fd) else {
+        log.error("the app at \(socketPath) hung up")
+        exit(1)
     }
-    // Read until the response's terminating newline appears anywhere in
-    // the buffer — the protocol is one JSON line per response, so any
-    // `\n` ends it. Earlier we checked `response.last == 0x0A`, which
-    // broke for multi-chunk reads where the final chunk didn't end on a
-    // newline boundary — swtui hung reading empty-socket bytes that never
-    // came.
-    var response = Data()
-    var scratch = [UInt8](repeating: 0, count: 4096)
-    while true {
-        let n = scratch.withUnsafeMutableBufferPointer { buf in
-            read(fd, buf.baseAddress!, buf.count)
-        }
-        if n <= 0 { break }
-        response.append(scratch, count: n)
-        if response.contains(0x0A) { break }
-    }
-    return String(data: response, encoding: .utf8) ?? ""
+    return String(decoding: UnixSocket.readLine(from: fd), as: UTF8.self)
 }
 
 /// Read-only enumeration of running debug apps. Probes each socket's
@@ -694,29 +655,7 @@ private func ctlKill(socketDirs: [String], explicitPID: Int32?, positional: [Str
         print("pid=\(pid) status=encode-failed")
         exit(1)
     }
-    #if canImport(Glibc)
-    let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
-    #else
-    let fd = socket(AF_UNIX, SOCK_STREAM, 0)
-    #endif
-    if fd < 0 {
-        print("pid=\(pid) status=socket-failed")
-        exit(1)
-    }
-    var addr = sockaddr_un()
-    addr.sun_family = sa_family_t(AF_UNIX)
-    withUnsafeMutablePointer(to: &addr.sun_path) { ptr in
-        _ = ptr.withMemoryRebound(to: CChar.self, capacity: 104) { buf in
-            strncpy(buf, path, 103)
-        }
-    }
-    let connectResult = withUnsafePointer(to: &addr) { ptr in
-        ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-            connect(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
-        }
-    }
-    if connectResult != 0 {
-        close(fd)
+    guard let fd = UnixSocket.connected(to: path) else {
         // Only a dead app's socket is stale. A live one that refused the
         // connection — a full backlog, say — keeps it, or every later
         // `ctl` would find nothing to reach.
@@ -728,11 +667,7 @@ private func ctlKill(socketDirs: [String], explicitPID: Int32?, positional: [Str
         print("pid=\(pid) status=stale-unlinked")
         return
     }
-    var bytes = payloadData
-    bytes.append(0x0A)
-    _ = bytes.withUnsafeBytes { buf in
-        write(fd, buf.baseAddress!, buf.count)
-    }
+    _ = UnixSocket.sendLine(Array(payloadData), to: fd)
     close(fd)
     print("pid=\(pid) status=quit-sent")
 }
