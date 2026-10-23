@@ -553,6 +553,7 @@ Seen but not built, each waiting for the demo to need it:
   would show.
 - **Expanding a capped result.** Crush's note says "click or space to expand".
   The transcript has no per-entry interaction yet, so the note only counts.
+  *(Since built: L20.)*
 - **The body's two-column indent** (G3). Crush pads tool bodies left by 2; the
   card's rail gives the separation instead until edge padding lands.
 - **Scroll indicator colours.** The thumb and track are cyan and gray literals,
@@ -649,8 +650,8 @@ width they are laid out at; and `.padding(_:_:)` / `.padding(EdgeInsets)`
 arrived, with `BorderEdges` becoming SwiftUI's `Edge.Set`. Markdown quotes got
 their column of room in the same stroke.
 
-Not built: per-message focus, which in Crush thickens the focused entry's rail
-to `▌`. The demo has no message selection yet.
+Not built then: per-message focus, which in Crush thickens the focused entry's rail
+to `▌`. The demo had no message selection yet. *(Since built: L20.)*
 
 **L15. The composer became a control.** *(demo — built, by way of four fixes)*
 
@@ -728,10 +729,36 @@ neither changing, nothing moves. The value form shipped in 1.0, so it is
 deprecated rather than removed. Chat's tail now uses `.defaultScrollAnchor`,
 and Storybook keeps its sidebar position apart from its selection.
 
+**L20. The transcript is read, not only shown.** *(demo — built, by way of five
+framework changes)*
+
+Crush's chat takes focus: Tab moves it there from the editor, the arrows
+scroll, Shift+↑/↓ step an entry at a time, the selected entry's rail thickens
+to `▌`, and Space or a click opens a capped result, as its note now says
+(`… (N lines hidden) [click or space to expand]`). Coder does all of it. The
+demo asked for five things the framework did not have:
+
+- **A thick rail.** `BorderStyle.halfBlock`, `▛▀▜ ▌ ▐ ▙▄▟`: half blocks lean
+  toward the content, so a style names a glyph per edge now.
+- **Shift+↑ for the app.** Views that move by the arrows took modified ones
+  as plain, and views see keys before the app's bindings. Every such view
+  passes a modified navigation key on now (`KeyEvent.isModifiedNavigation`).
+- **Which entries are in sight.** `.onScrollTargetVisibilityChange`,
+  SwiftUI's, reported after a frame is drawn. A selection scrolled out of
+  view passes to the nearest entry in it, so Space acts on something visible,
+  as Crush's cursor does.
+- **The composer focused at launch.** A focusable transcript comes first in
+  Tab order; `.prefersDefaultFocus()`, SwiftUI's, puts launch focus on the
+  composer anyway.
+- **Positions that match the frame.** Bringing an entry into sight scrolled
+  when it was already in sight: scroll positions were measured at no width,
+  with no stack spacing and no insets. `ScrollContent` measures them as render
+  draws them.
+
+Not built: Crush's Shift+←/→ horizontal scroll of wide output, and copying an
+entry with `c`/`y` (no clipboard yet, G-clipboard).
+
 ### Ledger — open
-- **G1 remainder — the literal-drawing components** listed in L4, less
-  `DiffView` (L8) and `PromptInput` (L15): `TabView`, `TreeView`,
-  `HunkDiffView`, `StatusBar`. (`ScrollView`'s indicators done in L10.)
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
   demanded will be bash, for the Bash card's command.
 

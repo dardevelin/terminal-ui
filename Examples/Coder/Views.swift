@@ -80,8 +80,10 @@ struct Sidebar: TerminalView {
 
 // MARK: - Transcript
 
-/// The chat log. Each entry is framed by a left accent bar whose color
-/// encodes author and state — the workhorse device of this whole look.
+/// The chat log. Tab reaches it from the composer, as in Crush: the arrows
+/// then scroll it, Shift+↑/↓ (or K/J) step the selected entry, and Space or
+/// a click opens a capped result. The selected entry's rail thickens while
+/// the log holds focus.
 struct Transcript: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
@@ -90,6 +92,8 @@ struct Transcript: TerminalView {
     static let maxTextWidth = 120
 
     var body: some TerminalView {
+        let state = state
+        let selection = state.selection
         // The scroll view spans the column, so its bar sits at the column's
         // edge; the entries inside stop at a readable width. Like Crush's, it
         // opens on the latest entry and keeps the newest in view as they
@@ -97,45 +101,83 @@ struct Transcript: TerminalView {
         ScrollView {
             VStack(spacing: 1) {
                 ForEach(state.entries) { entry in
-                    switch entry {
-                    case .message(let message):
-                        MessageRow(message: message, theme: theme)
-                    case .tool(let call):
-                        ToolCard(call: call, theme: theme)
-                    }
+                    EntryRow(entry: entry, isSelected: entry.id == selection,
+                             isExpanded: state.expandedResults.contains(entry.id), theme: theme)
+                        .id(entry.id)
+                        .onClick { _, _ in state.click(entry.id) }
                 }
             }
             .frame(maxWidth: .fixed(Self.maxTextWidth))
         }
+        .scrollable()
+        .onKeyPress { event in Self.handleKey(event, state: state) }
+        // Any part of an entry in sight counts: a reply taller than the
+        // pane is still the one being read.
+        .onScrollTargetVisibilityChange(idType: Int.self, threshold: 0) { state.entriesInSight($0) }
+        .scrollPosition(id: Binding(get: { state.transcriptPosition }, set: { state.transcriptPosition = $0 }))
         .defaultScrollAnchor(.bottom)
+    }
+
+    /// Crush's chat keys beyond the scrolling the scroll view does itself.
+    static func handleKey(_ event: KeyEvent, state: CoderState) -> KeyEventResult {
+        switch (event.key, event.modifiers) {
+        case (.up, .shift), (.character("K"), []):
+            state.selectEntry(by: -1)
+        case (.down, .shift), (.character("J"), []):
+            state.selectEntry(by: 1)
+        case (.character(" "), []):
+            state.toggleSelectedResult()
+        default:
+            return .ignored
+        }
+        return .handled
     }
 }
 
-/// One chat message: an author line and the body, framed the way Crush
-/// frames them. What the user said carries a rail; what the agent said does
-/// not, and is indented to start where the user's text starts — the rail
-/// marks the turns that came from outside.
-struct MessageRow: TerminalView {
+/// One transcript entry in the frame Crush gives it: a rail down its
+/// leading edge — thin for what the user said, none for the agent — that
+/// thickens to `▌` on the entry selected while the transcript holds focus.
+/// Agent text sits two columns in, level with the user's past their rail.
+struct EntryRow: TerminalView {
+    let entry: Entry
+    let isSelected: Bool
+    let isExpanded: Bool
+    var theme = CoderTheme.dark
+
+    @TerminalEnvironment(\.isFocused) private var transcriptFocused
+
+    var body: some TerminalView {
+        // Read focus only on the selected row — a read is a subscription,
+        // and every other row would redraw at each Tab for nothing.
+        let focused = isSelected && transcriptFocused
+        let isUser = if case .message(let message) = entry { message.author == .user } else { false }
+        let railed = isUser || focused
+        // One modifier chain whatever the state, so an entry keeps its
+        // identity as the selection moves on and off it.
+        content
+            .padding(.leading, railed ? 1 : 2)
+            .border(focused ? .halfBlock : .rounded,
+                    color: isUser ? theme.primary : theme.successSubtle,
+                    edges: railed ? .leading : [])
+    }
+
+    @TerminalViewBuilder
+    private var content: some TerminalView {
+        switch entry {
+        case .message(let message):
+            MessageBody(message: message, theme: theme)
+        case .tool(let call):
+            ToolCard(call: call, isExpanded: isExpanded, theme: theme)
+        }
+    }
+}
+
+/// A chat message's author line and markdown body.
+struct MessageBody: TerminalView {
     let message: Message
     var theme = CoderTheme.dark
 
-    @TerminalViewBuilder
     var body: some TerminalView {
-        switch message.author {
-        case .user:
-            // A border edge, so the rail runs the full height of the entry —
-            // the rows a long body wraps onto included — with a column of
-            // room before the text on every one of them.
-            content
-                .padding(.leading, 1)
-                .border(.rounded, color: theme.primary, edges: .leading)
-        case .assistant:
-            content
-                .padding(.leading, 2)
-        }
-    }
-
-    private var content: some TerminalView {
         VStack(spacing: 0) {
             Text(spans: [
                 TextSpan(authorLabel, foreground: authorColor, bold: true),
@@ -160,15 +202,14 @@ struct MessageRow: TerminalView {
     }
 }
 
-/// A tool invocation card: status icon, name, argument summary, and an
-/// indented result body.
+/// A tool invocation card: status icon, name, argument summary, and the
+/// result beneath, capped until the reader opens it.
 struct ToolCard: TerminalView {
     let call: ToolCall
+    var isExpanded = false
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        // No rail: a tool call is subordinate to the message that caused it.
-        // It sits two columns in, level with message text, as Crush sets it.
         VStack(spacing: 0) {
             Text(spans: [
                 TextSpan(badge.glyph, foreground: badge.color),
@@ -178,15 +219,14 @@ struct ToolCard: TerminalView {
             if let diff = call.diff {
                 DiffView(lines: diff, visibleHeight: diff.count)
             } else if let excerpt = call.excerpt {
-                ToolExcerpt(excerpt: excerpt, theme: theme)
+                ToolExcerpt(excerpt: excerpt, isExpanded: isExpanded, theme: theme)
             } else if let output = call.output {
-                ToolOutput(text: output, theme: theme)
+                ToolOutput(text: output, isExpanded: isExpanded, theme: theme)
             } else if call.state == .pending {
                 Text("Waiting for tool response...")
                     .foreground(theme.foregroundFaint)
             }
         }
-        .padding(.leading, 2)
     }
 
     private var badge: (glyph: String, color: Color) {
@@ -208,15 +248,31 @@ enum ResultCap {
     static func shown(of count: Int) -> Int {
         count <= maxLines + 1 ? count : maxLines
     }
+
 }
 
-/// The note under a capped result, counting what it held back.
+/// What of a result the transcript shows: up to the cap, all of it once the
+/// reader opened it, and how many lines that leaves out.
+struct CappedLines {
+    let shown: ArraySlice<Substring>
+    let hidden: Int
+
+    init(_ text: String, expanded: Bool) {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        let count = expanded ? lines.count : ResultCap.shown(of: lines.count)
+        shown = lines.prefix(count)
+        hidden = lines.count - count
+    }
+}
+
+/// The note under a capped result: what it held back, and how to see it —
+/// Crush's `assistantMessageTruncateFormat`.
 struct HiddenLines: TerminalView {
     let count: Int
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        Text(" … (\(count) lines hidden)")
+        Text(" … (\(count) lines hidden) [click or space to expand]")
             .foreground(theme.foregroundFaint)
     }
 }
@@ -225,18 +281,18 @@ struct HiddenLines: TerminalView {
 /// width of the card, each line cut to fit rather than wrapped, and capped.
 struct ToolOutput: TerminalView {
     let text: String
+    var isExpanded = false
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown = ResultCap.shown(of: lines.count)
+        let lines = CappedLines(text, expanded: isExpanded)
 
         VStack(spacing: 0) {
-            Text(lines.prefix(shown).map { " " + $0 }.joined(separator: "\n"))
+            Text(lines.shown.map { " " + $0 }.joined(separator: "\n"))
                 .wrap(.truncate(.tail))
                 .foreground(theme.foregroundMuted)
-            if lines.count > shown {
-                HiddenLines(count: lines.count - shown, theme: theme)
+            if lines.hidden > 0 {
+                HiddenLines(count: lines.hidden, theme: theme)
             }
         }
         .frame(maxWidth: .infinity)
@@ -248,18 +304,18 @@ struct ToolOutput: TerminalView {
 /// numbered from where the read started, cut to the card's width, capped.
 struct ToolExcerpt: TerminalView {
     let excerpt: FileExcerpt
+    var isExpanded = false
     var theme = CoderTheme.dark
 
     var body: some TerminalView {
-        let lines = excerpt.code.split(separator: "\n", omittingEmptySubsequences: false)
-        let shown = ResultCap.shown(of: lines.count)
+        let lines = CappedLines(excerpt.code, expanded: isExpanded)
 
         VStack(spacing: 0) {
-            CodeView(lines.prefix(shown).joined(separator: "\n"), language: excerpt.language,
+            CodeView(lines.shown.joined(separator: "\n"), language: excerpt.language,
                      lineNumbers: true, firstLineNumber: excerpt.firstLine)
                 .wrap(.truncate(.tail))
-            if lines.count > shown {
-                HiddenLines(count: lines.count - shown, theme: theme)
+            if lines.hidden > 0 {
+                HiddenLines(count: lines.hidden, theme: theme)
             }
         }
         .frame(maxWidth: .infinity)
@@ -298,6 +354,9 @@ struct Prompt: TerminalView {
             onSubmit: { state.send($0) }
         )
         .promptPrefix(Self.column)
+        // The transcript comes first in Tab order; the keys belong here when
+        // the app opens, as in Crush.
+        .prefersDefaultFocus()
     }
 }
 
@@ -342,6 +401,7 @@ struct CoderApp: TerminalView {
             .padding(1)
             Text(spans: [TextSpan(" ")] + HelpLine.spans([
                 ("enter", "send"),
+                ("tab", "focus chat"),
                 ("^p", "palette"),
                 ("^c", "quit"),
             ], theme: theme))

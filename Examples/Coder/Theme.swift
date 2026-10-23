@@ -88,10 +88,6 @@ enum Glyph {
     static let diamond = "◇"
     static let triangle = "▶"
 
-    /// Emphatic left frame — focused messages, active rails.
-    static let barThick = "▌"
-    /// Quiet left frame — blurred messages.
-    static let barThin = "│"
     /// Horizontal rule fill for section headers.
     static let rule = "─"
     /// Diagonal field beside the wordmark and dialog titles.
