@@ -717,9 +717,13 @@ private func ctlKill(socketDirs: [String], explicitPID: Int32?, positional: [Str
     }
     if connectResult != 0 {
         close(fd)
-        // Stale socket → clean up the file so it doesn't accumulate.
-        // This preserves the existing graceful-shutdown semantics for
-        // the explicit-PID path (caller asked for this PID by name).
+        // Only a dead app's socket is stale. A live one that refused the
+        // connection — a full backlog, say — keeps it, or every later
+        // `ctl` would find nothing to reach.
+        guard !DiagPaths.isAlive(pid) else {
+            print("pid=\(pid) status=connect-failed")
+            exit(1)
+        }
         _ = unlink(path)
         print("pid=\(pid) status=stale-unlinked")
         return

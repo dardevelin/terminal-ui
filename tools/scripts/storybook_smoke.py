@@ -148,7 +148,7 @@ def storybook_a_client_that_hangs_up_leaves_the_app_running(app: Client) -> None
 
     for _ in range(3):
         hang_up = socketlib.socket(socketlib.AF_UNIX, socketlib.SOCK_STREAM)
-        hang_up.connect(app._path)
+        hang_up.connect(app.socket_path)
         hang_up.sendall(b'{"id": 1, "cmd": "query_tree"}\n')
         hang_up.close()
         # The server answers both connections in one pump, the closed one

@@ -29,6 +29,7 @@ Exit 0 on all green, 1 on any failure.
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import subprocess
@@ -250,11 +251,9 @@ def case_kill_with_pid_against_dead_unlinks() -> None:
 def case_reap_preserves_live_sockets() -> None:
     with spawn_and_connect("Storybook") as (proc, client):
         client.wait_for_frame(1, timeout=2.0)
-        diag_dir = getattr(client, "diag_dir", None)
-        assert diag_dir is not None, "runner did not record diag_dir"
-        live_sock = Path(diag_dir) / "remote" / f"{proc.pid}.sock"
+        live_sock = Path(client.socket_path)
         assert live_sock.exists(), f"live socket missing at {live_sock} before reap"
-        result = _swtui_ctl("--dir", str(Path(diag_dir) / "remote"), "reap")
+        result = _swtui_ctl("--dir", str(live_sock.parent), "reap")
         assert result.returncode == 0, (
             f"reap must exit 0; rc={result.returncode}, "
             f"stdout={result.stdout!r}, stderr={result.stderr!r}"
@@ -340,6 +339,32 @@ def case_list_is_read_only() -> None:
 # ---------------------------------------------------------------------------
 
 
+def case_clients_connecting_at_once_are_all_served() -> None:
+    """Eight clients connect to an app at once, then each sends a ping;
+    every one gets its reply."""
+    with spawn_and_connect("Navigation") as (_proc, client):
+        client.wait_for_frame(1, timeout=2.0)
+        path = client.socket_path
+        clients = []
+        try:
+            # Raw sockets: `Client.connect()` retries a refused connection,
+            # which would hide the refusal this case exists to catch.
+            for _ in range(8):
+                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                sock.settimeout(3.0)
+                sock.connect(path)
+                clients.append(sock)
+            for index, sock in enumerate(clients):
+                sock.sendall(json.dumps({"id": index, "cmd": "ping"}).encode() + b"\n")
+            for index, sock in enumerate(clients):
+                reply = sock.makefile("rb").readline()
+                assert reply, f"client {index} was hung up on without a reply"
+                assert json.loads(reply)["id"] == index, f"client {index} got {reply!r}"
+        finally:
+            for sock in clients:
+                sock.close()
+
+
 CASES = [
     ("ctl.kill_without_pid_refused",            case_kill_without_pid_refused),
     ("ctl.kill_all_refused",                    case_kill_all_refused),
@@ -349,6 +374,8 @@ CASES = [
     ("ctl.reap_preserves_live_sockets",         case_reap_preserves_live_sockets),
     ("ctl.reap_removes_dead_sockets",           case_reap_removes_dead_sockets),
     ("ctl.list_is_read_only",                   case_list_is_read_only),
+    ("ctl.clients_connecting_at_once_are_all_served",
+     case_clients_connecting_at_once_are_all_served),
 ]
 
 

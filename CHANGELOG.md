@@ -207,6 +207,11 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Clients connecting at once are all served.** The control socket
+  listened with a backlog of one, so when two `swtui ctl` calls or harness
+  clients connected between frames, macOS refused the second. It now queues
+  as many as the system allows. `swtui ctl kill` no longer deletes the socket
+  of a live app it failed to reach; only a dead app's socket is stale.
 - **Input is read in chunks.** Every byte from the terminal cost a `poll()`
   and a `read()`, so a 10 KB paste took twenty thousand system calls. The
   input task now keeps one buffered source: a read takes everything waiting,

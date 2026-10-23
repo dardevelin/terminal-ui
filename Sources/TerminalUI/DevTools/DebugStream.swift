@@ -702,6 +702,8 @@ public final class SocketDebugSink: DebugSink, Sendable {
             return -1
         }
 
+        // One subscriber at a time, by design: the sink accepts only while it
+        // has none, so a longer queue would connect clients it never serves.
         listen(fd, 1)
 
         // Non-blocking accept
