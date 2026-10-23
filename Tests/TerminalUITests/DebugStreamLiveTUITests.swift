@@ -72,7 +72,7 @@ struct DebugStreamLiveTUITests {
         DebugStream.shared.resetWarningDedup()
         DebugStream.shared.removeAllSinks()
         let tmp = URL(fileURLWithPath: NSTemporaryDirectory())
-            .appendingPathComponent("hyp221_warnings_\(UUID().uuidString).log")
+            .appendingPathComponent("terminalui-warnings-\(UUID().uuidString).log")
         defer {
             try? FileManager.default.removeItem(at: tmp)
             DebugStream.shared.setLiveTUI(false)

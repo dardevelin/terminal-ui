@@ -53,7 +53,7 @@ def _socket_dirs(cwd: str) -> list[Path]:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory(prefix="hyp114-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="terminalui-socket-off-") as tmp:
         cwd = tmp
         config_dir = Path(cwd) / ".terminalui"
         config_dir.mkdir(parents=True, exist_ok=True)

@@ -61,6 +61,17 @@ def finds_a_linear_id() -> None:
     assert checker.tree_findings(root) == ["a.py:1: HYP" "-7"]
 
 
+def finds_an_id_however_it_is_spelled() -> None:
+    lower, underscored, joined = BOARD_ID.lower(), BOARD_ID.replace("-", "_"), BOARD_ID.replace("-", "")
+    root = repo({"a.py": f'prefix = "{lower}-"\nlog = "{underscored}_warnings.log"\nname = "{joined}"\n'.encode()})
+    assert checker.tree_findings(root) == [f"a.py:1: {lower}", f"a.py:2: {underscored}", f"a.py:3: {joined}"]
+
+
+def ignores_a_prefix_inside_a_word() -> None:
+    root = repo({"a.swift": b"let terminaltui2 = 0\n"})
+    assert checker.tree_findings(root) == []
+
+
 def scans_a_file_with_one_bad_byte() -> None:
     root = repo({"a.md": b"caf\xe9\n" + f"{BOARD_ID}\n".encode()})
     assert checker.tree_findings(root) == [f"a.md:2: {BOARD_ID}"]
@@ -97,6 +108,8 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("finds an id in a comment", finds_an_id_in_a_comment),
     ("finds an id in a file name", finds_an_id_in_a_file_name),
     ("finds a Linear id", finds_a_linear_id),
+    ("finds an id however it is spelled", finds_an_id_however_it_is_spelled),
+    ("ignores a prefix inside a word", ignores_a_prefix_inside_a_word),
     ("scans a file with one bad byte", scans_a_file_with_one_bad_byte),
     ("skips binaries", skips_binaries),
     ("ignores standards citations", ignores_standards_citations),
