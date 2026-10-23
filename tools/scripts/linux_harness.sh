@@ -25,7 +25,11 @@ SCRATCH=".build-linux"
 
 exec docker run --rm -v "$(pwd)":/app -w /app "$IMAGE" bash -c "
     set -e
-    apt-get update -qq >/dev/null && apt-get install -y -qq python3 >/dev/null
+    # One command each: \`set -e\` lets a failure inside an && list pass, so a
+    # mirror that did not answer left the run to die later on a python3 that
+    # was never installed.
+    apt-get update -qq >/dev/null || { echo 'apt-get update failed: no package mirror' >&2; exit 1; }
+    apt-get install -y -qq python3 >/dev/null || { echo 'could not install python3' >&2; exit 1; }
     # Build everything: repeated --product flags do not accumulate (the last
     # one wins), which silently leaves the harness without its app binary.
     swift build --scratch-path $SCRATCH
