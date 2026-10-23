@@ -39,35 +39,18 @@ import subprocess
 import tempfile
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from terminalui.cases import run_cases  # noqa: E402
 from terminalui.runner import build_dir_path, spawn_and_connect  # noqa: E402
 from terminalui.client import default_socket_path  # noqa: E402
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SWTUI_BIN = build_dir_path() / "swtui"
-
-
-@dataclass
-class CaseResult:
-    name: str
-    ok: bool
-    detail: str
-
-
-def _run(name: str, fn: Callable[[], None]) -> CaseResult:
-    try:
-        fn()
-        return CaseResult(name, True, "ok")
-    except AssertionError as exc:
-        return CaseResult(name, False, str(exc))
-    except Exception as exc:  # noqa: BLE001
-        return CaseResult(name, False, f"{type(exc).__name__}: {exc}")
 
 
 def _swtui_ctl(*args: str, cwd: Optional[str] = None) -> subprocess.CompletedProcess:
@@ -314,18 +297,7 @@ def main() -> int:
         print(f"[SKIP] {SWTUI_BIN} not found — run `swift build` first")
         return 0
 
-    failures = 0
-    for name, fn in CASES:
-        result = _run(name, fn)
-        marker = "OK" if result.ok else "FAIL"
-        line = f"[{marker}] {result.name}"
-        if not result.ok:
-            line += f" — {result.detail}"
-            failures += 1
-        print(line)
-    print("---")
-    print(f"{len(CASES) - failures}/{len(CASES)} pass")
-    return 1 if failures else 0
+    return run_cases(CASES)
 
 
 if __name__ == "__main__":

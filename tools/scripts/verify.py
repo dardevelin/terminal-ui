@@ -8,7 +8,9 @@ same bridge our smoke tests use. Steps:
 2. Tear down any leftover debug apps + stale sockets.
 3. ``swift build`` — compile check (release build is deferred to CI).
 4. ``swift test`` — unit + component suites.
-5. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
+5. ``storybook_walk.py`` — every Storybook page, as CI walks them.
+6. ``integration_suite.py`` — every ``verify_*`` and ``test_*`` script.
+7. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
 
 Each failure prints the relevant output and exits with code 2 so the
 stop-hook surfaces it to the conversation.
@@ -19,6 +21,10 @@ from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from terminalui.process import step as run_step  # noqa: E402
 
 # Derived from this file's location (tools/scripts/verify.py) rather than
 # hardcoded: an absolute path silently stops matching when the package moves
@@ -34,6 +40,10 @@ BUILD_DIR = REPO_ROOT / SCRATCH_PATH / "debug"
 # fewer: 304s at 100 cases, where 240s cut it off mid-run and reported the
 # cutoff as a smoke regression. Side by side it takes a fraction of that.
 SMOKE_TIMEOUT_SECONDS = 600
+# The whole integration suite, its scripts in turn: seconds each, and the
+# suite's own limit per script catches one that hangs first.
+INTEGRATION_TIMEOUT_SECONDS = 600
+WALK_TIMEOUT_SECONDS = 180
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
 
@@ -60,7 +70,7 @@ def dirty_relevant_sources() -> bool:
     return False
 
 
-def reap_dead_apps() -> None:
+def reap_dead_apps(build_dir: Path = BUILD_DIR) -> None:
     """Remove what debug apps from this checkout left when they died — a
     crash, or SIGKILL, leaves their output and socket behind. Calls
     `swtui ctl reap`, which touches only apps whose PID is dead: a live
@@ -69,8 +79,11 @@ def reap_dead_apps() -> None:
     Replaces the legacy `kill_strays()` whose `swtui ctl kill all`
     dragnet would `quit` the user's live `swift run Storybook` when
     running from this Stop hook mid-keystroke.
+
+    `build_dir` holds the `swtui` to run: verify's own build, unless a
+    test of this function is checking another.
     """
-    swtui = BUILD_DIR / "swtui"
+    swtui = build_dir / "swtui"
     if swtui.exists():
         subprocess.run(
             [str(swtui), "ctl", "reap"],
@@ -80,29 +93,7 @@ def reap_dead_apps() -> None:
 
 
 def step(name: str, cmd: list[str], timeout: int) -> tuple[int, str]:
-    """Run a subprocess, capturing combined stdout+stderr. Returns (rc, out)."""
-    try:
-        proc = subprocess.run(
-            cmd,
-            cwd=str(REPO_ROOT),
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            check=False,
-        )
-        return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
-    except subprocess.TimeoutExpired as err:
-        # `TimeoutExpired.stdout/stderr` can come back as bytes when the
-        # child hit the deadline mid-stream; decode defensively so the
-        # error message stays a str.
-        def _decode(value: object) -> str:
-            if value is None:
-                return ""
-            if isinstance(value, bytes):
-                return value.decode("utf-8", errors="replace")
-            return str(value)
-        out = _decode(err.stdout) + _decode(err.stderr)
-        return 124, f"{name} timed out after {timeout}s\n{out}"
+    return run_step(name, cmd, timeout, cwd=REPO_ROOT)
 
 
 def fail(msg: str, detail: str = "") -> int:
@@ -162,6 +153,23 @@ def run_gate() -> int:
         return fail("swift test failed", out)
     if test_summary:
         print(test_summary)
+
+    # The quick checks first: a walk and the integration scripts take
+    # seconds, the smoke suite minutes.
+    rc, out = step("storybook walk",
+                   [sys.executable, "tools/scripts/storybook_walk.py", str(BUILD_DIR)],
+                   WALK_TIMEOUT_SECONDS)
+    if rc != 0:
+        return fail("a Storybook page failed the walk", out)
+
+    rc, out = step(
+        "integration scripts",
+        [sys.executable, "tools/scripts/integration_suite.py", str(BUILD_DIR)],
+        INTEGRATION_TIMEOUT_SECONDS,
+    )
+    if rc != 0:
+        return fail("integration script failure(s)", out)
+    print(f"integration scripts: {out.strip().splitlines()[-1]}")
 
     rc, out = step(
         "storybook smoke",

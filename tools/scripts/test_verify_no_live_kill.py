@@ -30,12 +30,11 @@ import os
 import socket as socketlib
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from terminalui.cases import run_cases  # noqa: E402
 from terminalui.runner import build_dir_path, spawn_and_connect  # noqa: E402
 
 # Import the script-as-module so we can call its public surface
@@ -45,26 +44,6 @@ from terminalui.runner import build_dir_path, spawn_and_connect  # noqa: E402
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import verify  # noqa: E402
-
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-
-
-@dataclass
-class CaseResult:
-    name: str
-    ok: bool
-    detail: str
-
-
-def _run(name: str, fn: Callable[[], None]) -> CaseResult:
-    try:
-        fn()
-        return CaseResult(name, True, "ok")
-    except AssertionError as exc:
-        return CaseResult(name, False, str(exc))
-    except Exception as exc:  # noqa: BLE001
-        return CaseResult(name, False, f"{type(exc).__name__}: {exc}")
 
 
 def _make_stale_socket(socket_dir: Path, fake_pid: int) -> Path:
@@ -117,7 +96,7 @@ def case_verify_does_not_quit_live_process() -> None:
         # Call the cleanup verify.py would invoke — but only the
         # cleanup, not the full verify pipeline (would take 5min+
         # because of swift build + test + smoke).
-        verify.reap_dead_apps()
+        verify.reap_dead_apps(build_dir_path())
 
         # Brief settle — `swtui ctl reap` is synchronous but the test
         # window must close before any racy event arrives.
@@ -153,7 +132,7 @@ def case_verify_reaps_dead_sockets() -> None:
             sock_path = _make_stale_socket(dead_dir / "remote", fake_pid)
             assert sock_path.exists()
 
-            verify.reap_dead_apps()
+            verify.reap_dead_apps(build_dir_path())
 
             assert not dead_dir.exists(), (
                 f"reap_dead_apps left the dead app's dir at {dead_dir}. "
@@ -182,18 +161,7 @@ def main() -> int:
         print(f"[SKIP] {swtui} not found — run `swift build` first")
         return 0
 
-    failures = 0
-    for name, fn in CASES:
-        result = _run(name, fn)
-        marker = "OK" if result.ok else "FAIL"
-        line = f"[{marker}] {result.name}"
-        if not result.ok:
-            line += f" — {result.detail}"
-            failures += 1
-        print(line)
-    print("---")
-    print(f"{len(CASES) - failures}/{len(CASES)} pass")
-    return 1 if failures else 0
+    return run_cases(CASES)
 
 
 if __name__ == "__main__":
