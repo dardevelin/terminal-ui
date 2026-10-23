@@ -299,8 +299,10 @@ struct _SectionSeparator: TerminalView {
 struct _SectionHeader<Header: TerminalView>: TerminalView {
     let header: Header
 
+    @TerminalEnvironment(\.theme) private var theme
+
     var body: some TerminalView {
-        _UppercasedText(source: header).foreground(.gray)
+        _UppercasedText(source: header).foreground(theme.foregroundMuted)
     }
 }
 

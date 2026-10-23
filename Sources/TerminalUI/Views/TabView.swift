@@ -192,34 +192,26 @@ struct TabBar: TerminalView {
     let selected: Int
     let onSelect: (Int) -> Void
 
+    @TerminalEnvironment(\.theme) private var theme
+
     var body: some TerminalView {
+        let theme = theme
         WidthReader { width in
-            // Build tab label spans with overflow handling
-            let barData = Self.computeTabBar(
-                tabs: tabs,
-                selected: selected,
-                availableWidth: width
-            )
+            let layout = Self.layout(tabs: tabs, selected: selected, availableWidth: width)
 
             HStack {
-                // Left overflow indicator
-                if barData.hasLeftOverflow {
-                    Text(TextSpan("< ", foreground: .gray))
+                if layout.hasLeftOverflow {
+                    Text(TextSpan("< ", foreground: theme.foregroundMuted))
                 }
-
-                // Tab labels as styled spans
-                Text(spans: barData.spans)
-
-                // Right overflow indicator
-                if barData.hasRightOverflow {
-                    Text(TextSpan(" >", foreground: .gray))
+                Text(spans: Self.spans(tabs: tabs, selected: selected, layout: layout, theme: theme))
+                if layout.hasRightOverflow {
+                    Text(TextSpan(" >", foreground: theme.foregroundMuted))
                 }
-
                 Spacer()
             }
             .focusable()
             .onClick { relX, _ in
-                for region in barData.hitRegions {
+                for region in layout.hitRegions {
                     if relX >= region.startX && relX < region.endX {
                         onSelect(region.tabIndex)
                         return
@@ -244,9 +236,14 @@ struct TabBar: TerminalView {
 
     // MARK: - Tab Bar Layout
 
-    /// Computed tab bar data — label spans and hit regions for click handling.
-    struct TabBarData {
-        let spans: [TextSpan]
+    static let separator = " | "
+    static let separatorWidth = separator.count
+    /// `"< "` or `" >"`.
+    static let overflowMarkerWidth = 2
+
+    /// Which tabs fit, and where each can be clicked.
+    struct Layout {
+        let visible: Range<Int>
         let hitRegions: [HitRegion]
         let hasLeftOverflow: Bool
         let hasRightOverflow: Bool
@@ -258,139 +255,70 @@ struct TabBar: TerminalView {
         let tabIndex: Int
     }
 
-    /// Compute which tabs are visible, build styled spans, and record hit regions.
-    static func computeTabBar(
-        tabs: [TabDescriptor],
-        selected: Int,
-        availableWidth: Int
-    ) -> TabBarData {
-        let tabCount = tabs.count
-        guard tabCount > 0 else {
-            return TabBarData(spans: [], hitRegions: [], hasLeftOverflow: false, hasRightOverflow: false)
-        }
+    /// Every tab when they all fit; otherwise as many as fit around the
+    /// selected one, with a marker on each side that has more.
+    static func layout(tabs: [TabDescriptor], selected: Int, availableWidth: Int) -> Layout {
+        // Each label is drawn with a cell of padding either side.
+        let labelWidths = tabs.map { $0.label.count + 2 }
+        let totalWidth = labelWidths.reduce(0, +) + max(0, tabs.count - 1) * separatorWidth
 
-        let separator = " | "
-        let separatorWidth = separator.count
-        let overflowWidth = 2 // "< " or " >"
+        let visible = totalWidth <= availableWidth
+            ? 0..<tabs.count
+            : visibleAround(selected, labelWidths: labelWidths, availableWidth: availableWidth)
+        let hasLeft = visible.lowerBound > 0
+        let hasRight = visible.upperBound < tabs.count
 
-        // Each tab label is rendered as: " Label " (1 char padding each side)
-        let labelWidths: [Int] = tabs.map { $0.label.count + 2 }
-        let totalWidth = labelWidths.reduce(0, +) + max(0, tabCount - 1) * separatorWidth
-
-        // If everything fits, show all tabs
-        if totalWidth <= availableWidth {
-            return buildFullBar(tabs: tabs, selected: selected, separator: separator, labelWidths: labelWidths)
-        }
-
-        // Overflow mode — center the selected tab and expand outward
-        return buildOverflowBar(
-            tabs: tabs,
-            selected: selected,
-            separator: separator,
-            labelWidths: labelWidths,
-            separatorWidth: separatorWidth,
-            availableWidth: availableWidth,
-            overflowWidth: overflowWidth
-        )
-    }
-
-    /// Build the bar when all tabs fit.
-    static func buildFullBar(
-        tabs: [TabDescriptor],
-        selected: Int,
-        separator: String,
-        labelWidths: [Int]
-    ) -> TabBarData {
-        var spans: [TextSpan] = []
         var hitRegions: [HitRegion] = []
-        var x = 0
-
-        for (i, tab) in tabs.enumerated() {
-            let label = " \(tab.label) "
-            if i == selected {
-                spans.append(TextSpan(label, foreground: .white, bold: true, underline: true))
-            } else {
-                spans.append(TextSpan(label, foreground: .gray))
-            }
-            hitRegions.append(HitRegion(startX: x, endX: x + labelWidths[i], tabIndex: i))
-            x += labelWidths[i]
-
-            if i < tabs.count - 1 {
-                spans.append(TextSpan(separator, foreground: .ansi256(240)))
-                x += separator.count
-            }
+        var x = hasLeft ? overflowMarkerWidth : 0
+        for index in visible {
+            hitRegions.append(HitRegion(startX: x, endX: x + labelWidths[index], tabIndex: index))
+            x += labelWidths[index] + separatorWidth
         }
-
-        return TabBarData(spans: spans, hitRegions: hitRegions, hasLeftOverflow: false, hasRightOverflow: false)
+        return Layout(visible: visible, hitRegions: hitRegions, hasLeftOverflow: hasLeft, hasRightOverflow: hasRight)
     }
 
-    /// Build the bar in overflow mode — show tabs centered around the selected one.
-    static func buildOverflowBar(
-        tabs: [TabDescriptor],
-        selected: Int,
-        separator: String,
-        labelWidths: [Int],
-        separatorWidth: Int,
-        availableWidth: Int,
-        overflowWidth: Int
-    ) -> TabBarData {
-        let tabCount = tabs.count
-
-        // Start from the selected tab and expand outward
+    /// The tabs that fit `availableWidth` around `selected`, growing right
+    /// first and then left, leaving room for a marker on each side that
+    /// still has more.
+    static func visibleAround(_ selected: Int, labelWidths: [Int], availableWidth: Int) -> Range<Int> {
+        let tabCount = labelWidths.count
         var firstVisible = selected
         var lastVisible = selected
         var widthUsed = labelWidths[selected]
 
-        // Expand right
         while lastVisible < tabCount - 1 {
             let nextWidth = separatorWidth + labelWidths[lastVisible + 1]
-            let leftOverhead = firstVisible > 0 ? overflowWidth : 0
-            let rightOverhead = (lastVisible + 1 < tabCount - 1) ? overflowWidth : 0
-            if widthUsed + nextWidth + leftOverhead + rightOverhead <= availableWidth {
-                lastVisible += 1
-                widthUsed += nextWidth
-            } else {
-                break
-            }
+            let leftOverhead = firstVisible > 0 ? overflowMarkerWidth : 0
+            let rightOverhead = (lastVisible + 1 < tabCount - 1) ? overflowMarkerWidth : 0
+            guard widthUsed + nextWidth + leftOverhead + rightOverhead <= availableWidth else { break }
+            lastVisible += 1
+            widthUsed += nextWidth
         }
-
-        // Expand left
         while firstVisible > 0 {
-            let prevWidth = separatorWidth + labelWidths[firstVisible - 1]
-            let leftOverhead = (firstVisible - 1 > 0) ? overflowWidth : 0
-            let rightOverhead = lastVisible < tabCount - 1 ? overflowWidth : 0
-            if widthUsed + prevWidth + leftOverhead + rightOverhead <= availableWidth {
-                firstVisible -= 1
-                widthUsed += prevWidth
-            } else {
-                break
-            }
+            let previousWidth = separatorWidth + labelWidths[firstVisible - 1]
+            let leftOverhead = (firstVisible - 1 > 0) ? overflowMarkerWidth : 0
+            let rightOverhead = lastVisible < tabCount - 1 ? overflowMarkerWidth : 0
+            guard widthUsed + previousWidth + leftOverhead + rightOverhead <= availableWidth else { break }
+            firstVisible -= 1
+            widthUsed += previousWidth
         }
+        return firstVisible..<(lastVisible + 1)
+    }
 
-        let hasLeft = firstVisible > 0
-        let hasRight = lastVisible < tabCount - 1
-
+    /// The visible labels, separated: the selected one in the theme's
+    /// emphasis, the rest receding into its muted step.
+    static func spans(tabs: [TabDescriptor], selected: Int, layout: Layout, theme: any Theme) -> [TextSpan] {
         var spans: [TextSpan] = []
-        var hitRegions: [HitRegion] = []
-        var x = hasLeft ? overflowWidth : 0
-
-        for i in firstVisible...lastVisible {
-            let label = " \(tabs[i].label) "
-            if i == selected {
-                spans.append(TextSpan(label, foreground: .white, bold: true, underline: true))
-            } else {
-                spans.append(TextSpan(label, foreground: .gray))
-            }
-            hitRegions.append(HitRegion(startX: x, endX: x + labelWidths[i], tabIndex: i))
-            x += labelWidths[i]
-
-            if i < lastVisible {
-                spans.append(TextSpan(separator, foreground: .ansi256(240)))
-                x += separator.count
+        for index in layout.visible {
+            let label = " \(tabs[index].label) "
+            spans.append(index == selected
+                ? TextSpan(label, foreground: theme.foregroundEmphasis, bold: true, underline: true)
+                : TextSpan(label, foreground: theme.foregroundMuted))
+            if index < layout.visible.upperBound - 1 {
+                spans.append(TextSpan(separator, foreground: theme.separator))
             }
         }
-
-        return TabBarData(spans: spans, hitRegions: hitRegions, hasLeftOverflow: hasLeft, hasRightOverflow: hasRight)
+        return spans
     }
 
     // MARK: - Keyboard Navigation

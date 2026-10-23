@@ -95,13 +95,24 @@ public struct NavigationStack<Root: TerminalView>: TerminalView {
                 screen cannot be built. Register a destination for that type.
                 """
         )
-        return Text("(no destination for \(type(of: value)))").foreground(.gray)
+        return UnresolvedDestination(text: "(no destination for \(type(of: value)))")
     }
     #else
     private static func unresolved(_ value: any Hashable) -> any TerminalView {
-        Text("(no destination)").foreground(.gray)
+        UnresolvedDestination(text: "(no destination)")
     }
     #endif
+}
+
+/// What a pushed value with no destination shows in place of a screen.
+private struct UnresolvedDestination: TerminalView {
+    let text: String
+
+    @TerminalEnvironment(\.theme) private var theme
+
+    var body: some TerminalView {
+        Text(text).foreground(theme.foregroundMuted)
+    }
 }
 
 /// Erases the element type of a `NavigationStack`'s path, so the stack can

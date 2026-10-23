@@ -65,11 +65,13 @@ func padToWidth(_ text: String, width: Int, displayWidth: Int? = nil) -> String 
 public struct _EmptyPlaceholder: TerminalView {
     public let text: String
 
+    @TerminalEnvironment(\.theme) private var theme
+
     public init(_ text: String = "— empty —") {
         self.text = text
     }
 
     public var body: some TerminalView {
-        Text(text).foreground(.gray)
+        Text(text).foreground(theme.foregroundMuted)
     }
 }

@@ -1,7 +1,11 @@
 /// Customizable colors and marker glyphs for ``TreeView`` appearance.
 ///
-/// Every knob has a sensible default (`.default`), so most trees pass no
-/// style at all. Mutate a copy to rebrand the markers or highlight colors:
+/// Every knob has a sensible default, so most trees pass no style at all.
+/// A colour the style leaves unset is a ``Theme`` role, read where the tree
+/// is drawn; one it states wins over the theme. Reading an unset colour
+/// gives the stock theme's, which is what the property held before it
+/// followed the theme. Mutate a copy to rebrand the markers or highlight
+/// colors:
 ///
 /// ```swift
 /// var style = TreeViewStyle()
@@ -12,14 +16,30 @@
 /// }
 /// ```
 public struct TreeViewStyle: Sendable {
-    /// Color of expand/collapse arrow on unselected rows
-    public var arrowColor: Color = .gray
-    /// Color of expand/collapse arrow on the selected row
-    public var selectedArrowColor: Color = .cyan
-    /// Color of tree connector lines (├── └── │)
-    public var connectorColor: Color = .gray
-    /// Foreground color for the selected row's text
-    public var selectedForeground: Color = .white
+    /// Color of expand/collapse arrow on unselected rows; unset, the
+    /// theme's ``Theme/foregroundMuted``.
+    public var arrowColor: Color {
+        get { arrowColor(in: DefaultTheme()) }
+        set { statedArrowColor = newValue }
+    }
+    /// Color of expand/collapse arrow on the selected row; unset, the
+    /// theme's ``Theme/accent``.
+    public var selectedArrowColor: Color {
+        get { selectedArrowColor(in: DefaultTheme()) }
+        set { statedSelectedArrowColor = newValue }
+    }
+    /// Color of tree connector lines (├── └── │); unset, the theme's
+    /// ``Theme/separator``.
+    public var connectorColor: Color {
+        get { connectorColor(in: DefaultTheme()) }
+        set { statedConnectorColor = newValue }
+    }
+    /// Foreground color for the selected row's text; unset, the theme's
+    /// ``Theme/foregroundEmphasis``.
+    public var selectedForeground: Color {
+        get { selectedForeground(in: DefaultTheme()) }
+        set { statedSelectedForeground = newValue }
+    }
     /// Background color for the selected row (nil = no background highlight)
     public var selectedBackground: Color? = nil
     /// Character for expanded node indicator
@@ -31,13 +51,27 @@ public struct TreeViewStyle: Sendable {
     /// Prefix shown before unselected rows (for alignment)
     public var unselectedPrefix: String = "  "
 
-    /// The stock style — gray connectors, cyan selected arrow, `▾`/`▸`
-    /// markers, no selected-row background.
+    /// The stock style — every colour the theme's, `▾`/`▸` markers, no
+    /// selected-row background.
     public static let `default` = TreeViewStyle()
 
     /// Creates the default style; mutate the copy's properties to
     /// customize individual knobs.
     public init() {}
+
+    // The colours a caller stated. A `Color` with a literal default could not
+    // tell "the stock colour" from "the theme's"; the properties stay `Color`
+    // so code that reads them compiles, and become `Color?` in a major
+    // release, as `MarkdownStyle`'s are.
+    private var statedArrowColor: Color?
+    private var statedSelectedArrowColor: Color?
+    private var statedConnectorColor: Color?
+    private var statedSelectedForeground: Color?
+
+    func arrowColor(in theme: any Theme) -> Color { statedArrowColor ?? theme.foregroundMuted }
+    func selectedArrowColor(in theme: any Theme) -> Color { statedSelectedArrowColor ?? theme.accent }
+    func connectorColor(in theme: any Theme) -> Color { statedConnectorColor ?? theme.separator }
+    func selectedForeground(in theme: any Theme) -> Color { statedSelectedForeground ?? theme.foregroundEmphasis }
 }
 
 /// A hierarchical tree with expandable nodes, box-drawing connectors, and
@@ -93,6 +127,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     @TerminalState var selectedIndex: Int = 0
     @TerminalState var scrollOffset: Int = 0
     @TerminalState var initialized: Bool = false
+    @TerminalEnvironment(\.theme) private var theme
 
     /// Creates a tree over hierarchical data.
     ///
@@ -132,11 +167,13 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         let selectedIdxBinding = $selectedIndex
         let scrollBinding = $scrollOffset
         let initBinding = $initialized
+        let theme = theme
         // An explicit `visibleCount` is a declared size — no GeometryReader,
         // so the tree measures fixed instead of greedily filling its stack.
         if let declaredCount = visibleCount {
             renderTree(
                 visibleCount: declaredCount,
+                theme: theme,
                 expandedBinding: expandedBinding,
                 selectedIdxBinding: selectedIdxBinding,
                 scrollBinding: scrollBinding,
@@ -146,6 +183,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             GeometryReader { size in
                 self.renderTree(
                     visibleCount: max(1, size.height),
+                    theme: theme,
                     expandedBinding: expandedBinding,
                     selectedIdxBinding: selectedIdxBinding,
                     scrollBinding: scrollBinding,
@@ -157,6 +195,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
 
     private func renderTree(
         visibleCount: Int,
+        theme: any Theme,
         expandedBinding: Binding<Set<AnyHashableID>>,
         selectedIdxBinding: Binding<Int>,
         scrollBinding: Binding<Int>,
@@ -210,17 +249,17 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         return VStack {
             if hasUpIndicator {
                 Text("  \u{25B2} \(adjustedOffset) more")
-                    .foreground(.gray)
+                    .foreground(theme.foregroundMuted)
             }
 
             ForEach(Array(slice)) { row in
-                treeRow(row, isSelected: row.flatIndex == currentIndex, expandedIDs: expanded)
+                treeRow(row, isSelected: row.flatIndex == currentIndex, expandedIDs: expanded, theme: theme)
             }
 
             if hasDownIndicator {
                 let remaining = total - adjustedOffset - itemLines
                 Text("  \u{25BC} \(remaining) more")
-                    .foreground(.gray)
+                    .foreground(theme.foregroundMuted)
             }
         }
         .frame(minHeight: FrameDimension(visibleCount))
@@ -329,14 +368,16 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     private func treeRow(
         _ row: FlatRow<Data.Element>,
         isSelected: Bool,
-        expandedIDs: Set<AnyHashableID>
+        expandedIDs: Set<AnyHashableID>,
+        theme: any Theme
     ) -> some TerminalView {
-        let connectorSpans = TreeViewHelpers.buildConnectorSpans(row, color: style.connectorColor)
+        let connectorSpans = TreeViewHelpers.buildConnectorSpans(row, color: style.connectorColor(in: theme))
         let indicatorSpan = TreeViewHelpers.expandIndicatorSpan(
             row,
             childrenKeyPath: childrenKeyPath,
             expandedIDs: expandedIDs,
             style: style,
+            theme: theme,
             isSelected: isSelected
         )
 
@@ -346,7 +387,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             Text(spans: connectorSpans + [indicatorSpan])
             content(row.item)
         }
-        .foreground(isSelected ? style.selectedForeground : .default)
+        .foreground(isSelected ? style.selectedForeground(in: theme) : theme.foreground)
         .background(bg)
     }
 }
@@ -442,7 +483,7 @@ enum TreeViewHelpers {
 
     // MARK: - Connectors
 
-    static func buildConnectorSpans<Element: Identifiable>(_ row: FlatRow<Element>, color: Color = .gray) -> [TextSpan] {
+    static func buildConnectorSpans<Element: Identifiable>(_ row: FlatRow<Element>, color: Color) -> [TextSpan] {
         guard row.depth > 0 else { return [] }
         var spans: [TextSpan] = []
 
@@ -469,10 +510,11 @@ enum TreeViewHelpers {
         _ row: FlatRow<Data.Element>,
         childrenKeyPath: KeyPath<Data.Element, Data?>,
         expandedIDs: Set<AnyHashableID>,
-        style: TreeViewStyle = .default,
-        isSelected: Bool = false
+        style: TreeViewStyle,
+        theme: any Theme,
+        isSelected: Bool
     ) -> TextSpan where Data.Element: Identifiable, Data.Element.ID: Sendable {
-        let color = isSelected ? style.selectedArrowColor : style.arrowColor
+        let color = isSelected ? style.selectedArrowColor(in: theme) : style.arrowColor(in: theme)
         if hasChildren(row.item, childrenKeyPath: childrenKeyPath) {
             if expandedIDs.contains(AnyHashableID(row.item.id)) {
                 return TextSpan("\(style.expandedArrow) ", foreground: color, bold: isSelected)
@@ -482,7 +524,7 @@ enum TreeViewHelpers {
         }
         // Leaf items: show arrow when selected, space when not
         if isSelected {
-            return TextSpan("\(style.collapsedArrow) ", foreground: style.selectedArrowColor, bold: true)
+            return TextSpan("\(style.collapsedArrow) ", foreground: color, bold: true)
         }
         return TextSpan("  ")
     }

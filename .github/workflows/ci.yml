@@ -89,6 +89,10 @@ jobs:
       # what guards it; each race this framework shipped sat behind one.
       - name: Concurrency escape hatches are listed
         run: python3 tools/scripts/check_escape_hatches.py
+      # Every colour the drawing code names is listed with why; anything
+      # else draws a theme role.
+      - name: Colour literals are listed
+        run: python3 tools/scripts/check_colour_literals.py
       - name: No tracker ids in the repository
         run: python3 tools/scripts/check_tracker_ids.py
 

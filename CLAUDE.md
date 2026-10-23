@@ -117,8 +117,8 @@ project files set on the `SmokeCase`; only what takes several apps, `swtui`
 or verify.py itself is an integration script. Ahead of
 the build, the macOS leg runs `tool_tests.py` — every `tools/tests/test_*.py`,
 the tests of the checks and of the runner's exit verdict
-(`tools/terminalui/verdict.py`) — then the escape-hatch and tracker-id
-checks. The PTY
+(`tools/terminalui/verdict.py`) — then the escape-hatch, colour-literal and
+tracker-id checks. The PTY
 harness is a merge gate, not a local nicety — a change that renders differently
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the
@@ -236,6 +236,11 @@ Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
 
 Components never hardcode colours: they read `@TerminalEnvironment(\.theme)`
 and ask for a semantic *role* (`accent`, `foregroundMuted`, `errorSubtle`, …).
+`check_colour_literals.py` (CI, verify.py) holds them to it: a colour named in
+drawing code fails unless `tools/colour-literals.txt` lists it with why. Read
+the theme once in `body` — `let theme = theme` — and pass `any Theme` down:
+each read of the wrapper copies the environment, and a read inside a
+`WidthReader` or `GeometryReader` closure runs against the wrong node.
 `Theme` (`Style/Theme.swift`) is a protocol of ~26 roles organised as ramps
 (foreground, background, status + `…Subtle`), each with a default in a protocol
 extension, so a conforming theme states only what it changes.
