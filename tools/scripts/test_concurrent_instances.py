@@ -82,19 +82,6 @@ def _swtui_ctl(*args: str, cwd: Optional[str] = None) -> subprocess.CompletedPro
     )
 
 
-def _release_socket(client) -> None:  # noqa: ANN001 — duck-typed
-    """The remote-control server accepts one client at a time. The
-    smoke harness's `Client` holds the socket open for the lifetime
-    of `spawn_and_connect`, which blocks any subprocess (like
-    `swtui ctl`) from connecting. Tests that use ctl-from-subprocess
-    must release the socket first; the runner's `finally` will
-    `close()` again (harmless idempotent)."""
-    try:
-        client.close()
-    except Exception:  # noqa: BLE001 — closing is best-effort
-        pass
-
-
 # ---------------------------------------------------------------------------
 # Case 1: two instances → two distinct dirs, both alive simultaneously
 # ---------------------------------------------------------------------------
@@ -177,12 +164,6 @@ def case_swtui_ctl_pid_targeted() -> None:
         with spawn_and_connect("Storybook") as (proc_b, client_b):
             client_b.wait_for_frame(1, timeout=2.0)
 
-            # Release both clients' sockets so the runtime's accept()
-            # loop is free for our subprocess swtui ctl calls. The
-            # remote-control server serves one client at a time.
-            _release_socket(client_a)
-            _release_socket(client_b)
-
             dir_a = Path(client_a.diag_dir) / "remote"
             dir_b = Path(client_b.diag_dir) / "remote"
 
@@ -234,9 +215,6 @@ def case_kill_pid_a_leaves_b_alive() -> None:
         with spawn_and_connect("Storybook") as (proc_b, client_b):
             client_b.wait_for_frame(1, timeout=2.0)
 
-            # Release both sockets — see case 3 comment.
-            _release_socket(client_a)
-            _release_socket(client_b)
 
             dir_a = Path(client_a.diag_dir) / "remote"
             dir_b = Path(client_b.diag_dir) / "remote"

@@ -382,16 +382,22 @@ public final class RemoteControlServer: @unchecked Sendable {
             listenFd = -1
             return
         }
-        listen(listenFd, 1)
+        // `pump()` accepts every waiting client when it runs, so the queue
+        // must hold all that connect between two runs. Past the backlog,
+        // macOS refuses a connection outright; Linux makes it wait.
+        listen(listenFd, SOMAXCONN)
         _ = fcntl(listenFd, F_SETFL, O_NONBLOCK)
     }
 
     /// Runtime hook — call once per frame BEFORE draining the event queue.
-    /// Accepts a new client if one is waiting, reads any pending bytes,
-    /// dispatches newline-separated JSON commands. Never blocks.
+    /// Accepts every waiting client, reads any pending bytes, dispatches
+    /// newline-separated JSON commands. Never blocks. With its descriptors
+    /// watched, it does nothing until one has something to read.
     @MainActor
     public func pump() {
-        activity.store(false, ordering: .releasing)
+        // The watches are level-triggered and rearmed below, so a descriptor
+        // with bytes left — past the 4 KiB one pump reads — fires again.
+        guard onActivity == nil || activity.exchange(false, ordering: .acquiringAndReleasing) else { return }
         acceptPending()
         for fd in clients.keys {
             readAvailable(from: fd)
@@ -424,13 +430,14 @@ public final class RemoteControlServer: @unchecked Sendable {
     private func readAvailable(from fd: Int32) {
         // Read up to 4 KiB per pump; the buffer keeps partial lines between
         // pumps so fragmented commands assemble correctly.
-        var scratch = [UInt8](repeating: 0, count: 4096)
-        let n = scratch.withUnsafeMutableBufferPointer { buf in
-            posixRead(fd, buf.baseAddress!, buf.count)
+        let n = withUnsafeTemporaryAllocation(of: UInt8.self, capacity: 4096) { scratch in
+            let bytesRead = posixRead(fd, scratch.baseAddress!, scratch.count)
+            if bytesRead > 0 {
+                clients[fd]?.append(scratch.baseAddress!, count: bytesRead)
+            }
+            return bytesRead
         }
-        if n > 0 {
-            clients[fd]?.append(scratch, count: n)
-        } else if n == 0 {
+        if n == 0 {
             // EOF — client closed.
             disconnect(fd)
         }

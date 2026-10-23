@@ -304,6 +304,11 @@ class Client:
         tab becomes ``tab``."""
         self._call("send_text", text=text)
 
+    @property
+    def socket_path(self) -> str:
+        """The control socket this client talks to."""
+        return self._path
+
     def attach_pty(self, master_fd: int) -> None:
         """Wire the spawned app's master-PTY file descriptor so ``paste()``
         can write bracketed-paste sequences directly into the app's stdin.
