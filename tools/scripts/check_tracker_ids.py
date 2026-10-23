@@ -32,8 +32,11 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # The Linear team, and the local board, whose prefix kanban.py owns. Named
 # trackers rather than a generic LETTERS-digits shape: that shape is also
 # every standard the comments are asked to cite (UTF-8, ECMA-48, RFC-1951).
+# In any case and with a hyphen, an underscore or nothing between: an id
+# slips in lowercased as a temporary file's prefix as often as it is cited.
 LINEAR_TEAM = "HYP"
-TRACKER_ID = re.compile(rf"\b(?:{LINEAR_TEAM}|{re.escape(ID_PREFIX)})-\d+\b")
+TRACKER_ID = re.compile(rf"(?<![A-Za-z0-9])(?:{LINEAR_TEAM}|{re.escape(ID_PREFIX)})[-_]?\d+(?!\d)",
+                        re.IGNORECASE)
 
 # Git's own binary test: a NUL byte in the content.
 BINARY_MARKER = b"\0"
