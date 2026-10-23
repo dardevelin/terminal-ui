@@ -179,6 +179,10 @@ public class AttributeNode: @unchecked Sendable {
     /// offset that differs is the reader moving it.
     var scrollPositionSeen: (id: AnyHashable?, offset: Int)?
 
+    /// For a scroll node under `.onScrollTargetVisibilityChange`: the ids last
+    /// reported as seen, so an unchanged set is not reported again.
+    var scrollVisibleSeen: [AnyHashable]?
+
     /// How far the scroll content actually *draws* along its axis, as opposed
     /// to how tall it declares itself. Stamped each render, nil until then.
     ///

@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -755,6 +755,23 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
                 Button("Jump to row 25") { position = 25 }
                 Text("position: \\(position ?? -1)")
+                """)
+        case .scrollTargetVisibility: return PageInfo(id: self, category: .modifiers, name: ".onScrollTargetVisibilityChange",
+            summary: "Learn which tagged views in a ScrollView the reader can see, whenever that changes. A view counts once the threshold share of it is in the viewport, half by default. Reported once a frame is drawn, so a transcript can keep its selection on screen as the reader scrolls.",
+            code: """
+                @State var visible: [Int] = []
+
+                ScrollView {
+                    VStack(spacing: 0) {
+                        ForEachWithID(0..<30, id: \\.self) { row in
+                            Text("row \\(row)").id(row)
+                        }
+                    }
+                }
+                .onScrollTargetVisibilityChange(idType: Int.self) { visible = $0 }
+                .frame(height: 5)
+
+                Text("seen: \\(visible)")
                 """)
         case .syntaxHighlighter: return PageInfo(id: self, category: .modifiers, name: ".syntaxHighlighter",
             summary: "Register a lexer for a language. Every view handed that language — CodeView, MarkdownView fences — uses it. Adds to the lexers inherited from above: Swift stays highlighted beside the new one.",

@@ -331,6 +331,19 @@ def storybook_scroll_position_binds_both_ways(app: Client) -> None:
                 f"scrolling should report the row now at the top: {app.preview_text()!r}")
 
 
+def storybook_scroll_target_visibility_follows_the_scroll(app: Client) -> None:
+    """The `.onScrollTargetVisibilityChange` page: the rows the reader can
+    see are reported at rest, and again as the view scrolls. Reported once
+    a frame is drawn, so the new set lands a frame after the keys."""
+    app.goto_page(".onScrollTargetVisibilityChange")
+    assert_true("seen: 0, 1, 2, 3, 4" in app.preview_text(),
+                f"the rows in sight should be reported at rest: {app.preview_text()!r}")
+    app.tab()
+    app.press_many("down", 4)
+    assert_true(app.wait_until(lambda c: "seen: 4, 5, 6, 7, 8" in c.preview_text()),
+                f"scrolling should report the rows now in sight: {app.preview_text()!r}")
+
+
 def storybook_button_arrows_traverse_siblings(app: Client) -> None:
     """On the Button page the preview is a VStack of two Buttons. After
     Tab into the preview, Down arrow must move focus to the next Button
@@ -2273,6 +2286,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.focusable_rows_read_their_focus", "Storybook", storybook_focusable_rows_read_their_focus),
     SmokeCase("storybook.theme_switch_reaches_unchanged_views", "Storybook", storybook_theme_switch_reaches_unchanged_views),
     SmokeCase("storybook.scroll_position_binds_both_ways", "Storybook", storybook_scroll_position_binds_both_ways),
+    SmokeCase("storybook.scroll_target_visibility_follows_the_scroll", "Storybook",
+              storybook_scroll_target_visibility_follows_the_scroll),
     SmokeCase("storybook.sidebar_scrolls_away_from_the_selection", "Storybook", storybook_sidebar_scrolls_away_from_the_selection),
     SmokeCase("storybook.textinput_cursor_follows_focus", "Storybook", storybook_textinput_cursor_follows_focus),
     SmokeCase("storybook.anchored_scroll_follows_its_tail", "Storybook", storybook_anchored_scroll_follows_its_tail),

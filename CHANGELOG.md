@@ -8,6 +8,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`.onScrollTargetVisibilityChange(idType:threshold:_:)`** — learn which
+  `.id(_:)`-tagged views in a `ScrollView` the reader can see, whenever that
+  set changes. A view counts once `threshold` of it is in the viewport,
+  half by default. Reported once a frame is drawn, so the offset a tail
+  anchor or a position binding settled on is the one reported; what the
+  action sets is drawn in the next frame. SwiftUI's API, with `.id(_:)`
+  marking the targets.
 - **`BorderStyle.halfBlock`** — a frame of half blocks, `▛▀▜ ▌ ▐ ▙▄▟`, each
   leaning toward the content, so it hugs what it encloses. On the leading
   edge alone, `.border(.halfBlock, edges: .leading)`, it is the thick `▌`

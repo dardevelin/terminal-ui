@@ -43,6 +43,7 @@ final class StorybookState {
     var loudTheme: Bool = false
     var anchoredLines: Int = 12
     var positionedRow: Int? = 0
+    var visibleRows: [Int] = []
     var pickerTheme: StorybookTheme = .dark
     var sliderVolume: Double = 40
     var stepperTabWidth: Int = 4
