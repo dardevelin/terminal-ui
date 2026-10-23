@@ -22,17 +22,7 @@ import Testing
 
 @MainActor
 private func render(_ view: some TerminalView, width: Int = 24, height: Int = 8) -> [String] {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    var env = EnvironmentValues()
-    env.terminalSize = TerminalSize(cols: width, rows: height)
-    GraphContext.$currentEnvironment.withValue(env) {
-        graph.update(from: view)
-        guard let root = graph.root else { return }
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        Layout.measureAndPlace(graph: root, in: rect)
-        GraphRenderer.render(root, into: &buffer, context: RenderContext(rect: rect))
-    }
+    let buffer = renderedBuffer(view, width: width, height: height)
     return (0..<buffer.height).map { y in
         (0..<buffer.width).map { x in String(buffer[x, y].character) }.joined()
     }

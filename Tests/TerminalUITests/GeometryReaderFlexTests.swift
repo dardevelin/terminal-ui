@@ -138,14 +138,7 @@ private struct Node: Identifiable {
             Tab("One") { Text("first page content") }
             Tab("Two") { Text("second page content") }
         }
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: 40, height: 10)
-        let rect = Rect(x: 0, y: 0, width: 40, height: 10)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
+        let buffer = renderedBuffer(view, width: 40, height: 10)
         let rows = (0..<10).map { y in (0..<40).map { String(buffer[$0, y].character) }.joined() }
         #expect(rows[0].contains("One"))
         #expect(rows.prefix(3).contains { $0.contains("first page content") },

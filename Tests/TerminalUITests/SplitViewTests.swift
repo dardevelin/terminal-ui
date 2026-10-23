@@ -145,13 +145,7 @@ struct SplitViewTests {
             children: [.leaf(Text("L")), .leaf(Text("R"))],
             ratios: [0.5, 0.5]
         ))
-        let graph = AttributeGraph()
-        graph.update(from: SplitView(state: state))
-        guard let root = graph.root else { Issue.record("no root"); return }
-        let rect = Rect(x: 0, y: 0, width: 10, height: 4)
-        Layout.measureAndPlace(graph: root, in: rect)
-        var buffer = CellBuffer(width: rect.width, height: rect.height)
-        GraphRenderer.render(root, into: &buffer, context: .init(rect: rect))
+        let buffer = renderedBuffer(SplitView(state: state), width: 10, height: 4)
         // 50/50 of 10 cols = 5 + 4 + 1 divider col. Divider sits at col 5
         // (after left child of width 5, before right child).
         // Spec: vertical bar `│` for horizontal-axis splits.
@@ -168,13 +162,7 @@ struct SplitViewTests {
             children: [.leaf(Text("T")), .leaf(Text("B"))],
             ratios: [0.5, 0.5]
         ))
-        let graph = AttributeGraph()
-        graph.update(from: SplitView(state: state))
-        guard let root = graph.root else { Issue.record("no root"); return }
-        let rect = Rect(x: 0, y: 0, width: 10, height: 5)
-        Layout.measureAndPlace(graph: root, in: rect)
-        var buffer = CellBuffer(width: rect.width, height: rect.height)
-        GraphRenderer.render(root, into: &buffer, context: .init(rect: rect))
+        let buffer = renderedBuffer(SplitView(state: state), width: 10, height: 5)
         // 50/50 of 5 rows = 2 + 2 + 1 divider row. Divider row at y=2.
         // Spec: horizontal bar `─` for vertical-axis splits.
         #expect(buffer[0, 2].character == "─",

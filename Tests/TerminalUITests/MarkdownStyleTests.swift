@@ -27,26 +27,7 @@ private let blue = Color.rgb(0, 0, 200)
 
 @MainActor
 private func render(_ view: some TerminalView, width: Int = 30, height: Int) -> CellBuffer {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    let rect = Rect(x: 0, y: 0, width: width, height: height)
-    var env = EnvironmentValues()
-    env.theme = LoudTheme()
-    env.terminalSize = TerminalSize(cols: width, rows: height)
-    GraphContext.$currentEnvironment.withValue(env) {
-        GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
-    }
-    return buffer
-}
-
-private func row(_ buffer: CellBuffer, _ y: Int) -> String {
-    var line = String((0..<buffer.width).map { buffer[$0, y].character })
-    while line.hasSuffix(" ") { line.removeLast() }
-    return line
+    renderedBuffer(view, width: width, height: height, theme: LoudTheme())
 }
 
 /// The first cell on row `y` showing `character`.
@@ -90,7 +71,7 @@ struct MarkdownStyleTests {
         var style = MarkdownStyle()
         style.h2.prefix = "## "
         let buffer = render(MarkdownView("## Two").markdownStyle(style), height: 1)
-        #expect(row(buffer, 0) == "## Two")
+        #expect(buffer.text(row: 0) == "## Two")
         // The marker is drawn in the heading's own style.
         #expect(cell("#", onRow: 0, in: buffer)?.style.foreground == LoudTheme().accent)
         #expect(cell("#", onRow: 0, in: buffer)?.style.bold == true)
@@ -160,7 +141,7 @@ struct MarkdownStyleTests {
         var style = MarkdownStyle()
         style.inlineCode = .init(foreground: red, background: blue, prefix: " ", suffix: " ")
         let buffer = render(MarkdownView("a `x` b").markdownStyle(style), height: 1)
-        #expect(row(buffer, 0) == "a  x  b")
+        #expect(buffer.text(row: 0) == "a  x  b")
         let chip = (2...4).map { buffer[$0, 0] }
         #expect(chip.allSatisfy { $0.style.background == blue })
         #expect(chip[1].style.foreground == red)

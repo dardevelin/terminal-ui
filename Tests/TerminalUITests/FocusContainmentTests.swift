@@ -527,12 +527,7 @@ struct ModalOcclusionTests {
 struct ModalPresentationScopeTests {
 
     private func screen(width: Int, height: Int, _ view: some TerminalView) -> [String] {
-        let graph = AttributeGraph()
-        graph.update(from: view)
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        Layout.measureAndPlace(graph: graph.root!, in: rect)
-        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+        let buffer = renderedBuffer(view, width: width, height: height)
         return (0..<height).map { y in
             var row = ""
             for x in 0..<width { row.append(buffer[x, y].character) }

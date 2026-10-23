@@ -30,12 +30,6 @@ private func render(_ view: some TerminalView, width: Int, height: Int) -> (Attr
     return (graph, buffer)
 }
 
-private func row(_ buffer: CellBuffer, _ y: Int) -> String {
-    var line = String((0..<buffer.width).map { buffer[$0, y].character })
-    while line.hasSuffix(" ") { line.removeLast() }
-    return line
-}
-
 /// The first node in the tree that is a reader.
 private func reader(in node: AttributeNode) -> AttributeNode? {
     if node.readerSizing != nil { return node }
@@ -66,8 +60,8 @@ struct ReaderSizingTests {
             GeometryReader { size in Text("\(size.width)x\(size.height)") }
             Text("bottom")
         }, width: 12, height: 6)
-        #expect(row(buffer, 1) == "12x4")
-        #expect(row(buffer, 5) == "bottom")
+        #expect(buffer.text(row: 1) == "12x4")
+        #expect(buffer.text(row: 5) == "bottom")
     }
 
     // MARK: - WidthReader
@@ -81,8 +75,8 @@ struct ReaderSizingTests {
         // starts on the next row.
         let rows = TextLayout.wrapWords(sentence, width: 20).count
         #expect(rows > 1)
-        #expect(row(buffer, rows - 1) != "")
-        #expect(row(buffer, rows) == "below")
+        #expect(buffer.text(row: rows - 1) != "")
+        #expect(buffer.text(row: rows) == "below")
     }
 
     @Test func aWidthReaderIsHandedTheWidthItIsGiven() {
@@ -90,7 +84,7 @@ struct ReaderSizingTests {
             Text("ab")
             WidthReader { width in Text("w=\(width)") }
         }, width: 12, height: 1)
-        #expect(row(buffer, 0) == "abw=10")
+        #expect(buffer.text(row: 0) == "abw=10")
     }
 
     /// The inversion this replaces: measuring at alternating widths must give

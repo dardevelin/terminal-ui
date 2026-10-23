@@ -32,26 +32,7 @@ private struct LoudTheme: Theme {
 @MainActor
 private func render(_ view: some TerminalView, width: Int, height: Int,
                     theme: any Theme = LoudTheme()) -> CellBuffer {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    let rect = Rect(x: 0, y: 0, width: width, height: height)
-    var env = EnvironmentValues()
-    env.theme = theme
-    env.terminalSize = TerminalSize(cols: width, rows: height)
-    GraphContext.$currentEnvironment.withValue(env) {
-        GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
-    }
-    return buffer
-}
-
-private func row(_ buffer: CellBuffer, _ y: Int) -> String {
-    var line = String((0..<buffer.width).map { buffer[$0, y].character })
-    while line.hasSuffix(" ") { line.removeLast() }
-    return line
+    renderedBuffer(view, width: width, height: height, theme: theme)
 }
 
 /// Foreground of the first cell on row `y` showing `character`.
@@ -158,32 +139,32 @@ struct CodeHighlightingTests {
 
     @Test func numbersCountFromTheFirstLineAndAlign() {
         let buffer = render(CodeView("a\nb", lineNumbers: true, firstLineNumber: 9), width: 10, height: 2)
-        #expect(row(buffer, 0) == " 9  a")
-        #expect(row(buffer, 1) == "10  b")
+        #expect(buffer.text(row: 0) == " 9  a")
+        #expect(buffer.text(row: 1) == "10  b")
         #expect(foreground(of: "9", onRow: 0, in: buffer) == LoudTheme().foregroundMuted)
     }
 
     @Test func aWrappedLineContinuesUnderItsCodeNotTheGutter() {
         let buffer = render(CodeView("aaaa bbbb", lineNumbers: true, firstLineNumber: 7), width: 8, height: 2)
-        #expect(row(buffer, 0) == "7  aaaa")
-        #expect(row(buffer, 1) == "   bbbb")
+        #expect(buffer.text(row: 0) == "7  aaaa")
+        #expect(buffer.text(row: 1) == "   bbbb")
     }
 
     @Test func truncationCutsEachLineWithAnEllipsis() {
         let view = CodeView("aaaa bbbb", lineNumbers: true, firstLineNumber: 7).wrap(.truncate(.tail))
-        #expect(row(render(view, width: 8, height: 1), 0) == "7  aaaa…")
+        #expect(render(view, width: 8, height: 1).text(row: 0) == "7  aaaa…")
     }
 
     @Test func aBlankLineKeepsItsRow() {
         let buffer = render(CodeView("a\n\nb"), width: 5, height: 3)
-        #expect(row(buffer, 0) == "a")
-        #expect(row(buffer, 1) == "")
-        #expect(row(buffer, 2) == "b")
+        #expect(buffer.text(row: 0) == "a")
+        #expect(buffer.text(row: 1) == "")
+        #expect(buffer.text(row: 2) == "b")
     }
 
     @Test func oneTrailingNewlineEndsTheLastLine() {
         let buffer = render(CodeView("a\nb\n", lineNumbers: true), width: 6, height: 3)
-        #expect(row(buffer, 2) == "")
+        #expect(buffer.text(row: 2) == "")
     }
 
     @Test func anUnregisteredLanguageIsDrawnPlain() {

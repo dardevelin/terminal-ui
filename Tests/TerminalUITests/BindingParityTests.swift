@@ -89,14 +89,7 @@ struct BindingParityTests {
     @Test func aControlCanBeHandedADerivedBinding() {
         var storage = Settings(isMuted: true)
         let settings = Binding(get: { storage }, set: { storage = $0 })
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: 20, height: 1)
-        let rect = Rect(x: 0, y: 0, width: 20, height: 1)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: Toggle("Muted", isOn: settings.isMuted))
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
+        let buffer = renderedBuffer(Toggle("Muted", isOn: settings.isMuted), width: 20, height: 1)
         let text = String((0..<buffer.width).map { buffer[$0, 0].character })
         #expect(text.hasPrefix("[x] Muted"))
     }

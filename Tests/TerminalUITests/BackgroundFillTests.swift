@@ -11,19 +11,12 @@ import Testing
 @MainActor
 @Suite struct BackgroundFillTests {
     @Test func backgroundPaintsEveryCellOfTheRect() {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: 12, height: 4)
-        let rect = Rect(x: 0, y: 0, width: 12, height: 4)
         let view = VStack {
             Text("hi")
             Spacer()
         }
         .background(.blue)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
+        let buffer = renderedBuffer(view, width: 12, height: 4)
         for y in 0..<4 {
             for x in 0..<12 {
                 #expect(buffer[x, y].style.background == .blue,
