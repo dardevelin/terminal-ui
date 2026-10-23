@@ -12,7 +12,8 @@ extension SelfPipe {
     }
 }
 
-// File scope, where `write` is the system call and not the member above.
-private func writeAll(_ bytes: [UInt8], to descriptor: Int32) {
+/// Writes `bytes` to `descriptor` in one call. File scope, where `write` is
+/// the system call and not the member above.
+func writeAll(_ bytes: [UInt8], to descriptor: Int32) {
     _ = bytes.withUnsafeBufferPointer { write(descriptor, $0.baseAddress, $0.count) }
 }

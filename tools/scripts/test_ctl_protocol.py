@@ -361,6 +361,30 @@ def case_clients_connecting_at_once_are_all_served() -> None:
                 sock.close()
 
 
+def case_a_client_that_does_not_read_holds_up_no_one() -> None:
+    """A client asks for the whole tree, several times over, and never reads
+    the replies; the app goes on answering everyone else and drawing.
+    Regression: a reply bigger than the socket's buffer was written in a
+    loop that slept until the client read it, on the app's main thread."""
+    with spawn_and_connect("Storybook") as (_proc, client):
+        stalled = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            stalled.connect(client.socket_path)
+            requests = b"".join(json.dumps({"id": index, "cmd": "query_tree"}).encode() + b"\n"
+                                for index in range(10))
+            stalled.sendall(requests)
+            client.ping()
+            before = client.frame_number()
+            client.send_key("down")
+            assert client.frame_number() > before, "the app stopped drawing"
+            # Read at last, the stalled client is answered every request, in order.
+            stalled.settimeout(10.0)
+            replies = stalled.makefile("rb")
+            ids = [json.loads(replies.readline())["id"] for _ in range(10)]
+            assert ids == list(range(10)), f"replies came back as {ids}"
+        finally:
+            stalled.close()
+
 CASES = [
     ("ctl.kill_without_pid_refused",            case_kill_without_pid_refused),
     ("ctl.kill_all_refused",                    case_kill_all_refused),
@@ -372,6 +396,8 @@ CASES = [
     ("ctl.list_is_read_only",                   case_list_is_read_only),
     ("ctl.clients_connecting_at_once_are_all_served",
      case_clients_connecting_at_once_are_all_served),
+    ("ctl.a_client_that_does_not_read_holds_up_no_one",
+     case_a_client_that_does_not_read_holds_up_no_one),
 ]
 
 

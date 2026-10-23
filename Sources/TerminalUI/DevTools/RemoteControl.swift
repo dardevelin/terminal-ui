@@ -311,23 +311,41 @@ public struct CellSlice: Codable, Sendable {
 /// succeeded, so `swtui ctl kill` reported `status=quit-sent` against an app
 /// that never heard the command and never exited.
 public final class RemoteControlServer: @unchecked Sendable {
-    private var listenFd: Int32 = -1
-    /// Connected clients, each with the bytes read so far — a partial line
-    /// belongs to the connection that sent it, so the buffers cannot be shared.
-    private var clients: [Int32: Data] = [:]
-    /// Called, from a dispatch queue, when the listening socket or a client
-    /// has something to read — so a frame loop with nothing to do can sleep
-    /// until a command arrives instead of polling the socket. Nil leaves the
-    /// server to be pumped every frame.
+    /// One connected client. The protocol is one request, one response: a
+    /// client is served its next request only once its socket has taken the
+    /// last reply. One that does not read is answered nothing more, holds
+    /// only its own socket, and never holds up the frame loop.
+    private struct Connection {
+        let descriptor: WatchedDescriptor
+        /// The bytes read so far — a partial line belongs to the connection
+        /// that sent it, so the buffers cannot be shared.
+        var received = Data()
+        /// What the socket has not yet taken of the last reply.
+        var unsent = Data()
+        /// While `onActivity` is set: one watch for requests, one for room
+        /// to write a reply the socket could not take at once.
+        var readWatch: ReadinessWatch?
+        var writeWatch: ReadinessWatch?
+    }
+
+    private var listener: WatchedDescriptor?
+    private var listenWatch: ReadinessWatch?
+    private var clients: [Int32: Connection] = [:]
+    /// Called, from a dispatch queue, when a client connects, sends
+    /// something, or has room for the rest of its reply — so a frame loop
+    /// with nothing to do can sleep until then instead of polling the
+    /// socket. Nil leaves the server to be pumped every frame.
     private let onActivity: (@Sendable () -> Void)?
-    /// One per descriptor while `onActivity` is set; each closes its
-    /// descriptor when released.
-    private var watches: [Int32: ReadinessWatch] = [:]
     /// Set when a watch fires, cleared by `pump()`.
     private let activity = Atomic<Bool>(false)
 
-    /// Whether a client has connected or sent something that `pump()` has
-    /// not yet read. Any thread.
+    /// Room in each client's socket for a reply. A whole app's tree is tens
+    /// of KiB and macOS gives a local socket 8 KiB, so a reply went out over
+    /// as many wakeups. Linux doubles the request, up to its own maximum.
+    static let sendBufferBytes: Int32 = 512 * 1024
+
+    /// Whether a client has connected, sent something, or had room made for
+    /// its reply that `pump()` has not yet seen to. Any thread.
     public var hasPendingActivity: Bool {
         activity.load(ordering: .acquiring)
     }
@@ -359,36 +377,31 @@ public final class RemoteControlServer: @unchecked Sendable {
         self.path = path
         self.dispatcher = dispatcher
         self.onActivity = onActivity
-        setupSocket()
-        watch(listenFd)
+        if let fd = Self.listeningSocket(at: path) {
+            let listener = WatchedDescriptor(fd)
+            self.listener = listener
+            listenWatch = watch(listener, until: .readable)
+        }
     }
 
-    /// Starts watching `fd` for something to read, when there is anyone to
-    /// tell.
-    private func watch(_ fd: Int32) {
-        guard fd >= 0, let onActivity else { return }
-        watches[fd] = ReadinessWatch(fd: fd) { [weak self] in
+    /// A watch on `descriptor` that wakes the frame loop, when there is
+    /// anyone to tell.
+    private func watch(_ descriptor: WatchedDescriptor, until readiness: ReadinessWatch.Readiness) -> ReadinessWatch? {
+        guard let onActivity else { return nil }
+        return ReadinessWatch(descriptor, until: readiness) { [weak self] in
             self?.activity.store(true, ordering: .releasing)
             onActivity()
         }
     }
 
-    /// Closes `fd` — through its watch when it has one, since a dispatch
-    /// source must be cancelled before its descriptor is closed.
-    private func closeDescriptor(_ fd: Int32) {
-        if watches.removeValue(forKey: fd) == nil {
-            close(fd)
-        }
-    }
-
-    private func setupSocket() {
+    private static func listeningSocket(at path: String) -> Int32? {
         unlink(path)
         #if canImport(Glibc)
-        listenFd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
+        let fd = socket(AF_UNIX, Int32(SOCK_STREAM.rawValue), 0)
         #else
-        listenFd = socket(AF_UNIX, SOCK_STREAM, 0)
+        let fd = socket(AF_UNIX, SOCK_STREAM, 0)
         #endif
-        guard listenFd >= 0 else { return }
+        guard fd >= 0 else { return nil }
 
         var addr = sockaddr_un()
         addr.sun_family = sa_family_t(AF_UNIX)
@@ -399,85 +412,98 @@ public final class RemoteControlServer: @unchecked Sendable {
         }
         let bindResult = withUnsafePointer(to: &addr) { ptr in
             ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sockPtr in
-                bind(listenFd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
+                bind(fd, sockPtr, socklen_t(MemoryLayout<sockaddr_un>.size))
             }
         }
         if bindResult < 0 {
-            close(listenFd)
-            listenFd = -1
-            return
+            close(fd)
+            return nil
         }
         // `pump()` accepts every waiting client when it runs, so the queue
         // must hold all that connect between two runs. Past the backlog,
         // macOS refuses a connection outright; Linux makes it wait.
-        listen(listenFd, SOMAXCONN)
-        _ = fcntl(listenFd, F_SETFL, O_NONBLOCK)
+        listen(fd, SOMAXCONN)
+        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
+        return fd
     }
 
     /// Runtime hook — call once per frame BEFORE draining the event queue.
-    /// Accepts every waiting client, reads any pending bytes, dispatches
-    /// newline-separated JSON commands. Never blocks. With its descriptors
-    /// watched, it does nothing until one has something to read.
+    /// Accepts every waiting client, then serves each. Never blocks. With
+    /// its descriptors watched, it does nothing until one is ready.
     @MainActor
     public func pump() {
-        // The watches are level-triggered and rearmed below, so a descriptor
-        // with bytes left — past the 4 KiB one pump reads — fires again.
         guard onActivity == nil || activity.exchange(false, ordering: .acquiringAndReleasing) else { return }
         acceptPending()
-        for fd in clients.keys {
-            readAvailable(from: fd)
-            // The read may have hung up the connection.
-            guard clients[fd] != nil else { continue }
-            processCompleteLines(from: fd)
+        // A snapshot of the keys: serving writes to `clients`, and a write
+        // while its keys are iterated copies every buffer in it.
+        for fd in Array(clients.keys) {
+            serve(fd)
         }
-        // What woke the loop has been read; anything that arrives from here
-        // on wakes it again.
-        for watch in watches.values {
-            watch.rearm()
-        }
+        // Watches are level-triggered: a client still waiting fires again.
+        listenWatch?.rearm()
     }
 
     /// Drain the listen backlog. `accept` is non-blocking, so this returns as
     /// soon as nothing is waiting.
     @MainActor
     private func acceptPending() {
-        guard listenFd >= 0 else { return }
+        guard let listener else { return }
         while true {
-            let accepted = accept(listenFd, nil, nil)
+            let accepted = accept(listener.fd, nil, nil)
             guard accepted >= 0 else { return }
             _ = fcntl(accepted, F_SETFL, O_NONBLOCK)
-            clients[accepted] = Data()
-            watch(accepted)
+            var sendBufferBytes = Self.sendBufferBytes
+            _ = setsockopt(accepted, SOL_SOCKET, SO_SNDBUF, &sendBufferBytes, socklen_t(MemoryLayout<Int32>.size))
+            let descriptor = WatchedDescriptor(accepted)
+            clients[accepted] = Connection(descriptor: descriptor, readWatch: watch(descriptor, until: .readable))
         }
+    }
+
+    /// Writes what `fd`'s socket takes of its last reply and, once it has
+    /// taken all of it, reads and answers the client's requests one by one.
+    /// The read watch is rearmed only then: a client with a reply unread
+    /// would otherwise wake the loop for requests it will not be served.
+    @MainActor
+    private func serve(_ fd: Int32) {
+        guard flush(fd) else { return }
+        readAvailable(from: fd)
+        while let line = nextLine(from: fd) {
+            handleLine(line, from: fd)
+            guard flush(fd) else { return }
+        }
+        clients[fd]?.readWatch?.rearm()
     }
 
     @MainActor
     private func readAvailable(from fd: Int32) {
         // Read up to 4 KiB per pump; the buffer keeps partial lines between
         // pumps so fragmented commands assemble correctly.
-        let n = withUnsafeTemporaryAllocation(of: UInt8.self, capacity: 4096) { scratch in
+        let bytesRead = withUnsafeTemporaryAllocation(of: UInt8.self, capacity: 4096) { scratch in
             let bytesRead = posixRead(fd, scratch.baseAddress!, scratch.count)
             if bytesRead > 0 {
-                clients[fd]?.append(scratch.baseAddress!, count: bytesRead)
+                clients[fd]?.received.append(scratch.baseAddress!, count: bytesRead)
             }
             return bytesRead
         }
-        if n == 0 {
+        if bytesRead == 0 {
             // EOF — client closed.
             disconnect(fd)
         }
-        // n < 0 with EAGAIN is the normal "no data yet" case — ignore.
+        // bytesRead < 0 with EAGAIN is the normal "no data yet" case — ignore.
     }
 
-    @MainActor
-    private func processCompleteLines(from fd: Int32) {
-        while let buffer = clients[fd],
-              let newlineIdx = buffer.firstIndex(of: RemoteControlProtocol.newline) {
-            let line = buffer[..<newlineIdx]
-            clients[fd]?.removeSubrange(...newlineIdx)
-            guard !line.isEmpty else { continue }
-            handleLine(Data(line), from: fd)
+    /// The next whole request `fd` has sent, without its newline; nil when
+    /// none has arrived whole.
+    private func nextLine(from fd: Int32) -> Data? {
+        while let received = clients[fd]?.received,
+              let newline = received.firstIndex(of: RemoteControlProtocol.newline) {
+            let line = received[..<newline]
+            clients[fd]?.received.removeSubrange(...newline)
+            if !line.isEmpty {
+                return Data(line)
+            }
         }
+        return nil
     }
 
     @MainActor
@@ -489,63 +515,99 @@ public final class RemoteControlServer: @unchecked Sendable {
         } catch {
             response = RemoteResponse(id: -1, ok: false, error: "decode: \(error)")
         }
-        send(response, to: fd)
-    }
-
-    private func send(_ response: RemoteResponse, to fd: Int32) {
         guard var data = try? encoder.encode(response) else { return }
         data.append(RemoteControlProtocol.newline)
-        // Loop on write — the client socket is non-blocking, so a single
-        // write can drain short. Large responses (query_tree over a full
-        // Storybook app) are tens of kilobytes; without this loop, clients
-        // hung waiting for the missing tail. EAGAIN spins briefly; a hard
-        // failure (EPIPE, etc.) tears down the connection.
-        var sent = 0
-        data.withUnsafeBytes { buf in
-            let base = buf.baseAddress!
-            let total = buf.count
-            while sent < total {
-                let n = socketWrite(fd, base + sent, total - sent)
-                if n > 0 {
-                    sent += n
-                } else if errno == EAGAIN || errno == EINTR {
-                    // Socket buffer full. Yield very briefly; the client is
-                    // actively reading so this clears in microseconds. We
-                    // don't have a poll loop here — this is the hot path
-                    // for command responses, so a tight retry is cheapest.
-                    usleep(200)
-                } else {
-                    break
-                }
-            }
-        }
-        if sent == 0 {
-            disconnect(fd)
-        }
+        clients[fd]?.unsent = data
     }
 
+    /// Writes as much of `fd`'s last reply as its socket takes now, and says
+    /// whether it took all of it. A reply larger than the socket's buffer
+    /// goes out over several pumps as the client reads, each woken by a
+    /// watch for room. Any failure but a full buffer drops the client.
+    private func flush(_ fd: Int32) -> Bool {
+        guard var connection = clients[fd] else { return false }
+        while !connection.unsent.isEmpty {
+            let bytesWritten = connection.unsent.withUnsafeBytes { socketWrite(fd, $0.baseAddress!, $0.count) }
+            let error = errno
+            if bytesWritten > 0 {
+                connection.unsent = connection.unsent.dropFirst(bytesWritten)
+            } else if bytesWritten < 0, error == EINTR {
+                continue
+            } else if bytesWritten < 0, error == EAGAIN {
+                if let writeWatch = connection.writeWatch {
+                    writeWatch.rearm()
+                } else {
+                    connection.writeWatch = watch(connection.descriptor, until: .writable)
+                }
+                clients[fd] = connection
+                return false
+            } else {
+                disconnect(fd)
+                return false
+            }
+        }
+        connection.unsent = Data()
+        clients[fd] = connection
+        return true
+    }
+
+    /// Dropping the connection stops its watches and closes its descriptor.
     private func disconnect(_ fd: Int32) {
-        guard clients.removeValue(forKey: fd) != nil else { return }
-        closeDescriptor(fd)
+        clients[fd] = nil
     }
 
     deinit {
-        for fd in clients.keys { closeDescriptor(fd) }
-        if listenFd >= 0 { closeDescriptor(listenFd) }
         unlink(path)
     }
 }
 
-/// Calls `onReady` when a descriptor has something to read, then holds off
+/// A descriptor the server watches, closed once no watch needs it: every
+/// dispatch source on a descriptor must be cancelled before it closes, and a
+/// client's may have two. Each source's cancel handler holds it until the
+/// cancel is done.
+private final class WatchedDescriptor: Sendable {
+    let fd: Int32
+
+    init(_ fd: Int32) {
+        self.fd = fd
+    }
+
+    deinit {
+        close(fd)
+    }
+}
+
+/// Calls `onReady` when a descriptor can be read, or written, then holds off
 /// until ``rearm()``.
 ///
-/// A dispatch read source fires for as long as data waits, but the data is
-/// read later, on the main actor, by `pump()`; left running, the source would
-/// spin a dispatch thread until then. So it suspends itself when it fires,
-/// and `pump()` resumes it once it has read.
+/// A dispatch source fires for as long as the descriptor is ready, but the
+/// reading or writing happens later, on the main actor, in `pump()`; left
+/// running, the source would spin a dispatch thread until then. So it
+/// suspends itself when it fires, and `pump()` resumes it once it is done.
 private final class ReadinessWatch: Sendable {
+    enum Readiness {
+        case readable
+        case writable
+    }
+
+    /// The source as made. Held as `any DispatchSourceProtocol`, it could not
+    /// go under the lock without a warning on Linux, where the sources are
+    /// not `Sendable`: the conversion is not known to leave the value the
+    /// lock's alone.
+    private enum Source {
+        case read(any DispatchSourceRead)
+        case write(any DispatchSourceWrite)
+
+        var dispatchSource: any DispatchSourceProtocol {
+            switch self {
+            case .read(let source): source
+            case .write(let source): source
+            }
+        }
+    }
+
     private struct State {
-        let source: any DispatchSourceRead
+        let source: Source
         /// Whether the source is resumed. Dispatch traps on an unbalanced
         /// resume, and on cancelling or releasing a suspended source.
         var armed: Bool
@@ -555,43 +617,47 @@ private final class ReadinessWatch: Sendable {
     /// on every platform, and every call on it must agree with `armed`.
     private let state: Mutex<State>
 
-    init(fd: Int32, onReady: @escaping @Sendable () -> Void) {
-        let source = DispatchSource.makeReadSource(fileDescriptor: fd, queue: .global())
-        source.setCancelHandler {
-            close(fd)
+    init(_ descriptor: WatchedDescriptor, until readiness: Readiness, onReady: @escaping @Sendable () -> Void) {
+        let source: Source = switch readiness {
+        case .readable: .read(DispatchSource.makeReadSource(fileDescriptor: descriptor.fd, queue: .global()))
+        case .writable: .write(DispatchSource.makeWriteSource(fileDescriptor: descriptor.fd, queue: .global()))
         }
         state = Mutex(State(source: source, armed: true))
         state.withLock { state in
-            state.source.setEventHandler { [weak self] in
+            state.source.dispatchSource.setCancelHandler {
+                withExtendedLifetime(descriptor) {}
+            }
+            state.source.dispatchSource.setEventHandler { [weak self] in
                 self?.disarm()
                 onReady()
             }
-            state.source.resume()
+            state.source.dispatchSource.resume()
         }
     }
 
     func rearm() {
         state.withLock { state in
             guard !state.armed else { return }
-            state.source.resume()
+            state.source.dispatchSource.resume()
             state.armed = true
         }
     }
 
-    /// Releasing the watch stops it and closes the descriptor.
+    /// Releasing the watch stops it; its descriptor closes once no other
+    /// watch holds it.
     deinit {
         state.withLock { state in
             if !state.armed {
-                state.source.resume()
+                state.source.dispatchSource.resume()
             }
-            state.source.cancel()
+            state.source.dispatchSource.cancel()
         }
     }
 
     private func disarm() {
         state.withLock { state in
             guard state.armed else { return }
-            state.source.suspend()
+            state.source.dispatchSource.suspend()
             state.armed = false
         }
     }
