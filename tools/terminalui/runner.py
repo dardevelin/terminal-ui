@@ -139,6 +139,7 @@ def spawn_and_connect(target: str,
                       cols: int = 140,
                       rows: int = 40,
                       connect_timeout: float = BOOT_TIMEOUT,
+                      connect: bool = True,
                       ) -> Iterator[Tuple[subprocess.Popen, Client]]:
     """Run ``<build_dir>/<target>`` in a pseudo-TTY, wait for its control
     socket, yield (process, connected Client). Kills + closes on exit.
@@ -152,6 +153,10 @@ def spawn_and_connect(target: str,
     Per-config integration tests pass a temp dir holding a custom
     ``.terminalui/terminalui.toml`` so they exercise the production
     config-loading path without touching the real project tree.
+
+    ``connect=False`` is for an app that should have no socket: the client
+    is handed over unconnected, with its terminal, process and data dir,
+    and the app is still checked on the way out.
     """
     root = _repo_root()
     resolved_build_dir = Path(build_dir or DEFAULT_BUILD_DIR)
@@ -263,11 +268,9 @@ def spawn_and_connect(target: str,
         # but FNV-1a-encoded; cheaper to glob `terminalui-*-{pid}`
         # than reimplement the hash in Python.
         diag_dir = _wait_for_diag_dir(proc.pid, timeout=connect_timeout)
-        client = _wait_for_client(
-            proc.pid,
-            timeout=connect_timeout,
-            socket_dir=str(Path(diag_dir) / "remote"),
-        )
+        socket_dir = str(Path(diag_dir) / "remote")
+        client = (_wait_for_client(proc.pid, timeout=connect_timeout, socket_dir=socket_dir)
+                  if connect else Client(pid=proc.pid, socket_dir=socket_dir))
         client.diag_dir = diag_dir
         # Hand the master FD to the client, which types into the app's
         # terminal and resizes it through it.
