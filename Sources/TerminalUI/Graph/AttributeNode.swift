@@ -193,6 +193,11 @@ public class AttributeNode: @unchecked Sendable {
     /// rather than as the end of the list.
     public var scrollDrawnExtent: Int?
 
+    /// For a vertical scroll node: the width render last laid its content
+    /// out at, and the viewport width it chose that for. The passes that
+    /// place the offset before render measure at it.
+    var scrollContentWidth: (viewport: Int, content: Int)?
+
     /// The cells this frame's render painted with a scrollbar and its edge
     /// indicators, or nil when the content fits and nothing was drawn.
     ///

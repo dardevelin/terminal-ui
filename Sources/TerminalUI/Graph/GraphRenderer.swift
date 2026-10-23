@@ -922,6 +922,7 @@ public enum GraphRenderer {
         case .vertical:
             let contentWidth = verticalContentWidth(of: contentChild, viewport: viewport,
                                                     showIndicators: showIndicators)
+            node.scrollContentWidth = (viewport.width, contentWidth)
             let contentHeight = measureHeight(contentChild, proposedWidth: contentWidth)
             guard contentHeight > 0, viewport.width > 0, viewport.height > 0 else { return }
 
@@ -1182,31 +1183,10 @@ public enum GraphRenderer {
         // Walk up from focused node to find scroll container ancestors
         var current = focusedNode
         while let parent = current.parent {
-            if case .layout(let info) = parent.kind, case .scroll(let axis) = info.kind {
-                guard let contentChild = parent.children.first else { break }
-
-                let focusedPosition = measureFocusedPosition(
-                    in: contentChild, focusedID: focusedID, axis: axis
-                )
-
-                if let (start, size) = focusedPosition {
-                    // Use the scroll node's rect from the previous frame for viewport size.
-                    // This is the actual allocated size after parent layout, not the terminal size.
-                    // On first frame rect is zero — fall back to terminal size.
-                    let scrollRect = parent.rect
-                    let viewportSize: Int
-                    switch axis {
-                    case .horizontal:
-                        viewportSize = scrollRect.width > 0 ? scrollRect.width : viewportWidth
-                    case .vertical:
-                        viewportSize = scrollRect.height > 0 ? scrollRect.height : viewportHeight
-                    }
-
-                    adjustScrollOffset(
-                        node: parent, axis: axis, focusedStart: start, focusedSize: size,
-                        viewportSize: viewportSize
-                    )
-                }
+            if let content = ScrollContent(of: parent, environment: scrollEnvironment(of: parent),
+                                           fallback: Size(width: viewportWidth, height: viewportHeight)),
+               let (start, size) = content.position(of: focusedID) {
+                adjustScrollOffset(node: parent, content: content, focusedStart: start, focusedSize: size)
             }
             current = parent
         }
@@ -1247,42 +1227,19 @@ public enum GraphRenderer {
         }
 
         // Is this a scroll container with an explicit target ID set?
-        if case .layout(let info) = node.kind,
-           case .scroll(let axis) = info.kind,
-           let targetID = currentEnv.scrollTargetID,
-           let contentChild = node.children.first
-        {
-            // Find the descendant whose subtree was tagged with .id(targetID).
-            if let targetNode = findExplicitlyIDedNode(in: contentChild, matching: targetID.id) {
-                let focusedPosition = measureFocusedPosition(
-                    in: contentChild, focusedID: targetNode.id, axis: axis
-                )
-                if let (start, size) = focusedPosition {
-                    let scrollRect = node.rect
-                    let viewportSize: Int
-                    switch axis {
-                    case .horizontal:
-                        viewportSize = scrollRect.width > 0 ? scrollRect.width : viewportWidth
-                    case .vertical:
-                        viewportSize = scrollRect.height > 0 ? scrollRect.height : viewportHeight
-                    }
-                    adjustScrollOffset(
-                        node: node, axis: axis, focusedStart: start, focusedSize: size,
-                        viewportSize: viewportSize
-                    )
-                }
-            }
+        let fallback = Size(width: viewportWidth, height: viewportHeight)
+        let isScroll = if case .layout(let info) = node.kind, case .scroll = info.kind { true } else { false }
+        if let targetID = currentEnv.scrollTargetID,
+           let contentChild = isScroll ? node.children.first : nil,
+           let targetNode = findExplicitlyIDedNode(in: contentChild, matching: targetID.id),
+           let content = ScrollContent(of: node, environment: currentEnv, fallback: fallback),
+           let (start, size) = content.position(of: targetNode.id) {
+            adjustScrollOffset(node: node, content: content, focusedStart: start, focusedSize: size)
         }
-        if case .layout(let info) = node.kind,
-           case .scroll(let axis) = info.kind,
-           let position = currentEnv.scrollPosition,
-           let contentChild = node.children.first
-        {
-            let viewportSize = axis == .horizontal
-                ? (node.rect.width > 0 ? node.rect.width : viewportWidth)
-                : (node.rect.height > 0 ? node.rect.height : viewportHeight)
-            followScrollPosition(position, of: node, axis: axis, content: contentChild,
-                                 viewportSize: viewportSize)
+        if isScroll, let position = currentEnv.scrollPosition {
+            followScrollPosition(position, of: node) {
+                ScrollContent(of: node, environment: currentEnv, fallback: fallback)
+            }
         }
         // Recurse — nested ScrollViews may each have their own target.
         for child in node.children {
@@ -1375,33 +1332,28 @@ public enum GraphRenderer {
     /// back. Neither changed, nothing moves: the binding is not re-applied,
     /// which is what lets a reader scroll away from the view it names.
     private static func followScrollPosition(_ position: ScrollPositionBinding, of node: AttributeNode,
-                                             axis: ScrollAxis, content: AttributeNode,
-                                             viewportSize: Int) {
+                                             content makeContent: () -> ScrollContent?) {
         let bound = position.get()
         if let seen = node.scrollPositionSeen, seen.id == bound {
-            guard node.scrollOffset != seen.offset else { return }
-            let reported = taggedID(at: node.scrollOffset, anchor: position.anchor, axis: axis,
-                                    content: content, viewportSize: viewportSize)
+            guard node.scrollOffset != seen.offset, let content = makeContent() else { return }
+            let reported = taggedID(at: node.scrollOffset, anchor: position.anchor, content: content)
             node.scrollPositionSeen = (reported, node.scrollOffset)
             if reported != bound { position.set(reported) }
             return
         }
-        if let bound, let target = findExplicitlyIDedNode(in: content, matching: bound),
-           let (start, size) = measureFocusedPosition(in: content, focusedID: target.id, axis: axis) {
+        if let bound, let content = makeContent(),
+           let target = findExplicitlyIDedNode(in: content.root, matching: bound),
+           let (start, size) = content.position(of: target.id) {
             if let anchor = position.anchor {
                 // Where the view sits in the viewport is where an anchor places
                 // a view of its size there — the alignment arithmetic layout
                 // uses, run backwards to an offset.
-                let inset = axis == .horizontal
-                    ? anchor.horizontal.offset(for: size, in: viewportSize)
-                    : anchor.vertical.offset(for: size, in: viewportSize)
-                let total = axis == .horizontal
-                    ? measureWidth(content)
-                    : measureHeight(content, proposedWidth: 0)
-                node.scrollOffset = max(0, min(start - inset, total - viewportSize))
+                let inset = content.axis == .horizontal
+                    ? anchor.horizontal.offset(for: size, in: content.viewportSize)
+                    : anchor.vertical.offset(for: size, in: content.viewportSize)
+                node.scrollOffset = max(0, min(start - inset, content.total - content.viewportSize))
             } else {
-                adjustScrollOffset(node: node, axis: axis, focusedStart: start, focusedSize: size,
-                                   viewportSize: viewportSize)
+                adjustScrollOffset(node: node, content: content, focusedStart: start, focusedSize: size)
             }
         }
         node.scrollPositionSeen = (bound, node.scrollOffset)
@@ -1411,105 +1363,26 @@ public enum GraphRenderer {
     /// `offset` — the top without an anchor. The innermost tag covering that
     /// row wins; where none covers it (a header between tagged rows), the
     /// next tagged view after it, then the last before it.
-    private static func taggedID(at offset: Int, anchor: Alignment?, axis: ScrollAxis,
-                                 content: AttributeNode, viewportSize: Int) -> AnyHashable? {
+    private static func taggedID(at offset: Int, anchor: Alignment?, content: ScrollContent) -> AnyHashable? {
         let inset = anchor.map { anchor in
-            axis == .horizontal
-                ? anchor.horizontal.offset(for: 1, in: viewportSize)
-                : anchor.vertical.offset(for: 1, in: viewportSize)
+            content.axis == .horizontal
+                ? anchor.horizontal.offset(for: 1, in: content.viewportSize)
+                : anchor.vertical.offset(for: 1, in: content.viewportSize)
         } ?? 0
         let point = offset + inset
-        var extents: [(id: AnyHashable, start: Int, end: Int)] = []
-        collectTaggedExtents(in: content, axis: axis, start: 0, into: &extents)
+        let extents = content.taggedExtents()
         if let covering = extents.last(where: { $0.start <= point && point < $0.end }) {
             return covering.id
         }
         return extents.first(where: { $0.start > point })?.id ?? extents.last?.id
     }
 
-    /// Every `.id(_:)`-tagged view under `node`, in order, with where it
-    /// starts and ends along `axis` — positions found the way
-    /// ``measureFocusedPosition(in:focusedID:axis:)`` finds one.
-    private static func collectTaggedExtents(in node: AttributeNode, axis: ScrollAxis, start: Int,
-                                             into extents: inout [(id: AnyHashable, start: Int, end: Int)]) {
-        if case .modifier(.explicitID(let id)) = node.kind {
-            let size = axis == .horizontal ? measureWidth(node) : measureHeight(node, proposedWidth: 0)
-            extents.append((id, start, start + size))
-        }
-        if case .layout(let info) = node.kind {
-            switch (info.kind, axis) {
-            case (.hstack, .horizontal), (.vstack, .vertical):
-                var position = start
-                for child in effectiveChildren(of: node) {
-                    collectTaggedExtents(in: child, axis: axis, start: position, into: &extents)
-                    position += axis == .horizontal ? measureWidth(child) : measureHeight(child, proposedWidth: 0)
-                }
-                return
-            default:
-                break
-            }
-        }
-        for child in node.children {
-            collectTaggedExtents(in: child, axis: axis, start: start, into: &extents)
-        }
-    }
-
-    /// Compute the position and size of the focused node within a content subtree.
-    /// Returns (start offset in scroll axis, size in scroll axis) or nil if not found.
-    ///
-    /// For HStack content: walks effective children, sums widths before the child
-    /// that contains the focused node.
-    /// For VStack content: same with heights.
-    /// For other node types: recurses into children.
-    private static func measureFocusedPosition(in node: AttributeNode, focusedID: NodeID,
-                                               axis: ScrollAxis) -> (start: Int, size: Int)? {
-        // Is this node (or its subtree) the focused node?
-        if node.id == focusedID {
-            let size = axis == .horizontal ? measureWidth(node) : measureHeight(node, proposedWidth: 0)
-            return (start: 0, size: size)
-        }
-
-        // If this is a layout node, compute child positions along its axis
-        if case .layout(let info) = node.kind {
-            let children = effectiveChildren(of: node)
-            let isMatchingAxis: Bool
-            switch (info.kind, axis) {
-            case (.hstack, .horizontal), (.vstack, .vertical): isMatchingAxis = true
-            default: isMatchingAxis = false
-            }
-
-            if isMatchingAxis {
-                // Children are laid out sequentially along the scroll axis
-                var position = 0
-                for child in children {
-                    if let result = measureFocusedPosition(in: child, focusedID: focusedID, axis: axis) {
-                        return (start: position + result.start, size: result.size)
-                    }
-                    position += axis == .horizontal ? measureWidth(child) : measureHeight(child, proposedWidth: 0)
-                }
-                return nil
-            }
-        }
-
-        // For non-matching layouts, modifiers, viewBody: recurse into children
-        for child in node.children {
-            if let result = measureFocusedPosition(in: child, focusedID: focusedID, axis: axis) {
-                return result
-            }
-        }
-        return nil
-    }
-
     /// Adjust a scroll node's offset to keep the focused element visible within the viewport.
-    private static func adjustScrollOffset(node: AttributeNode, axis: ScrollAxis,
-                                           focusedStart: Int, focusedSize: Int, viewportSize: Int) {
+    private static func adjustScrollOffset(node: AttributeNode, content: ScrollContent,
+                                           focusedStart: Int, focusedSize: Int) {
+        let viewportSize = content.viewportSize
         guard viewportSize > 0 else { return }
-
-        // Measure total content size
-        guard let contentChild = node.children.first else { return }
-        let totalContent = axis == .horizontal
-            ? measureWidth(contentChild)
-            : measureHeight(contentChild, proposedWidth: 0)
+        let totalContent = content.total
 
         // Content fits in viewport — no scroll needed
         guard totalContent > viewportSize else {
