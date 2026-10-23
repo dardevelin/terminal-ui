@@ -6,11 +6,13 @@ same bridge our smoke tests use. Steps:
 
 1. Skip unless this turn touched a ``.swift`` or ``.py`` file.
 2. Tear down any leftover debug apps + stale sockets.
-3. ``swift build`` — compile check (release build is deferred to CI).
-4. ``swift test`` — unit + component suites.
-5. ``storybook_walk.py`` — every Storybook page, as CI walks them.
-6. ``integration_suite.py`` — every ``verify_*`` and ``test_*`` script.
-7. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
+3. Repository checks: the tooling's own tests (``tool_tests.py``), then the
+   escape-hatch and tracker-id checks they test.
+4. ``swift build`` — compile check (release build is deferred to CI).
+5. ``swift test`` — unit + component suites.
+6. ``storybook_walk.py`` — every Storybook page, as CI walks them.
+7. ``integration_suite.py`` — every ``verify_*`` and ``test_*`` script.
+8. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
 
 Each failure prints the relevant output and exits with code 2 so the
 stop-hook surfaces it to the conversation.
@@ -123,12 +125,12 @@ def main() -> int:
 # Source-only checks, cheap enough to run ahead of the build: (step label,
 # script, what a failure means).
 REPOSITORY_CHECKS = (
+    ("tooling tests", "tools/scripts/tool_tests.py",
+     "a check the gate rests on misses a case"),
     ("escape hatches", "tools/scripts/check_escape_hatches.py",
      "a concurrency escape hatch is not listed with its guard"),
     ("tracker ids", "tools/scripts/check_tracker_ids.py",
      "a tracker id is in the repository"),
-    ("tracker id checker", "tools/scripts/test_check_tracker_ids.py",
-     "the tracker id checker misses a case"),
 )
 
 

@@ -8,7 +8,7 @@ must stay quiet, that it does not.
 
 Run::
 
-    python3 tools/scripts/test_check_tracker_ids.py
+    python3 tools/tests/test_check_tracker_ids.py
 
 Exit 0 on all green, 1 on any failure.
 """
@@ -21,7 +21,7 @@ import tempfile
 from pathlib import Path
 from typing import Callable
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import check_tracker_ids as checker  # noqa: E402
@@ -30,13 +30,16 @@ from terminalui.cases import run_cases  # noqa: E402
 
 BOARD_ID = f"{ID_PREFIX}-12"
 
+# Every case's repository, removed when the run ends.
+SCRATCH = tempfile.TemporaryDirectory(prefix="terminalui-tracker-tests-")
+
 
 def git(root: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
 
 
 def repo(files: dict[str, bytes], message: str = "Initial") -> Path:
-    root = Path(tempfile.mkdtemp())
+    root = Path(tempfile.mkdtemp(dir=SCRATCH.name))
     git(root, "init", "-q")
     for name, content in files.items():
         (root / name).write_bytes(content)

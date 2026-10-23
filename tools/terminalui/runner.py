@@ -18,8 +18,6 @@ unittest, or whatever you prefer. The runner just handles boilerplate.
 
 from __future__ import annotations
 
-import functools
-import mmap
 import os
 import pty
 import select
@@ -33,6 +31,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Iterator, Optional, Sequence, Tuple
 
+from . import verdict
 from .client import Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
 
 
@@ -70,28 +69,10 @@ _MOUSE_OFF = (
     b"\x1b[?1000l"
 )
 
-# Signals a TerminalUI app may die on without having crashed: its handler for
-# these restores the terminal and re-raises, so the parent sees the death by
-# the signal it sent (a shell reports it as 128 + signal). Any other signal
-# is a crash, and whether the terminal was restored is checked separately.
-_STOP_SIGNALS = {signal.SIGTERM, signal.SIGINT, signal.SIGHUP}
-
 # How long a case that kills the app on purpose waits for it to die. A
 # sanitized build symbolizes a report before it lets the process go, which
 # takes seconds.
 _EXPECTED_DEATH_TIMEOUT = 20.0
-
-# DEC private modes the framework turns on (`ANSIMode` in Terminal.swift),
-# each with the final byte that turns it on. The last time the app's output
-# sets one of them it must turn it off: otherwise the shell inherits it, and
-# a mouse mode left on types coordinates at the prompt.
-_MODES_TO_RESTORE = {
-    1049: b"h",  # alternate screen
-    1000: b"h", 1002: b"h", 1003: b"h", 1006: b"h",  # mouse tracking
-    2004: b"h",  # bracketed paste
-    25: b"l",    # cursor hidden
-}
-
 
 class AppExitedBadly(RemoteError):
     """The case's assertions passed, but the app did not end the way a
@@ -149,18 +130,6 @@ def _repo_root() -> Path:
 # shadow memory. Three seconds failed the first case of a TSan run straight
 # after its build.
 BOOT_TIMEOUT = 15.0
-
-# The symbol each sanitizer's runtime starts from, found in a binary built
-# with it whether the runtime is linked in (Linux) or loaded (macOS).
-_SANITIZER_SYMBOLS = {"thread": b"__tsan_init", "address": b"__asan_init"}
-
-
-@functools.lru_cache(maxsize=None)
-def _sanitizer_of(exe: Path) -> Optional[str]:
-    """The sanitizer ``exe`` was built with, if any."""
-    with open(exe, "rb") as binary, mmap.mmap(binary.fileno(), 0, access=mmap.ACCESS_READ) as image:
-        return next((name for name, symbol in _SANITIZER_SYMBOLS.items() if image.find(symbol) >= 0), None)
-
 
 @contextmanager
 def spawn_and_connect(target: str,
@@ -304,7 +273,7 @@ def spawn_and_connect(target: str,
         # terminal and resizes it through it.
         client.attach_pty(master)
         client.pid = proc.pid
-        client.sanitizer = _sanitizer_of(exe)
+        client.sanitizer = verdict.sanitizer_of(exe)
         client.pty_output = _output
         client.hang_up = _hang_up
 
@@ -332,7 +301,7 @@ def spawn_and_connect(target: str,
         # reads to the end of what the app wrote and then stops.
         drain_thread.join(timeout=2.0)
         _release_master()
-        sanitizer_reports = _read_sanitizer_reports(sanitizer_dir)
+        sanitizer_reports = verdict.read_sanitizer_reports(sanitizer_dir)
         shutil.rmtree(sanitizer_dir, ignore_errors=True)
         # An app asked to stop — SIGTERM, how this runner ends every app —
         # quits through its own teardown, which removes its PID-isolated
@@ -345,7 +314,7 @@ def spawn_and_connect(target: str,
         # A failing case already says what went wrong; this verdict is for
         # the cases that passed while the app crashed or raced underneath.
         if not case_failed and client is not None:
-            problems = _exit_problems(
+            problems = verdict.exit_problems(
                 returncode=proc.returncode,
                 had_to_kill=had_to_kill,
                 stopped_by_sigterm=stop == _STOPPED,
@@ -357,82 +326,6 @@ def spawn_and_connect(target: str,
             )
             if problems:
                 raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
-
-
-def _signal_name(signum: int) -> str:
-    try:
-        return signal.Signals(signum).name
-    except ValueError:
-        return f"signal {signum}"
-
-
-def _exit_problems(returncode: Optional[int],
-                   had_to_kill: bool,
-                   stopped_by_sigterm: bool,
-                   output: bytes,
-                   sanitizer_reports: list[str],
-                   expected_signal: Optional[int],
-                   leftover_dir: Optional[str] = None,
-                   terminal_gone: bool = False) -> list[str]:
-    """Everything wrong with how an app ended, as sentences for a case
-    failure; empty when it ended cleanly."""
-    problems: list[str] = []
-    # A deliberate kill makes the sanitizer report the signal itself; that
-    # report is the case working, not a finding. The sanitizer then ends the
-    # process with abort(), so the death the parent sees is SIGABRT.
-    expected_report = (f"Sanitizer: {_signal_name(expected_signal)[3:]} "
-                       if expected_signal is not None else None)
-    sanitizer_took_the_signal = expected_report is not None and any(
-        expected_report in summary for summary in sanitizer_reports)
-    if expected_signal is not None:
-        if sanitizer_took_the_signal and returncode == -signal.SIGABRT:
-            pass
-        elif returncode != -expected_signal:
-            problems.append(f"expected to die on {_signal_name(expected_signal)}, "
-                            f"but its exit status was {returncode}")
-    elif had_to_kill:
-        problems.append("ignored SIGTERM and had to be killed")
-    elif returncode is not None and returncode < 0:
-        if -returncode not in _STOP_SIGNALS:
-            problems.append(f"crashed on {_signal_name(-returncode)}")
-    elif returncode != 0:
-        problems.append(f"exited with status {returncode}")
-    elif stopped_by_sigterm:
-        # It tore down, then exited 0 rather than dying of the signal, so its
-        # parent cannot tell it was stopped. On Linux the re-raised signal
-        # stayed pending on a thread that blocked it.
-        problems.append("exited 0 on SIGTERM instead of dying by it")
-    # Stopped or quit, the app tears down — on purpose too, as when a case
-    # hangs its terminal up; only a crash leaves its dir.
-    stop_expected = expected_signal is None or expected_signal in _STOP_SIGNALS
-    if leftover_dir is not None and stop_expected and not had_to_kill and (
-            returncode == 0 or (returncode is not None and -returncode in _STOP_SIGNALS)):
-        problems.append(f"left its data dir {leftover_dir}")
-
-    # After a hang-up there is no terminal to restore, and what the app wrote
-    # to it on the way out was never read.
-    if not terminal_gone:
-        for mode, on in _MODES_TO_RESTORE.items():
-            off = b"l" if on == b"h" else b"h"
-            turned_on = output.rfind(b"\x1b[?%d" % mode + on)
-            if turned_on > output.rfind(b"\x1b[?%d" % mode + off):
-                problems.append(f"left DEC mode {mode} {'on' if on == b'h' else 'off'}")
-
-    for summary in sanitizer_reports:
-        if expected_report is None or expected_report not in summary:
-            problems.append(summary)
-    return problems
-
-
-def _read_sanitizer_reports(directory: str) -> list[str]:
-    """The SUMMARY line of every report a sanitizer wrote to ``directory``,
-    one per finding, deduplicated."""
-    summaries: list[str] = []
-    for report in sorted(Path(directory).glob("report*")):
-        for line in report.read_text(errors="replace").splitlines():
-            if line.startswith("SUMMARY:") and line not in summaries:
-                summaries.append(line)
-    return summaries
 
 
 def _wait_for_diag_dir(pid: int, timeout: float) -> str:
