@@ -4,6 +4,14 @@ public struct FocusableModifier: ViewModifier {
     public typealias ModifierType = Bool
 }
 
+/// Payload of `.prefersDefaultFocus(_:)`: whether the subtree asks for focus
+/// when nothing holds it.
+public struct PrefersDefaultFocusModifier: ViewModifier {
+    public typealias ModifierType = Bool
+    /// Whether the subtree asks.
+    public let prefers: Bool
+}
+
 /// Modifier that groups focusable descendants into a named scope.
 ///
 /// Arrow keys navigate within the scope — they won't move focus out of it.
@@ -105,6 +113,19 @@ extension TerminalView {
     /// navigation is clamped within the scope; Tab still crosses scopes.
     public func focusScope(_ id: String) -> ModifiedView<Self, FocusScopeModifier> {
         ModifiedView(content: self, modifier: FocusScopeModifier(id: id))
+    }
+
+    /// Ask for keyboard focus when nothing holds it — when the app opens,
+    /// most of all. Without a preference that goes to the first focusable
+    /// in Tab order; a chat whose transcript comes before its composer
+    /// puts this on the composer, so typing works at once. On a container,
+    /// the first focusable inside it is the one. Tab order is unchanged.
+    ///
+    /// SwiftUI parity: `View.prefersDefaultFocus(_:in:)`, with the whole app
+    /// as the namespace.
+    public func prefersDefaultFocus(_ prefersDefaultFocus: Bool = true)
+        -> ModifiedView<Self, PrefersDefaultFocusModifier> {
+        ModifiedView(content: self, modifier: PrefersDefaultFocusModifier(prefers: prefersDefaultFocus))
     }
 
     /// Choose whether this subtree's panes are focusable as units when they

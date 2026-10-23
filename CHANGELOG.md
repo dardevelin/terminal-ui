@@ -8,6 +8,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`.prefersDefaultFocus(_:)`** — a view asks for keyboard focus when
+  nothing holds it, at launch most of all; without one, the first focusable
+  in Tab order takes it, as before. A chat whose transcript comes before its
+  composer puts it on the composer, so typing works at once. On a
+  container, the first focusable inside it is the one; a dialog pulls focus
+  to the view in it that asked. Tab order is unchanged. SwiftUI's modifier,
+  with the whole app as the namespace.
 - **`.onScrollTargetVisibilityChange(idType:threshold:_:)`** — learn which
   `.id(_:)`-tagged views in a `ScrollView` the reader can see, whenever that
   set changes. A view counts once `threshold` of it is in the viewport,

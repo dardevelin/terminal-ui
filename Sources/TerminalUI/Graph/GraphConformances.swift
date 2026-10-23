@@ -170,6 +170,7 @@ extension ModifiedView: _GraphModified {
         case let modal as any _ModalModifierProtocol: .modal(isPresented: modal.modalIsPresented)
         case is FocusableModifier: .focusable
         case let scope as FocusScopeModifier: .focusScope(scope.id)
+        case let preference as PrefersDefaultFocusModifier: .prefersDefaultFocus(preference.prefers)
         case is OnKeyPressModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
         case is any _OnChangeModifierProtocol: .onChange

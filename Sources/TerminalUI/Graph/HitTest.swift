@@ -107,6 +107,7 @@ public struct HitResult {
             case .modal(let p): values.append(("modifier", "modal(\(p))"))
             case .focusable: values.append(("modifier", "focusable"))
             case .focusScope(let id): values.append(("modifier", "focusScope(\(id))"))
+            case .prefersDefaultFocus(let prefers): values.append(("modifier", "prefersDefaultFocus(\(prefers))"))
             case .onKeyPress: values.append(("modifier", "onKeyPress"))
             case .onAppear: values.append(("modifier", "onAppear"))
             case .onChange: values.append(("modifier", "onChange"))
@@ -151,6 +152,7 @@ public struct HitResult {
                 case .modal(_): return "modal"
                 case .focusable: return "focusable"
                 case .focusScope(let id): return "focusScope(\(id))"
+                case .prefersDefaultFocus(let prefers): return "prefersDefaultFocus(\(prefers))"
                 case .onKeyPress: return "onKeyPress"
                 case .onAppear: return "onAppear"
                 case .onChange: return "onChange"

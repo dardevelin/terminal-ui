@@ -662,7 +662,7 @@ public enum GraphRenderer {
             // insets add their own cells around whatever they are given
             // without choosing how much that is.
             case .foreground, .background, .bold, .italic, .underline,
-                 .focusable, .focusScope,
+                 .focusable, .focusScope, .prefersDefaultFocus,
                  .onKeyPress, .onAppear, .onChange, .onDisappear,
                  .onClick, .onHover, .onPaste,
                  .actions, .environment, .explicitID,
@@ -1651,7 +1651,7 @@ public enum GraphRenderer {
                 }
             }
 
-        case .focusScope:
+        case .focusScope, .prefersDefaultFocus:
             // Scope ids are stamped on focusable descendants during construction.
             // No visual effect — navigation-only modifier.
             renderNode(child, into: &buffer, context: ctx)

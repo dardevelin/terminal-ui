@@ -96,6 +96,10 @@ public final class FocusEngine: @unchecked Sendable {
 
     // MARK: - Index Rebuilding
 
+    /// Focusables asking to be focused when nothing is, from
+    /// `.prefersDefaultFocus()`, as of the last ``rebuildIndex(root:)``.
+    private var defaultFocusIDs: Set<NodeID> = []
+
     /// Rebuild both indices with a single depth-first walk.
     /// Called after graph.update() when the graph structure changed.
     ///
@@ -112,6 +116,7 @@ public final class FocusEngine: @unchecked Sendable {
     public func rebuildIndex(root: AttributeNode) {
         nodeIndex.removeAll(keepingCapacity: true)
         focusableList.removeAll(keepingCapacity: true)
+        defaultFocusIDs.removeAll(keepingCapacity: true)
         // Containment is a fact about the tree, not about what Tab can
         // reach: a presented screen made only of Text still owns Escape.
         topmostPresentation = Presentations(in: root).topmost
@@ -172,7 +177,7 @@ public final class FocusEngine: @unchecked Sendable {
             if focusBeforeContainment == nil {
                 focusBeforeContainment = interrupted
             }
-            keyboardFocusID = candidates.first?.id ?? presentationRoot
+            keyboardFocusID = defaultFocus(among: candidates)?.id ?? presentationRoot
             return
         }
 
@@ -195,7 +200,7 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
-    private func buildIndexRecursive(_ node: AttributeNode) {
+    private func buildIndexRecursive(_ node: AttributeNode, prefersDefaultFocus: Bool = false) {
         nodeIndex[node.id] = node
         // Re-register handlers a cached update did not touch. The live loop
         // clears the handler tables each frame and relies on the graph update
@@ -212,15 +217,25 @@ public final class FocusEngine: @unchecked Sendable {
         if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
             clickHandlers[node.id] = clickHandler
         }
+        var prefersDefaultFocus = prefersDefaultFocus
+        if case .modifier(.prefersDefaultFocus(true)) = node.kind {
+            prefersDefaultFocus = true
+        }
         // `.disabled()` writes `EnvironmentValues.isEnabled = false` into
         // the persisted env on every node in the subtree (set during
         // graph construction by the env-modifier traversal). A disabled
         // node drops out of the Tab order entirely — SwiftUI parity.
         if node.participatesInFocus {
             focusableList.append(node)
+            // The first focusable under the preference takes it; the
+            // focusables inside it are its own, not further candidates.
+            if prefersDefaultFocus {
+                defaultFocusIDs.insert(node.id)
+                prefersDefaultFocus = false
+            }
         }
         for child in node.children {
-            buildIndexRecursive(child)
+            buildIndexRecursive(child, prefersDefaultFocus: prefersDefaultFocus)
         }
     }
 
@@ -242,6 +257,18 @@ public final class FocusEngine: @unchecked Sendable {
     /// (Esc-pop, dialog shortcuts) get the keys, and Ctrl+C stays
     /// unconditional.
     private var traversableFocusables: [AttributeNode] { traversableList }
+
+    /// Focus what should hold focus when nothing does: the first focusable
+    /// that asked with `.prefersDefaultFocus()`, else the first in Tab order.
+    public func focusDefault() {
+        keyboardFocusID = defaultFocus(among: traversableFocusables)?.id
+    }
+
+    /// The focusable among `candidates` that asked to be focused first, else
+    /// the first of them.
+    private func defaultFocus(among candidates: [AttributeNode]) -> AttributeNode? {
+        candidates.first { defaultFocusIDs.contains($0.id) } ?? candidates.first
+    }
 
     /// Move keyboard focus to the next focusable node (Tab order).
     /// Tab order = depth-first pre-order of the view tree, matching visual reading order.

@@ -521,6 +521,7 @@ public final class DebugStream: Sendable {
             case .modal(let p): kind = "modal"; value = p ? "shown" : "hidden"
             case .focusable: kind = "focusable"; value = ""
             case .focusScope(let id): kind = "focusScope"; value = id
+            case .prefersDefaultFocus(let prefers): kind = "prefersDefaultFocus"; value = "\(prefers)"
             case .onKeyPress: kind = "onKeyPress"; value = ""
             case .onAppear: kind = "onAppear"; value = ""
             case .onChange: kind = "onChange"; value = ""

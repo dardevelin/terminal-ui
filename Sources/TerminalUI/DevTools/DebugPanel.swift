@@ -407,6 +407,7 @@ public final class DebugPanel {
             case .modal(let p): kind = "mdl"; detail = p ? "on" : "off"
             case .focusable: kind = "fcs"; detail = ""
             case .focusScope(let id): kind = "scope"; detail = id
+            case .prefersDefaultFocus(let prefers): kind = "dflt"; detail = "\(prefers)"
             case .onKeyPress: kind = "key"; detail = ""
             case .onAppear: kind = "app"; detail = ""
             case .onChange: kind = "chg"; detail = ""

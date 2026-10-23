@@ -1073,14 +1073,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // Rebuild focus index after graph changes
             if let root = graph.root {
                 focusEngine.rebuildIndex(root: root)
-                // Auto-focus the first focusable on startup. With
+                // Auto-focus on startup: the view that asked with
+                // `.prefersDefaultFocus()`, else the first focusable. With
                 // arrows no longer moving focus by default, an app whose
                 // arrow handler lives on a `.focusable()` view would receive
                 // nothing until the user pressed Tab. Mirrors SwiftUI's
                 // implicit first-responder — the app boots with a focused
                 // element so per-view handlers fire on the very first key.
                 if focusEngine.keyboardFocusID == nil {
-                    focusEngine.focusNext()
+                    focusEngine.focusDefault()
                 }
             }
 
