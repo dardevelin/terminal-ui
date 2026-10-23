@@ -551,13 +551,15 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
             summary: "Draw a border around the view.",
             code: "Text(\" bordered \").border()")
         case .borderEdges: return PageInfo(id: self, category: .modifiers, name: ".border(color:edges:)",
-            summary: "State the frame separately from its content, and draw only the sides you want. A drawn edge costs one cell; an undrawn one costs nothing. Corners appear only where two drawn edges meet, so a lone .top is an unbroken rule.",
+            summary: "State the frame separately from its content, and draw only the sides you want. A drawn edge costs one cell; an undrawn one costs nothing. Corners appear only where two drawn edges meet, so a lone .top is an unbroken rule. .halfBlock leans each edge toward the content, so on the leading edge alone it is a thick rail.",
             code: """
                 VStack(spacing: 1) {
                     Text("tinted frame, plain text").border(.rounded, color: .cyan)
                     Text("leading rail").border(.heavy, color: .magenta, edges: .leading)
                     Text("rule above").border(.rounded, color: .green, edges: .top)
                     Text("both rails").border(.rounded, color: .yellow, edges: .horizontal)
+                    Text("half blocks").border(.halfBlock, color: .cyan)
+                    Text("thick rail").border(.halfBlock, color: .magenta, edges: .leading)
                 }
                 """)
         case .padding: return PageInfo(id: self, category: .modifiers, name: ".padding",

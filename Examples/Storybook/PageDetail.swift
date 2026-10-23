@@ -568,6 +568,8 @@ struct PreviewPane: TerminalView {
                 Text("leading rail").border(.heavy, color: .magenta, edges: .leading)
                 Text("rule above").border(.rounded, color: .green, edges: .top)
                 Text("both rails").border(.rounded, color: .yellow, edges: .horizontal)
+                Text("half blocks").border(.halfBlock, color: .cyan)
+                Text("thick rail").border(.halfBlock, color: .magenta, edges: .leading)
             }
         case .padding:
             VStack(spacing: 0) {
