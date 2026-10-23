@@ -265,6 +265,16 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Scrolling to a view lands on it, however its content wraps.**
+  `.scrollPosition(id:anchor:)` and scrolling to the focused view worked out
+  where a view started by measuring everything before it at no width, as if
+  nothing wrapped, and by stacking views with no spacing and no insets. In
+  a chat transcript — wrapped messages, a gap between them, a rail on each
+  — bringing an entry into sight scrolled when it was already in sight,
+  and to the wrong place when it was not, and the id reported for the top
+  was another entry's. Positions are now worked out as the frame is drawn:
+  at the width the content wraps at, with each stack's spacing and each
+  modifier's insets.
 - **Views leave modified navigation keys to the app.** A scrollable
   `ScrollView`, `List`, `TreeView`, `DiffView`, `HunkDiffView`, `Picker`,
   `TabView`, `Slider` and `Stepper` took Shift+↓, Ctrl+↑ or Alt+PageDown as

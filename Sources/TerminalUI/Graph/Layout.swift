@@ -297,7 +297,14 @@ public enum Layout {
     /// `transformedRect` applies, so measurement asks a child about the width
     /// layout will actually hand it. Width never depends on height here.
     static func childWidth(for effect: ModifierEffect, outerWidth: Int) -> Int {
-        transformedRect(for: effect, parentRect: Rect(x: 0, y: 0, width: outerWidth, height: 0)).width
+        childRect(for: effect, outerWidth: outerWidth).width
+    }
+
+    /// Where a modifier places its child in a parent at the origin
+    /// `outerWidth` wide: the child's inset from the parent's leading and
+    /// top edges, and its width.
+    static func childRect(for effect: ModifierEffect, outerWidth: Int) -> Rect {
+        transformedRect(for: effect, parentRect: Rect(x: 0, y: 0, width: outerWidth, height: 0))
     }
 
     private static func transformedRect(for effect: ModifierEffect, parentRect rect: Rect) -> Rect {
