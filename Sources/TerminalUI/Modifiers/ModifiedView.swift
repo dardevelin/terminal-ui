@@ -34,8 +34,12 @@ public struct ForegroundModifier: ViewModifier {
 /// Payload of `.background(_:)` — fill color behind the subtree's rect.
 public struct BackgroundModifier: ViewModifier {
     public typealias ModifierType = Color
-    /// The fill color painted across the view's laid-out rect.
-    public let color: Color
+    /// The fill, or `nil` for none: the cells keep the ground they sit on.
+    /// Only the framework's own views ask for none.
+    let fill: Color?
+    /// The fill color painted across the view's laid-out rect; `.default`
+    /// for a modifier that paints none.
+    public var color: Color { fill ?? .default }
 }
 
 /// Payload of `.bold()`. Carries no data — presence is the whole signal.
@@ -132,7 +136,16 @@ extension TerminalView {
     /// order the chain as `.padding().background(...)` to color the padded
     /// area.
     public func background(_ color: Color) -> ModifiedView<Self, BackgroundModifier> {
-        ModifiedView(content: self, modifier: BackgroundModifier(color: color))
+        ModifiedView(content: self, modifier: BackgroundModifier(fill: color))
+    }
+
+    /// Fill with `color`, or with nothing when it is `nil`: the cells keep
+    /// the ground they sit on. `Color.default` cannot say that — it paints
+    /// the terminal's own ground over a themed panel. One modifier for
+    /// both, so a view whose fill comes and goes, such as a row's selection,
+    /// keeps its identity.
+    func background(orInherit color: Color?) -> ModifiedView<Self, BackgroundModifier> {
+        ModifiedView(content: self, modifier: BackgroundModifier(fill: color))
     }
 
     /// Render descendant text bold (SGR 1). Terminals map this to a heavier

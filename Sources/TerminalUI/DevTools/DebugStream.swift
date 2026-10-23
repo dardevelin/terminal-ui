@@ -507,7 +507,7 @@ public final class DebugStream: Sendable {
         case .modifier(let effect):
             switch effect {
             case .foreground(let c): kind = "fg"; value = "\(c)"
-            case .background(let c): kind = "bg"; value = "\(c)"
+            case .background(let c): kind = "bg"; value = c.groundDescription
             case .bold: kind = "bold"; value = ""
             case .italic: kind = "italic"; value = ""
             case .underline: kind = "underline"; value = ""

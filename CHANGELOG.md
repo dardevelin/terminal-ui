@@ -245,6 +245,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A TreeView or a segmented Picker on a themed panel no longer punches
+  holes in it.** Every tree row, selected or not, painted the terminal's
+  own ground, and every unselected segment the theme's window ground, so
+  on a raised sidebar or sheet each showed a stripe of another colour. A
+  row and a segment now keep the ground they sit on; only a selected row
+  whose style states `selectedBackground`, and the selected segment, paint
+  a fill.
 - **A debug socket that cannot be opened says why.** A path too long for a
   socket address, which `use_tmp = false` makes under a deep checkout, was
   cut to fit, so the app listened, and `swtui ctl` connected, somewhere

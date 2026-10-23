@@ -405,11 +405,16 @@ it, which no role says yet.
 
 What is left, and why it waits:
 
-- **A view that should paint no ground cannot say so.** `.background` takes
-  a `Color`, and `.default` paints the terminal's ground: `TreeView`'s
-  unselected rows punch the terminal's colour through a themed panel. It
-  needs a fill that means "none" (`Color` has no `clear`), or a background
-  that takes an optional.
+- **A view that should paint no ground can now say so, inside the
+  framework.** The background effect takes `Color?`, `nil` keeping the
+  ground a view sits on, and the framework's views reach it through an
+  internal `.background(orInherit:)`; `TreeView`'s rows and the segmented
+  `Picker`'s segments had painted holes through a themed panel. Two steps
+  wait for a demand: a public `.background(_: Color?)` overload, additive
+  as SwiftUI's `foregroundColor(_: Color?)` is (not `Color.clear`, a colour
+  meaning no colour that every style merge would special-case), and the
+  same for `.foreground`, where apps write `cond ? x : .default` and get
+  the terminal's text colour rather than the theme's.
 - **Four marks still name colours**, each listed in
   `tools/colour-literals.txt`, and `check_colour_literals.py` keeps anything
   else from naming one: the focus marker's black text on the focus fill (no
