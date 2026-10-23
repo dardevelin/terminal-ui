@@ -16,7 +16,7 @@ enum ToolState: Sendable {
 }
 
 /// A tool invocation shown as a card inside the transcript.
-struct ToolCall: Identifiable, Sendable {
+struct ToolCall: Identifiable, Sendable, Equatable {
     let id: Int
     /// Display name, e.g. "Read", "Bash", "Edit".
     let name: String
@@ -32,7 +32,7 @@ struct ToolCall: Identifiable, Sendable {
 }
 
 /// Part of a file, as a reading tool returns it.
-struct FileExcerpt: Sendable {
+struct FileExcerpt: Sendable, Equatable {
     let path: String
     /// The file's line number for the first line of `code`.
     let firstLine: Int
@@ -45,7 +45,7 @@ struct FileExcerpt: Sendable {
 }
 
 /// One entry in the chat transcript.
-enum Entry: Identifiable, Sendable {
+enum Entry: Identifiable, Sendable, Equatable {
     case message(Message)
     case tool(ToolCall)
 
@@ -58,7 +58,7 @@ enum Entry: Identifiable, Sendable {
 }
 
 /// A chat message. `body` is markdown, rendered by `MarkdownView`.
-struct Message: Identifiable, Sendable {
+struct Message: Identifiable, Sendable, Equatable {
     let id: Int
     let author: Author
     let body: String
@@ -112,7 +112,6 @@ struct Todo: Identifiable, Sendable {
     let status: Status
 }
 
-/// Which pane owns the keyboard.
 /// Application state. `@Observable` + `final class` so mutations drive
 /// the surgical body-evaluation path. Deliberately *not* `@MainActor`,
 /// matching the Demo / GitClient / Chat convention — type-level
@@ -136,6 +135,15 @@ final class CoderState {
     var draft: String
     /// The composer's cursor, scroll and history.
     var promptState = PromptInputState()
+
+    /// The transcript entry the reader selected — Crush's chat cursor. Nil
+    /// until the reader moves it, and the latest entry stands in.
+    var selectedEntryID: Int?
+    /// Where the transcript is told to scroll: the selection, each time a
+    /// key moves it.
+    var transcriptPosition: Int?
+    /// Tool results the reader expanded past the cap.
+    var expandedResults: Set<Int> = []
 
     init(
         sessionTitle: String,
@@ -206,6 +214,55 @@ final class CoderState {
         formatter.dateFormat = "HH:mm"
         return formatter
     }()
+
+    /// The selected entry, or the latest while the reader has chosen none.
+    var selection: Int? {
+        selectedEntryID ?? entries.last?.id
+    }
+
+    /// Move the selection by `step` entries and bring it into sight —
+    /// Crush's Shift+↑/↓.
+    func selectEntry(by step: Int) {
+        guard let current = index(of: selection) else { return }
+        let next = entries[max(0, min(entries.count - 1, current + step))].id
+        selectedEntryID = next
+        transcriptPosition = next
+    }
+
+    /// The reader clicked an entry: it is selected, and a capped result
+    /// opens or closes, as in Crush.
+    func click(_ id: Int) {
+        selectedEntryID = id
+        toggleResult(id)
+    }
+
+    /// Open the selected entry's result past its cap, or close it — Crush's
+    /// Space.
+    func toggleSelectedResult() {
+        selection.map(toggleResult)
+    }
+
+    /// An entry with nothing held back draws the same opened or not, so
+    /// any entry may be toggled.
+    private func toggleResult(_ id: Int) {
+        if expandedResults.remove(id) == nil {
+            expandedResults.insert(id)
+        }
+    }
+
+    private func index(of id: Int?) -> Int? {
+        id.flatMap { id in entries.firstIndex { $0.id == id } }
+    }
+
+    /// The transcript reports the entries in sight. A selection scrolled out
+    /// of them passes to the nearest one still in sight, so Space acts on
+    /// something the reader can see — Crush moves its cursor the same way.
+    func entriesInSight(_ visible: [Int]) {
+        guard let first = visible.first, let last = visible.last,
+              let current = selection, !visible.contains(current),
+              let currentIndex = index(of: current), let firstIndex = index(of: first) else { return }
+        selectedEntryID = currentIndex < firstIndex ? first : last
+    }
 
     var doneTodoCount: Int {
         todos.filter { if case .done = $0.status { true } else { false } }.count

@@ -1755,7 +1755,7 @@ def coder_renders(app: Client) -> None:
 def coder_opens_on_the_latest_entry(app: Client) -> None:
     """The transcript opens on its tail — the pending Bash card — as Crush's
     does, with nothing scrolled."""
-    assert_true("Waiting for tool response" in app.cells().text(),
+    assert_true(CODER_LATEST_ENTRY in app.cells().text(),
                 "the latest entry should be on screen at boot")
 
 
@@ -1852,6 +1852,102 @@ def coder_read_card_shows_numbered_excerpt(app: Client) -> None:
     assert_true(first is not None, "expected the excerpt's first line")
     assert_true("298" in first, f"excerpt not numbered from its file line: {first.strip()!r}")
     assert_true("… (5 lines hidden)" in text, "expected the excerpt's hidden-line count")
+
+
+# The rail Crush thickens on the transcript entry the reader selected.
+CODER_FOCUSED_RAIL = "▌"
+# The latest entry, a Bash call still waiting, and the one above it, a
+# finished test run whose output is capped.
+CODER_LATEST_ENTRY = "Waiting for tool response"
+CODER_CAPPED_ENTRY = "swift test --filter Compositor"
+# A line of that output the cap holds back.
+CODER_HIDDEN_LINE = "Test run with 5 tests"
+CODER_CAPPED_NOTE = "… (4 lines hidden) [click or space to expand]"
+# Rows the transcript fills, beside the sidebar; the top one tells whether it
+# scrolled.
+CODER_TRANSCRIPT_TOP = (0, 1, 84, 1)
+
+
+def _coder_rail_rows(text: str) -> list[str]:
+    """The transcript rows the focused rail runs down."""
+    return [row for row in text.splitlines() if row.lstrip().startswith(CODER_FOCUSED_RAIL)]
+
+
+def _coder_hidden_note(text: str) -> Optional[tuple[int, int]]:
+    """Where the capped result's `lines hidden` note is on screen, if it is."""
+    for y, row in enumerate(text.splitlines()):
+        if "lines hidden" in row:
+            return row.index("lines hidden"), y
+    return None
+
+
+def coder_tab_reaches_the_transcript(app: Client) -> None:
+    """The composer holds focus when Coder opens, though the transcript comes
+    first in Tab order; Tab reaches the transcript, and the latest entry —
+    the selection until the reader moves it — wears the focused rail."""
+    app.send_text("x")
+    assert_true("> x" in app.text(), f"typing at launch should reach the composer: {app.text()!r}")
+    app.send_key("backspace")
+    assert_true(not _coder_rail_rows(app.text()),
+                "no entry should wear the focused rail while the composer has focus")
+    app.tab()
+    rails = _coder_rail_rows(app.text())
+    assert_true(any(CODER_LATEST_ENTRY in row for row in rails),
+                f"the latest entry should wear the focused rail: {rails!r}")
+
+
+def coder_shift_arrows_step_the_selection(app: Client) -> None:
+    """Shift+↑ and Shift+↓ step the selection an entry at a time, and an
+    entry already in sight is selected without the transcript moving."""
+    app.tab()
+    top = app.cells(CODER_TRANSCRIPT_TOP).text()
+    app.send_key("up", "shift")
+    rails = _coder_rail_rows(app.text())
+    assert_true(any(CODER_CAPPED_ENTRY in row for row in rails),
+                f"Shift+↑ should select the entry above: {rails!r}")
+    assert_true(app.cells(CODER_TRANSCRIPT_TOP).text() == top,
+                "selecting an entry in sight should not scroll the transcript")
+    app.send_key("down", "shift")
+    assert_true(any(CODER_LATEST_ENTRY in row for row in _coder_rail_rows(app.text())),
+                "Shift+↓ should select the entry below again")
+
+
+def coder_space_expands_a_capped_result(app: Client) -> None:
+    """Space opens the selected capped result, as the note under it says,
+    and closes it again."""
+    app.tab()
+    app.send_key("up", "shift")
+    assert_true(CODER_CAPPED_NOTE in app.text(), "expected the capped note")
+    app.send_text(" ")
+    text = app.text()
+    assert_true(_coder_hidden_note(text) is None and CODER_HIDDEN_LINE in text,
+                f"Space should open the result: {text!r}")
+    app.send_text(" ")
+    assert_true(_coder_hidden_note(app.text()) is not None, "Space again should close it")
+
+
+def coder_click_expands_a_capped_result(app: Client) -> None:
+    """A click on a capped result selects it and opens it."""
+    note = _coder_hidden_note(app.text())
+    assert_true(note is not None, "expected the capped note in sight")
+    app.mouse_click(*note)
+    text = app.text()
+    assert_true(_coder_hidden_note(text) is None and CODER_HIDDEN_LINE in text,
+                f"a click should open the result: {text!r}")
+    assert_true(any(CODER_HIDDEN_LINE in row for row in _coder_rail_rows(text)),
+                "the clicked entry should be selected")
+
+
+def coder_scrolling_keeps_the_selection_in_sight(app: Client) -> None:
+    """Scrolled with the arrows until the selected entry leaves the view, the
+    selection passes to the nearest entry still in it, so Space acts on
+    something the reader can see. Reported once a frame is drawn, so the
+    rail moves a frame after the scroll."""
+    app.tab()
+    app.press_many("up", 20)
+    assert_true(app.wait_until(lambda c: bool(_coder_rail_rows(c.text()))),
+                "the selection should follow into the view")
+    assert_true(CODER_LATEST_ENTRY not in app.text(), "the latest entry should have scrolled out of sight")
 
 
 def coder_wheel_burst_keeps_running(app: Client) -> None:
@@ -2044,7 +2140,7 @@ def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
     scrollbar was painted over the content's last column, so the ellipsis a
     correctly truncated line ends on was erased and the line read as cut off
     mid-word."""
-    text = _coder_scroll_until(app, "Waiting for tool response", "pending Bash card")
+    text = _coder_scroll_until(app, CODER_LATEST_ENTRY, "pending Bash card")
     rows = text.splitlines()
     assert_true("… (4 lines hidden)" in text, "expected the hidden-line count")
     long_row = next((row for row in rows if "note: previousBuffer" in row), None)
@@ -2396,6 +2492,12 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.reply_keeps_heading_markers_and_chips_code", "Coder", coder_reply_keeps_heading_markers_and_chips_code),
     SmokeCase("coder.read_card_shows_numbered_excerpt", "Coder", coder_read_card_shows_numbered_excerpt),
     SmokeCase("coder.bash_card_caps_and_cuts_output", "Coder", coder_bash_card_caps_and_cuts_output),
+    SmokeCase("coder.tab_reaches_the_transcript", "Coder", coder_tab_reaches_the_transcript),
+    SmokeCase("coder.shift_arrows_step_the_selection", "Coder", coder_shift_arrows_step_the_selection),
+    SmokeCase("coder.space_expands_a_capped_result", "Coder", coder_space_expands_a_capped_result),
+    SmokeCase("coder.click_expands_a_capped_result", "Coder", coder_click_expands_a_capped_result),
+    SmokeCase("coder.scrolling_keeps_the_selection_in_sight", "Coder",
+              coder_scrolling_keeps_the_selection_in_sight),
     SmokeCase("coder.wheel_burst_keeps_running", "Coder", coder_wheel_burst_keeps_running),
     SmokeCase("coder.crash_restores_the_terminal", "Coder", coder_crash_restores_the_terminal),
     # A sanitized build reports the SEGV itself and then aborts, so the
