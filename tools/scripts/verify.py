@@ -30,8 +30,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # is already running" until it finished.
 SCRATCH_PATH = ".build-automation"
 BUILD_DIR = REPO_ROOT / SCRATCH_PATH / "debug"
-# The suite runs its cases one after another and took 304s at 100 cases; 240s
-# cut it off mid-run and reported the cutoff as a smoke regression.
+# Sized for the suite run in turn, as it is on a machine with two CPUs or
+# fewer: 304s at 100 cases, where 240s cut it off mid-run and reported the
+# cutoff as a smoke regression. Side by side it takes a fraction of that.
 SMOKE_TIMEOUT_SECONDS = 600
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
