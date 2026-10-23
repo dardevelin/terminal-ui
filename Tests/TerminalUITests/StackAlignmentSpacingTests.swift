@@ -13,14 +13,7 @@ import Testing
 
 @MainActor
 private func draw(_ view: some TerminalView, width: Int, height: Int) -> [String] {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    let rect = Rect(x: 0, y: 0, width: width, height: height)
-    GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-        graph.update(from: view)
-        Layout.measureAndPlace(graph: graph.root!, in: rect)
-        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-    }
+    let buffer = renderedBuffer(view, width: width, height: height)
     return (0..<height).map { y in
         (0..<width).map { String(buffer[$0, y].character) }.joined()
     }

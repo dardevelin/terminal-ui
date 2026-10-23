@@ -14,24 +14,11 @@ import Testing
 @Suite struct SpanWrappingTests {
 
     private func render(_ view: some TerminalView, width: Int, height: Int) -> CellBuffer {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
-        return buffer
+        renderedBuffer(view, width: width, height: height)
     }
 
     private func rows(_ buffer: CellBuffer) -> [String] {
-        (0..<buffer.height).map { y in
-            var line = ""
-            for x in 0..<buffer.width { line.append(buffer[x, y].character) }
-            while line.hasSuffix(" ") { line.removeLast() }
-            return line
-        }
+        buffer.rowTexts
     }
 
     /// The defect itself: the same sentence must reflow identically whether or

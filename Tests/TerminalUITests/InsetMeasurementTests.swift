@@ -49,14 +49,7 @@ struct InsetMeasurementTests {
             Text(words).border()
             Text("after")
         }
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: 10, height: 6)
-        let rect = Rect(x: 0, y: 0, width: 10, height: 6)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            _ = graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
+        let buffer = renderedBuffer(view, width: 10, height: 6)
         let rows = (0..<6).map { y in String((0..<10).map { buffer[$0, y].character }) }
         #expect(rows[1].contains("aaaa"))
         #expect(rows[2].contains("bbbb"), "the wrapped row is inside the box, not clipped")

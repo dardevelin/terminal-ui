@@ -10,19 +10,7 @@ import Testing
 
 @MainActor
 private func render(_ view: some TerminalView, width: Int, height: Int) -> [String] {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    let rect = Rect(x: 0, y: 0, width: width, height: height)
-    GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-        _ = graph.update(from: view)
-        Layout.measureAndPlace(graph: graph.root!, in: rect)
-        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-    }
-    return (0..<height).map { y in
-        var line = String((0..<width).map { buffer[$0, y].character })
-        while line.hasSuffix(" ") { line.removeLast() }
-        return line
-    }
+    renderedBuffer(view, width: width, height: height).rowTexts
 }
 
 @MainActor

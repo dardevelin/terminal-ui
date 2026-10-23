@@ -24,29 +24,11 @@ import Testing
     }
 
     private func render(_ source: String, width: Int, height: Int) -> CellBuffer {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        var env = EnvironmentValues()
-        env.theme = LoudTheme()
-        env.terminalSize = TerminalSize(cols: width, rows: height)
-        GraphContext.$currentEnvironment.withValue(env) {
-            GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
-                graph.update(from: MarkdownView(source))
-                Layout.measureAndPlace(graph: graph.root!, in: rect)
-                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-            }
-        }
-        return buffer
+        renderedBuffer(MarkdownView(source), width: width, height: height, theme: LoudTheme())
     }
 
     private func rows(_ buffer: CellBuffer) -> [String] {
-        (0..<buffer.height).map { y in
-            var line = ""
-            for x in 0..<buffer.width { line.append(buffer[x, y].character) }
-            while line.hasSuffix(" ") { line.removeLast() }
-            return line
-        }
+        buffer.rowTexts
     }
 
     private func colors(_ buffer: CellBuffer) -> [Color] {

@@ -173,14 +173,7 @@ import Testing
     /// The rendered cells must actually carry the ramp — a gradient that only
     /// exists in the span list is not a gradient.
     @Test func gradientReachesTheRenderedCells() {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: 4, height: 1)
-        let rect = Rect(x: 0, y: 0, width: 4, height: 1)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: Text.gradient("abcd", from: .rgb(0, 0, 0), to: .rgb(255, 255, 255)))
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
+        let buffer = renderedBuffer(Text.gradient("abcd", from: .rgb(0, 0, 0), to: .rgb(255, 255, 255)), width: 4, height: 1)
         #expect(buffer[0, 0].style.foreground == .rgb(0, 0, 0))
         #expect(buffer[3, 0].style.foreground == .rgb(255, 255, 255))
         #expect(buffer[1, 0].style.foreground != buffer[2, 0].style.foreground)

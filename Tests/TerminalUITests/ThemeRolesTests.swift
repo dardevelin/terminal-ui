@@ -34,20 +34,7 @@ import Testing
         height: Int,
         theme: any Theme = LoudTheme()
     ) -> CellBuffer {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        var env = EnvironmentValues()
-        env.theme = theme
-        env.terminalSize = TerminalSize(cols: width, rows: height)
-        GraphContext.$currentEnvironment.withValue(env) {
-            GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
-                graph.update(from: view)
-                Layout.measureAndPlace(graph: graph.root!, in: rect)
-                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-            }
-        }
-        return buffer
+        renderedBuffer(view, width: width, height: height, theme: theme)
     }
 
     /// Colors present anywhere in the buffer — components place their glyphs

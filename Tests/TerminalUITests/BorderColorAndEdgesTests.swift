@@ -19,15 +19,7 @@ import Testing
         width: Int,
         height: Int
     ) -> CellBuffer {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-            graph.update(from: view)
-            Layout.measureAndPlace(graph: graph.root!, in: rect)
-            GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-        }
-        return buffer
+        renderedBuffer(view, width: width, height: height)
     }
 
     private func row(_ buffer: CellBuffer, _ y: Int, width: Int) -> String {

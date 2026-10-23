@@ -29,17 +29,7 @@ private struct LoudTheme: Theme {
 @MainActor
 private func render(_ view: some TerminalView, width: Int = 40, height: Int = 12,
                     theme: (any Theme)? = LoudTheme()) -> CellBuffer {
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: height)
-    let rect = Rect(x: 0, y: 0, width: width, height: height)
-    var environment = EnvironmentValues()
-    if let theme { environment.theme = theme }
-    GraphContext.$currentEnvironment.withValue(environment) {
-        graph.update(from: view)
-        Layout.measureAndPlace(graph: graph.root!, in: rect)
-        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-    }
-    return buffer
+    renderedBuffer(view, width: width, height: height, theme: theme)
 }
 
 /// The cell where `text` first starts on screen.

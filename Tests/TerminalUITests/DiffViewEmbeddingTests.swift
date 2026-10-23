@@ -58,20 +58,7 @@ import Testing
     // MARK: - Theme
 
     private func render(_ view: DiffView, width: Int, height: Int) -> CellBuffer {
-        let graph = AttributeGraph()
-        var buffer = CellBuffer(width: width, height: height)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        var env = EnvironmentValues()
-        env.theme = LoudTheme()
-        env.terminalSize = TerminalSize(cols: width, rows: height)
-        GraphContext.$currentEnvironment.withValue(env) {
-            GraphContext.$currentProposedSize.withValue(Size(width: width, height: height)) {
-                graph.update(from: view)
-                Layout.measureAndPlace(graph: graph.root!, in: rect)
-                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-            }
-        }
-        return buffer
+        renderedBuffer(view, width: width, height: height, theme: LoudTheme())
     }
 
     /// Foreground of the first cell on row `y` showing `character`.

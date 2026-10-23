@@ -14,14 +14,7 @@ private let fill = Color.rgb(0, 0, 200)
 @MainActor
 private func filledColumns(_ text: Text, mode: TextWrapMode, width: Int = 10) -> [[Bool]] {
     let view = text.wrap(mode).frame(maxWidth: .infinity).background(fill)
-    let graph = AttributeGraph()
-    var buffer = CellBuffer(width: width, height: 2)
-    let rect = Rect(x: 0, y: 0, width: width, height: 2)
-    GraphContext.$currentEnvironment.withValue(EnvironmentValues()) {
-        graph.update(from: view)
-        Layout.measureAndPlace(graph: graph.root!, in: rect)
-        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
-    }
+    let buffer = renderedBuffer(view, width: width, height: 2)
     return (0..<2).map { y in (0..<width).map { buffer[$0, y].style.background == fill } }
 }
 
