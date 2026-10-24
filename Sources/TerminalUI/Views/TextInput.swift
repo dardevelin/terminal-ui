@@ -272,7 +272,7 @@ public struct TextInput: TerminalView {
             // intrinsic height (driven by Text spans' newline count)
             // grow naturally — no fixed-height frame.
             .frame(height: Self.shouldUseFixedHeight(axis: axis, mode: mode) ? 1 : nil)
-            .foreground(isEnabled ? (accent ?? theme.foreground) : theme.foregroundMuted)
+            .labelForeground(enabled: isEnabled, theme: theme, accent: accent)
 
             if let message = validation?.message {
                 Text(message).foreground(accent ?? theme.foregroundMuted)

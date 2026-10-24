@@ -153,9 +153,15 @@ extension WidthReader: _GraphGeometryReader {
 // MARK: - ModifiedView
 
 extension ModifiedView: _GraphModified {
-    func graphEffect() -> ModifierEffect {
+    func graphEffect() -> (effect: ModifierEffect, foregroundYieldsToStated: Bool) {
+        if let foreground = modifier as? ForegroundModifier {
+            return (.foreground(foreground.color), foreground.yieldsToStated)
+        }
+        return (otherEffect, false)
+    }
+
+    private var otherEffect: ModifierEffect {
         switch modifier {
-        case let fg as ForegroundModifier: .foreground(fg.color)
         case let bg as BackgroundModifier: .background(bg.fill)
         case is BoldModifier: .bold
         case is ItalicModifier: .italic

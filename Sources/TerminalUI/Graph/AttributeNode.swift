@@ -45,6 +45,9 @@ public class AttributeNode: @unchecked Sendable {
 
     /// Whether this node can receive focus (set by .focusable() modifier).
     public var isFocusable: Bool = false
+    /// Whether this node's `.foreground` gives way to one stated above it;
+    /// see `ForegroundModifier.yieldsToStated`.
+    var foregroundYieldsToStated = false
 
     /// Identifier of the nearest enclosing focus scope, or nil if not in one.
     /// Set during reconciliation by .focusScope(id) — the modifier propagates its id
