@@ -31,7 +31,10 @@ struct PageDetail: TerminalView {
             // within. Still wants a visible scrollbar affordance.
             Text("Code").foreground(.gray).bold()
             ScrollView(.vertical) {
-                CodeBlock(code: info.code)
+                // CodeView wraps each long line under its own code, at the
+                // width the pane actually has; a hand-rolled wrap guessed
+                // that width and overflowed it.
+                CodeView(info.code, language: "swift")
             }
             .frame(height: 12)
             .padding()
@@ -43,59 +46,6 @@ struct PageDetail: TerminalView {
                 .border()
             Spacer()
         }
-    }
-}
-
-// MARK: - Code block
-//
-// Pre-wraps long lines at `maxWidth` so content stays inside its container.
-// The outer frame (border + padding) is now applied by PageDetail around
-// the enclosing ScrollView — so CodeBlock itself is plain text rows.
-
-struct CodeBlock: TerminalView {
-    let code: String
-
-    var body: some TerminalView {
-        WidthReader { width in
-            // Reserve 4 cells for the PageDetail-applied border+padding.
-            let maxWidth = max(20, width - 4)
-            let wrapped = wrap(code: code, maxWidth: maxWidth)
-            VStack {
-                ForEachWithID(Array(wrapped.enumerated()), id: \.offset) { pair in
-                    Text(pair.element).foreground(.brightBlue)
-                }
-            }
-        }
-    }
-
-    /// Word-aware line wrap preserving original indentation on continuation.
-    private func wrap(code: String, maxWidth: Int) -> [String] {
-        var out: [String] = []
-        for raw in code.split(separator: "\n", omittingEmptySubsequences: false) {
-            let line = String(raw)
-            if line.count <= maxWidth {
-                out.append(line)
-                continue
-            }
-            // Split long line. Continuation lines carry the original indent
-            // plus two extra spaces so they read as "wrapped continuation."
-            let indent = line.prefix(while: { $0 == " " })
-            let continuation = String(indent) + "  "
-            var remaining = line
-            var first = true
-            while remaining.count > maxWidth {
-                let cutWidth = first ? maxWidth : (maxWidth - continuation.count)
-                let idx = remaining.index(remaining.startIndex, offsetBy: max(1, cutWidth))
-                let chunk = String(remaining[..<idx])
-                out.append(first ? chunk : (continuation + chunk))
-                remaining = String(remaining[idx...])
-                first = false
-            }
-            if !remaining.isEmpty {
-                out.append(first ? remaining : (continuation + remaining))
-            }
-        }
-        return out
     }
 }
 

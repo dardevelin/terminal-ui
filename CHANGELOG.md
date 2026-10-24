@@ -26,6 +26,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **Storybook's code panel wraps cleanly, and is highlighted.** It wrapped
+  code by hand to a width it guessed, and a continuation line overflowed it:
+  `Text("row 2").foreground(.yellow)` broke into a fragment, a blank line and
+  an unindented tail — on the README's tour. The panel is a `CodeView` now.
 - **A colour stated on a control is the colour it draws in.** `Button`,
   `Toggle`, `Picker`, `Slider`, `Stepper`, `Gauge`, `TextInput` and
   `TextArea` painted themselves in the theme's foreground beneath anything
