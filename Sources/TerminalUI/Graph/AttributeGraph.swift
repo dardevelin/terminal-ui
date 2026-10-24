@@ -1111,7 +1111,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// `LayoutKind.split(axis)` node carrying the per-child ratios on
     /// `node.splitRatios`. Leaves construct as their underlying view.
     ///
-    /// Reassigning `root` re-enters via `rebuildSplitChildren`.
+    /// Reassigning `root` re-enters via `updateSplitChildren`.
     func constructSplitView(_ split: any _GraphSplitView, id: NodeID) -> AttributeNode {
         constructSplitNode(split.state.root, id: id, state: split.state, path: [])
     }
@@ -1129,13 +1129,18 @@ public final class AttributeGraph: @unchecked Sendable {
             let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .split(axis))))
             node.splitRatios = ratios
             Self.stampResize(node, state: state, path: path)
-            for (i, child) in children.enumerated() {
-                let childID = id.appending(.index(i))
-                let childNode = constructSplitNode(child, id: childID, state: state, path: path + [i])
-                childNode.parent = node
-                node.children.append(childNode)
-            }
+            node.children = constructSplitChildren(of: node, from: children, state: state, path: path)
             return node
+        }
+    }
+
+    private func constructSplitChildren(of node: AttributeNode, from children: [SplitNode],
+                                        state: SplitState, path: [Int]) -> [AttributeNode] {
+        children.enumerated().map { i, child in
+            let childNode = constructSplitNode(child, id: node.id.appending(.index(i)), state: state,
+                                               path: path + [i])
+            childNode.parent = node
+            return childNode
         }
     }
 
@@ -1177,13 +1182,7 @@ public final class AttributeGraph: @unchecked Sendable {
             for old in node.children {
                 fireDisappear(on: old)
             }
-            node.children.removeAll()
-            for (i, child) in children.enumerated() {
-                let childNode = constructSplitNode(child, id: node.id.appending(.index(i)), state: state,
-                                                   path: path + [i])
-                childNode.parent = node
-                node.children.append(childNode)
-            }
+            node.children = constructSplitChildren(of: node, from: children, state: state, path: path)
             invalidateMeasurementCache(from: node)
             changed = true
             return

@@ -142,6 +142,13 @@ public enum Layout {
         )
     }
 
+    /// The column — or, for a `.vertical` split, the row — of each divider
+    /// between `panes`: the one-cell gap `placeSplit` leaves after each pane
+    /// but the last. Where the renderer draws them and a press finds them.
+    static func splitDividers(of panes: [Rect], axis: SplitAxis) -> [Int] {
+        panes.dropLast().map { axis == .horizontal ? $0.x + $0.width : $0.y + $0.height }
+    }
+
     /// Ratios `placeSplit` lays children out at exactly `sizes` with: what
     /// a divider dragged to a cell writes back. Each non-last child takes
     /// the ceiling of its share, so a ratio of exactly `size / available`

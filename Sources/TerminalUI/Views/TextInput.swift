@@ -251,8 +251,9 @@ public struct TextInput: TerminalView {
                     theme: theme)
                 return TextInputRow(spans: composed.spans, caret: composed.caret,
                                     promptSpans: prompt.isEmpty ? 0 : 1,
-                                    valueStart: composed.valueStart,
-                                    placeCursor: { cursorBinding.set(min(max(0, $0), value.count)) })
+                                    placeCursor: composed.valueStart.map { start in
+                                        { cursorBinding.set(min(start + $0, value.count)) }
+                                    })
                     .focusable()
                     .onKeyPress { [text, cursorBinding, textEditing, maxLength] event in
                         Self.handleKey(event,
@@ -657,12 +658,11 @@ struct TextInputRow: TerminalView {
     let spans: [TextSpan]
     let caret: Int?
     /// How many of `spans` lead the value: the prompt's.
-    var promptSpans = 0
-    /// The value index of the first character drawn; nil when a click
-    /// cannot place the cursor (see `TextInput.composeSpans`).
-    var valueStart: Int? = nil
-    /// Puts the cursor at a value index: what a click does.
-    var placeCursor: (Int) -> Void = { _ in }
+    let promptSpans: Int
+    /// Puts the cursor after that many of the characters drawn: what a
+    /// click does. Nil where the columns drawn do not map to the value
+    /// (see `TextInput.composeSpans`).
+    let placeCursor: ((Int) -> Void)?
 
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.cursorFlash) var cursorFlash
@@ -673,17 +673,15 @@ struct TextInputRow: TerminalView {
         // is lit: a read is a subscription, and every other field would
         // redraw at each hit for nothing.
         let lit = isFocused && cursorFlash?.isLit == true
-        let (spans, caret, promptSpans, valueStart) = (spans, caret, promptSpans, valueStart)
+        let (spans, caret, promptSpans, placeCursor) = (spans, caret, promptSpans, placeCursor)
         let caretDrawn = caret != nil && isFocused
-        let placeCursor = placeCursor
         return Text(spans: Self.visibleSpans(spans, caret: caret, isFocused: isFocused,
                                              litColor: lit ? theme.cursorColor(lit: true) : nil))
             // A click puts the cursor before the character it lands on, as
             // the frame it was made on drew them.
             .onClick { x, _ in
-                guard let valueStart else { return }
-                placeCursor(valueStart + Self.characters(before: x, in: spans, from: promptSpans,
-                                                         caret: caretDrawn ? caret : nil))
+                placeCursor?(Self.characters(before: x, in: spans, from: promptSpans,
+                                             caret: caretDrawn ? caret : nil))
             }
     }
 
@@ -701,7 +699,7 @@ struct TextInputRow: TerminalView {
                 continue
             }
             for character in span.text {
-                let width = String(character).displayWidth
+                let width = character.displayWidth
                 if x < column + width { return count }
                 column += width
                 count += 1

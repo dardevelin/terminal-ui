@@ -616,9 +616,13 @@ public enum Terminal {
         exit(128 + signum)
     }
 
+    /// The signals the runtime handles by unwinding the terminal and
+    /// quitting; see `installSignalCleanup`.
+    static let terminatingSignals: [Int32] = [SIGINT, SIGTERM, SIGHUP]
+
     /// The signals the runtime's handlers answer by waking its input thread:
     /// the terminating ones and SIGWINCH.
-    static let wakingSignals: [Int32] = [SIGINT, SIGTERM, SIGHUP, SIGWINCH]
+    static let wakingSignals: [Int32] = terminatingSignals + [SIGWINCH]
 
     /// Keeps the waking signals off the calling thread, and off every thread
     /// it starts from now on, which inherit its mask (POSIX
@@ -817,7 +821,7 @@ public enum Terminal {
         // forbids C-function-pointer formation from any closure that
         // captures Self / context, even via static-function calls.
         // File-scope free functions sidestep that.
-        for signum in [SIGINT, SIGTERM, SIGHUP] {
+        for signum in terminatingSignals {
             installSignalDisposition(signum, _terminalSignalHandler)
         }
         // A static `let` is initialised on first use, which allocates — the

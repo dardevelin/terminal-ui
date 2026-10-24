@@ -33,9 +33,8 @@ extension OnClickModifier: _FocusGraphModifier {
 
 extension TapGestureModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
-        let recognizer = gesture.recognizer
-        node._tapHandler = recognizer
-        GraphContext.currentFocusEngine?.registerTapHandler(for: node.id, recognizer: recognizer)
+        node._tapHandler = gesture
+        GraphContext.currentFocusEngine?.registerTapHandler(for: node.id, gesture: gesture)
     }
 }
 

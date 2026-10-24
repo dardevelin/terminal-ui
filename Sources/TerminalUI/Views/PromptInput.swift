@@ -828,8 +828,7 @@ public struct PromptInput: TerminalView {
     static func cursor(atColumn x: Int, row y: Int, rows: PromptRows) -> (row: Int, col: Int) {
         let expandedLines = TextLines.split(rows.text)
         guard !rows.text.isEmpty else { return (0, 0) }
-        let firstRow = max(0, min(rows.state.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
-        var target = max(0, min(firstRow + y, rows.totalDisplayRows - 1))
+        var target = max(0, min(rows.firstVisibleRow + y, rows.totalDisplayRows - 1))
         var lineIndex = 0
         var columnInLine = 0
         for (index, chunks) in rows.wraps.enumerated() {
@@ -845,17 +844,8 @@ public struct PromptInput: TerminalView {
             lineIndex = index
             columnInLine = rows.lines.indices.contains(index) ? rows.lines[index].count : 0
         }
-        var offset = TextLines.offset(row: lineIndex, col: columnInLine, in: rows.lines)
-        let markers = rows.projection.markerRanges.filter { !$0.isExpanded }
-        if let marker = markers.first(where: { $0.start < offset && offset < $0.end }) {
-            offset = offset - marker.start <= marker.end - offset ? marker.start : marker.end
-        }
-        // Each collapsed marker before the offset moved it by its delta.
-        var delta = 0
-        for (marker, point) in zip(markers, rows.projection.deltas) where offset >= marker.end {
-            delta = point.delta
-        }
-        return TextLines.position(of: offset - delta, in: expandedLines)
+        let offset = TextLines.offset(row: lineIndex, col: columnInLine, in: rows.lines)
+        return TextLines.position(of: untranslateOffset(offset, in: rows.projection), in: expandedLines)
     }
 
     // MARK: - Collapsed-display projection
@@ -998,6 +988,23 @@ public struct PromptInput: TerminalView {
         return expandedOffset + cumulative
     }
 
+    /// The inverse of `translateOffset`: the offset in the expanded text of
+    /// a display offset, which inside a collapsed marker is the nearer of
+    /// its edges, as the cursor never lives within one.
+    static func untranslateOffset(_ displayOffset: Int, in projection: CollapsedProjection) -> Int {
+        var offset = displayOffset
+        let markers = projection.markerRanges.filter { !$0.isExpanded }
+        if let marker = markers.first(where: { $0.start < offset && offset < $0.end }) {
+            offset = offset - marker.start <= marker.end - offset ? marker.start : marker.end
+        }
+        // Each collapsed marker before the offset moved it by its delta.
+        var delta = 0
+        for (marker, point) in zip(markers, projection.deltas) where offset >= marker.end {
+            delta = point.delta
+        }
+        return offset - delta
+    }
+
     // MARK: - Display
 
     /// The spans for `rows`, drawn for whether the prompt holds focus: the
@@ -1026,7 +1033,7 @@ public struct PromptInput: TerminalView {
         )
 
         // Flatten (logicalRow, chunkIndex) pairs for the visible window.
-        let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
+        let startDisplayRow = rows.firstVisibleRow
         let endDisplayRow = min(rows.totalDisplayRows, startDisplayRow + rows.visibleLines)
         let cursorStyle = (foreground: theme.foregroundEmphasis,
                            background: theme.cursorColor(lit: cursorLit))
@@ -1638,6 +1645,12 @@ struct PromptRows: TerminalView {
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.theme) var theme
     @TerminalEnvironment(\.cursorFlash) var cursorFlash
+
+    /// The display row drawn first: the scroll position, kept from showing
+    /// rows past the end.
+    var firstVisibleRow: Int {
+        max(0, min(state.scrollDisplayRow, max(0, totalDisplayRows - visibleLines)))
+    }
 
     var body: some TerminalView {
         Text(spans: PromptInput.buildDisplay(self, isFocused: isFocused,

@@ -31,7 +31,7 @@ public final class FocusEngine: @unchecked Sendable {
     var clickHandlers: [NodeID: (_ relativeX: Int, _ relativeY: Int) -> Void] = [:]
     /// Tap gestures, which a press reaches only when it is the click they
     /// wait for; see `TapRecognizer`.
-    private var tapHandlers: [NodeID: TapRecognizer] = [:]
+    private var tapHandlers: [NodeID: TapGesture] = [:]
     /// Drag gestures, which a left press under them begins.
     private var dragHandlers: [NodeID: DragGesture] = [:]
     /// The drag a left press began, until the button comes up.
@@ -220,21 +220,7 @@ public final class FocusEngine: @unchecked Sendable {
         // here makes registration a function of tree shape rather than of body
         // evaluation. A live update that DID re-fire the modifier has already
         // set the same handler; assigning it again is idempotent.
-        if let keyHandler = node._keyHandler, keyHandlers[node.id] == nil {
-            keyHandlers[node.id] = keyHandler
-        }
-        if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
-            clickHandlers[node.id] = clickHandler
-        }
-        if let tap = node._tapHandler, tapHandlers[node.id] == nil {
-            tapHandlers[node.id] = tap
-        }
-        if let drag = node._dragHandler, dragHandlers[node.id] == nil {
-            dragHandlers[node.id] = drag
-        }
-        if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
-            wheelHandlers[node.id] = wheelHandler
-        }
+        restoreStampedHandlers(of: node)
         var prefersDefaultFocus = prefersDefaultFocus
         if case .modifier(.prefersDefaultFocus(true)) = node.kind {
             prefersDefaultFocus = true
@@ -254,6 +240,24 @@ public final class FocusEngine: @unchecked Sendable {
         }
         for child in node.children {
             buildIndexRecursive(child, prefersDefaultFocus: prefersDefaultFocus)
+        }
+    }
+
+    private func restoreStampedHandlers(of node: AttributeNode) {
+        if let keyHandler = node._keyHandler, keyHandlers[node.id] == nil {
+            keyHandlers[node.id] = keyHandler
+        }
+        if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
+            clickHandlers[node.id] = clickHandler
+        }
+        if let tap = node._tapHandler, tapHandlers[node.id] == nil {
+            tapHandlers[node.id] = tap
+        }
+        if let drag = node._dragHandler, dragHandlers[node.id] == nil {
+            dragHandlers[node.id] = drag
+        }
+        if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
+            wheelHandlers[node.id] = wheelHandler
         }
     }
 
@@ -705,7 +709,13 @@ public final class FocusEngine: @unchecked Sendable {
             return
         }
         var nowHovered: Set<NodeID> = []
-        var holder = findHoverHandlerAt(x: x, y: y, in: root)
+        // The deepest hover handler on top — the one a click there would
+        // reach — and the handlers holding it are hovered; one drawn under
+        // it is not, as in SwiftUI, where a covered view does not see the
+        // pointer.
+        var holder = deepest(x: x, y: y, in: root) { node in
+            self.hoverHandlers[node.id] != nil && node.rect.contains(x: x, y: y) ? node : nil
+        }
         while let node = holder {
             if hoverHandlers[node.id] != nil, node.rect.contains(x: x, y: y) {
                 nowHovered.insert(node.id)
@@ -724,15 +734,15 @@ public final class FocusEngine: @unchecked Sendable {
         hoveredHandlerIDs = nowHovered
     }
 
-    /// The deepest hover handler under (x, y) on top: the one a click there
-    /// would reach, by the rule `findPressHandlerAt` follows. It and the
-    /// handlers holding it are hovered; one drawn under it is not, as in
-    /// SwiftUI, where a view covered by another does not see the pointer.
-    private func findHoverHandlerAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
+    /// The first answer `match` gives for the nodes under (x, y), deepest
+    /// and topmost first: the walk every pointer lookup shares, reaching a
+    /// scroll view's content only through its viewport.
+    private func deepest<T>(x: Int, y: Int, in node: AttributeNode,
+                            _ match: (AttributeNode) -> T?) -> T? {
         for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
-            if let hit = findHoverHandlerAt(x: x, y: y, in: child) { return hit }
+            if let hit = deepest(x: x, y: y, in: child, match) { return hit }
         }
-        return hoverHandlers[node.id] != nil && node.rect.contains(x: x, y: y) ? node : nil
+        return match(node)
     }
 
     /// Handle mouse click — transfer keyboard focus and invoke click handler.
@@ -761,79 +771,84 @@ public final class FocusEngine: @unchecked Sendable {
     /// button moves focus and activates; another reaches only a handler
     /// waiting for it.
     func handlePress(_ press: PointerPress, root: AttributeNode?) {
-        let (x, y) = (press.x, press.y)
         // The same containment rule Tab obeys: while a modal is presented,
         // clicking the content it dims must not reach it. The click is
         // swallowed rather than redirected — dismissal is the modal's own
-        // explicit action.
+        // explicit action. A menu's is a press anywhere outside it, as a
+        // platform's is; one that chooses an item in it closes it too.
         guard let root else { return }
-        guard let scope = pointerScope(x: x, y: y, root: root) else {
-            // Outside an open menu, a press closes it, as a platform's does.
+        guard let scope = pointerScope(x: press.x, y: press.y, root: root) else {
             menuDismissal?()
             return
         }
+        if act(on: press, in: scope, root: root) {
+            menuDismissal?()
+        }
+    }
+
+    /// What a press in `scope` does; whether it reached anything that acts
+    /// on it, rather than a scrollbar, a divider or nothing.
+    private func act(on press: PointerPress, in scope: AttributeNode, root: AttributeNode) -> Bool {
+        let (x, y) = (press.x, press.y)
         guard press.button == .left else {
-            if let (target, handler) = findPressHandlerAt(press, in: scope) {
-                handler(x - target.rect.x, y - target.rect.y)
-            }
-            return
+            return pressActionAt(press, in: scope).map { $0.act() } != nil
         }
         // A scrollbar is painted over the content's last column, so the cells
         // it occupies belong to the scroll view, not to the row underneath —
         // otherwise a press on the track would both scroll and activate
         // whatever it was drawn on top of.
-        if handleScrollAffordanceClick(x: x, y: y, root: scope) { return }
+        if handleScrollAffordanceClick(x: x, y: y, root: scope) { return false }
         // A split's divider is no pane's; a press there resizes.
         if let session = splitDividerDrag(x: x, y: y, in: scope) {
             dragSession = session
-            return
+            return false
         }
         beginDrag(at: press, in: scope)
-        if let target = findFocusableAt(x: x, y: y, in: scope) {
-            keyboardFocusID = target.id
-            // A row inside a focusable pane keeps its own click handler.
-            // Deepest wins is the rule the non-focusable path already follows,
-            // and making a whole area focusable — which is how an app gives
-            // the engine something to cycle to — must not swallow the clicks
-            // of everything inside it.
-            if let (inner, innerHandler) = findPressHandlerAt(press, in: target),
-               inner.id != target.id {
-                innerHandler(x - inner.rect.x, y - inner.rect.y)
-                return
-            }
-            // The control's own click handler, then its own activation — a
-            // Button in a clickable row runs the Button — and only then a
-            // handler above it, given the point in its own view. Asking above
-            // first ran the row's handler for the Button, with coordinates
-            // measured from whatever had taken focus.
-            if let handler = pressHandler(at: target, for: press) {
-                handler(x - target.rect.x, y - target.rect.y)
-            } else if let ownHandler = keyHandlers[target.id],
-                      GraphContext.$currentRoutingNodeID.withValue(target.id, operation: {
-                          ownHandler(KeyEvent(key: .activate))
-                      }) == .handled {
-                menuDismissal?()
-                return
-            } else if let (owner, handler) = findPressHandlerAbove(target, for: press) {
-                handler(x - owner.rect.x, y - owner.rect.y)
-            } else {
-                // Synthesize `.activate` (not `.enter`) so click-to-
-                // activate works for Button without inserting newlines
-                // into focused text-input components. Button treats
-                // `.activate` the same as `.enter`; TextArea / TextInput /
-                // PromptInput ignore it because their `.enter` arms
-                // interpret Enter as user input.
-                let syntheticActivate = KeyEvent(key: .activate)
-                _ = routeKeyEvent(syntheticActivate, root: root)
-            }
-            return
+        guard let target = findFocusableAt(x: x, y: y, in: scope) else {
+            // No focusable under the cursor — try a click handler on any
+            // node containing the click point. Walks deepest-first so a
+            // row's onClick wins over its parent VStack's.
+            return pressActionAt(press, in: scope).map { $0.act() } != nil
         }
-        // No focusable under the cursor — try a click handler on any
-        // node containing the click point. Walks deepest-first so a
-        // row's onClick wins over its parent VStack's.
-        if let (target, handler) = findPressHandlerAt(press, in: scope) {
-            handler(x - target.rect.x, y - target.rect.y)
+        keyboardFocusID = target.id
+        // A row inside a focusable pane keeps its own click handler.
+        // Deepest wins is the rule the non-focusable path already follows,
+        // and making a whole area focusable — which is how an app gives
+        // the engine something to cycle to — must not swallow the clicks
+        // of everything inside it.
+        if let inner = pressActionAt(press, in: target), inner.node.id != target.id {
+            inner.act()
+            return true
         }
+        // The control's own click handler, then its own activation — a
+        // Button in a clickable row runs the Button — and only then a
+        // handler above it, given the point in its own view. Asking above
+        // first ran the row's handler for the Button, with coordinates
+        // measured from whatever had taken focus.
+        if let action = pressAction(at: target, for: press) {
+            action()
+            return true
+        }
+        if let ownHandler = keyHandlers[target.id],
+           GraphContext.$currentRoutingNodeID.withValue(target.id, operation: {
+               ownHandler(KeyEvent(key: .activate))
+           }) == .handled {
+            return true
+        }
+        var ancestor = target.parent
+        while let owner = ancestor {
+            if let action = pressAction(at: owner, for: press) {
+                action()
+                return true
+            }
+            ancestor = owner.parent
+        }
+        // Synthesize `.activate` (not `.enter`) so click-to-activate works
+        // for Button without inserting newlines into focused text-input
+        // components. Button treats `.activate` the same as `.enter`;
+        // TextArea / TextInput / PromptInput ignore it because their
+        // `.enter` arms interpret Enter as user input.
+        return routeKeyEvent(KeyEvent(key: .activate), root: root, startingFrom: target.id)
     }
 
     /// Press on a scrollbar: the ends step, anywhere else on the track jumps
@@ -864,9 +879,9 @@ public final class FocusEngine: @unchecked Sendable {
                 )
             }
             jump(to: position)
-            dragSession = DragSession(startX: x, startY: y, minimumDistance: 1) { x, y in
+            dragSession = DragSession(startX: x, startY: y, minimumDistance: 1, changed: { x, y in
                 jump(to: max(1, min(extent - 2, axis == .vertical ? y - affordance.y : x - affordance.x)))
-            }
+            })
         }
         return true
     }
@@ -875,8 +890,10 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Begins the drag of the deepest drag gesture under `press`, if any.
     private func beginDrag(at press: PointerPress, in scope: AttributeNode) {
-        guard let owner = findDragHandlerAt(x: press.x, y: press.y, in: scope),
-              let gesture = dragHandlers[owner.id] else { return }
+        guard !dragHandlers.isEmpty,
+              let (owner, gesture) = deepest(x: press.x, y: press.y, in: scope, { node in
+                  self.dragHandlers[node.id].flatMap { node.rect.contains(x: press.x, y: press.y) ? (node, $0) : nil }
+              }) else { return }
         let ownerID = owner.id
         let origin = (x: owner.rect.x, y: owner.rect.y)
         let start = Point(x: press.x - origin.x, y: press.y - origin.y)
@@ -885,14 +902,10 @@ public final class FocusEngine: @unchecked Sendable {
         func value(_ x: Int, _ y: Int) -> DragGesture.Value {
             DragGesture.Value(startLocation: start, location: Point(x: x - origin.x, y: y - origin.y))
         }
-        var session = DragSession(startX: press.x, startY: press.y,
-                                  minimumDistance: gesture.minimumDistance) { [weak self] x, y in
-            self?.dragHandlers[ownerID]?.changed(value(x, y))
-        }
-        session.ended = { [weak self] x, y in
-            self?.dragHandlers[ownerID]?.ended(value(x, y))
-        }
-        dragSession = session
+        dragSession = DragSession(
+            startX: press.x, startY: press.y, minimumDistance: gesture.minimumDistance,
+            changed: { [weak self] x, y in self?.dragHandlers[ownerID]?.changed(value(x, y)) },
+            ended: { [weak self] x, y in self?.dragHandlers[ownerID]?.ended(value(x, y)) })
         if gesture.minimumDistance == 0 {
             continueDrag(x: press.x, y: press.y)
         }
@@ -918,54 +931,40 @@ public final class FocusEngine: @unchecked Sendable {
         }
     }
 
-    /// The deepest node under (x, y) with a drag gesture, topmost first.
-    private func findDragHandlerAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
-            if let hit = findDragHandlerAt(x: x, y: y, in: child) { return hit }
-        }
-        return dragHandlers[node.id] != nil && node.rect.contains(x: x, y: y) ? node : nil
-    }
-
     /// A drag resizing the two panes either side of the SplitView divider
     /// at (x, y), if there is one. The divider follows the pointer, and the
     /// panes' new sizes are written back to the split's state as ratios.
-    private func splitDividerDrag(x: Int, y: Int, in node: AttributeNode) -> DragSession? {
-        guard node.rect.contains(x: x, y: y) else { return nil }
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
-            if let session = splitDividerDrag(x: x, y: y, in: child) { return session }
-        }
-        guard case .layout(let info) = node.kind, case .split(let axis) = info.kind,
-              let resize = node._resizeSplit, node.children.count > 1 else { return nil }
-        let horizontal = axis == .horizontal
-        func start(_ rect: Rect) -> Int { horizontal ? rect.x : rect.y }
-        func length(_ rect: Rect) -> Int { horizontal ? rect.width : rect.height }
-        let pointer = horizontal ? x : y
-        let panes = node.children.map(\.rect)
-        guard let index = panes.dropLast().indices.first(where: { start(panes[$0]) + length(panes[$0]) == pointer })
-        else { return nil }
-        let sizes = panes.map(length)
-        let pair = sizes[index] + sizes[index + 1]
-        let first = start(panes[index])
-        return DragSession(startX: x, startY: y, minimumDistance: 1) { x, y in
-            var resized = sizes
-            resized[index] = max(1, min(pair - 1, (horizontal ? x : y) - first))
-            resized[index + 1] = pair - resized[index]
-            resize(Layout.splitRatios(placing: resized))
+    private func splitDividerDrag(x: Int, y: Int, in scope: AttributeNode) -> DragSession? {
+        deepest(x: x, y: y, in: scope) { node -> DragSession? in
+            guard case .layout(let info) = node.kind, case .split(let axis) = info.kind,
+                  let resize = node._resizeSplit, node.rect.contains(x: x, y: y) else { return nil }
+            let horizontal = axis == .horizontal
+            let panes = node.children.map(\.rect)
+            guard let index = Layout.splitDividers(of: panes, axis: axis).firstIndex(of: horizontal ? x : y)
+            else { return nil }
+            let sizes = panes.map { horizontal ? $0.width : $0.height }
+            let pair = sizes[index] + sizes[index + 1]
+            let first = horizontal ? panes[index].x : panes[index].y
+            return DragSession(startX: x, startY: y, minimumDistance: 1, changed: { x, y in
+                var resized = sizes
+                resized[index] = max(1, min(pair - 1, (horizontal ? x : y) - first))
+                resized[index + 1] = pair - resized[index]
+                resize(Layout.splitRatios(placing: resized))
+            })
         }
     }
 
     /// The deepest scroll node whose painted scrollbar covers (x, y).
-    private func findScrollAffordanceAt(x: Int, y: Int, in node: AttributeNode)
+    private func findScrollAffordanceAt(x: Int, y: Int, in root: AttributeNode)
         -> (AttributeNode, ScrollAxis, Rect)?
     {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
-            if let hit = findScrollAffordanceAt(x: x, y: y, in: child) { return hit }
+        deepest(x: x, y: y, in: root) { node in
+            guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind,
+                  let affordance = node.scrollAffordanceRect,
+                  affordance.contains(x: x, y: y)
+            else { return nil }
+            return (node, axis, affordance)
         }
-        guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind,
-              let affordance = node.scrollAffordanceRect,
-              affordance.contains(x: x, y: y)
-        else { return nil }
-        return (node, axis, affordance)
     }
 
     /// Click path under `MouseFocusPolicy.disabled`. Fires the
@@ -981,52 +980,37 @@ public final class FocusEngine: @unchecked Sendable {
     /// modifiers.
     func firePressHandlerOnly(_ press: PointerPress, root: AttributeNode) {
         if let scope = pointerScope(x: press.x, y: press.y, root: root),
-           let (target, handler) = findPressHandlerAt(press, in: scope) {
-            handler(press.x - target.rect.x, press.y - target.rect.y)
+           let hit = pressActionAt(press, in: scope) {
+            hit.act()
+            menuDismissal?()
         }
     }
 
-    /// What `press` does at `node`: a tap gesture there waiting for this
-    /// click, or, for the left button, its `.onClick` handler.
-    private func pressHandler(at node: AttributeNode, for press: PointerPress)
-        -> ((_ relativeX: Int, _ relativeY: Int) -> Void)?
-    {
+    /// What `press` does at `node`, given the point in `node`'s own view: a
+    /// tap gesture there waiting for this click, or, for the left button,
+    /// its `.onClick` handler.
+    private func pressAction(at node: AttributeNode, for press: PointerPress) -> (() -> Void)? {
         if let tap = tapHandlers[node.id], tap.accepts(press) {
-            return { _, _ in tap.action(press) }
+            return { tap.action(press) }
         }
-        return press.button == .left ? clickHandlers[node.id] : nil
+        guard press.button == .left, let handler = clickHandlers[node.id] else { return nil }
+        let (x, y) = (press.x - node.rect.x, press.y - node.rect.y)
+        return { handler(x, y) }
     }
 
-    /// Walk the tree deepest-first, topmost first, for a node containing
-    /// the press with a handler for it. A tap gesture waiting for another
-    /// click — a double tap, on a single click — passes it to the view
-    /// holding it. A row tagged with `.onClick` receives the event without
-    /// needing to be focusable.
-    private func findPressHandlerAt(_ press: PointerPress, in node: AttributeNode)
-        -> (AttributeNode, (_ relX: Int, _ relY: Int) -> Void)?
+    /// The deepest node containing the press with something to do for it,
+    /// topmost first. A tap gesture waiting for another click — a double
+    /// tap, on a single click — passes it to the view holding it. A row
+    /// tagged with `.onClick` receives the event without needing to be
+    /// focusable.
+    private func pressActionAt(_ press: PointerPress, in scope: AttributeNode)
+        -> (node: AttributeNode, act: () -> Void)?
     {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: press.x, y: press.y) {
-            if let hit = findPressHandlerAt(press, in: child) {
-                return hit
-            }
+        deepest(x: press.x, y: press.y, in: scope) { node in
+            guard node.rect.contains(x: press.x, y: press.y),
+                  let action = pressAction(at: node, for: press) else { return nil }
+            return (node, action)
         }
-        if node.rect.contains(x: press.x, y: press.y), let handler = pressHandler(at: node, for: press) {
-            return (node, handler)
-        }
-        return nil
-    }
-
-    /// The nearest handler for `press` above `node`, with the node it
-    /// belongs to, whose rect the click's coordinates are measured from.
-    private func findPressHandlerAbove(_ node: AttributeNode, for press: PointerPress)
-        -> (AttributeNode, (_ relativeX: Int, _ relativeY: Int) -> Void)?
-    {
-        var ancestor = node.parent
-        while let owner = ancestor {
-            if let handler = pressHandler(at: owner, for: press) { return (owner, handler) }
-            ancestor = owner.parent
-        }
-        return nil
     }
 
     // MARK: - Key Event Routing
@@ -1045,8 +1029,11 @@ public final class FocusEngine: @unchecked Sendable {
         guard let focused = keyboardFocusID, let root else { return false }
         let handled = routeKeyEvent(event, root: root, startingFrom: focused)
         // An item chosen from a menu closes it, as a platform's menu does.
-        if handled, [.enter, .character(" "), .activate].contains(event.key) {
-            menuDismissal?()
+        switch event.key {
+        case .enter, .character(" "), .activate:
+            if handled { menuDismissal?() }
+        default:
+            break
         }
         return handled
     }
@@ -1116,8 +1103,8 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     /// Register a tap gesture for a node. Called during graph construction.
-    func registerTapHandler(for nodeID: NodeID, recognizer: TapRecognizer) {
-        tapHandlers[nodeID] = recognizer
+    func registerTapHandler(for nodeID: NodeID, gesture: TapGesture) {
+        tapHandlers[nodeID] = gesture
     }
 
     /// Register a drag gesture for a node. Called during graph construction.
