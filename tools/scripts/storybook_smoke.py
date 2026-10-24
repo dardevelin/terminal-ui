@@ -31,6 +31,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui import Client, CellSlice, Probe  # noqa: E402
+from terminalui.process import usable_cpus  # noqa: E402
 from terminalui.runner import BOOT_TIMEOUT, AppExitedBadly, spawn_and_connect  # noqa: E402
 
 
@@ -2844,15 +2845,6 @@ CASES: list[SmokeCase] = [
 ]
 
 
-def _usable_cpus() -> int:
-    """The CPUs this process may run on — a container's share, not the host's."""
-    if hasattr(os, "process_cpu_count"):
-        return os.process_cpu_count() or 1
-    if hasattr(os, "sched_getaffinity"):
-        return len(os.sched_getaffinity(0))
-    return os.cpu_count() or 1
-
-
 def _tick(result: CaseResult) -> str:
     if result.skipped:
         return "–"
@@ -2876,7 +2868,7 @@ def main(argv: list[str]) -> int:
     # Half the CPUs: every case is an app under a PTY plus its client, and a
     # timing-sensitive case — an idle app's CPU, a burst of input — must not
     # be starved by its neighbours. Each app owns its own data dir and socket.
-    parser.add_argument("--jobs", type=int, default=_usable_cpus() // 2,
+    parser.add_argument("--jobs", type=int, default=usable_cpus() // 2,
                         help="cases run at once (default: half the CPUs; 1 runs them in turn)")
     args = parser.parse_args(argv)
 

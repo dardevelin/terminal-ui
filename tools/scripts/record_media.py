@@ -8,16 +8,16 @@ is now made here, from the tutorial's own code steps and the tapes under
 ``tools/recordings/``.
 
 - **Previews**, ``preview-<step>.png``: each code step, built and run under
-  vhs, driven by the keys in ``PREVIEWS`` into the state its caption
-  describes, then captured.
+  vhs, driven by the keys ``tools/terminalui/tutorial.py`` lists for it into
+  the state its caption describes, then captured.
 - **Chapter GIFs**, ``demo-ch<N>.gif``: ``tools/recordings/demo-ch<N>.tape``.
 - **Chapter cards**, ``card-ch<N>.png``: a chapter's preview, framed, with
   the fox in its corner.
 - **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``.
 
 The steps are built as one package of executables in
-``.build-recordings/tutorial``, each step's file its ``main.swift``, against
-this checkout.
+``.build-recordings/tutorial``, as ``tools/terminalui/tutorial.py`` writes
+it, against this checkout.
 
 Run::
 
@@ -29,13 +29,16 @@ Needs vhs (with ttyd and ffmpeg) and ImageMagick.
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-RESOURCES = REPO_ROOT / "Sources" / "TerminalUI" / "TerminalUI.docc" / "Resources"
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from terminalui.tutorial import (  # noqa: E402
+    REPO_ROOT, RESOURCES, STEPS, Action, Loaded, Press, Step, Type, binary_name, build,
+)
+
 RECORDINGS = REPO_ROOT / "tools" / "recordings"
 WORK = REPO_ROOT / ".build-recordings"
 TUTORIAL_PACKAGE = WORK / "tutorial"
@@ -59,37 +62,24 @@ SETTLE = "Sleep 300ms"
 # Long enough for the four-second load chapters 6 and 7 simulate.
 LOADED = "Sleep 4s"
 
-# The keys that bring each step into the state its preview's caption
-# describes, as vhs commands. A step whose caption is its first frame needs
-# none.
-PREVIEWS: dict[str, list[str]] = {
-    "tasks-01-01": [],
-    "tasks-02-01": [],
-    "tasks-02-02": [],
-    "tasks-03-01": ["Down"],
-    "tasks-03-02": ["Down", "Space"],
-    "tasks-04-01": ["Down", "Space"],
-    "tasks2-01-01": ['Type "Feed the fox"'],
-    "tasks2-02-01": ["Down", "Enter"],
-    "tasks2-03-01": ['Type "Feed the fox"', "Enter", "Down", "Down", "Down", "Enter"],
-    # The tab bar holds focus at launch, so digits switch tabs.
-    "tasks3-01-01": [],
-    "tasks3-02-01": ["Down"],
-    "tasks3-03-01": ['Type "2"'],
-    "tasks4-01-01": ["Down", "Down", "Enter"],
-    "tasks4-02-01": ["Down", "Down", "Enter", "Space"],
-    "tasks4-03-01": ["Down", "Down", "Enter", "Space"],
-    "tasks5-01-01": ["Enter", 'Type "3"'],
-    "tasks5-02-01": ["Enter", 'Type "3"'],
-    "tasks5-03-01": ["Enter", 'Type "3"'],
-    "tasks6-01-01": ["Backspace"],
-    # Captured mid-load: the load takes four seconds.
-    "tasks6-02-01": [],
-    "tasks6-03-01": [LOADED, "Enter"],
-    "tasks7-01-01": [LOADED, "Enter"],
-    "tasks7-02-01": [LOADED, "Down", "Enter"],
-    "tasks7-03-01": [LOADED, "Down", "Down", "Enter"],
-}
+# vhs's names for the keys the steps are driven with.
+VHS_KEYS = {"down": "Down", "up": "Up", "enter": "Enter", "space": "Space",
+            "backspace": "Backspace", "tab": "Tab", "escape": "Escape"}
+VHS_MODIFIERS = {"shift": "Shift", "ctrl": "Ctrl", "alt": "Alt"}
+
+
+def vhs_command(action: Action) -> str:
+    """One of a step's actions as a vhs command. A preview is driven by
+    keys alone: vhs cannot click."""
+    if isinstance(action, Press):
+        return "+".join([VHS_MODIFIERS[modifier] for modifier in action.modifiers]
+                        + [VHS_KEYS[action.key]])
+    if isinstance(action, Type):
+        return f'Type "{action.text}"'
+    if isinstance(action, Loaded):
+        return LOADED
+    raise ValueError(f"a preview cannot be driven by {action}")
+
 
 # Chapter 7's last step saves its tasks to this file and loads them on the
 # next launch, so a recording starts by removing it — or it records
@@ -120,41 +110,9 @@ CARD_STEP = {
 }
 
 
-def binary_name(step: str) -> str:
-    """The executable a step builds as: its name without dashes, so
-    ``tasks2-03-01`` is ``tasks20301``."""
-    return step.replace("-", "")
-
-
 def run(command: list[str], cwd: Path = REPO_ROOT) -> None:
     print("$", " ".join(command), flush=True)
     subprocess.run(command, cwd=cwd, check=True)
-
-
-def build_steps() -> None:
-    """Every code step as an executable of one package, built for release
-    against this checkout."""
-    sources = TUTORIAL_PACKAGE / "Sources"
-    if sources.exists():
-        shutil.rmtree(sources)
-    targets = []
-    for step_file in sorted(RESOURCES.glob("tasks*.swift")):
-        name = binary_name(step_file.stem)
-        (sources / name).mkdir(parents=True)
-        shutil.copy(step_file, sources / name / "main.swift")
-        targets.append(
-            f'        .executableTarget(name: "{name}", '
-            f'dependencies: [.product(name: "TerminalUI", package: "terminal-ui")]),')
-    (TUTORIAL_PACKAGE / "Package.swift").write_text(
-        "// swift-tools-version: 6.2\n"
-        "// Generated by tools/scripts/record_media.py: every tutorial code step.\n"
-        "import PackageDescription\n\n"
-        "let package = Package(\n"
-        '    name: "TutorialSteps",\n'
-        "    platforms: [.macOS(.v15)],\n"
-        f'    dependencies: [.package(path: "{REPO_ROOT}")],\n'
-        "    targets: [\n" + "\n".join(targets) + "\n    ]\n)\n")
-    run(["swift", "build", "-c", "release"], cwd=TUTORIAL_PACKAGE)
 
 
 def vhs(tape: str, name: str) -> None:
@@ -172,21 +130,21 @@ def shrink(png: Path) -> None:
     run(["magick", str(png), "-colors", "128", f"PNG8:{png}"])
 
 
-def record_preview(step: str) -> None:
-    keys = "".join(f"{key}\n{SETTLE}\n" for key in PREVIEWS[step])
-    output = RESOURCES / f"preview-{step}.png"
+def record_preview(step: Step) -> None:
+    keys = "".join(f"{vhs_command(action)}\n{SETTLE}\n" for action in step.preview_keys())
+    output = RESOURCES / f"preview-{step.name}.png"
     # Removed first, so a shot vhs fails to take cannot leave the old picture
     # in place looking new.
     output.unlink(missing_ok=True)
-    fresh = f"Type `rm -f {SAVED_TASKS}`\nEnter\n" if step in STARTS_FRESH else ""
-    vhs(f'Output "{WORK / "frames" / (step + ".gif")}"\n' + TUTORIAL_SETTINGS
+    fresh = f"Type `rm -f {SAVED_TASKS}`\nEnter\n" if step.name in STARTS_FRESH else ""
+    vhs(f'Output "{WORK / "frames" / (step.name + ".gif")}"\n' + TUTORIAL_SETTINGS
         + "Hide\n" + fresh
-        + f'Type "{STEP_BINARIES / binary_name(step)}"\nEnter\n{LAUNCH}\n'
+        + f'Type "{STEP_BINARIES / binary_name(step.name)}"\nEnter\n{LAUNCH}\n'
         + keys
         # vhs takes the shot from the next frame it records: hidden at
         # once, there is no next frame and the file is never written.
         + f'Show\n{SETTLE}\nScreenshot "{output}"\n{SETTLE}\n'
-        + "Hide\nCtrl+C\nSleep 300ms\n" + fresh, f"preview-{step}")
+        + "Hide\nCtrl+C\nSleep 300ms\n" + fresh, f"preview-{step.name}")
     shrink(output)
 
 
@@ -223,10 +181,10 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.what in ("previews", "gifs", "cards", "all") and not args.no_build:
-        build_steps()
+        build(TUTORIAL_PACKAGE, "release")
     if args.what in ("previews", "all"):
-        for step in PREVIEWS:
-            if args.only in (None, step):
+        for step in STEPS:
+            if args.only in (None, step.name):
                 record_preview(step)
     if args.what in ("gifs", "all"):
         for chapter in CARD_STEP:
