@@ -489,6 +489,11 @@ public enum GraphRenderer {
             if isVFlexChild(child) {
                 let flexHeight = flexHeightByIndex[i] ?? 0
                 if case .primitive(.spacer) = child.kind {
+                    // Drawn as nothing, but placed all the same: the layout
+                    // pass left it the whole stack, and hit testing, which
+                    // searches the last child first, gave a trailing spacer
+                    // every point in it.
+                    child.rect = Rect(x: context.rect.x, y: y, width: context.rect.width, height: flexHeight)
                     y += flexHeight
                 } else {
                     let width = vstackChildWidth(child, available: context.rect.width,
@@ -747,6 +752,8 @@ public enum GraphRenderer {
                 // Spacers just consume space; scroll views and other
                 // flex-marked children render into the allocated rect.
                 if case .primitive(.spacer) = child.kind {
+                    // Placed though drawn as nothing, as in `renderVStack`.
+                    child.rect = Rect(x: x, y: context.rect.y, width: flexWidth, height: context.rect.height)
                     x += flexWidth
                 } else {
                     let height = hstackChildHeight(child, available: context.rect.height,

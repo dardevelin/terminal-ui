@@ -6,6 +6,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The inspector names the view under the cursor, not a `Spacer`.** A
+  spacer draws nothing, so the stacks skipped it when they placed their
+  children, and it kept the whole stack as its rect. Hit testing searches the
+  last child first, so a trailing spacer owned every point in its stack: the
+  F3 inspector and `swtui ctl probe` named `Spacer` over a task row, a header,
+  a detail pane. A spacer has the slot it takes now.
+
 ### Changed
 
 - **Every page of the documentation says something.** 2.0.0 published 92
