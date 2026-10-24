@@ -64,7 +64,7 @@ reputation suggests. These we match or beat:
 | Tabs (`question_form`) | `TabView` | ✅ |
 | `ui/model/status` | `StatusBar` | ✅ |
 | Charts (none in Crush) | `BarChart`, `Sparkline`, `HeatMap`, `BrailleCanvas` | ✅ we're ahead |
-| Wordmark letterforms | `DotMatrixText` + `DotFont` | ⚠️ close, see §4.6 |
+| Wordmark letterforms | `DotMatrixText(mode: .halfBlock)` + `.gradient` | ✅ L21 |
 
 ### 2.2 Missing — framework-level, blocks everything downstream
 
@@ -243,6 +243,9 @@ each stretchable horizontally, and stretches **one randomly chosen letter per
 session** so the logo has character without jittering on resize. We have
 `DotMatrixText` + `DotFont`, which is the same idea with a different texture —
 close enough that the demo can use ours and look intentional rather than derivative.
+
+*(Since built: L21. Our letters are the 5x7 `DotFont` in half blocks — four
+rows, not Crush's three, and every printable ASCII character, not one word.)*
 
 ### 4.7 The spinner
 `ui/anim` is more considered than it looks and worth reading before we build ours:
@@ -632,7 +635,8 @@ action` help line.
 Nothing in the framework had to change for any of that. Two things the
 comparison showed did need it, and are recorded rather than faked: Crush's
 three-row block wordmark (no block letterform with a gradient exists), and the
-leading-only padding every message frame uses (G3, below).
+leading-only padding every message frame uses (G3, below). *(Since built: L14,
+L21.)*
 
 **L14. Messages framed the way Crush frames them.** *(G3 — built, by way of three fixes)*
 
@@ -757,6 +761,28 @@ demo asked for five things the framework did not have:
 
 Not built: Crush's Shift+←/→ horizontal scroll of wide output, and copying an
 entry with `c`/`y` (no clipboard yet, G-clipboard).
+
+**L21. The name in letterforms.** *(demo — built)*
+
+Crush sets its name in three-row block letters swept by a two-colour
+gradient, and the sidebar showed ours as one gradient row: `DotMatrixText`
+drew dots or braille, in one colour. Two additions to it, rather than a
+second font:
+
+- **`.halfBlock`** packs `DotFont`'s seven dot rows into four cells with
+  `▀ ▄ █` — the same packing half-block image renderers use — so every
+  character the font has comes out solid, not only the five Crush drew by
+  hand.
+- **`.gradient(from:to:)`** ramps per terminal column, not per character as
+  `Text.gradient` does: a block is several rows, and stepping along the
+  string would give each row a different colour in the same column.
+
+Coder's wordmark is Crush's compact logo — field, label and version, the
+letters, field, all as wide as the name, which `DotMatrixText.columns` gives
+(there is no `fixedSize` to size the stack by its widest child) — and, below 30 rows of sidebar,
+Crush's one-row form. Not taken: Crush stretching one random letter per
+session; a stretch the font cannot express would mean hand-drawn letters
+again.
 
 ### Ledger — open
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer

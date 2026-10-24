@@ -8,6 +8,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`DotMatrixText` half blocks and gradients.** `mode: .halfBlock` packs two
+  dot rows into each cell with `▀ ▄ █`: solid letters four rows tall, the
+  wordmark style of agent TUIs such as Crush. `.gradient(from:to:)` and
+  `.gradient(through:)` sweep a colour ramp across the letters, one step per
+  column, so each column is one colour from top to bottom, in every mode.
+  `columns` says how many columns the letters span, to size a rule or a
+  caption that lines up with them. A switch over `DotMatrixText.RenderMode`
+  needs the new case.
 - **`DiffLine` is `Equatable`**, so a model holding a diff can be too, and a
   view handed one compares it by value.
 - **`.prefersDefaultFocus(_:)`** — a view asks for keyboard focus when
@@ -266,6 +274,11 @@ All notable changes to TerminalUI are documented here. Format based on
   version.
 
 ### Fixed
+
+- **Braille `DotMatrixText` drew a blank column after the last letter** when
+  the dots came to an even width: the gap after each letter was added after
+  the last one too, and the trim meant to remove it looked for spaces, which
+  braille never draws.
 
 - **Scrolling to a view lands on it, however its content wraps.**
   `.scrollPosition(id:anchor:)` and scrolling to the focused view worked out
