@@ -131,7 +131,7 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
                 Text(" \(BoundedValueScale.format(scale.clamp(value.get())))")
             }
         }
-        .foreground(isEnabled && scale.isValid ? theme.foreground : theme.foregroundMuted)
+        .labelForeground(enabled: isEnabled && scale.isValid, theme: theme)
         .focusable()
         .onClick { relativeX, _ in
             guard interactive else { return }
@@ -294,12 +294,12 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
 
         return FormRow(label: label) {
             HStack {
-                Text(SliderGlyph.decrement).foreground(atLower ? theme.foregroundMuted : theme.foreground)
+                Text(SliderGlyph.decrement).labelForeground(enabled: !atLower, theme: theme)
                 Text(" \(current) ")
-                Text(SliderGlyph.increment).foreground(atUpper ? theme.foregroundMuted : theme.foreground)
+                Text(SliderGlyph.increment).labelForeground(enabled: !atUpper, theme: theme)
             }
         }
-        .foreground(isEnabled && boundsAreValid ? theme.foreground : theme.foregroundMuted)
+        .labelForeground(enabled: isEnabled && boundsAreValid, theme: theme)
         .focusable()
         .onClick { relativeX, _ in
             guard interactive else { return }
@@ -394,7 +394,7 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
                 Text(" \(BoundedValueScale.format(scale.clamp(value)))")
             }
         }
-        .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
+        .labelForeground(enabled: isEnabled, theme: theme)
         // Reports state the app owns, so there is nothing here to operate —
         // but it is still a row, and a cursor that stopped above it would
         // strand whatever a form puts below. Arrows visit it; Tab does not.

@@ -14,6 +14,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A colour stated on a control is the colour it draws in.** `Button`,
+  `Toggle`, `Picker`, `Slider`, `Stepper`, `Gauge`, `TextInput` and
+  `TextArea` painted themselves in the theme's foreground beneath anything
+  stated above them, so `.foreground(.red)` on a button did nothing — and a
+  dialog's destructive action, which states the theme's destructive colour
+  that way, came out in plain foreground. A control now takes a colour
+  stated above it, as SwiftUI's foreground style does, and the theme's
+  foreground where none is; disabled, it stays muted.
 - **The inspector names the view under the cursor, not a `Spacer`.** A
   spacer draws nothing, so the stacks skipped it when they placed their
   children, and it kept the whole stack as its rect. Hit testing searches the

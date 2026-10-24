@@ -258,7 +258,7 @@ struct PickerBody: TerminalView {
                 }
             }
         }
-        .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
+        .labelForeground(enabled: isEnabled, theme: theme)
     }
 
     // MARK: - Shared row rendering and movement
@@ -415,7 +415,7 @@ struct PickerBody: TerminalView {
             HStack {
                 FormLabel(text: label)
                 Text(selected.map { titles[$0] } ?? rawSelection)
-                    .foreground(selected == nil ? theme.foregroundMuted : theme.foreground)
+                    .labelForeground(enabled: selected != nil, theme: theme)
                 Text(" \(PickerGlyph.collapsed)")
             }
             if isOpen {

@@ -68,7 +68,7 @@ public struct Toggle: TerminalView {
     @_documentation(visibility: internal)
     public var body: some TerminalView {
         labelledBody
-            .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
+            .labelForeground(enabled: isEnabled, theme: theme)
             .focusable()
             .onKeyPress { [isOn] event in
                 // `.activate` mirrors Enter/Space for click-to-fire — see

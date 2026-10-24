@@ -97,12 +97,6 @@ struct AlertPresentation: TerminalView {
         #endif
     }
 
-    private func color(for role: ButtonRole) -> Color {
-        switch role {
-        case .destructive: return theme.destructive
-        case .cancel, .default: return theme.foreground
-        }
-    }
 
     var body: some TerminalView {
         validate()
@@ -162,7 +156,10 @@ struct AlertPresentation: TerminalView {
             run()
             binding.wrappedValue = false
         }
-        .foreground(color(for: action.role))
+        // Only a destructive action states a colour of its own; the others
+        // take whatever is stated on the dialog, or the theme's foreground.
+        .labelForeground(enabled: true, theme: theme,
+                         accent: action.role == .destructive ? theme.destructive : nil)
     }
 }
 

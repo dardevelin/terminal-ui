@@ -31,6 +31,10 @@ public struct ForegroundModifier: ViewModifier {
     public typealias ModifierType = Color
     /// The foreground color applied; inner modifiers win over outer ones.
     public let color: Color
+    /// Whether `color` gives way to one stated above: a control's own label
+    /// colour, which `.foreground(_:)` on the control replaces, as SwiftUI's
+    /// foreground style does.
+    var yieldsToStated = false
 }
 
 /// Payload of `.background(_:)` — fill color behind the subtree's rect.
@@ -149,6 +153,21 @@ extension TerminalView {
     /// its container's color.
     public func foreground(_ color: Color) -> ModifiedView<Self, ForegroundModifier> {
         ModifiedView(content: self, modifier: ForegroundModifier(color: color))
+    }
+
+    /// A control's label colour: `accent` when the control states one of
+    /// its own — a validation colour, a dialog's destructive action —
+    /// otherwise the theme's ``Theme/foreground``, unless a colour is stated
+    /// above the control, which it takes instead; muted while the control
+    /// cannot be used, whatever is stated.
+    func labelForeground(enabled: Bool, theme: any Theme, accent: Color? = nil)
+        -> ModifiedView<Self, ForegroundModifier> {
+        let modifier = switch (enabled, accent) {
+        case (false, _): ForegroundModifier(color: theme.foregroundMuted)
+        case (true, let accent?): ForegroundModifier(color: accent)
+        case (true, nil): ForegroundModifier(color: theme.foreground, yieldsToStated: true)
+        }
+        return ModifiedView(content: self, modifier: modifier)
     }
 
     /// Fill the view's cells with a background color. Covers the view's

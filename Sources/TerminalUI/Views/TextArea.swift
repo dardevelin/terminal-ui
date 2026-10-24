@@ -343,7 +343,7 @@ public struct TextArea: TerminalView {
             theme: theme ?? appTheme.syntax
         )
         return rows
-            .foreground(isEnabled ? appTheme.foreground : appTheme.foregroundMuted)
+            .labelForeground(enabled: isEnabled, theme: appTheme)
             .focusable()
             .onKeyPress { [text, state, arrowMode, textEditing] event in
                 Self.handleKey(

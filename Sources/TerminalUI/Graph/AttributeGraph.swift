@@ -339,8 +339,9 @@ public final class AttributeGraph: @unchecked Sendable {
         // Modifiers — update effect + child + extra child
         if let modified = view as? any _GraphModified {
             if case .modifier = node.kind {
-                let newEffect = modified.graphEffect()
+                let (newEffect, yieldsToStated) = modified.graphEffect()
                 node.kind = .modifier(newEffect)
+                node.foregroundYieldsToStated = yieldsToStated
 
                 // Keep focusable flag in sync
                 if case .focusable = newEffect {
@@ -1166,8 +1167,9 @@ public final class AttributeGraph: @unchecked Sendable {
     }
 
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
-        let effect = modified.graphEffect()
+        let (effect, yieldsToStated) = modified.graphEffect()
         let node = AttributeNode(id: id, kind: .modifier(effect))
+        node.foregroundYieldsToStated = yieldsToStated
 
         // Mark focusable during construction so it's available before first render
         if case .focusable = effect {
@@ -1367,7 +1369,9 @@ extension _GraphHStack {
 }
 
 protocol _GraphModified {
-    func graphEffect() -> ModifierEffect
+    /// The node's effect, and whether a `.foreground` one gives way to a
+    /// colour stated above it (see `ForegroundModifier.yieldsToStated`).
+    func graphEffect() -> (effect: ModifierEffect, foregroundYieldsToStated: Bool)
     func constructChildNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateChild(_ child: AttributeNode, graph: AttributeGraph)
     /// For overlay/background/modal: construct the extra child node

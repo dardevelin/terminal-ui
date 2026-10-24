@@ -1431,7 +1431,9 @@ public enum GraphRenderer {
 
         switch effect {
         case .foreground(let color):
-            ctx.style.foreground = color
+            if !node.foregroundYieldsToStated || ctx.style.foreground == nil {
+                ctx.style.foreground = color
+            }
             renderNode(child, into: &buffer, context: ctx)
 
         case .background(let color):

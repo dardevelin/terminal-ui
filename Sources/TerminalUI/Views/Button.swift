@@ -51,7 +51,7 @@ public struct Button: TerminalView {
     @_documentation(visibility: internal)
     public var body: some TerminalView {
         Text("[ \(label) ]")
-            .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)
+            .labelForeground(enabled: isEnabled, theme: theme)
             .focusable()
             .onKeyPress { event in
                 // `.activate` is synthesized by FocusEngine when the
