@@ -21,6 +21,12 @@ All notable changes to TerminalUI are documented here. Format based on
   edge rather than stopping a frame short of it. Read every frame, so it can
   follow a theme; the terminal's own is put back (OSC 111) however the app
   ends, a crash included. `nil`, the default, leaves the terminal alone.
+- **Taps that count clicks and know their modifiers**: `TapGesture`,
+  `.gesture(_:)` and `.onTapGesture(count:perform:)`, as in SwiftUI. A
+  press of the same button on the same cell within 500 ms continues a run
+  of clicks, as AppKit counts them, so `.onTapGesture(count: 2)` opens what
+  `.onTapGesture` selects; `TapGesture().modifiers(.ctrl)` takes only
+  Ctrl+clicks. `.onClick` still takes every left click.
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.
@@ -74,6 +80,9 @@ All notable changes to TerminalUI are documented here. Format based on
   the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
   a child at its natural width rather than giving it the frame's. A `Spacer`
   in a `VStack` stretches only down it, and does not make it wide.
+- **A view disabled after it was drawn no longer takes clicks or keys.** Its
+  handlers, kept on the graph node so a cached update can restore them,
+  were restored every frame after `.disabled()` too.
 - **Hover reaches only what is drawn on top.** `.onHover` fired for every
   handler whose rect held the pointer, so a card under a badge lit with the
   badge; now the handler a click there would reach is hovered, with those

@@ -190,7 +190,7 @@ extension ModifiedView: _GraphModified {
         case is any _OnChangeModifierProtocol: .onChange
         case is OnDisappearModifier: .onDisappear
         case is any _TaskModifierProtocol: .task
-        case is OnClickModifier: .onClick
+        case is OnClickModifier, is TapGestureModifier: .onClick
         case is OnHoverModifier: .onHover
         case is OnPasteModifier: .onPaste
         case let env as any _AnyEnvironmentModifier: .environment(env.apply(to:))

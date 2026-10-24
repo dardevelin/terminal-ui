@@ -612,6 +612,15 @@ struct PreviewPane: TerminalView {
                 .frame(width: 13, height: 2)
                 Text("on top: \(state.hoveredLayer)").foreground(.gray)
             }
+        case .onTapGesture:
+            VStack {
+                Text(state.marked ? "[ notes.md ] ✓" : "[ notes.md ]").foreground(.cyan)
+                    .gesture(TapGesture().modifiers(.ctrl).onEnded { [state] in state.marked.toggle() })
+                    .onTapGesture(count: 2) { [state] in state.opens += 1 }
+                    .onTapGesture { [state] in state.taps += 1 }
+                Text("taps: \(state.taps)   opens: \(state.opens)   marked: \(state.marked ? "yes" : "no")")
+                    .foreground(.gray)
+            }
         case .mouseFocusPolicy:
             VStack {
                 Text("Outer subtree — default .clickToLock").foreground(.green)

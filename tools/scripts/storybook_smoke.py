@@ -234,7 +234,8 @@ def storybook_sidebar_order_matches_navigation(app: Client) -> None:
     # class).
     visible_prefix = titles[: len(initial_sidebar)]
     assert_true(
-        visible_prefix == initial_sidebar,
+        len(visible_prefix) == len(initial_sidebar)
+        and all(app.sidebar_names(row, title) for row, title in zip(initial_sidebar, visible_prefix)),
         f"navigation order doesn't match sidebar display order:\n"
         f"  sidebar  : {initial_sidebar!r}\n"
         f"  navigated: {visible_prefix!r}",
@@ -1329,6 +1330,26 @@ def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
                 f"the wheel should scroll the list:\n{app.preview_text()}")
     click_on("epsilon")
     assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
+
+
+def storybook_taps_count_and_know_their_modifiers(app: Client) -> None:
+    """`.onTapGesture` page: a click is a tap; a second click on the same
+    cell soon after is a double tap, which the single tap leaves alone; a
+    Ctrl+click is the Ctrl tap's alone. Clicks knew neither their count
+    nor their modifiers."""
+    app.goto_page(".onTapGesture")
+    rows = app.text().split("\n")
+    # The preview's, not the code pane's `Text("[ notes.md ]")`.
+    y = next(i for i, row in enumerate(rows) if "[ notes.md ]" in row and "Text(" not in row)
+    x = rows[y].index("notes.md")
+    app.mouse_click(x, y)
+    assert_true("taps: 1   opens: 0" in app.preview_text(), f"one click, one tap:\n{app.preview_text()}")
+    app.mouse_click(x, y)
+    assert_true("taps: 1   opens: 1" in app.preview_text(),
+                f"the second click of a double click opens:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "left", "ctrl")
+    assert_true("taps: 1   opens: 1   marked: yes" in app.preview_text(),
+                f"Ctrl+click marks, and is no tap:\n{app.preview_text()}")
 
 
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
@@ -2784,6 +2805,8 @@ CASES: list[SmokeCase] = [
               storybook_hover_reaches_only_the_view_on_top),
     SmokeCase("storybook.a_click_on_a_list_row_selects_it", "Storybook",
               storybook_a_click_on_a_list_row_selects_it),
+    SmokeCase("storybook.taps_count_and_know_their_modifiers", "Storybook",
+              storybook_taps_count_and_know_their_modifiers),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",

@@ -297,6 +297,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// move would. Left alone, a row scrolled away stayed hovered — and its
     /// `.onHover` entered — until the pointer next moved.
     private var hoverIsStale = false
+    /// Counts presses into double and triple clicks.
+    private var clickCounter = ClickCounter()
     private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
     /// Raised by every source of work, so the frame loop sleeps while there
@@ -724,15 +726,20 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     }
                     #endif
                     switch mouseEvent.kind {
-                    case .press(.left):
+                    case .press(let button):
+                        let press = PointerPress(
+                            x: mouseEvent.x, y: mouseEvent.y, button: button,
+                            count: clickCounter.count(button, x: mouseEvent.x, y: mouseEvent.y,
+                                                      at: ContinuousClock.now),
+                            modifiers: mouseEvent.modifiers)
                         if mousePolicy(at: mouseEvent) == .disabled {
                             // .disabled: no auto-focus promotion. Fire any
-                            // .onClick handler under the cursor, then stop.
+                            // handler under the cursor, then stop.
                             if let root = graph.root {
-                                focusEngine.fireClickHandlerOnly(x: mouseEvent.x, y: mouseEvent.y, root: root)
+                                focusEngine.firePressHandlerOnly(press, root: root)
                             }
                         } else {
-                            focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                            focusEngine.handlePress(press, root: graph.root)
                         }
                     case .moved, .drag:
                         pendingPointer = .motion(mouseEvent)
