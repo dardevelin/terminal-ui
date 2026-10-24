@@ -45,26 +45,41 @@ struct RemoteControlBackpressureTests {
         defer { close(client) }
         _ = UnixSocket.sendLine(Array(#"{"id":1,"cmd":"ping"}"#.utf8), to: client)
 
-        // The client starts reading only after a while, as a busy one might.
+        // The client reads only once released, as a busy one might. Were a
+        // pump to wait for it, the pumps below would never return: a watchdog
+        // releases it after a while and says so. Measured by what happened,
+        // not by how long a pump took, so a loaded machine cannot fail it.
         let finished = ReadFinished()
+        let release = DispatchSemaphore(value: 0)
+        let watchdogFired = ReadFinished()
+        let watchdog = BlockingThread(name: "watchdog") {
+            if release.wait(timeout: .now() + .seconds(5)) == .timedOut {
+                watchdogFired.flag.store(true, ordering: .releasing)
+            }
+            release.signal()
+        }
         let reader = BlockingThread(name: "slow client") { () -> Data in
-            Thread.sleep(forTimeInterval: 0.15)
+            release.wait()
+            release.signal()
             defer { finished.flag.store(true, ordering: .releasing) }
             return Data(UnixSocket.readLine(from: client))
         }
 
-        var slowestPump = Duration.zero
+        for _ in 0..<5 {
+            server.pump()
+        }
+        let waitedForTheClient = watchdogFired.flag.load(ordering: .acquiring)
+        #expect(!waitedForTheClient, "a pump waited for the client to read")
+        release.signal()
+        await watchdog.value
         let deadline = ContinuousClock.now + .seconds(10)
         while !finished.flag.load(ordering: .acquiring), ContinuousClock.now < deadline {
-            let start = ContinuousClock.now
             server.pump()
-            slowestPump = max(slowestPump, ContinuousClock.now - start)
             try? await Task.sleep(for: .milliseconds(1))
         }
 
         // A reply that never finished leaves the reader blocked: end its read.
         shutdown(client, Int32(SHUT_RDWR))
-        #expect(slowestPump < .milliseconds(100), "a pump waited \(slowestPump) for the client to read")
         let reply = try JSONDecoder().decode(RemoteResponse.self, from: await reader.value)
         #expect(reply.id == 1)
         #expect(reply.error?.count == LargeReplies.replySize, "the reply should arrive whole")

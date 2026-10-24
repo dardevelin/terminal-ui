@@ -133,12 +133,6 @@ jobs:
       - name: Test
         run: swift test
 
-      # Once more on a one-thread cooperative pool (a Darwin switch): any
-      # test, or framework code, that blocks a pool thread deadlocks here
-      # instead of only on a runner with few cores, or an app on one.
-      - name: Test on a one-thread pool
-        run: LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 swift test
-
       # --build-tests: `swift build` alone never compiles a test target, so
       # a warning in one passed.
       - name: Build with warnings as errors

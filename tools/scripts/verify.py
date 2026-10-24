@@ -179,6 +179,8 @@ def run_gate() -> int:
     # Once more on a one-thread cooperative pool, a Darwin-only switch: a
     # test or framework code that blocks a pool thread deadlocks here, as it
     # did on CI's three-core runner, instead of passing on a many-core Mac.
+    # Not in CI: the switch reaches SwiftPM too, and the runner's SwiftPM
+    # deadlocks under it before a test runs.
     if sys.platform == "darwin":
         os.environ["LIBDISPATCH_COOPERATIVE_POOL_STRICT"] = "1"
         rc, out = step("swift test, one-thread pool",

@@ -6,7 +6,7 @@ import Testing
 // held one of the cooperative pool's threads — a thread per core — until it
 // returned: the input loop held one for the app's whole life, and where the
 // pool was a thread or two wide, everything else the app started waited.
-// The suite runs once more on a one-thread pool in CI
+// verify.py runs the suite once more on a one-thread pool
 // (`LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`), which deadlocks on any test or
 // code that blocks a pool thread.
 
