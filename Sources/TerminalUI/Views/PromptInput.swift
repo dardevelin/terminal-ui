@@ -693,6 +693,13 @@ public struct PromptInput: TerminalView {
         )
         return rows
             .focusable()
+            // A click puts the cursor on the character it lands on.
+            .onClick { [state] x, y in
+                var current = state.get()
+                (current.cursorRow, current.cursorCol) = Self.cursor(
+                    atColumn: x - prefix.width, row: y, rows: rows)
+                state.set(current)
+            }
             .onKeyPress { [text, state, onSubmit, arrowMode, textEditing] event in
                 Self.handleKey(
                     event, text: text, state: state,
@@ -811,6 +818,44 @@ public struct PromptInput: TerminalView {
         // Defensive: cursor past end — pin at end of last chunk.
         let lastIdx = max(0, chunks.count - 1)
         return (displayRow + lastIdx, chunks[lastIdx].count)
+    }
+
+    /// Where in the text a click at column `x` of the text — past the
+    /// prefix — and row `y` of `rows` as `buildDisplay` draws them puts the
+    /// cursor: on the character there, at the end of a row clicked past
+    /// its end, and at the nearer edge of a collapsed paste marker clicked
+    /// inside, as the cursor never lives within one.
+    static func cursor(atColumn x: Int, row y: Int, rows: PromptRows) -> (row: Int, col: Int) {
+        let expandedLines = TextLines.split(rows.text)
+        guard !rows.text.isEmpty else { return (0, 0) }
+        let firstRow = max(0, min(rows.state.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
+        var target = max(0, min(firstRow + y, rows.totalDisplayRows - 1))
+        var lineIndex = 0
+        var columnInLine = 0
+        for (index, chunks) in rows.wraps.enumerated() {
+            guard target >= chunks.count else {
+                // Chunks follow one another in the line, as `projectCursor`
+                // counts them.
+                columnInLine = chunks.prefix(target).reduce(0) { $0 + $1.count }
+                    + max(0, min(x, chunks[target].count))
+                lineIndex = index
+                break
+            }
+            target -= chunks.count
+            lineIndex = index
+            columnInLine = rows.lines.indices.contains(index) ? rows.lines[index].count : 0
+        }
+        var offset = TextLines.offset(row: lineIndex, col: columnInLine, in: rows.lines)
+        let markers = rows.projection.markerRanges.filter { !$0.isExpanded }
+        if let marker = markers.first(where: { $0.start < offset && offset < $0.end }) {
+            offset = offset - marker.start <= marker.end - offset ? marker.start : marker.end
+        }
+        // Each collapsed marker before the offset moved it by its delta.
+        var delta = 0
+        for (marker, point) in zip(markers, rows.projection.deltas) where offset >= marker.end {
+            delta = point.delta
+        }
+        return TextLines.position(of: offset - delta, in: expandedLines)
     }
 
     // MARK: - Collapsed-display projection

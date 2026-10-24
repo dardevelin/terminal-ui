@@ -177,8 +177,10 @@ final class EventQueue: Sendable {
     #endif
 }
 
-/// A wheel notch scrolls three lines, as terminals and most platforms do.
-private let linesPerWheelNotch = 3
+/// A wheel notch scrolls three lines, as terminals and most platforms do:
+/// Windows' `SPI_GETWHEELSCROLLLINES` default, and GTK's and AppKit's
+/// line step for a notch.
+let defaultLinesPerWheelNotch = 3
 
 /// Pointer events held back while a batch is drained. A trackpad sends
 /// hundreds a second, and finding what is under the cursor is the cost, so
@@ -289,6 +291,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var needsRender: Bool = true
     /// The app's `TerminalAppProtocol.windowBackground`, read each frame.
     var windowBackground: () -> Color? = { nil }
+    /// The app's `TerminalAppProtocol.linesPerWheelNotch`.
+    var linesPerWheelNotch = defaultLinesPerWheelNotch
     /// What the terminal's background was last set to: the terminal's own
     /// until the app names a colour.
     private var lastWindowBackgroundSequence = Terminal.windowBackgroundReset
@@ -1566,6 +1570,10 @@ public protocol TerminalAppProtocol {
     /// it. Read every frame, so it can follow a theme. The terminal's own
     /// is put back when the app ends.
     static var windowBackground: Color? { get }
+    /// How many lines a notch of the mouse wheel scrolls; the default is
+    /// 3, as terminals and most platforms scroll. Read once, when the app
+    /// starts.
+    static var linesPerWheelNotch: Int { get }
     /// Builds the root view. Re-invoked whenever the runtime needs a
     /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
@@ -1574,6 +1582,14 @@ public protocol TerminalAppProtocol {
 extension TerminalAppProtocol {
     /// Default: `nil`, the terminal's own background.
     public static var windowBackground: Color? { nil }
+    /// Default: 3.
+    public static var linesPerWheelNotch: Int { defaultLinesPerWheelNotch }
+
+    /// Hands `runtime` what the app says about itself beyond its content.
+    @MainActor static func configure(_ runtime: TerminalRuntime<Content>) {
+        runtime.windowBackground = { windowBackground }
+        runtime.linesPerWheelNotch = max(1, linesPerWheelNotch)
+    }
     /// Default: `.fps60`.
     public static var renderMode: RenderMode { .fps60 }
     /// Default: no timers.
@@ -1621,7 +1637,7 @@ extension TerminalAppProtocol {
             onEvent: { onEvent($0) },
             content: { content() }
         )
-        runtime.windowBackground = { windowBackground }
+        configure(runtime)
         // Default @main shim: surface raw-mode failure via TerminalLog
         // (auto-routes to stderr for warn/error/critical) and exit
         // with status 1. App authors who want richer non-TTY handling

@@ -1442,6 +1442,42 @@ def storybook_a_right_click_opens_a_context_menu(app: Client) -> None:
     assert_true("[ Duplicate ]" not in app.text(), f"a press outside closes the menu:\n{app.text()}")
 
 
+def storybook_a_click_places_the_caret_in_a_text_area(app: Client) -> None:
+    """TextArea page: a click on a character puts the caret there, past the
+    line-number gutter, and typing goes in where it was clicked. A click
+    focused the editor and left the caret where it was."""
+    app.goto_page("TextArea")
+    x, y = _find(app, "TextArea.")
+    app.mouse_click(x, y)
+    app.send_text("big ")
+    assert_true("This is a big TextArea." in app.preview_text(),
+                f"typing should land where the click was:\n{app.preview_text()}")
+
+
+def storybook_a_click_places_the_cursor_in_a_text_input(app: Client) -> None:
+    """TextInput page: with text in the field, a click in its middle puts
+    the cursor there."""
+    app.goto_page("TextInput")
+    x, y = _find(app, "type an email")
+    app.mouse_click(x, y)
+    app.send_text("ada@example.com")
+    x, y = _find(app, "example.com")
+    app.mouse_click(x, y)
+    app.send_text("mail.")
+    assert_true("ada@mail.example.com" in app.preview_text(),
+                f"typing should land where the click was:\n{app.preview_text()}")
+
+
+def coder_a_click_places_the_cursor_in_the_composer(app: Client) -> None:
+    """Coder: a click in the composer's text puts the cursor there, so a
+    word can be fixed without arrowing to it."""
+    app.send_text("hello world")
+    x, y = _find(app, "hello world", after="hello world")
+    app.mouse_click(x + 6, y)
+    app.send_text("big ")
+    assert_true(app.contains("hello big world"), f"typing should land where the click was:\n{app.text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2903,6 +2939,12 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.a_scrollbar_drags", "Storybook", storybook_a_scrollbar_drags),
     SmokeCase("storybook.a_right_click_opens_a_context_menu", "Storybook",
               storybook_a_right_click_opens_a_context_menu),
+    SmokeCase("storybook.a_click_places_the_caret_in_a_text_area", "Storybook",
+              storybook_a_click_places_the_caret_in_a_text_area),
+    SmokeCase("storybook.a_click_places_the_cursor_in_a_text_input", "Storybook",
+              storybook_a_click_places_the_cursor_in_a_text_input),
+    SmokeCase("coder.a_click_places_the_cursor_in_the_composer", "Coder",
+              coder_a_click_places_the_cursor_in_the_composer),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
