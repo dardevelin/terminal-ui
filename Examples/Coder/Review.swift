@@ -3,23 +3,19 @@ import TerminalUI
 // MARK: - Diff review
 
 /// A source's changes as Claude Code's `/diff` panel stacks them: the files
-/// with their counts, folding under the summary, and below them the chosen
-/// file's diff — its changed rows tinted, its code highlighted. ↑/↓ choose a
-/// file and the diff follows; ←/→ choose the source; Tab reaches the diff
-/// to scroll it. Opened with Ctrl+R or a click on Modified Files, in the
-/// sidebar's place, or over the whole window with the Full-screen diff
-/// review setting on.
+/// with their counts, folding under the summary, and below them every
+/// file's diff in one scroll — each under its own header, each folding away
+/// on a click there, changed rows tinted and code highlighted. ↑/↓ choose a
+/// file and its section scrolls up; scroll, and the list follows the section
+/// on top. ←/→ choose the source. Opened with Ctrl+R or a click on Modified
+/// Files, in the sidebar's place, or over the whole window with the
+/// Full-screen diff review setting on.
 struct DiffReview: TerminalView {
     let state: CoderState
-    /// The rows it is laid out in.
-    let height: Int
     var theme = CoderTheme.dark
 
     /// The most files listed at once; more scroll.
     static let listRows = 8
-    /// Rows that are not the list or the diff: the summary, and the rules
-    /// around the file's header and the header itself.
-    static let chromeRows = 4
 
     private var listHeight: Int {
         state.reviewListExpanded ? min(Self.listRows, state.reviewChanges.count) : 0
@@ -45,18 +41,19 @@ struct DiffReview: TerminalView {
             } label: {
                 summary(state.reviewChanges)
             }
-            if let file = state.reviewedFile {
-                Divider()
-                fileHeader(file)
-                Divider()
-                DiffView(lines: file.lines,
-                         visibleHeight: max(1, height - Self.chromeRows - listHeight))
-                    .diffLanguage(file.language)
-                    // A wrapped line would continue under the line numbers;
-                    // cut at the edge instead.
-                    .wrap(.truncate(.tail))
+            ScrollView(.vertical) {
+                VStack(spacing: 0) {
+                    ForEach(state.reviewChanges) { file in
+                        section(file)
+                    }
+                }
             }
-            Spacer()
+            .flexible(.vertical)
+            // Both ways: choosing a file scrolls its section to the top, and
+            // scrolling chooses the file whose section is on top.
+            .scrollPosition(id: Binding(get: { state.reviewPosition },
+                                        set: { coderState.followReviewScroll(to: $0) }),
+                            anchor: .top)
         }
         // Read git while the review is open, so a file changed meanwhile
         // appears in it; the task ends when the review closes.
@@ -91,15 +88,15 @@ struct DiffReview: TerminalView {
         let removed = changes.reduce(0) { $0 + $1.removed }
         let noun = changes.count == 1 ? "file" : "files"
         return HStack(spacing: 1) {
+            // Flexible, so it takes what the source leaves and is what gives
+            // way when the panel is narrow.
             Text(spans: note.map { [TextSpan($0, foreground: theme.foregroundMuted)] } ?? [
                 TextSpan("\(changes.count) \(noun) changed", foreground: theme.foreground, bold: true),
                 TextSpan(" +\(added)", foreground: theme.success),
                 TextSpan(" −\(removed)", foreground: theme.error),
             ])
             .wrap(.truncate(.tail))
-            Spacer()
-            // The source names what is listed; short of room, the summary
-            // gives way.
+            .flexible(.horizontal)
             Text(spans: [
                 TextSpan("‹ ", foreground: theme.foregroundFaint),
                 TextSpan(state.reviewSource.rawValue, foreground: theme.secondary),
@@ -112,21 +109,22 @@ struct DiffReview: TerminalView {
     private func fileList(_ changes: [FileChange]) -> some TerminalView {
         List(changes, selection: Binding(
             get: { state.reviewedFile?.id },
-            set: { coderState.reviewFileID = $0 }
+            set: { coderState.chooseReviewFile($0) }
         ), visibleCount: listHeight) { file in
             HStack(spacing: 2) {
+                // The path takes what the counts leave, and loses its start
+                // first: the file's name is what tells files apart.
                 Text(file.path)
                     .foreground(theme.foregroundSubtle)
                     .wrap(.truncate(.head))
-                Spacer()
+                    .flexible(.horizontal)
                 Text(spans: [
                     TextSpan("+\(file.added)", foreground: theme.success),
                     TextSpan(" −\(file.removed)", foreground: theme.error),
                 ])
+                .wrap(.none)
             }
-            // The row's width, so the counts stand at its right edge.
-            .frame(maxWidth: .infinity)
-            .onClick { _, _ in coderState.reviewFileID = file.id }
+            .onClick { _, _ in coderState.chooseReviewFile(file.id) }
         }
         // Opened, the review's keys belong to its list.
         .prefersDefaultFocus()
@@ -141,14 +139,37 @@ struct DiffReview: TerminalView {
         }
     }
 
+    /// One file's change: its header between rules, then its diff, which a
+    /// click on the header folds away.
+    private func section(_ file: FileChange) -> some TerminalView {
+        VStack(spacing: 0) {
+            Divider()
+            DisclosureGroup(isExpanded: Binding(
+                get: { !state.reviewFolded.contains(file.id) },
+                set: { coderState.setReviewSection(file.id, expanded: $0) }
+            )) {
+                Divider()
+                // As tall as the change: the scroll around it does the
+                // scrolling, so a section is never a scroller of its own.
+                DiffView(lines: file.lines, visibleHeight: max(1, file.lines.count))
+                    .diffLanguage(file.language)
+                    // A wrapped line would continue under the line numbers;
+                    // cut at the edge instead.
+                    .wrap(.truncate(.tail))
+            } label: {
+                fileHeader(file)
+            }
+        }
+        .id(file.id)
+    }
+
     /// The file's path and counts, and the question to ask about it.
     private func fileHeader(_ file: FileChange) -> some TerminalView {
         HStack(spacing: 2) {
-            Text(file.path)
-                .bold()
-                .foreground(theme.foreground)
+            Text(spans: [TextSpan(file.path, foreground: theme.foreground, bold: true)]
+                 + (file.isUntracked ? [TextSpan("  (untracked)", foreground: theme.foregroundMuted)] : []))
                 .wrap(.truncate(.head))
-            Spacer()
+                .flexible(.horizontal)
             Button("ask") { coderState.ask(about: file) }
         }
     }

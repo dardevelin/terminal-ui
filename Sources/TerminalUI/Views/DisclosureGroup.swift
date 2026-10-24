@@ -47,6 +47,10 @@ public struct DisclosureGroup<Label: TerminalView, Content: TerminalView>: Termi
                 Text(expanded ? "▾" : "▸").foreground(theme.foregroundMuted)
                 label
             }
+            // The row spans the group's width, as a disclosure row does in
+            // SwiftUI: a label with a Spacer pushes its trailing part to the
+            // edge, and a click anywhere along the row folds it.
+            .frame(maxWidth: .infinity, alignment: .leading)
             .labelForeground(enabled: isEnabled, theme: theme)
             .focusable()
             .onKeyPress { [isExpanded] event in

@@ -435,7 +435,7 @@ struct CoderApp: TerminalView {
             // Beside the transcript, which narrows for it — or the whole
             // window, with the setting on. The help line beneath stays.
             .inspector(isPresented: Binding(get: { state.showsReview }, set: { coderState.showsReview = $0 })) {
-                DiffReview(state: state, height: sidebarHeight, theme: theme)
+                DiffReview(state: state, theme: theme)
                     .padding(Self.margin)
                     .frame(width: state.fullScreenReview ? terminalSize.cols : reviewPanelWidth)
                     .border(.halfBlock, color: theme.borderActive,

@@ -21,9 +21,11 @@ All notable changes to TerminalUI are documented here. Format based on
 - **Coder reviews its changes**, as Claude Code's `/diff` panel does: Ctrl+R
   opens it in the sidebar's place, a third of the window, on what git holds
   uncommitted — read again every second while it is open, so a file changed
-  meanwhile appears. The files fold under their summary, the chosen file's
-  diff stacked below; ←/→ switch to the session's changes or the last
-  commit's. A settings dialog (Ctrl+O) makes the review full-screen.
+  meanwhile appears. The files fold under their summary; below them every
+  file's change is stacked in one scroll, each under its own header and
+  folding on a click there, and choosing a file scrolls to it. ←/→ switch to
+  the session's changes or the last commit's. A settings dialog (Ctrl+O)
+  makes the review full-screen.
 
 - **A diff's changed rows take their status as a ground, and its code can be
   highlighted.** `Theme` gains `addedBackground` and `removedBackground`: by
@@ -53,6 +55,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A stack holding a view that takes the width it is offered takes it
+  too**, as in SwiftUI. An `HStack` with a `Spacer`, nested in another,
+  stayed at its natural width, so what followed the `Spacer` never reached
+  the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
+  a child at its natural width rather than giving it the frame's. A `Spacer`
+  in a `VStack` stretches only down it, and does not make it wide.
 - **The pointer reaches only what a viewport shows.** Rows scrolled out of a
   scroll view kept rects over the header and footer around it, and a click,
   a wheel or a hover there found a row nobody could see.
