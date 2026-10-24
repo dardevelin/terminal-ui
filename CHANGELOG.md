@@ -17,6 +17,12 @@ All notable changes to TerminalUI are documented here. Format based on
   language, the `+` and `-` keeping the status colour. A theme that states
   its own tint is used as stated.
 
+### Fixed
+
+- **Side by side, a diff's columns line up.** The separator sat wherever the
+  left line ended, so a long line pushed its row's `│` out past the others.
+  Every left half is as wide as the widest one in view, counted in cells.
+
 ## [2.0.1] — 2026-10-24 — Runs on small machines
 
 A patch release: nothing a 2.0.0 app writes changes. An app on a machine
