@@ -1091,6 +1091,20 @@ def storybook_braillecanvas_renders_curve(app: Client) -> None:
     assert_true(has_braille, "BrailleCanvas didn't render any braille glyphs (U+2800–U+28FF)")
 
 
+def storybook_inspector_opens_beside_the_content_and_closes(app: Client) -> None:
+    """`.inspector` page: Enter on the trigger opens a panel along the
+    trailing edge with the page still beside it; Escape, bound in the
+    panel, closes it."""
+    app.goto_page(".inspector")
+    app.send_key("tab")
+    app.send_key("enter")
+    text = app.text()
+    assert_true("A panel along the trailing edge." in text, "expected the inspector panel")
+    assert_true("open inspector" in text, "the content stays in view beside the panel")
+    app.send_key("escape")
+    assert_true("A panel along the trailing edge." not in app.text(), "Escape should close the panel")
+
+
 def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
     """DotMatrixText renders the word HELLO via its internal dot-font, once
     in `●` bullets and once in half blocks, whose H opens `█   █` over
@@ -1984,6 +1998,98 @@ def coder_scrolling_keeps_the_selection_in_sight(app: Client) -> None:
     assert_true(CODER_LATEST_ENTRY not in app.text(), "the latest entry should have scrolled out of sight")
 
 
+# ---- Coder: diff review ------------------------------------------------
+# Claude Code's /diff, in Coder: the uncommitted changes listed with their
+# counts, Enter into one file's diff — tinted rows, highlighted code — and
+# Escape back out; ←/→ to the session's changes or the last commit's.
+
+CODER_REVIEW_SUMMARY = "4 files changed"
+CODER_REVIEW_SOURCE = "Uncommitted changes"
+CODER_REVIEW_FIRST_CHANGE = "private var skippedFrame = false"
+CODER_REVIEW_SECOND_CHANGE = "var skipped = 0"
+CODER_REVIEW_ASKED = "About Rendering/Compositor.swift:"
+
+
+def _coder_find(app: Client, needle: str) -> tuple[int, int]:
+    """The cell where `needle` starts on screen."""
+    for y, row in enumerate(app.text().splitlines()):
+        if needle in row:
+            return row.index(needle), y
+    raise CaseFailed(f"{needle!r} is not on screen")
+
+
+def coder_ctrl_r_opens_the_uncommitted_changes(app: Client) -> None:
+    """Ctrl+R opens the review on what is uncommitted, as a panel over the
+    sidebar's side of the window, the transcript still in view beside it."""
+    app.send_key("r", "ctrl")
+    text = app.text()
+    assert_true(CODER_REVIEW_SUMMARY in text and CODER_REVIEW_SOURCE in text,
+                "expected the uncommitted changes' summary")
+    assert_true("README.md" in text, "a change made by hand is uncommitted too")
+    assert_true("Modified Files" not in text, "the panel covers the sidebar")
+    assert_true(CODER_LATEST_ENTRY in text, "the transcript stays in view beside the panel")
+
+
+def coder_enter_opens_a_file_and_escape_steps_back(app: Client) -> None:
+    """Down chooses the second file, Enter shows its diff, Escape returns to
+    the list and Escape again closes the review."""
+    app.send_key("r", "ctrl")
+    app.send_key("down")
+    app.send_key("enter")
+    assert_true(CODER_REVIEW_SECOND_CHANGE in app.text(), "Enter should show the chosen file's diff")
+    app.send_key("escape")
+    assert_true(CODER_REVIEW_SUMMARY in app.text(), "Escape should step back to the list")
+    app.send_key("escape")
+    text = app.text()
+    assert_true(CODER_REVIEW_SUMMARY not in text and CODER_LATEST_ENTRY in text,
+                "a second Escape should close the review")
+
+
+def coder_arrows_switch_the_review_source(app: Client) -> None:
+    app.send_key("r", "ctrl")
+    app.send_key("right")
+    text = app.text()
+    assert_true("This session" in text and "3 files changed" in text,
+                "Right should switch to the session's changes")
+
+
+def coder_ask_puts_the_file_in_the_composer(app: Client) -> None:
+    """[ ask ] on a file's diff closes the review with a question drafted."""
+    app.send_key("r", "ctrl")
+    app.send_key("enter")
+    x, y = _coder_find(app, "[ ask ]")
+    app.mouse_click(x + 2, y)
+    text = app.text()
+    assert_true(CODER_REVIEW_ASKED in text, "expected the question in the composer")
+    assert_true("back to files" not in text, "asking should close the review")
+
+
+def coder_full_screen_review_is_a_setting(app: Client) -> None:
+    """Ctrl+O's settings hold one toggle: with it on, the review covers the
+    whole window, transcript and all."""
+    app.send_key("o", "ctrl")
+    assert_true("Full-screen diff review" in app.text(), "expected the settings dialog")
+    app.send_key(" ")
+    app.send_key("escape")
+    assert_true("Full-screen diff review" not in app.text(), "Escape should close the settings")
+    app.send_key("r", "ctrl")
+    text = app.text()
+    assert_true(CODER_REVIEW_SUMMARY in text and CODER_LATEST_ENTRY not in text,
+                "a full-screen review covers the transcript too")
+
+
+def coder_clicking_a_modified_file_opens_its_diff(app: Client) -> None:
+    """A file under Modified Files opens straight to its diff."""
+    x, y = _coder_find(app, "Core/FrameStats.swift")
+    app.mouse_click(x + 1, y)
+    assert_true(CODER_REVIEW_SECOND_CHANGE in app.text(), "expected FrameStats.swift's diff")
+    app.send_key("r", "ctrl")
+    app.send_key("r", "ctrl")
+    assert_true(CODER_REVIEW_SOURCE in app.text(), "Ctrl+R should reopen on the uncommitted changes' list")
+    app.send_key("o", "ctrl")
+    assert_true("Full-screen diff review" in app.text(), "Ctrl+O should open the settings over the review")
+
+
 def coder_wheel_burst_keeps_running(app: Client) -> None:
     """A burst of real wheel reports — raw SGR 1006 bytes through the PTY,
     as a trackpad sends them — leaves the app running. Regression: debug
@@ -2466,6 +2572,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.heatmap_renders_grid", "Storybook", storybook_heatmap_renders_grid),
     SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
+    SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
+              storybook_inspector_opens_beside_the_content_and_closes),
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
     SmokeCase("storybook.foreground_renders_colored_words", "Storybook", storybook_foreground_renders_colored_words),
     SmokeCase("storybook.bold_distinguishes_styles", "Storybook", storybook_bold_distinguishes_styles),
@@ -2533,6 +2641,13 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.shift_arrows_step_the_selection", "Coder", coder_shift_arrows_step_the_selection),
     SmokeCase("coder.space_expands_a_capped_result", "Coder", coder_space_expands_a_capped_result),
     SmokeCase("coder.click_expands_a_capped_result", "Coder", coder_click_expands_a_capped_result),
+    SmokeCase("coder.ctrl_r_opens_the_uncommitted_changes", "Coder", coder_ctrl_r_opens_the_uncommitted_changes),
+    SmokeCase("coder.enter_opens_a_file_and_escape_steps_back", "Coder",
+              coder_enter_opens_a_file_and_escape_steps_back),
+    SmokeCase("coder.arrows_switch_the_review_source", "Coder", coder_arrows_switch_the_review_source),
+    SmokeCase("coder.ask_puts_the_file_in_the_composer", "Coder", coder_ask_puts_the_file_in_the_composer),
+    SmokeCase("coder.full_screen_review_is_a_setting", "Coder", coder_full_screen_review_is_a_setting),
+    SmokeCase("coder.clicking_a_modified_file_opens_its_diff", "Coder", coder_clicking_a_modified_file_opens_its_diff),
     SmokeCase("coder.scrolling_keeps_the_selection_in_sight", "Coder",
               coder_scrolling_keeps_the_selection_in_sight),
     SmokeCase("coder.wheel_burst_keeps_running", "Coder", coder_wheel_burst_keeps_running),

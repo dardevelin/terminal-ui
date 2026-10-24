@@ -15,7 +15,7 @@ enum Fixtures {
             cost: 0.42,
             entries: transcript(),
             resources: resources(),
-            files: files(),
+            changes: changes(),
             todos: todos()
         )
     }
@@ -175,13 +175,92 @@ enum Fixtures {
         ]
     }
 
-    static func files() -> [TouchedFile] {
-        [
-            TouchedFile(id: 1, path: "Rendering/Compositor.swift", added: 14, removed: 6),
-            TouchedFile(id: 2, path: "Core/FrameStats.swift", added: 3, removed: 1),
-            TouchedFile(id: 3, path: "Tests/CompositorTests.swift", added: 41, removed: 0),
+    static func changes() -> [ReviewSource: [FileChange]] {
+        func change(_ id: Int, _ path: String, from before: String, to after: String) -> FileChange {
+            FileChange(id: id, path: path, lines: DiffEngine.diff(original: before, modified: after))
+        }
+        let session = [
+            change(1, "Rendering/Compositor.swift", from: compositorBefore, to: compositorAfter),
+            change(2, "Core/FrameStats.swift", from: frameStatsBefore, to: frameStatsAfter),
+            change(3, "Tests/CompositorTests.swift", from: "", to: compositorTests),
+        ]
+        return [
+            // Everything not yet committed: the session's work, and a change
+            // the user made by hand alongside it.
+            .uncommitted: session + [change(4, "README.md", from: readmeBefore, to: readmeAfter)],
+            .session: session,
+            .lastCommit: [
+                change(5, "Rendering/OutputBuffer.swift", from: outputBufferBefore, to: outputBufferAfter),
+            ],
         ]
     }
+
+    private static let readmeBefore = """
+        ## Status
+
+        Frames are diffed against the last one written.
+        """
+
+    private static let readmeAfter = """
+        ## Status
+
+        Frames are diffed against the last one written, and a skipped frame
+        writes nothing at all.
+        """
+
+    private static let frameStatsBefore = """
+        struct FrameStats {
+            var bytesWritten = 0
+            var repaints = 0
+        }
+        """
+
+    private static let frameStatsAfter = """
+        struct FrameStats {
+            var bytesWritten = 0
+            var repaints = 0
+            /// Frames the loop skipped: nothing changed, nothing written.
+            var skipped = 0
+        }
+        """
+
+    private static let compositorTests = """
+        import Testing
+        @testable import TerminalUI
+
+        @Suite("A skipped frame writes nothing")
+        struct CompositorDeltaTests {
+            @Test func skippedFrameEmitsNoBytes() {
+                let compositor = Compositor()
+                compositor.flush(CellBuffer(width: 4, height: 1))
+                compositor.skip()
+                #expect(compositor.flush(CellBuffer(width: 4, height: 1)) == .unchanged)
+            }
+
+            @Test func firstFrameRepaintsEverything() {
+                let compositor = Compositor()
+                let result = compositor.flush(CellBuffer(width: 4, height: 1))
+                #expect(result.isFullRepaint)
+            }
+        }
+        """
+
+    private static let outputBufferBefore = """
+        func flush() {
+            for byte in bytes {
+                write(fd, [byte], 1)
+            }
+            bytes.removeAll()
+        }
+        """
+
+    private static let outputBufferAfter = """
+        func flush() {
+            // One write per frame: a syscall per byte cost more than the bytes.
+            bytes.withUnsafeBytes { _ = write(fd, $0.baseAddress, $0.count) }
+            bytes.removeAll(keepingCapacity: true)
+        }
+        """
 
     static func todos() -> [Todo] {
         [
