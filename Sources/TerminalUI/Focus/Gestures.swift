@@ -34,24 +34,6 @@ struct ClickCounter {
     }
 }
 
-/// What a tap gesture waits for, and what it does.
-struct TapRecognizer {
-    var button = MouseButton.left
-    let count: Int
-    let modifiers: KeyModifiers?
-    let action: (PointerPress) -> Void
-
-    /// A single tap takes every click of its button, as a button does,
-    /// however quickly they come; a double tap takes the second of a pair,
-    /// a triple the third. Required modifiers must be exactly the ones
-    /// held; with none required, any are.
-    func accepts(_ press: PointerPress) -> Bool {
-        guard press.button == button else { return false }
-        guard count == 1 || press.count == count else { return false }
-        return modifiers.map { $0 == press.modifiers } ?? true
-    }
-}
-
 /// A click, or a run of clicks, on a view: SwiftUI's `TapGesture`.
 ///
 /// Attach one with ``TerminalView/gesture(_:)-(TapGesture)`` — or, for a
@@ -103,8 +85,15 @@ public struct TapGesture {
         return gesture
     }
 
-    var recognizer: TapRecognizer {
-        TapRecognizer(button: button, count: count, modifiers: requiredModifiers, action: action)
+    /// Whether the gesture takes `press`. A single tap takes every click
+    /// of its button, as a button does, however quickly they come; a double
+    /// tap takes the second of a pair, a triple the third. Required
+    /// modifiers must be exactly the ones held; with none required, any
+    /// are.
+    func accepts(_ press: PointerPress) -> Bool {
+        guard press.button == button else { return false }
+        guard count == 1 || press.count == count else { return false }
+        return requiredModifiers.map { $0 == press.modifiers } ?? true
     }
 }
 

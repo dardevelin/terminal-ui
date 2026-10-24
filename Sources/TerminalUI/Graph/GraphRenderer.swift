@@ -326,7 +326,7 @@ public enum GraphRenderer {
         case .hstack:
             renderHStack(children, info: info, into: &buffer, context: context)
         case .zstack:
-            renderZStack(children, info: info, into: &buffer, context: context)
+            renderZStack(children, into: &buffer, context: context)
         case .scroll(let axis):
             renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
         case .split(let axis):
@@ -354,18 +354,15 @@ public enum GraphRenderer {
 
         // Dividers sit in the 1-cell gap between adjacent child rects.
         let glyph: Character = axis == .horizontal ? "│" : "─"
-        for i in 0..<(children.count - 1) {
-            let leading = children[i].rect
+        for divider in Layout.splitDividers(of: children.map(\.rect), axis: axis) {
             switch axis {
             case .horizontal:
-                let dividerX = leading.x + leading.width
                 for y in context.rect.y..<(context.rect.y + context.rect.height) {
-                    buffer[dividerX, y] = Cell(character: glyph, style: context.style)
+                    buffer[divider, y] = Cell(character: glyph, style: context.style)
                 }
             case .vertical:
-                let dividerY = leading.y + leading.height
                 for x in context.rect.x..<(context.rect.x + context.rect.width) {
-                    buffer[x, dividerY] = Cell(character: glyph, style: context.style)
+                    buffer[x, divider] = Cell(character: glyph, style: context.style)
                 }
             }
         }
@@ -1178,7 +1175,7 @@ public enum GraphRenderer {
         return nil
     }
 
-    static func renderZStack(_ children: [AttributeNode], info: LayoutInfo,
+    static func renderZStack(_ children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
         // Layer 2: `Layout.stacked` stamped each child's rect. Render reads
         // them — last child wins on overlapping cells.
@@ -1689,14 +1686,22 @@ public enum GraphRenderer {
         let width = min(measureWidth(menu), buffer.width)
         let height = min(measureHeight(menu, proposedWidth: width), buffer.height)
         guard width > 0, height > 0 else { return }
-        let x = max(0, min(point.x, buffer.width - width))
-        let y = max(0, min(point.y, buffer.height - height))
-        var layer = Layer(width: width, height: height, x: x, y: y,
+        compositePanel(menu, at: Rect(x: max(0, min(point.x, buffer.width - width)),
+                                      y: max(0, min(point.y, buffer.height - height)),
+                                      width: width, height: height), into: &buffer)
+    }
+
+    /// Draws `content` laid out at `area`'s size into its own layer at
+    /// `area`, over the buffer, nothing dimmed: an inspector's column or a
+    /// menu.
+    private static func compositePanel(_ content: AttributeNode, at area: Rect,
+                                       into buffer: inout CellBuffer) {
+        var layer = Layer(width: area.width, height: area.height, x: area.x, y: area.y,
                           style: ModifierEffect.modal(isPresented: true).compositingStyle)
-        let rect = Rect(x: 0, y: 0, width: width, height: height)
-        Layout.measureAndPlace(graph: menu, in: rect)
-        renderNode(menu, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
-        offsetRects(of: menu, dx: x, dy: y)
+        let rect = Rect(x: 0, y: 0, width: area.width, height: area.height)
+        Layout.measureAndPlace(graph: content, in: rect)
+        renderNode(content, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
+        offsetRects(of: content, dx: area.x, dy: area.y)
         Compositor.composite(layers: [layer], into: &buffer)
     }
 
@@ -1711,14 +1716,8 @@ public enum GraphRenderer {
         let area = (panel.parent?.rect ?? screen).intersected(with: screen)
         let width = panel.parent.map { Layout.inspectorColumn(of: $0, outerWidth: area.width) } ?? 0
         guard width > 0, area.height > 0 else { return }
-        let x = area.x + area.width - width
-        var layer = Layer(width: width, height: area.height, x: x, y: area.y,
-                          style: ModifierEffect.modal(isPresented: true).compositingStyle)
-        let rect = Rect(x: 0, y: 0, width: width, height: area.height)
-        Layout.measureAndPlace(graph: panel, in: rect)
-        renderNode(panel, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
-        offsetRects(of: panel, dx: x, dy: area.y)
-        Compositor.composite(layers: [layer], into: &buffer)
+        compositePanel(panel, at: Rect(x: area.x + area.width - width, y: area.y,
+                                       width: width, height: area.height), into: &buffer)
     }
 
     static func renderBorder(_ style: BorderStyle, color: Color?, edges: BorderEdges,

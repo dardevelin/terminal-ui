@@ -6,20 +6,12 @@ struct ContextMenuHost<Content: TerminalView, MenuItems: TerminalView>: Terminal
 
     /// The cell the menu opened from; nil while it is closed.
     @TerminalState private var anchor: Point? = nil
-    @TerminalEnvironment(\.theme) private var theme
 
     var body: some TerminalView {
         let anchor = $anchor
-        let theme = theme
-        let menu = VStack(spacing: 0) { menuItems }
-            .padding(.horizontal, 1)
-            .border(.rounded, color: theme.borderActive)
-            .background(theme.background)
-            .onKeyPress { event in
-                guard event.key == .escape else { return .ignored }
-                anchor.wrappedValue = nil
-                return .handled
-            }
+        // A value until it is presented: its body, and the theme it reads,
+        // run only while the menu is open.
+        let menu = ContextMenuPanel(items: menuItems, close: { anchor.wrappedValue = nil })
         return ModifiedView(
             content: content.onSecondaryClick { press in
                 anchor.wrappedValue = Point(x: press.x, y: press.y)
@@ -28,6 +20,27 @@ struct ContextMenuHost<Content: TerminalView, MenuItems: TerminalView>: Terminal
                 isPresented: anchor.wrappedValue != nil, content: menu,
                 placement: .anchored(anchor.wrappedValue ?? Point(x: 0, y: 0)),
                 dismissal: { anchor.wrappedValue = nil }))
+    }
+}
+
+/// An open context menu: its items in a bordered column, closed by Escape.
+struct ContextMenuPanel<MenuItems: TerminalView>: TerminalView {
+    let items: MenuItems
+    let close: () -> Void
+
+    @TerminalEnvironment(\.theme) private var theme
+
+    var body: some TerminalView {
+        let close = close
+        return VStack(spacing: 0) { items }
+            .padding(.horizontal, 1)
+            .border(.rounded, color: theme.borderActive)
+            .background(theme.background)
+            .onKeyPress { event in
+                guard event.key == .escape else { return .ignored }
+                close()
+                return .handled
+            }
     }
 }
 

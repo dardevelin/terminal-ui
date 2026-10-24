@@ -766,12 +766,6 @@ public struct TextArea: TerminalView {
         let gutter = lineNumbers ? gutterWidth(for: totalLines) : 0
         let endRow = min(scrollOffset + visibleHeight, totalLines)
 
-        // soft-wrap each visible logical line via
-        // TextLayout. `wrapWidth == 0` keeps the legacy 1:1 logical→
-        // display rendering — used by older test paths that don't
-        // pass a width through.
-        let softWrap = wrapWidth > 0
-
         // Display-row counter — increments per emitted display row,
         // including wrapped chunks. We stop emitting content when we
         // hit `visibleHeight` so a single very long logical line
@@ -792,14 +786,7 @@ public struct TextArea: TerminalView {
         outer: for row in scrollOffset..<endRow {
             let line = lines[row]
 
-            // Compute wrapped chunks for this logical line. When
-            // soft-wrap is off we treat the line as a single chunk.
-            let chunks: [String]
-            if softWrap && line.count > wrapWidth && !line.isEmpty {
-                chunks = TextLayout.wrapWords(line, width: wrapWidth)
-            } else {
-                chunks = [line]
-            }
+            let chunks = displayChunks(of: line, wrapWidth: wrapWidth)
 
             // For each wrapped chunk produce one display row. Track
             // the column offset into the LOGICAL line so cursor /
@@ -959,9 +946,7 @@ public struct TextArea: TerminalView {
         var displayRow = 0
         for row in max(0, scrollOffset)..<lines.count {
             let line = lines[row]
-            let chunks = wrapWidth > 0 && line.count > wrapWidth && !line.isEmpty
-                ? TextLayout.wrapWords(line, width: wrapWidth)
-                : [line]
+            let chunks = displayChunks(of: line, wrapWidth: wrapWidth)
             if y < displayRow + chunks.count {
                 let col = unprojectCursor(chunks: chunks, chunkIndex: y - displayRow,
                                           columnInChunk: max(0, x - textStart), logicalLine: line)
@@ -971,6 +956,13 @@ public struct TextArea: TerminalView {
         }
         let last = max(0, lines.count - 1)
         return TextAreaCursor(row: last, col: lines.indices.contains(last) ? lines[last].count : 0)
+    }
+
+    /// The rows `line` is drawn in: wrapped at `wrapWidth` when it is
+    /// longer, whole otherwise — and whole when `wrapWidth` is 0, the 1:1
+    /// rendering older callers ask for.
+    static func displayChunks(of line: String, wrapWidth: Int) -> [String] {
+        wrapWidth > 0 && line.count > wrapWidth ? TextLayout.wrapWords(line, width: wrapWidth) : [line]
     }
 
     static func gutterWidth(for totalLines: Int) -> Int {

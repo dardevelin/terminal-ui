@@ -605,8 +605,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // thread of its own, not a task: blocked for the app's whole life, a
         // task would hold one of the cooperative pool's few threads for good.
         let wake = self.wake
-        // The signals the app handles go to the input thread alone, which
-        // waits for the bytes their handlers write.
+        // The signals the app handles are kept off this thread and the
+        // threads it starts, so they reach the input thread, which waits for
+        // the bytes their handlers write (see `blockWakingSignals`).
         let signalMask = Terminal.blockWakingSignals()
         defer { Terminal.restoreSignalMask(signalMask) }
         let inputThread = BlockingThread(name: "TerminalUI input") {

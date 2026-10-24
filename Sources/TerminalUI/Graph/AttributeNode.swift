@@ -251,13 +251,8 @@ public class AttributeNode: @unchecked Sendable {
     /// the same principle containment stamping uses.
     public var _keyHandler: ((KeyEvent) -> KeyEventResult)?
     public var _clickHandler: ((Int, Int) -> Void)?
-    /// The tap gesture this view waits for; see `TapRecognizer`.
-    var _tapHandler: TapRecognizer?
-    /// The drag gesture this view follows.
-    var _dragHandler: DragGesture?
-    /// Rewrites the ratios of the SplitView split this node lays out, in the
-    /// `SplitState` it came from: what dragging a divider does.
-    var _resizeSplit: (([Double]) -> Void)?
+    /// The tap gesture this view waits for.
+    var _tapHandler: TapGesture?
 
     /// Drops every handler stamped on the node, for a view disabled since
     /// they were.
@@ -268,6 +263,12 @@ public class AttributeNode: @unchecked Sendable {
         _dragHandler = nil
         _wheelHandler = nil
     }
+    /// The drag gesture this view follows.
+    var _dragHandler: DragGesture?
+    /// Rewrites the ratios of the SplitView split this node lays out, in the
+    /// `SplitState` it came from: what dragging a divider does.
+    var _resizeSplit: (([Double]) -> Void)?
+
     /// Scrolls this view one wheel step toward the given arrow, and says
     /// whether it moved; see `View.onScrollWheel`.
     var _wheelHandler: ((Key) -> Bool)?

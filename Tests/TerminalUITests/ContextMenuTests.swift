@@ -97,6 +97,22 @@ struct ContextMenuTests {
         #expect(!screen.text.contains("[ Delete ]"))
     }
 
+    @Test func anItemThatTakesATapClosesTheMenuAsAButtonDoes() {
+        let log = Log()
+        let screen = Screen {
+            Text("notes.md").contextMenu {
+                Button("Open") { log.entries.append("open") }
+                Text("Rename").onTapGesture { log.entries.append("rename") }
+            }
+        }
+        screen.press(0, 0, button: .right)
+        let rows = screen.frame()
+        let y = rows.firstIndex { $0.contains("Rename") }!
+        screen.press(rows[y].distance(from: rows[y].startIndex, to: rows[y].range(of: "Rename")!.lowerBound), y)
+        #expect(log.entries == ["rename"])
+        #expect(!screen.text.contains("Rename"))
+    }
+
     @Test func enterOnTheFocusedItemRunsItAndClosesTheMenu() {
         let log = Log()
         let screen = Screen { self.file(log) }
