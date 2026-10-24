@@ -67,9 +67,10 @@ public struct RemoteRequest: Codable, Sendable {
     //   "click"  — press+release of `button` at (x, y) (defaults to "left")
     //   "press"  — press only
     //   "release"— release only
+    //   "drag"   — motion to (x, y) with `button` held
     //   "wheel_up" / "wheel_down" — scroll at (x, y)
     /// `send_mouse`: event kind — `"move"`, `"click"`, `"press"`,
-    /// `"release"`, `"wheel_up"`, or `"wheel_down"`.
+    /// `"drag"`, `"release"`, `"wheel_up"`, or `"wheel_down"`.
     public var kind: String?
     /// `send_mouse`: button name (`"left"`, `"middle"`, `"right"`);
     /// defaults to left when omitted.
@@ -801,6 +802,8 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             runtime.enqueueEvent(.mouse(MouseEvent(kind: .press(button), x: x, y: y, modifiers: modifiers)))
         case "release":
             runtime.enqueueEvent(.mouse(MouseEvent(kind: .release(button), x: x, y: y, modifiers: modifiers)))
+        case "drag":
+            runtime.enqueueEvent(.mouse(MouseEvent(kind: .drag(button), x: x, y: y, modifiers: modifiers)))
         case "click":
             // A click is press + release at the same coordinate. Most
             // handlers respond to .press; emitting both keeps drag-aware

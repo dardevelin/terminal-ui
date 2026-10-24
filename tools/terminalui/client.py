@@ -453,6 +453,13 @@ class Client:
         self._call("send_mouse", kind="press", x=x, y=y, button=button,
                    modifiers=list(modifiers) or None)
 
+    def mouse_drag(self, x: int, y: int, button: str = "left",
+                   *modifiers: str) -> None:
+        """Inject motion to (x, y) with ``button`` held, between a
+        ``mouse_press`` and a ``mouse_release``."""
+        self._call("send_mouse", kind="drag", x=x, y=y, button=button,
+                   modifiers=list(modifiers) or None)
+
     def mouse_release(self, x: int, y: int, button: str = "left",
                       *modifiers: str) -> None:
         self._call("send_mouse", kind="release", x=x, y=y, button=button,

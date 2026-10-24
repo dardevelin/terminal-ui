@@ -79,6 +79,10 @@ final class StorybookState {
     var taps = 0
     var opens = 0
     var marked = false
+    /// The `.gesture(DragGesture)` page's bar, and its width when the drag
+    /// began.
+    var dragWidth = 10
+    var dragStartWidth = 10
     // Action graph demo state
     var actionFired: Int = 0
     // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit

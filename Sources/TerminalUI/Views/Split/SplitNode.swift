@@ -46,3 +46,17 @@ public enum SplitAxis: Sendable, Equatable {
     /// Panes stacked top to bottom, separated by `─` rows.
     case vertical
 }
+
+extension SplitNode {
+    /// The tree with the split at `path` — child indices from the root —
+    /// given `ratios`; the tree unchanged where no split is there.
+    func settingRatios(_ ratios: [Double], at path: ArraySlice<Int>) -> SplitNode {
+        guard case .split(let axis, var children, let current) = self else { return self }
+        guard let index = path.first else {
+            return .split(axis: axis, children: children, ratios: ratios)
+        }
+        guard children.indices.contains(index) else { return self }
+        children[index] = children[index].settingRatios(ratios, at: path.dropFirst())
+        return .split(axis: axis, children: children, ratios: current)
+    }
+}

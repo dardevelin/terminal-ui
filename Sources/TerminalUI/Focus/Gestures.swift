@@ -129,3 +129,95 @@ extension TerminalView {
         gesture(TapGesture(count: count).onEnded(action))
     }
 }
+
+/// A press followed by motion with the button held, until it is released:
+/// SwiftUI's `DragGesture`.
+///
+/// ```swift
+/// Text("▐ handle ▌")
+///     .gesture(DragGesture()
+///         .onChanged { drag in width = startWidth + drag.translation.width }
+///         .onEnded { _ in startWidth = width })
+/// ```
+///
+/// The drag belongs to the deepest view under the press with a drag
+/// gesture, and follows the pointer wherever it goes — out of the view
+/// too — until the button comes up. A press is still a click as well:
+/// a tap gesture on the same view sees it. Locations are in cells,
+/// relative to where the view was when the press landed.
+public struct DragGesture {
+    /// Where a drag has got to.
+    public struct Value: Equatable, Sendable {
+        /// Where the press landed.
+        public let startLocation: Point
+        /// Where the pointer is now.
+        public let location: Point
+
+        /// How far the pointer has moved since the press.
+        public var translation: Size {
+            Size(width: location.x - startLocation.x, height: location.y - startLocation.y)
+        }
+    }
+
+    /// How many cells the pointer must move, along either axis, before the
+    /// drag begins; 0 begins it at the press.
+    public let minimumDistance: Int
+    var changed: (Value) -> Void = { _ in }
+    var ended: (Value) -> Void = { _ in }
+
+    /// A drag that begins once the pointer has moved `minimumDistance`
+    /// cells from the press.
+    public init(minimumDistance: Int = 1) {
+        self.minimumDistance = max(0, minimumDistance)
+    }
+
+    /// The gesture with `action` to run each time the pointer moves.
+    public func onChanged(_ action: @escaping (Value) -> Void) -> DragGesture {
+        var gesture = self
+        gesture.changed = action
+        return gesture
+    }
+
+    /// The gesture with `action` to run when the button comes up after the
+    /// drag began.
+    public func onEnded(_ action: @escaping (Value) -> Void) -> DragGesture {
+        var gesture = self
+        gesture.ended = action
+        return gesture
+    }
+}
+
+/// Payload of `.gesture(_:)` for a ``DragGesture``.
+public struct DragGestureModifier: ViewModifier {
+    @_documentation(visibility: internal)
+    public typealias ModifierType = Void
+    /// The drag the view follows.
+    public let gesture: DragGesture
+}
+
+extension TerminalView {
+    /// Follow a drag that starts on this view. See ``DragGesture``.
+    public func gesture(_ gesture: DragGesture) -> ModifiedView<Self, DragGestureModifier> {
+        ModifiedView(content: self, modifier: DragGestureModifier(gesture: gesture))
+    }
+}
+
+/// A drag in progress: begun by a left press, moved by motion with the
+/// button held, ended by its release. What it moves is its own — a drag
+/// gesture, a scrollbar, a split's divider — through `changed` and `ended`,
+/// given the pointer's cell.
+struct DragSession {
+    let startX: Int
+    let startY: Int
+    let minimumDistance: Int
+    let changed: (_ x: Int, _ y: Int) -> Void
+    var ended: (_ x: Int, _ y: Int) -> Void = { _, _ in }
+    /// Whether the pointer has gone `minimumDistance` from the press.
+    var begun = false
+
+    /// Whether (`x`, `y`) is far enough from the press for the drag to
+    /// begin.
+    func reaches(x: Int, y: Int) -> Bool {
+        max(abs(x - startX), abs(y - startY)) >= minimumDistance
+    }
+}

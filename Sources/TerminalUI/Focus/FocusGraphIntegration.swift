@@ -39,6 +39,13 @@ extension TapGestureModifier: _FocusGraphModifier {
     }
 }
 
+extension DragGestureModifier: _FocusGraphModifier {
+    func registerWithFocusEngine(node: AttributeNode) {
+        node._dragHandler = gesture
+        GraphContext.currentFocusEngine?.registerDragHandler(for: node.id, gesture: gesture)
+    }
+}
+
 extension OnPasteModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
         GraphContext.currentFocusEngine?.registerPasteHandler(for: node.id, handler: handler)

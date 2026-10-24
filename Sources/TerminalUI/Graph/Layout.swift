@@ -142,6 +142,21 @@ public enum Layout {
         )
     }
 
+    /// Ratios `placeSplit` lays children out at exactly `sizes` with: what
+    /// a divider dragged to a cell writes back. Each non-last child takes
+    /// the ceiling of its share, so a ratio of exactly `size / available`
+    /// may land a cell long when its product rounds up past the integer —
+    /// 20 / 29 × 29 is 20.000000000000004. A share a hair under the size
+    /// keeps the ceiling on it.
+    static func splitRatios(placing sizes: [Int]) -> [Double] {
+        let available = Double(sizes.reduce(0, +))
+        guard available > 0 else { return sizes.map { _ in 1 } }
+        return sizes.enumerated().map { index, size in
+            let share = Double(size) / available
+            return index == sizes.count - 1 ? share : share - 1e-9
+        }
+    }
+
     /// Distribute `rect` across split children along `axis`, weighted
     /// by `node.splitRatios`. Reserves one cell per sibling boundary
     /// for the divider; the remainder goes to children.

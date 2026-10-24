@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, dragGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -642,6 +642,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     .gesture(TapGesture().modifiers(.ctrl).onEnded { marked.toggle() })
                     .onTapGesture(count: 2) { opens += 1 }
                     .onTapGesture { taps += 1 }
+                """)
+        case .dragGesture: return PageInfo(id: self, category: .modifiers, name: ".gesture(DragGesture)",
+            summary: "Follow a press, the motion with the button held, and its release, as SwiftUI's DragGesture. The drag belongs to the view pressed and follows the pointer anywhere until the button comes up; locations are cells from where the view was at the press.",
+            code: """
+                Text("▐")
+                    .gesture(DragGesture()
+                        .onChanged { drag in
+                            width = startWidth + drag.translation.width
+                        }
+                        .onEnded { _ in startWidth = width })
                 """)
         case .mouseFocusPolicy: return PageInfo(id: self, category: .modifiers, name: ".mouseFocusPolicy",
             summary: "Pick how mouse events steer keyboard focus per subtree. Four cases: .clickToLock (default), .hoverFollows, .clickOnly, .disabled.",

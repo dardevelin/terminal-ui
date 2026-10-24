@@ -1352,6 +1352,73 @@ def storybook_taps_count_and_know_their_modifiers(app: Client) -> None:
                 f"Ctrl+click marks, and is no tap:\n{app.preview_text()}")
 
 
+def _find(app: Client, needle: str, after: str = "Preview") -> tuple[int, int]:
+    """The column and row of the first ``needle`` drawn below the first
+    row holding ``after`` — the preview, not the code pane above it."""
+    rows = app.text().split("\n")
+    start = next(i for i, row in enumerate(rows) if after in row)
+    y = next(i for i in range(start, len(rows)) if needle in rows[i])
+    return rows[y].index(needle), y
+
+
+def storybook_a_drag_moves_what_it_holds(app: Client) -> None:
+    """`.gesture(DragGesture)` page: dragging the handle six cells right
+    widens the bar by six, and the release keeps it. Nothing followed a
+    drag."""
+    app.goto_page(".gesture(DragGesture)")
+    x, y = _find(app, "▐")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 3, y)
+    app.mouse_drag(x + 6, y + 1)
+    app.mouse_release(x + 6, y + 1)
+    assert_true("width: 16" in app.preview_text(), f"the bar should be 16 wide:\n{app.preview_text()}")
+    x, y = _find(app, "▐")
+    app.mouse_press(x, y)
+    app.mouse_drag(x - 4, y)
+    app.mouse_release(x - 4, y)
+    assert_true("width: 12" in app.preview_text(),
+                f"a second drag starts from where the first ended:\n{app.preview_text()}")
+
+
+def storybook_a_split_divider_drags(app: Client) -> None:
+    """SplitView page: dragging the divider between the left pane and the
+    right ones moves it with the pointer."""
+    app.goto_page("SplitView")
+    x, y = _find(app, "│top right")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 5, y)
+    app.mouse_release(x + 5, y)
+    moved, _ = _find(app, "│top right")
+    assert_true(moved == x + 5, f"the divider should be at {x + 5}, is at {moved}:\n{app.preview_text()}")
+
+
+def storybook_a_slider_drags(app: Client) -> None:
+    """Slider page: a drag from the knob to past the track's end takes the
+    value to its maximum."""
+    app.goto_page("Slider")
+    x, y = _find(app, "●")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 40, y)
+    app.mouse_release(x + 40, y)
+    assert_true("● 100" in app.preview_text(), f"the slider should be at 100:\n{app.preview_text()}")
+
+
+def storybook_a_scrollbar_drags(app: Client) -> None:
+    """ScrollView page: pressing the track and dragging to its foot scrolls
+    to the end."""
+    app.goto_page("ScrollView")
+    x, y = _find(app, "row 1")
+    rows = app.text().split("\n")
+    bar = rows[y].rindex("│", 0, rows[y].rindex("│"))
+    _, foot = _find(app, "▼")
+    app.mouse_press(bar, y)
+    app.mouse_drag(bar, foot + 3)
+    app.mouse_release(bar, foot + 3)
+    assert_true("row 0" not in app.preview_text(), f"the view should have scrolled:\n{app.preview_text()}")
+    assert_true(app.wait_until(lambda c: "▲" in c.preview_text()),
+                f"scrolled to the end, the track's head steps up:\n{app.preview_text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2807,6 +2874,10 @@ CASES: list[SmokeCase] = [
               storybook_a_click_on_a_list_row_selects_it),
     SmokeCase("storybook.taps_count_and_know_their_modifiers", "Storybook",
               storybook_taps_count_and_know_their_modifiers),
+    SmokeCase("storybook.a_drag_moves_what_it_holds", "Storybook", storybook_a_drag_moves_what_it_holds),
+    SmokeCase("storybook.a_split_divider_drags", "Storybook", storybook_a_split_divider_drags),
+    SmokeCase("storybook.a_slider_drags", "Storybook", storybook_a_slider_drags),
+    SmokeCase("storybook.a_scrollbar_drags", "Storybook", storybook_a_scrollbar_drags),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",

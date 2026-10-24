@@ -249,6 +249,11 @@ public class AttributeNode: @unchecked Sendable {
     public var _clickHandler: ((Int, Int) -> Void)?
     /// The tap gesture this view waits for; see `TapRecognizer`.
     var _tapHandler: TapRecognizer?
+    /// The drag gesture this view follows.
+    var _dragHandler: DragGesture?
+    /// Rewrites the ratios of the SplitView split this node lays out, in the
+    /// `SplitState` it came from: what dragging a divider does.
+    var _resizeSplit: (([Double]) -> Void)?
 
     /// Drops every handler stamped on the node, for a view disabled since
     /// they were.
@@ -256,6 +261,7 @@ public class AttributeNode: @unchecked Sendable {
         _keyHandler = nil
         _clickHandler = nil
         _tapHandler = nil
+        _dragHandler = nil
         _wheelHandler = nil
     }
     /// Scrolls this view one wheel step toward the given arrow, and says
