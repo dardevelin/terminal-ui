@@ -4,6 +4,12 @@ A study of `charmbracelet/crush` (Go, Bubble Tea v2 / Lip Gloss v2 / Bubbles v2)
 against TerminalUI, aimed at one deliverable: **a demo app that reads as
 Crush-grade, built on TerminalUI alone.**
 
+Crush is the benchmark, not a source. It is one of the most demanding
+terminal interfaces there is, so rebuilding its look and interaction in
+`Examples/Coder` stress-tests the framework: wherever the demo cannot match
+it, the framework lacks a capability, and that capability gets built as
+TerminalUI's own. No Crush code is ported.
+
 Sources studied: `internal/ui/**` (36,652 lines of non-test Go across
 `styles`, `common`, `list`, `dialog`, `chat`, `completions`, `diffview`,
 `logo`, `anim`, `model`, `image`, `exitbanner`, `notification`), plus the
@@ -121,7 +127,7 @@ Status        destructive, error, warning, warningSubtle, attention, busy,
 Raw output    ansi[16]
 ```
 
-The two structural ideas worth stealing:
+The two structural ideas the demo needs the framework to express:
 
 - **Ramps, not single values.** Three levels of subtlety for foregrounds, three
   for backgrounds, three for info/success. This is what lets Crush layer six
@@ -129,9 +135,9 @@ The two structural ideas worth stealing:
 - **Contrast pairings.** `onPrimary` exists so "text on a primary-coloured
   background" is a *theme decision*, not a call-site guess.
 
-What we should **not** copy: the 704-line `Styles` struct. It is Crush's
-technical debt (it already carries `// Deprecated - kept for backward
-compatibility` fields). SwiftUI's answer to the same problem is the environment
+What the framework should **not** grow is the shape of the 704-line `Styles` struct: one
+flat bag of every style, which suits Go and Lip Gloss but not a SwiftUI-style
+framework. SwiftUI's answer to the same problem is the environment
 plus per-component style protocols — and we already have the shape of it
 (`PickerStyle`, `FocusIndicatorStyle`, `EnvironmentValues`). Expand the palette;
 resolve it through the environment; add `ButtonStyle`/`ListStyle`-shaped
@@ -211,9 +217,10 @@ selection.
 
 ---
 
-## 4. Signature devices worth stealing verbatim
+## 4. Signature devices the demo has to draw
 
-These are small, and they carry most of the visual identity.
+These are small, and they carry most of the visual identity, so each one is a
+test the framework has to pass.
 
 ### 4.1 The section rule
 `common.Section` — title, space, then `─` repeated to fill the remaining width,
@@ -235,7 +242,7 @@ border, coloured by role and focus state. `BorderThick "▌"` for emphasis,
 
 ### 4.5 The icon vocabulary
 ~40 single-glyph constants with fixed semantics — `✓ ⋯ ⟳ ◇ ◆ → ● × ◉ ○ │ ▌ ─
-• ■ ≡ ▲ ✕ ┃ E W I H`. Cheap to adopt, and consistency here reads as polish.
+• ■ ≡ ▲ ✕ ┃ E W I H`. Cheap for an app to define, and consistency here reads as polish.
 
 ### 4.6 The wordmark
 Crush hand-codes letterforms as functions (`LetterC`, `LetterR`, …, 419 lines),
@@ -263,6 +270,8 @@ a spinner built this way is **golden-testable**, which ours should also be.
 ---
 
 ## 5. How we work: the demo is the forcing function
+
+The demo is the stress test.
 
 **We do not port the inventory in §2.** We build the demo app, and every time it
 hits a wall we build the framework feature that wall demands — properly, as a
