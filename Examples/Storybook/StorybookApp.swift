@@ -83,6 +83,8 @@ final class StorybookState {
     /// began.
     var dragWidth = 10
     var dragStartWidth = 10
+    /// The `.contextMenu` page's last choice.
+    var menuChoice = "nothing"
     // Action graph demo state
     var actionFired: Int = 0
     // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit

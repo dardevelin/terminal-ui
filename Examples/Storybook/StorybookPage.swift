@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, dragGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, dragGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, contextMenu, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -900,6 +900,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                            message: "This cannot be undone.") {
                         AlertAction("Delete", role: .destructive) { delete() }
                         AlertAction("Cancel", role: .cancel) { }
+                    }
+                """)
+        case .contextMenu: return PageInfo(id: self, category: .modifiers, name: ".contextMenu",
+            summary: "A menu where the view is right-clicked, as SwiftUI's contextMenu. It holds the keyboard while open; choosing an item runs it and closes the menu, and Escape or a press outside closes it alone.",
+            code: """
+                Text("notes.md")
+                    .contextMenu {
+                        Button("Open") { chosen = "Open" }
+                        Button("Duplicate") { chosen = "Duplicate" }
+                        Button("Delete") { chosen = "Delete" }
                     }
                 """)
         case .confirmationDialog: return PageInfo(id: self, category: .modifiers, name: ".confirmationDialog",

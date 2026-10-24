@@ -16,6 +16,7 @@ protocol _BackgroundViewModifierProtocol {
 protocol _ModalModifierProtocol {
     var modalIsPresented: Bool { get }
     var modalPlacement: PresentationPlacement { get }
+    var modalDismissal: (() -> Void)? { get }
     func constructModalNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateModalNode(_ node: AttributeNode, graph: AttributeGraph)
 }
@@ -47,6 +48,7 @@ extension BackgroundViewModifier: _BackgroundViewModifierProtocol {
 extension ModalModifier: _ModalModifierProtocol {
     var modalIsPresented: Bool { isPresented }
     var modalPlacement: PresentationPlacement { placement }
+    var modalDismissal: (() -> Void)? { dismissal }
     func constructModalNode(id: NodeID, graph: AttributeGraph) -> AttributeNode {
         graph.constructNode(for: content, id: id)
     }

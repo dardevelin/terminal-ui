@@ -1419,6 +1419,29 @@ def storybook_a_scrollbar_drags(app: Client) -> None:
                 f"scrolled to the end, the track's head steps up:\n{app.preview_text()}")
 
 
+def storybook_a_right_click_opens_a_context_menu(app: Client) -> None:
+    """`.contextMenu` page: a right click opens the menu where it lands; a
+    click on an item runs it and closes the menu; Escape, and a press
+    outside, close it and run nothing. The secondary button reached
+    nothing."""
+    app.goto_page(".contextMenu")
+    x, y = _find(app, "notes.md — right-click")
+    app.mouse_click(x + 2, y, "right")
+    assert_true("[ Duplicate ]" in app.text(), f"the menu should be open:\n{app.preview_text()}")
+    dx, dy = _find(app, "[ Duplicate ]")
+    app.mouse_click(dx + 2, dy)
+    assert_true("chosen: Duplicate" in app.preview_text() and "[ Duplicate ]" not in app.text(),
+                f"choosing an item runs it and closes the menu:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "right")
+    app.send_key("down")
+    app.send_key("escape")
+    assert_true("[ Duplicate ]" not in app.text() and "chosen: Duplicate" in app.preview_text(),
+                f"Escape closes the menu and runs nothing:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "right")
+    app.mouse_click(1, 1)
+    assert_true("[ Duplicate ]" not in app.text(), f"a press outside closes the menu:\n{app.text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2878,6 +2901,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.a_split_divider_drags", "Storybook", storybook_a_split_divider_drags),
     SmokeCase("storybook.a_slider_drags", "Storybook", storybook_a_slider_drags),
     SmokeCase("storybook.a_scrollbar_drags", "Storybook", storybook_a_scrollbar_drags),
+    SmokeCase("storybook.a_right_click_opens_a_context_menu", "Storybook",
+              storybook_a_right_click_opens_a_context_menu),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",

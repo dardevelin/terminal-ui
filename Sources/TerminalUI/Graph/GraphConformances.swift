@@ -160,7 +160,7 @@ extension ModifiedView: _GraphModified {
                           foregroundYieldsToStated: foreground.yieldsToStated)
         case let modal as any _ModalModifierProtocol:
             GraphModifier(effect: .modal(isPresented: modal.modalIsPresented),
-                          placement: modal.modalPlacement)
+                          placement: modal.modalPlacement, dismissal: modal.modalDismissal)
         default:
             GraphModifier(effect: otherEffect)
         }

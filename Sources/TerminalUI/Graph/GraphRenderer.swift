@@ -39,6 +39,7 @@ public enum GraphRenderer {
             switch content.parent?.presentationPlacement ?? .centered {
             case .centered: compositePresentation(content, effect: .modal(isPresented: true), into: &buffer)
             case .trailing: compositeInspector(content, into: &buffer)
+            case .anchored(let point): compositeMenu(content, at: point, into: &buffer)
             }
         }
     }
@@ -1678,6 +1679,25 @@ public enum GraphRenderer {
         offsetRects(of: modalNode, dx: mx, dy: my)
 
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
+    }
+
+    /// A menu: at its content's size, with its top-left corner on the cell
+    /// it was opened from, as a platform's context menu opens — moved left,
+    /// or up, as far as it must to stay on the screen. Nothing is dimmed.
+    private static func compositeMenu(_ menu: AttributeNode, at point: Point,
+                                      into buffer: inout CellBuffer) {
+        let width = min(measureWidth(menu), buffer.width)
+        let height = min(measureHeight(menu, proposedWidth: width), buffer.height)
+        guard width > 0, height > 0 else { return }
+        let x = max(0, min(point.x, buffer.width - width))
+        let y = max(0, min(point.y, buffer.height - height))
+        var layer = Layer(width: width, height: height, x: x, y: y,
+                          style: ModifierEffect.modal(isPresented: true).compositingStyle)
+        let rect = Rect(x: 0, y: 0, width: width, height: height)
+        Layout.measureAndPlace(graph: menu, in: rect)
+        renderNode(menu, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
+        offsetRects(of: menu, dx: x, dy: y)
+        Compositor.composite(layers: [layer], into: &buffer)
     }
 
     /// An inspector: in the column taken off the trailing edge of the view

@@ -992,6 +992,16 @@ struct PreviewPane: TerminalView {
                 AlertAction("Delete", role: .destructive) { recordAlertChoice("Delete") }
                 AlertAction("Cancel", role: .cancel) { recordAlertChoice("Cancel") }
             }
+        case .contextMenu:
+            VStack {
+                Text("notes.md — right-click me").foreground(.cyan)
+                    .contextMenu {
+                        Button("Open") { [state] in state.menuChoice = "Open" }
+                        Button("Duplicate") { [state] in state.menuChoice = "Duplicate" }
+                        Button("Delete") { [state] in state.menuChoice = "Delete" }
+                    }
+                Text("chosen: \(state.menuChoice)").foreground(.gray)
+            }
         case .confirmationDialog:
             VStack {
                 Text("Actions stack vertically — the action-sheet shape").foreground(.gray)
