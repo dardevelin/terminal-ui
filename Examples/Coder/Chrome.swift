@@ -120,38 +120,57 @@ enum HelpLine {
 
 // MARK: - Wordmark
 
-/// The sidebar's identity block, in the shape of Crush's compact logo: a
-/// diagonal field, the label and version, the name in the brand gradient,
-/// and the field again beneath.
-///
-/// GAP LEDGER — Crush sets its name in three-row block letterforms. The
-/// framework's `DotFont` draws dots or braille in one colour, so the name is
-/// a single gradient row until a block letterform with a gradient exists.
+/// The sidebar's identity block, in the shape of Crush's logo: a diagonal
+/// field, the label and version, the name in half-block letterforms swept
+/// by the brand gradient, and the field again beneath — everything as wide
+/// as the name. `compact`, the one-row form: label, name and a field to the
+/// sidebar's edge.
 struct Wordmark: TerminalView {
+    /// The sidebar's width, which the one-row form fills.
     let width: Int
+    var compact = false
     var theme = CoderTheme.dark
 
+    static let name = "CODER"
+    static let label = "TerminalUI"
+    static let version = "v0.1"
+
     var body: some TerminalView {
-        VStack(spacing: 0) {
-            Text(field).foreground(theme.primary)
-            Text(field).foreground(theme.primary)
-            Text(spans: metaRow)
-            Text(spans: Text.gradient("CODER", from: theme.secondary, to: theme.primary)
-                .spans.map { $0.bolded() })
-            Text(field).foreground(theme.primary)
+        if compact {
+            Text(spans: compactRow)
+        } else {
+            let letters = DotMatrixText(Self.name, mode: .halfBlock)
+            let fieldRow = Text(spans: [field(letters.columns)])
+            VStack(spacing: 0) {
+                fieldRow
+                fieldRow
+                Text(spans: metaRow(width: letters.columns))
+                letters.gradient(from: theme.secondary, to: theme.primary)
+                fieldRow
+            }
         }
     }
 
-    private var field: String { String(repeating: Glyph.diagonal, count: width) }
+    private func field(_ count: Int) -> TextSpan {
+        TextSpan(String(repeating: Glyph.diagonal, count: count), foreground: theme.primary)
+    }
 
-    private var metaRow: [TextSpan] {
-        let label = "TerminalUI"
-        let version = "v0.1"
-        let gap = max(1, width - label.count - version.count)
+    private func metaRow(width: Int) -> [TextSpan] {
+        let gap = max(1, width - Self.label.count - Self.version.count)
         return [
-            TextSpan(label, foreground: theme.secondary),
+            TextSpan(Self.label, foreground: theme.secondary),
             TextSpan(String(repeating: " ", count: gap)),
-            TextSpan(version, foreground: theme.primary),
+            TextSpan(Self.version, foreground: theme.primary),
         ]
+    }
+
+    private var compactRow: [TextSpan] {
+        var spans = [TextSpan(Self.label, foreground: theme.secondary), TextSpan(" ")]
+        spans += Text.gradient(Self.name, from: theme.secondary, to: theme.primary).spans.map { $0.bolded() }
+        let fill = width - Self.label.count - Self.name.count - 2
+        if fill > 0 {
+            spans += [TextSpan(" "), field(fill)]
+        }
+        return spans
     }
 }

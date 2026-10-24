@@ -529,7 +529,11 @@ struct PreviewPane: TerminalView {
             // then wrap in Text. This keeps the preview declarative.
             Text(buildBrailleDemo()).foreground(.cyan)
         case .dotMatrixText:
-            DotMatrixText("HELLO")
+            VStack(spacing: 1) {
+                DotMatrixText("HELLO")
+                DotMatrixText("HELLO", mode: .halfBlock)
+                    .gradient(from: .rgb(124, 92, 255), to: .rgb(61, 219, 217))
+            }
         case .morseTicker:
             MorseTicker("SOS",
                         scrollOffset: Binding(get: { state.morseScroll },

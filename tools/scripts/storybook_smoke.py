@@ -1092,13 +1092,17 @@ def storybook_braillecanvas_renders_curve(app: Client) -> None:
 
 
 def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
-    """DotMatrixText renders the word HELLO via its internal dot-font.
-    Each glyph column is rendered as block characters; the preview should
-    have many `█`/`▓`/`▒` cells."""
+    """DotMatrixText renders the word HELLO via its internal dot-font, once
+    in `●` bullets and once in half blocks, whose H opens `█   █` over
+    `█▄▄▄█`."""
     app.goto_page("DotMatrixText")
     preview = app.preview_text()
-    filled = sum(1 for ch in preview if ch in "█▓▒░●")
-    assert_true(filled > 20, f"DotMatrixText preview too sparse (filled={filled})")
+    bullets = sum(1 for ch in preview if ch == "●")
+    assert_true(bullets > 20, f"DotMatrixText's bullets too sparse (filled={bullets})")
+    rows = [row.lstrip(" │") for row in preview.splitlines()]
+    assert_true(any(row.startswith("█   █") for row in rows)
+                and any(row.startswith("█▄▄▄█") for row in rows),
+                f"expected HELLO in half blocks: {preview!r}")
 
 
 def storybook_morseticker_renders_sos(app: Client) -> None:
@@ -1746,10 +1750,30 @@ def _coder_scroll_to_edit_card(app: Client) -> str:
                                CODER_DIFF_REMOVED, CODER_DIFF_ADDED)
 
 
+# The top row of CODER in half-block letterforms, as the sidebar sets it
+# when it is tall enough to spare the rows.
+CODER_WORDMARK_TOP = "▄▀▀▀▀ ▄▀▀▀▄ █▀▀▀▄ █▀▀▀▀ █▀▀▀▄"
+CODER_WORDMARK_ROW = "TerminalUI CODER ╱"
+
+
 def coder_renders(app: Client) -> None:
     """Boots into the shell: wordmark, a user message, a tool card."""
-    assert_true("CODER" in app.cells().text(), "expected the wordmark in the header")
+    text = app.cells().text()
+    assert_true(CODER_WORDMARK_TOP in text and "TerminalUI" in text,
+                "expected the wordmark's letterforms in the sidebar")
     _coder_scroll_until(app, "You", "the user's message", "Read")
+
+
+def coder_a_short_sidebar_sets_the_name_in_one_row(app: Client) -> None:
+    """Under 30 rows of sidebar the letterforms would crowd out the sections
+    beneath them, so the wordmark becomes one row — Crush's breakpoint —
+    and comes back when there is room."""
+    app.resize_terminal(140, 30)
+    text = app.cells().text()
+    assert_true(CODER_WORDMARK_ROW in text and CODER_WORDMARK_TOP not in text,
+                "a short sidebar should set the name in one row")
+    app.resize_terminal(140, 40)
+    assert_true(CODER_WORDMARK_TOP in app.cells().text(), "the letterforms should return with the room")
 
 
 def coder_opens_on_the_latest_entry(app: Client) -> None:
@@ -1964,7 +1988,7 @@ def coder_wheel_burst_keeps_running(app: Client) -> None:
         app.write_raw(f"\x1b[<{direction};{x + 1};{y + 1}M".encode() * 20)
         time.sleep(0.02)
     app.ping()
-    assert_true("CODER" in app.cells().text(), "the app should still be drawing")
+    assert_true(CODER_WORDMARK_TOP in app.cells().text(), "the app should still be drawing")
 
 
 def coder_crash_restores_the_terminal(app: Client) -> None:
@@ -2481,6 +2505,8 @@ CASES: list[SmokeCase] = [
               storybook_a_disabled_socket_is_never_opened, connects=False,
               project_files=((".terminalui/terminalui.toml", "[socket]\nenabled = false\n"),)),
     SmokeCase("coder.renders", "Coder", coder_renders),
+    SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
+              coder_a_short_sidebar_sets_the_name_in_one_row),
     SmokeCase("coder.typing_reaches_the_prompt", "Coder", coder_typing_reaches_the_prompt),
     SmokeCase("coder.readline_keys_edit_the_draft", "Coder", coder_readline_keys_edit_the_draft),
     SmokeCase("coder.reads_the_users_keymap", "Coder", coder_reads_the_users_keymap,

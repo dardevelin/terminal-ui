@@ -7,14 +7,21 @@ import TerminalUI
 /// part separated by a blank row rather than boxed.
 struct Sidebar: TerminalView {
     let state: CoderState
+
+    /// The rows the sidebar is laid out in.
+    let height: Int
     var theme = CoderTheme.dark
 
     /// Crush's sidebar width.
     static let width = 32
+    /// Height below which the wordmark's letterforms would crowd out the
+    /// sections under them, and it takes one row instead — Crush's
+    /// breakpoint.
+    static let letterformHeight = 30
 
     var body: some TerminalView {
         VStack(spacing: 1) {
-            Wordmark(width: Self.width, theme: theme)
+            Wordmark(width: Self.width, compact: height < Self.letterformHeight, theme: theme)
             Text(state.sessionTitle)
                 .foreground(theme.foregroundMuted)
             Text(state.workingDirectory)
@@ -383,9 +390,16 @@ struct TodoPill: TerminalView {
 struct CoderApp: TerminalView {
     let state: CoderState
     var theme = CoderTheme.dark
+    @TerminalEnvironment(\.terminalSize) private var terminalSize
+
+    /// The blank cells around the transcript and sidebar.
+    static let margin = 1
+    /// The help line's rows, beneath the margin.
+    static let helpHeight = 1
 
     var body: some TerminalView {
-        VStack(spacing: 0) {
+        let sidebarHeight = terminalSize.rows - 2 * Self.margin - Self.helpHeight
+        return VStack(spacing: 0) {
             HStack(spacing: 2) {
                 VStack(spacing: 1) {
                     Transcript(state: state, theme: theme)
@@ -394,11 +408,11 @@ struct CoderApp: TerminalView {
                     Prompt(state: state)
                 }
                 .flexible(.horizontal)
-                Sidebar(state: state, theme: theme)
+                Sidebar(state: state, height: sidebarHeight, theme: theme)
                     .frame(width: Sidebar.width)
             }
             .flexible(.vertical)
-            .padding(1)
+            .padding(Self.margin)
             Text(spans: [TextSpan(" ")] + HelpLine.spans([
                 ("enter", "send"),
                 ("tab", "focus chat"),

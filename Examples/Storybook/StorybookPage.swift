@@ -497,8 +497,12 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 Text(canvas.render()).foreground(.cyan)
                 """)
         case .dotMatrixText: return PageInfo(id: self, category: .charts, name: "DotMatrixText",
-            summary: "Large text rendered as dot-matrix LED panels.",
-            code: "DotMatrixText(\"HELLO\")")
+            summary: "Large text rendered as dot-matrix LED panels, or as solid half-block letterforms.",
+            code: """
+                DotMatrixText("HELLO")
+                DotMatrixText("HELLO", mode: .halfBlock)
+                    .gradient(from: .rgb(124, 92, 255), to: .rgb(61, 219, 217))
+                """)
         case .morseTicker: return PageInfo(id: self, category: .charts, name: "MorseTicker",
             summary: "Animated Morse code signal visualizer.",
             code: "MorseTicker(\"SOS\", scrollOffset: $offset, width: 40)")
