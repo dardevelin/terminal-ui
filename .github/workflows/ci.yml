@@ -41,8 +41,10 @@ jobs:
       # default settings — that would propagate the policy to downstream
       # consumers, which the Swift Package Index forbids for libraries. The env
       # var is the opt-in this repo's CI uses.
+      # --build-tests: `swift build` alone never compiles a test target, so
+      # a warning in one passed.
       - name: Build with warnings as errors
-        run: TUI_WARNINGS_AS_ERRORS=1 swift build
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build --build-tests
 
       - name: Build release
         run: TUI_WARNINGS_AS_ERRORS=1 swift build -c release
@@ -125,11 +127,19 @@ jobs:
       - name: Test
         run: swift test
 
+      # --build-tests: `swift build` alone never compiles a test target, so
+      # a warning in one passed.
       - name: Build with warnings as errors
-        run: TUI_WARNINGS_AS_ERRORS=1 swift build
+        run: TUI_WARNINGS_AS_ERRORS=1 swift build --build-tests
 
       - name: Build release
         run: TUI_WARNINGS_AS_ERRORS=1 swift build -c release
+
+      # A release promises that apps written against it keep compiling.
+      # Breaks the next release accepts are listed with why; the baseline
+      # tag comes from the full-history checkout above.
+      - name: The public API breaks nothing the last release offered
+        run: python3 tools/scripts/check_api_compat.py
 
       # macOS runners ship Python 3, so no install step is needed here.
       - name: Walk every Storybook page

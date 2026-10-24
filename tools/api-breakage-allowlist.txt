@@ -1,0 +1,46 @@
+# Breaks of the public API that check_api_compat.py accepts, against the
+# release named by `baseline`. One per line, as `Module: <digester message>`.
+# A break listed here either still compiles — the digester counts a new
+# defaulted parameter as a removal — or belongs to a major release. After a
+# major release is tagged, the baseline becomes that tag and the list empties.
+
+baseline v1.0.0
+
+# Still compiles: a parameter added with a default, or a parameter that now
+# takes an optional, which a caller's non-optional argument still satisfies,
+# or a result that is @discardableResult.
+TerminalUI: API breakage: constructor PromptInput.init(text:state:prompt:badge:maxVisibleLines:heightPolicy:arrowMode:onSubmit:) has been removed
+TerminalUI: API breakage: constructor RemoteResult.init(focus:cells:tree:frame:screenshotPath:inspector:probes:actions:fired:) has been removed
+TerminalUI: API breakage: constructor TerminalRuntime.init(renderMode:timers:devTrace:onEvent:content:) has been removed
+TerminalUI: API breakage: func FocusEngine.routeWheel(_:root:x:y:policy:) has been renamed to func routeWheel(_:root:x:y:policy:steps:)
+TerminalUI: API breakage: func TerminalView.border(_:) has been renamed to func border(_:color:edges:)
+TerminalUI: API breakage: constructor StatusBar.init(background:foreground:content:) has parameter 0 type change from TerminalUI.Color to TerminalUI.Color?
+TerminalUI: API breakage: constructor StatusBar.init(background:foreground:content:) has parameter 1 type change from TerminalUI.Color to TerminalUI.Color?
+TerminalUI: API breakage: func StatusBar.keyHints(_:background:foreground:keyColor:) has parameter 1 type change from TerminalUI.Color to TerminalUI.Color?
+TerminalUI: API breakage: func StatusBar.keyHints(_:background:foreground:keyColor:) has parameter 2 type change from TerminalUI.Color to TerminalUI.Color?
+TerminalUI: API breakage: func StatusBar.keyHints(_:background:foreground:keyColor:) has parameter 3 type change from TerminalUI.Color to TerminalUI.Color?
+TerminalUI: API breakage: constructor TextArea.init(text:state:lineNumbers:visibleHeight:arrowMode:highlighter:theme:) has parameter 6 type change from TerminalUI.SyntaxTheme to TerminalUI.SyntaxTheme?
+TerminalUI: API breakage: func TerminalRuntime.run() has return type change from () to TerminalUI.TerminationReason
+
+# 2.0.0: new enum cases. A switch over one of these needs the case.
+TerminalUI: API breakage: enumelement BorderStyle.halfBlock has been added as a new enum case
+TerminalUI: API breakage: enumelement DotMatrixText.RenderMode.halfBlock has been added as a new enum case
+TerminalUI: API breakage: enumelement TextWrapMode.truncate has been added as a new enum case
+TerminalUI: API breakage: enumelement TerminalRuntimeError.wakePipeUnavailable has been added as a new enum case
+TerminalUI: API breakage: enumelement FrameworkWarningCode.debugSocketUnavailable has been added as a new enum case
+
+# 2.0.0: `TextArea.theme` is optional, nil meaning the app theme's syntax
+# colours, which exist only once the view renders.
+TerminalUI: API breakage: var TextArea.theme has declared type change from TerminalUI.SyntaxTheme to TerminalUI.SyntaxTheme?
+TerminalUI: API breakage: accessor TextArea.theme.Get() has return type change from TerminalUI.SyntaxTheme to TerminalUI.SyntaxTheme?
+
+# 2.0.0: the graph and the debug tooling — public for the renderer's
+# conformances, the inspector and remote control, not for apps to build on.
+TerminalUI: API breakage: accessor AttributeGraph.hasDirtyNodes.Set() has been removed
+TerminalUI: API breakage: accessor AttributeNode.containmentDepth.Set() has been removed
+TerminalUI: API breakage: enumelement ModifierEffect.background has declared type change from (TerminalUI.ModifierEffect.Type) -> (TerminalUI.Color) -> TerminalUI.ModifierEffect to (TerminalUI.ModifierEffect.Type) -> (TerminalUI.Color?) -> TerminalUI.ModifierEffect
+TerminalUI: API breakage: enumelement ModifierEffect.border has declared type change from (TerminalUI.ModifierEffect.Type) -> (TerminalUI.BorderStyle) -> TerminalUI.ModifierEffect to (TerminalUI.ModifierEffect.Type) -> (TerminalUI.BorderStyle, TerminalUI.Color?, TerminalUI.BorderEdges) -> TerminalUI.ModifierEffect
+TerminalUI: API breakage: enumelement ModifierEffect.padding has declared type change from (TerminalUI.ModifierEffect.Type) -> (Swift.Int) -> TerminalUI.ModifierEffect to (TerminalUI.ModifierEffect.Type) -> (TerminalUI.EdgeInsets) -> TerminalUI.ModifierEffect
+TerminalUI: API breakage: enumelement ModifierEffect.prefersDefaultFocus has been added as a new enum case
+TerminalUI: API breakage: typealias PaddingModifier.ModifierType has underlying type change from Swift.Int to TerminalUI.EdgeInsets
+TerminalUI: API breakage: func RemoteControlRuntime.remoteTerminalInputTaken() has been added as a protocol requirement
