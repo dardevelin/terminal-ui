@@ -6,6 +6,12 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **`swtui` is a product,** so an app's own package can drive the debug build
+  it is running: `swift run swtui ctl screenshot` from the app's directory.
+  As a bare target it ran only from this checkout.
+
 ### Fixed
 
 - **The inspector names the view under the cursor, not a `Spacer`.** A
