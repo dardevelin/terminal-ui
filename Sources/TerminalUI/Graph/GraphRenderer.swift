@@ -36,7 +36,10 @@ public enum GraphRenderer {
     public static func render(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
         renderNode(node, into: &buffer, context: context)
         for content in Presentations(in: node).inDrawOrder {
-            compositePresentation(content, effect: .modal(isPresented: true), into: &buffer)
+            switch content.parent?.presentationPlacement ?? .centered {
+            case .centered: compositePresentation(content, effect: .modal(isPresented: true), into: &buffer)
+            case .trailing: compositeInspector(content, into: &buffer)
+            }
         }
     }
 
@@ -1660,6 +1663,22 @@ public enum GraphRenderer {
         offsetRects(of: modalNode, dx: mx, dy: my)
 
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
+    }
+
+    /// An inspector: full height against the trailing edge, as wide as its
+    /// content, over a screen left as it is — the panel sits beside what it
+    /// presents over rather than above it.
+    private static func compositeInspector(_ panel: AttributeNode, into buffer: inout CellBuffer) {
+        let width = min(measureWidth(panel), buffer.width)
+        guard width > 0, buffer.height > 0 else { return }
+        let x = buffer.width - width
+        var layer = Layer(width: width, height: buffer.height, x: x, y: 0,
+                          style: ModifierEffect.modal(isPresented: true).compositingStyle)
+        let rect = Rect(x: 0, y: 0, width: width, height: buffer.height)
+        Layout.measureAndPlace(graph: panel, in: rect)
+        renderNode(panel, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
+        offsetRects(of: panel, dx: x, dy: 0)
+        Compositor.composite(layers: [layer], into: &buffer)
     }
 
     static func renderBorder(_ style: BorderStyle, color: Color?, edges: BorderEdges,

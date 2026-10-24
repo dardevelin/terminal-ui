@@ -48,6 +48,15 @@ public class AttributeNode: @unchecked Sendable {
     /// Whether this node's `.foreground` gives way to one stated above it;
     /// see `ForegroundModifier.yieldsToStated`.
     var foregroundYieldsToStated = false
+    /// Where this node's presented content is drawn, when it is a modal.
+    var presentationPlacement = PresentationPlacement.centered
+
+    /// Takes a modifier's effect and what rides with it.
+    func apply(_ modifier: GraphModifier) {
+        kind = .modifier(modifier.effect)
+        foregroundYieldsToStated = modifier.foregroundYieldsToStated
+        presentationPlacement = modifier.placement
+    }
 
     /// Identifier of the nearest enclosing focus scope, or nil if not in one.
     /// Set during reconciliation by .focusScope(id) — the modifier propagates its id

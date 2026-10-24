@@ -869,6 +869,40 @@ struct PreviewPane: TerminalView {
                 }
                 .border(.rounded)
             }
+        case .inspector:
+            VStack {
+                Text("Enter on the trigger opens the panel; Esc closes it").foreground(.gray)
+                Text("  [ open inspector ]  ")
+                    .focusable()
+                    .onKeyPress { key in
+                        guard key.key == .enter || key.key == .activate else { return .ignored }
+                        state.inspectorPresented = true
+                        return .handled
+                    }
+                Text("content — still in view beside the panel").foreground(.gray)
+            }
+            .inspector(isPresented: Binding(get: { state.inspectorPresented },
+                                            set: { state.inspectorPresented = $0 })) {
+                VStack {
+                    Text("Inspector").bold()
+                    Text("A panel along the trailing edge.").foreground(.gray)
+                    Text("  [ Close ]  ")
+                        .focusable()
+                        .onKeyPress { key in
+                            switch key.key {
+                            case .enter, .activate, .escape:
+                                state.inspectorPresented = false
+                                return .handled
+                            default:
+                                return .ignored
+                            }
+                        }
+                    Spacer()
+                }
+                .padding(1)
+                .frame(width: 34)
+                .border(.halfBlock, edges: .leading)
+            }
         case .alert:
             VStack {
                 Text("Enter presents; Esc cancels, Return confirms").foreground(.gray)

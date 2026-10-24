@@ -8,6 +8,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **`.inspector(isPresented:content:)`** — a panel along the trailing edge,
+  full height and as wide as its content, beside what it presents over
+  rather than over a dimmed screen. Unlike SwiftUI's it holds the keyboard
+  while it is up, as a dialog does: focus moves in, Tab stays inside, a click
+  beside it reaches nothing, and focus returns when it closes. Bind Escape
+  in its content to close it.
+
 - **A diff's changed rows take their status as a ground, and its code can be
   highlighted.** `Theme` gains `addedBackground` and `removedBackground`: by
   default the ground mixed a fifth of the way toward `success` or `error`,
