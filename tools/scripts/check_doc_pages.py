@@ -14,8 +14,9 @@ shadows a symbol). Plumbing no reader uses — a view's ``body``, a modifier's
 ``ModifierType`` — is kept off the site with
 ``@_documentation(visibility: internal)`` rather than given words for the
 sake of the count. The pages left alone are the ones the compiler writes —
-a ``Codable`` type's ``init(from:)``, a raw-value enum's ``init(rawValue:)``
-— for which no source line exists to document.
+a ``Codable`` type's ``init(from:)``, a raw-value enum's ``init(rawValue:)``,
+a property wrapper's or macro's ``$`` projection — for which no source line
+exists to document.
 
 Run::
 
@@ -43,6 +44,14 @@ PUBLISHED_OPTIONS = ["--experimental-skip-synthesized-symbols"]
 COMPILER_WRITTEN = {("Initializer", "init(from:)"), ("Initializer", "init(rawValue:)")}
 
 
+def is_projection(entry: dict) -> bool:
+    """A property wrapper's or macro's `$` projection — `@TaskLocal`'s
+    `$currentNode`. The compiler writes it beside the property, so no line
+    exists to document; newer DocC publishes it and older DocC does not, so
+    a stub that documents it warns on one toolchain or the other."""
+    return entry["title"].startswith("$") and entry["kind"]["name"].endswith("Property")
+
+
 def naked_pages(coverage: list[dict]) -> list[str]:
     """Every symbol page in a DocC coverage report with nothing to say, as
     ``Type/member (Kind)``."""
@@ -51,7 +60,7 @@ def naked_pages(coverage: list[dict]) -> list[str]:
         kind = entry["kind"]
         if not kind.get("isSymbol") or entry["hasAbstract"]:
             continue
-        if (kind["name"], entry["title"]) in COMPILER_WRITTEN:
+        if (kind["name"], entry["title"]) in COMPILER_WRITTEN or is_projection(entry):
             continue
         path = entry["referencePath"].split(f"/documentation/{TARGET}/", 1)[-1]
         naked.append(f"{path} ({kind['name']})")
