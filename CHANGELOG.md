@@ -6,6 +6,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-10-24 — Runs on small machines
+
+A patch release: nothing a 2.0.0 app writes changes. An app on a machine
+with one or two cores no longer hangs, a colour stated on a control is the
+colour it draws in, and the documentation, tutorials and their pictures
+describe 2.0 as it is.
+
 ### Added
 
 - **The tutorials teach 2.0, and every picture in them is made from their
@@ -884,7 +891,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.8.0
