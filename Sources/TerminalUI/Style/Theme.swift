@@ -79,8 +79,17 @@ public protocol Theme: Sendable {
     /// as subordinate without becoming chrome.
     var foregroundSubtle: Color { get }
     /// De-emphasised chrome — hints, placeholders, disabled controls,
-    /// timestamps, tree connectors.
+    /// timestamps, tree connectors. Unstated, it is ``muted``.
     var foregroundMuted: Color { get }
+    /// 1.0's name for de-emphasis, from before the ramp existed. A theme
+    /// written then states this rather than ``foregroundMuted``, and the
+    /// muted step takes it from here. New themes state
+    /// ``foregroundMuted``; components never read this.
+    ///
+    /// A requirement rather than an alias so a theme's own `muted` is the
+    /// one the ramp reads: as an extension member, a conforming type's
+    /// `muted` compiled and was silently ignored.
+    var muted: Color { get }
     /// The faintest legible step: watermarks, and text present only so its
     /// absence would be noticed.
     var foregroundFaint: Color { get }
@@ -234,7 +243,8 @@ extension Theme {
     }
     public var foreground: Color { .default }
     public var foregroundSubtle: Color { derived(foreground, toward: background, RampStep.subtle) }
-    public var foregroundMuted: Color {
+    public var foregroundMuted: Color { muted }
+    public var muted: Color {
         foreground.nominalRGB == nil ? .gray : derived(foreground, toward: background, RampStep.muted)
     }
     public var foregroundFaint: Color { derived(foregroundMuted, toward: background, RampStep.faint) }
@@ -336,16 +346,14 @@ public struct DefaultTheme: Theme {
     public init() {}
 }
 
-extension Theme {
-    /// The historical name for ``foregroundMuted``.
-    ///
-    /// Kept because it was the whole de-emphasis vocabulary before the ramp
-    /// existed, and themes written against it should keep working. New code
-    /// should name the step it wants: ``foregroundSubtle`` for subordinate
-    /// content, ``foregroundMuted`` for chrome, ``foregroundFaint`` for the
-    /// quietest step.
+extension DefaultTheme {
+    /// 1.0's name for ``foregroundMuted``, settable as it was then, so a
+    /// rebrand written as `theme.muted = …` still lands on the muted step.
     @available(*, deprecated, renamed: "foregroundMuted")
-    public var muted: Color { foregroundMuted }
+    public var muted: Color {
+        get { foregroundMuted }
+        set { foregroundMuted = newValue }
+    }
 }
 
 extension Theme {

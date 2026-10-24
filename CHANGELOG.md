@@ -275,6 +275,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A theme written for 1.0 lost its `muted` colour.** Components read
+  `foregroundMuted` now, and `muted` had become an extension alias, so a
+  theme's own `muted` still compiled and was ignored: its hints and
+  placeholders came out gray. `muted` is a `Theme` requirement again, and an
+  unstated `foregroundMuted` takes it. `DefaultTheme().muted = …` compiles
+  again too, deprecated in favour of `foregroundMuted`.
+- **`TextWrapMode` is `Hashable` again**, as it was in 1.0 — adding
+  `.truncate` had dropped the conformance. `TextTruncationEdge` is too.
+- **`PaddingModifier.amount` is back**, deprecated: padding may differ by edge
+  now, so it reports the widest side, and `insets` has each.
+
 - **Braille `DotMatrixText` drew a blank column after the last letter** when
   the dots came to an even width: the gap after each letter was added after
   the last one too, and the trim meant to remove it looked for spaces, which

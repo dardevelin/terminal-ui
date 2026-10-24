@@ -49,8 +49,8 @@ private let cases: [Case] = [
                  modified: (0..<30).map { "new \($0)" }.joined(separator: "\n"), visibleHeight: 4)
     },
     Case(name: "a HunkDiffView", key: .down) {
-        HunkDiffView(hunks: [HunkDiff.Hunk(oldStart: 1, newStart: 1, lines: (1...5).map {
-            HunkDiff.Line(type: .context, content: "line \($0)", oldLineNo: $0, newLineNo: $0)
+        HunkDiffView(hunks: [HunkDiff.Hunk(oldStart: 1, newStart: 1, lines: (1...5).map { (number: Int) in
+            HunkDiff.Line(type: .context, content: "line \(number)", oldLineNo: number, newLineNo: number)
         })], fileName: "a.swift")
     },
     Case(name: "an inline Picker", key: .down) {

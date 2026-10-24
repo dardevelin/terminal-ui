@@ -58,11 +58,19 @@ public struct UnderlineModifier: ViewModifier {
     public typealias ModifierType = Bool
 }
 
-/// Payload of `.padding(_:)` — uniform space inside the view's rect.
+/// Payload of `.padding(_:)` — blank space inside the view's rect, per
+/// edge.
 public struct PaddingModifier: ViewModifier {
     public typealias ModifierType = EdgeInsets
     /// Blank cells added on each side.
     public let insets: EdgeInsets
+
+    /// 1.0's padding, which was the same on every side. Padding may differ
+    /// by edge now, so this is the widest side; ``insets`` has each.
+    @available(*, deprecated, message: "Padding may differ by edge; read insets")
+    public var amount: Int {
+        max(insets.top, insets.leading, insets.bottom, insets.trailing)
+    }
 }
 
 /// Payload of `.border(_:color:edges:)` — a one-cell box-drawing frame.

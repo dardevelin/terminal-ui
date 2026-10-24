@@ -13,12 +13,13 @@
 ///
 /// Set via `.wrap(.none)` on any view; the setting propagates to descendants
 /// through the environment.
+///
 /// `.truncate` keeps one row per logical line like `.none`, but marks the
 /// elision with `…` instead of cutting silently. Dense chrome — a sidebar of
 /// file paths, a status row's trailing detail, a header's metadata — wants
 /// this: wrapping would push the layout around as content changes, and
 /// clipping leaves the reader unable to tell a full value from a cut one.
-public enum TextWrapMode: Sendable, Equatable {
+public enum TextWrapMode: Sendable, Hashable {
     /// Overflowing lines continue on the next row; measurement counts the
     /// extra rows. The default.
     case wrap
@@ -35,7 +36,7 @@ public enum TextWrapMode: Sendable, Equatable {
 /// (labels, sentences), `.head` the end (file paths, where the basename
 /// identifies the item), `.middle` both ends (identifiers with a meaningful
 /// prefix *and* suffix).
-public enum TextTruncationEdge: Sendable, Equatable, CaseIterable {
+public enum TextTruncationEdge: Sendable, Hashable, CaseIterable {
     /// Drop the start, keep the end: `…/Rendering/Compositor.swift`.
     case head
     /// Drop the centre, keep both ends: `Sources/…/Compositor.swift`.
