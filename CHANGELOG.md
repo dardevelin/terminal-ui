@@ -14,6 +14,10 @@ All notable changes to TerminalUI are documented here. Format based on
   while it is up, as a dialog does: focus moves in, Tab stays inside, a click
   beside it reaches nothing, and focus returns when it closes. Bind Escape
   in its content to close it.
+- **Coder reviews its changes**, as Claude Code's `/diff` does: Ctrl+R lists
+  the uncommitted changes, Enter opens a file's diff, Escape steps back, ←/→
+  switches to the session's changes or the last commit's. A settings dialog
+  (Ctrl+O) makes the review full-screen.
 
 - **A diff's changed rows take their status as a ground, and its code can be
   highlighted.** `Theme` gains `addedBackground` and `removedBackground`: by

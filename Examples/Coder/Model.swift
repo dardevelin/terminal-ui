@@ -98,12 +98,25 @@ struct Resource: Identifiable, Sendable {
     let detail: String
 }
 
-/// A file the session has touched, with its diff stat.
-struct TouchedFile: Identifiable, Sendable {
+/// One file's change: its path and the diff, from which the counts follow.
+struct FileChange: Identifiable, Sendable, Equatable {
     let id: Int
     let path: String
-    let added: Int
-    let removed: Int
+    let lines: [DiffLine]
+
+    var added: Int { lines.count { $0.kind == .added } }
+    var removed: Int { lines.count { $0.kind == .removed } }
+    var language: String? { FileExcerpt.language(ofPath: path) }
+}
+
+/// Whose changes the review shows. It opens on what is uncommitted, as
+/// Claude Code's `/diff` panel does.
+enum ReviewSource: String, CaseIterable, Identifiable, Sendable {
+    case uncommitted = "Uncommitted changes"
+    case session = "This session"
+    case lastCommit = "Last commit"
+
+    var id: Self { self }
 }
 
 /// A task in the todo pill's list.
@@ -136,7 +149,8 @@ final class CoderState {
 
     var entries: [Entry]
     var resources: [Resource]
-    var files: [TouchedFile]
+    /// Every source's changes; the sidebar lists the session's.
+    var changes: [ReviewSource: [FileChange]]
     var todos: [Todo]
 
     var draft: String
@@ -152,6 +166,76 @@ final class CoderState {
     /// Tool results the reader expanded past the cap.
     var expandedResults: Set<Int> = []
 
+    /// Whether the settings dialog is up.
+    var showsSettings = false
+    /// The setting it holds: the review covers the whole window rather than
+    /// the sidebar's side of it.
+    var fullScreenReview = false
+    /// Whether the diff review is open, whose changes it shows, and which
+    /// of them is selected.
+    var showsReview = false
+    var reviewSource = ReviewSource.uncommitted
+    var reviewFileID: Int?
+    /// Whether the review shows the selected file's diff rather than the
+    /// list of files — the two levels of Claude Code's `/diff`.
+    var reviewShowsDiff = false
+
+    /// The files this session touched.
+    var files: [FileChange] { changes[.session] ?? [] }
+    /// What the review lists.
+    var reviewChanges: [FileChange] { changes[reviewSource] ?? [] }
+    /// The change the review shows: the selected one, or the first.
+    var reviewedFile: FileChange? {
+        reviewChanges.first { $0.id == reviewFileID } ?? reviewChanges.first
+    }
+
+    /// Opens the review on `file`'s diff, or on the uncommitted changes'
+    /// list, where `/diff` opens.
+    func openReview(on file: FileChange? = nil) {
+        if let file {
+            reviewSource = .session
+            reviewFileID = file.id
+        } else {
+            reviewSource = .uncommitted
+            reviewFileID = nil
+        }
+        reviewShowsDiff = file != nil
+        showsReview = true
+    }
+
+    /// The next source, or the one before: ←/→ in the review's list.
+    func switchReviewSource(by step: Int) {
+        let sources = ReviewSource.allCases
+        let index = sources.firstIndex(of: reviewSource) ?? 0
+        reviewSource = sources[(index + step + sources.count) % sources.count]
+        reviewFileID = nil
+    }
+
+    /// Ctrl+R: opens the review, or closes it.
+    func toggleReview() {
+        if showsReview {
+            showsReview = false
+        } else {
+            openReview()
+        }
+    }
+
+    /// Escape in the review: from a file's diff back to the list, from the
+    /// list out of the review.
+    func stepBackInReview() {
+        if reviewShowsDiff {
+            reviewShowsDiff = false
+        } else {
+            showsReview = false
+        }
+    }
+
+    /// Puts a question about `file` in the composer and returns to it.
+    func ask(about file: FileChange) {
+        draft = "About \(file.path): "
+        showsReview = false
+    }
+
     init(
         sessionTitle: String,
         workingDirectory: String,
@@ -162,7 +246,7 @@ final class CoderState {
         cost: Double,
         entries: [Entry],
         resources: [Resource],
-        files: [TouchedFile],
+        changes: [ReviewSource: [FileChange]],
         todos: [Todo],
         draft: String = ""
     ) {
@@ -175,7 +259,7 @@ final class CoderState {
         self.cost = cost
         self.entries = entries
         self.resources = resources
-        self.files = files
+        self.changes = changes
         self.todos = todos
         self.draft = draft
     }

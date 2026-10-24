@@ -793,6 +793,34 @@ Crush's one-row form. Not taken: Crush stretching one random letter per
 session; a stretch the font cannot express would mean hand-drawn letters
 again.
 
+**L22. The changes, reviewed.** *(demo — built, by way of three framework
+features)*
+
+Crush reviews what the agent changed; the demo's form of it is Claude Code's
+`/diff`: Ctrl+R opens the uncommitted changes listed with their counts, Enter
+opens one file's diff, Escape steps back, ←/→ moves to the session's changes or
+the last commit's, and `[ ask ]` drafts a question about the file in the
+composer. A click on a Modified Files row opens straight to its diff.
+
+Three things the framework lacked, each built when the review needed it:
+
+- **Diff tint** — changed rows take `Theme.addedBackground` /
+  `removedBackground`, roles derived 0.2 of the way from the ground toward
+  `success` / `error`; on terminal defaults there is no ground to mix, so no
+  tint. `.diffLanguage(_:)` highlights the code through the environment's
+  lexers.
+- **Side-by-side alignment** — the left half pads to a common width, so the
+  columns line up.
+- **`.inspector(isPresented:content:)`** — the review is a panel over the
+  sidebar's side of the window, the transcript in view beside it. An overlay
+  could draw that but left focus in the composer underneath, so keys typed into
+  the review went to the prompt. The inspector is a presentation like a modal's,
+  placed full height at the trailing edge without the dim. Unlike SwiftUI's,
+  it holds the keyboard while it is up.
+
+A setting (Ctrl+O) widens the review to the whole window. Not built: real
+`git` sources; the demo's are fixtures, as its transcript is.
+
 ### Ledger — open
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
   demanded will be bash, for the Bash card's command.

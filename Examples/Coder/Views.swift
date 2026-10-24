@@ -63,6 +63,8 @@ struct Sidebar: TerminalView {
                     TextSpan(" −\(file.removed)", foreground: theme.error),
                 ])
                 .wrap(.truncate(.head))
+                // A click opens that file's change in the review.
+                .onClick { _, _ in coderState.openReview(on: file) }
             }
         }
     }
@@ -398,6 +400,22 @@ struct CoderApp: TerminalView {
     /// The help line's rows, beneath the margin.
     static let helpHeight = 1
 
+    /// The side panel's width: two thirds of the window, room for the file
+    /// list and a readable diff, and never narrower than the sidebar it covers.
+    private var reviewPanelWidth: Int {
+        max(Sidebar.width, (terminalSize.cols - 2 * Self.margin) * 2 / 3)
+    }
+
+    private var helpHints: [(key: String, action: String)] {
+        [("enter", "send"), ("tab", "focus chat"), ("^r", "review"), ("^o", "settings"), ("^c", "quit")]
+    }
+
+    private var reviewHints: [(key: String, action: String)] {
+        state.reviewShowsDiff
+            ? [("↑↓", "scroll"), ("esc", "back to files"), ("^o", "settings"), ("^c", "quit")]
+            : [("↑↓", "file"), ("enter", "open"), ("←→", "source"), ("esc", "close"), ("^c", "quit")]
+    }
+
     var body: some TerminalView {
         let sidebarHeight = terminalSize.rows - 2 * Self.margin - Self.helpHeight
         return VStack(spacing: 0) {
@@ -414,12 +432,25 @@ struct CoderApp: TerminalView {
             }
             .flexible(.vertical)
             .padding(Self.margin)
-            Text(spans: [TextSpan(" ")] + HelpLine.spans([
-                ("enter", "send"),
-                ("tab", "focus chat"),
-                ("^p", "palette"),
-                ("^c", "quit"),
-            ], theme: theme))
+            Text(spans: [TextSpan(" ")] + HelpLine.spans(helpHints, theme: theme))
+        }
+        // Declared beneath the review, so it comes later in drawing order and
+        // is drawn over the review when opened from it.
+        .modal(isPresented: state.showsSettings) {
+            SettingsDialog(state: state, theme: theme)
+        }
+        // A panel over the sidebar's side of the window, the transcript in
+        // view beside it — or the whole window, with the setting on.
+        .inspector(isPresented: Binding(get: { state.showsReview }, set: { coderState.showsReview = $0 })) {
+            VStack(spacing: 0) {
+                DiffReview(state: state, height: sidebarHeight, theme: theme)
+                    .flexible(.vertical)
+                    .padding(Self.margin)
+                Text(spans: [TextSpan(" ")] + HelpLine.spans(reviewHints, theme: theme))
+            }
+            .frame(width: state.fullScreenReview ? terminalSize.cols : reviewPanelWidth)
+            .border(.halfBlock, color: theme.borderActive, edges: state.fullScreenReview ? [] : .leading)
+            .background(theme.background)
         }
         .background(theme.background)
         // Published so the framework's own components resolve the same
@@ -440,6 +471,14 @@ struct CoderApp: TerminalView {
         .actions {
             Action(id: "coder.cancel", title: .literal("Cancel"), perform: {})
                 .bound(to: .keyboard(.escape, []))
+            Action(id: "coder.review", title: .literal("Review changes"), perform: {
+                coderState.toggleReview()
+            })
+            .bound(to: .keyboard(.character("r"), [.ctrl]))
+            Action(id: "coder.settings", title: .literal("Settings"), perform: {
+                coderState.showsSettings = true
+            })
+            .bound(to: .keyboard(.character("o"), [.ctrl]))
         }
     }
 }
