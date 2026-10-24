@@ -29,6 +29,8 @@ public enum FrameDimension: Sendable, Equatable, ExpressibleByIntegerLiteral {
     /// the enclosing stack's flex distribution.
     case infinity
 
+    /// Lowers an integer literal to `.fixed`, so `.frame(maxWidth: 40)`
+    /// reads as a cell count.
     public init(integerLiteral value: Int) { self = .fixed(value) }
 
     /// Non-failable promotion from a runtime `Int` so existing call
@@ -51,7 +53,9 @@ public enum FrameDimension: Sendable, Equatable, ExpressibleByIntegerLiteral {
 /// Modeled as an option-set so callers can say `.horizontal`,
 /// `.vertical`, or `.all`. Mirrors SwiftUI's `Axis.Set`.
 public struct FrameAxes: OptionSet, Sendable, Hashable {
+    /// The axes as bits: horizontal in bit 0, vertical in bit 1.
     public let rawValue: Int
+    /// Creates a set from its bit pattern; prefer the named members.
     public init(rawValue: Int) { self.rawValue = rawValue }
 
     /// Flex along the width axis.
@@ -67,6 +71,7 @@ public struct FrameAxes: OptionSet, Sendable, Hashable {
 /// when sharing with other flex siblings (default 1, mirroring
 /// flexbox's `flex-grow`).
 public struct FlexibleModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = (FrameAxes, Int)
     /// The axes this view flexes on.
     public let axes: FrameAxes

@@ -33,6 +33,7 @@ public struct ForEach<Data: RandomAccessCollection, Content: TerminalView>: Term
         self.content = content
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -72,6 +73,7 @@ public struct ForEachWithID<Data: RandomAccessCollection, ID: Hashable, Content:
         self.content = content
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 

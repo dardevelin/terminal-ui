@@ -36,6 +36,7 @@ public protocol TerminalView {
 /// `Body == Never` — the graph renders them directly and their `body` is
 /// never evaluated.
 extension Never: TerminalView {
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -104,6 +105,7 @@ public struct TupleView<Content>: TerminalView {
         self.value = value
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -119,6 +121,7 @@ public enum ConditionalView<First: TerminalView, Second: TerminalView>: Terminal
     /// The `else` branch (or ``EmptyView`` for an `if` without `else`).
     case second(Second)
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -131,6 +134,7 @@ public enum ConditionalView<First: TerminalView, Second: TerminalView>: Terminal
 public struct EmptyView: TerminalView {
     /// Creates an empty view. Stateless — every instance is identical.
     public init() {}
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -162,5 +166,6 @@ public struct Group<Content: TerminalView>: TerminalView {
         self.content = content()
     }
 
+    @_documentation(visibility: internal)
     public var body: Content { content }
 }

@@ -95,6 +95,7 @@ public struct Form<Content: TerminalView>: TerminalView {
     /// clipping it would hide state the user is trying to read.
     private static var minimumControlWidth: Int { 12 }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let column = labelColumn
         let stacks = terminalSize.cols < column + Self.minimumControlWidth
@@ -250,6 +251,7 @@ public struct Section<Header: TerminalView, Content: TerminalView, Footer: Termi
         self.isEmpty = !FormContent.hasRenderableLeaf(content)
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         VStack {
             if !isEmpty {
@@ -377,6 +379,7 @@ public struct LabeledContent<Label: TerminalView, Content: TerminalView>: Termin
         self.label = label()
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         FormRow(label: formLabelText) { content }
             // A row the arrow cursor visits and Tab skips: there is nothing

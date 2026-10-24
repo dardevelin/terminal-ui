@@ -125,6 +125,7 @@ public struct Picker<SelectionValue: Hashable, Content: TerminalView>: TerminalV
 
     @TerminalEnvironment(\.theme) private var theme
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let options = self.options
         let selected = options.firstIndex { $0.value == selection.get() }

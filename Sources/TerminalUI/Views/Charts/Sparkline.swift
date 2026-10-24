@@ -60,6 +60,7 @@ public struct Sparkline: TerminalView {
         self.filled = filled
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         GeometryReader { size in
             Text(self.renderSparkline(containerWidth: size.width, containerHeight: size.height))

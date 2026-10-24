@@ -81,6 +81,7 @@ public struct DotMatrixText: TerminalView {
         cells(of: dots()).first?.count ?? 0
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // `.wrap(.none)` — dot-matrix glyphs are fixed geometry. Without
         // this the measurer would inflate height when the container is

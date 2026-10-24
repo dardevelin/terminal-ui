@@ -4,6 +4,7 @@
 /// surfaces in readouts (HelpOverlay, CommandPalette, MenuBar,
 /// AccessibilityRotor) — every consumer reads from the same data.
 public struct ActionsModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Void
     /// The action tree attached to this view, re-stamped on every update.
     public let scope: ActionScope

@@ -16,11 +16,20 @@
 
 /// An inline element.
 public indirect enum MarkdownInline: Equatable, Sendable {
+    /// Literal text, with backslash escapes already resolved and any
+    /// unmatched delimiter kept as a character.
     case text(String)
+    /// `*italic*` or `_italic_`: the inlines between the single delimiters.
     case emphasis([MarkdownInline])
+    /// `**bold**` or `__bold__`: the inlines between the double delimiters.
     case strong([MarkdownInline])
     /// Content of a backtick span, verbatim — no nested parsing, per spec.
     case code(String)
+    /// `[content](destination)`: `content` is the parsed link text and
+    /// `destination` the target between the parentheses, trimmed.
+    /// ``MarkdownView`` draws only the content, since a terminal cannot
+    /// follow the link; the destination is kept for callers that walk the
+    /// tree.
     case link(content: [MarkdownInline], destination: String)
 }
 

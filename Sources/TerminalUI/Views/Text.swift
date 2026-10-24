@@ -236,6 +236,7 @@ public struct Text: TerminalView {
             || s.bold != nil || s.italic != nil || s.underline != nil
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 

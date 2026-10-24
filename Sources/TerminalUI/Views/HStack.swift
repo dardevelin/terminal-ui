@@ -49,5 +49,6 @@ public struct HStack<Content: TerminalView>: TerminalView {
         self.spacing = max(0, spacing)
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }

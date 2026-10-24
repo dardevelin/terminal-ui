@@ -151,6 +151,7 @@ public struct TabView: TerminalView {
         return max(0, min(tabs.count - 1, raw))
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let selected = selectedIndex
         let tabCount = tabs.count

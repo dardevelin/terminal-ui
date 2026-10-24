@@ -272,6 +272,9 @@ public struct RecordingByteSource<Source: ByteSource>: ByteSource {
         self.inner = inner
     }
 
+    /// Reads the next byte from ``inner`` and appends it to ``consumed``
+    /// before returning it. A `nil` from the wrapped source passes through
+    /// unrecorded.
     public mutating func readByte() -> UInt8? {
         guard let byte = inner.readByte() else { return nil }
         consumed.append(byte)
@@ -303,6 +306,8 @@ public struct ArrayByteSource: ByteSource {
         self.bytes = bytes
     }
 
+    /// Returns the byte at ``position`` and advances past it; `nil` once
+    /// every seeded byte has been read, and on every call after that.
     public mutating func readByte() -> UInt8? {
         guard position < bytes.count else { return nil }
         let byte = bytes[position]

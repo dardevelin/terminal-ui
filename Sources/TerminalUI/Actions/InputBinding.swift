@@ -40,6 +40,8 @@ public struct GestureID: Hashable, Sendable, ExpressibleByStringLiteral {
     public let raw: String
     /// Wraps a recognizer identifier; string literals convert directly.
     public init(_ raw: String) { self.raw = raw }
+    /// Wraps a recognizer identifier written as a string literal, so
+    /// `.gesture("swipe.left")` needs no explicit `GestureID(…)`.
     public init(stringLiteral value: StringLiteralType) { self.raw = value }
 }
 

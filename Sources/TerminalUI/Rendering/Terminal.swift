@@ -255,6 +255,8 @@ public struct RealPosixSyscalls: PosixSyscalls {
     /// Creates the pass-through implementation. Stateless.
     public init() {}
 
+    /// Calls libc's `tcgetattr(3)` unchanged; on failure, `errno` is
+    /// whatever libc set.
     public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
         #if canImport(Darwin)
         return Darwin.tcgetattr(fd, termiosOut)
@@ -263,6 +265,8 @@ public struct RealPosixSyscalls: PosixSyscalls {
         #endif
     }
 
+    /// Calls libc's `tcsetattr(3)` unchanged; on failure, `errno` is
+    /// whatever libc set.
     public func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32 {
         #if canImport(Darwin)
         return Darwin.tcsetattr(fd, optAct, termiosIn)
@@ -271,6 +275,8 @@ public struct RealPosixSyscalls: PosixSyscalls {
         #endif
     }
 
+    /// Calls libc's `ioctl(2)` unchanged with `request` and the `winsize`
+    /// out-parameter; on failure, `errno` is whatever libc set.
     public func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32 {
         #if canImport(Darwin)
         return Darwin.ioctl(fd, request, winsizeOut)
@@ -310,6 +316,9 @@ public final class FailingPosixSyscalls: PosixSyscalls, @unchecked Sendable {
     /// Creates a mock with every failure flag off and counters at zero.
     public init() {}
 
+    /// Counts the call, then returns -1 if ``tcgetattrShouldFail`` is set;
+    /// otherwise writes a zeroed `termios` and returns 0. It never touches
+    /// `errno`, so a failure leaves whatever value was there before.
     public func tcgetattr(_ fd: Int32, _ termiosOut: UnsafeMutablePointer<termios>) -> Int32 {
         tcgetattrCallCount += 1
         if tcgetattrShouldFail { return -1 }
@@ -320,12 +329,18 @@ public final class FailingPosixSyscalls: PosixSyscalls, @unchecked Sendable {
         return 0
     }
 
+    /// Counts the call, then returns -1 if ``tcsetattrShouldFail`` is set
+    /// and 0 otherwise. Nothing is applied, and `errno` is never touched.
     public func tcsetattr(_ fd: Int32, _ optAct: Int32, _ termiosIn: UnsafePointer<termios>) -> Int32 {
         tcsetattrCallCount += 1
         if tcsetattrShouldFail { return -1 }
         return 0
     }
 
+    /// Counts the call and ignores `request`. Returns -1 if
+    /// ``ioctlShouldFail`` is set; otherwise returns 0 with a 0×0 window
+    /// when ``ioctlReturnsZeroSize`` is set, or an 80×24 one. `errno` is
+    /// never touched.
     public func ioctl(_ fd: Int32, _ request: UInt, _ winsizeOut: UnsafeMutablePointer<winsize>) -> Int32 {
         ioctlCallCount += 1
         if ioctlShouldFail { return -1 }

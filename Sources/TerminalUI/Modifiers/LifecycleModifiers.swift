@@ -13,6 +13,7 @@ public protocol _OnChangeModifierProtocol {
 
 /// View modifier that calls a closure when a value changes.
 public struct OnChangeModifier<Value: Equatable>: ViewModifier, _OnChangeModifierProtocol {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Value
     /// The observed value as of this frame's body evaluation.
     public let value: Value
@@ -39,6 +40,7 @@ public struct OnChangeModifier<Value: Equatable>: ViewModifier, _OnChangeModifie
 
 /// View modifier that calls a closure when the view first appears.
 public struct OnAppearModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
     /// Runs once when the view enters the graph.
     public let action: () -> Void
@@ -46,6 +48,7 @@ public struct OnAppearModifier: ViewModifier {
 
 /// View modifier that calls a closure when the view disappears.
 public struct OnDisappearModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
     /// Runs when the view leaves the graph (not on app quit).
     public let action: () -> Void
@@ -94,6 +97,7 @@ public protocol _TaskModifierProtocol {
 /// to "load this when shown, stop when it goes away", which otherwise every
 /// app writes by hand with a detached `Task` that outlives its view.
 public struct TaskModifier<ID: Hashable>: ViewModifier, _TaskModifierProtocol {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
     /// Restart identity: the task cancels and restarts when this changes.
     /// `nil` (the `.task { }` form) starts once and is left alone.

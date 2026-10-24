@@ -1,5 +1,6 @@
 /// Overlay modifier — renders content on top of the base view's frame.
 public struct OverlayModifier<Overlay: TerminalView>: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Overlay
     /// The view drawn over the base view's cells.
     public let overlay: Overlay
@@ -12,6 +13,7 @@ public struct OverlayModifier<Overlay: TerminalView>: ViewModifier {
 public struct BackgroundViewModifier<Background: TerminalView>: ViewModifier {
     /// Where the background sits inside the base view's frame.
     public var alignment: Alignment = .topLeading
+    @_documentation(visibility: internal)
     public typealias ModifierType = Background
     /// The view drawn behind the base view's cells.
     public let background: Background
@@ -20,6 +22,7 @@ public struct BackgroundViewModifier<Background: TerminalView>: ViewModifier {
 /// Modal modifier — floating panel over entire screen.
 /// Dims the background and centers content.
 public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
     /// Whether the modal is shown this frame; `false` renders the base
     /// view alone.

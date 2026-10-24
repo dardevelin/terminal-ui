@@ -58,6 +58,7 @@ public struct ScrollView<Content: TerminalView>: TerminalView {
         self.content = content()
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -186,6 +187,8 @@ public struct ScrollTargetID: Equatable, @unchecked Sendable {
         self.id = AnyHashable(id)
     }
 
+    /// Equal when the wrapped identifiers are, by `AnyHashable`'s rules:
+    /// an `Int` 3 and a `String` "3" are different targets.
     public static func == (lhs: ScrollTargetID, rhs: ScrollTargetID) -> Bool {
         lhs.id == rhs.id
     }

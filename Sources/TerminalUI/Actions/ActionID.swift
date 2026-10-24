@@ -18,9 +18,13 @@ public struct ActionID: Hashable, Sendable, ExpressibleByStringLiteral, CustomSt
         self.raw = raw
     }
 
+    /// Creates an ID from a string literal, so `"app.quit"` can stand
+    /// wherever an `ActionID` is expected. Same as ``init(_:)``.
     public init(stringLiteral value: StringLiteralType) {
         self.raw = value
     }
 
+    /// The dotted identifier itself, so an ID interpolates and prints
+    /// as `app.quit` rather than as a struct dump.
     public var description: String { raw }
 }

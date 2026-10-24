@@ -107,6 +107,7 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     }
 
     /// Precomputed as single multi-line Text — one node, one measurement.
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         if data.isEmpty {
             _EmptyPlaceholder("— no rows —")

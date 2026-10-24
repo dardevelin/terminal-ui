@@ -40,5 +40,6 @@ public struct WidthReader<Content: TerminalView>: TerminalView {
 
     /// Never consulted: the graph rebuilds `content` for each width a pass
     /// asks about.
+    @_documentation(visibility: internal)
     public var body: Never { fatalError("WidthReader is rebuilt per width; body should not be called") }
 }

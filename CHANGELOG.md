@@ -6,6 +6,18 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+
+- **Every page of the documentation says something.** 2.0.0 published 92
+  public symbols with no documentation, beside some 3,500 pages that only
+  repeated others: every view listed every modifier again as a page of its
+  own, and each `Equatable` type had a `!=` page. The site is built without
+  the repeats now, a view's `body` and a modifier's `ModifierType` — plumbing
+  no reader calls — are kept off it, and the rest are documented: what each
+  `Theme` role derives from when a theme leaves it out, what `DefaultTheme`
+  states for each, and the edges, markdown and timeline members besides.
+  `check_doc_pages.py` holds CI to it.
+
 ## [2.0.0] — 2026-10-24 — Themed, SwiftUI-shaped, hardened
 
 Every component now draws in the app's theme, from a ramp of semantic roles

@@ -19,13 +19,20 @@
 public enum MarkdownBlock: Equatable, Sendable {
     /// `# Heading`, levels 1–6.
     case heading(level: Int, content: [MarkdownInline])
+    /// Running text: consecutive non-blank lines joined with single
+    /// spaces, then parsed as inline markup. Also what any line the
+    /// grammar does not recognise becomes.
     case paragraph([MarkdownInline])
     /// A fenced block. `language` is the info string after the opening fence,
     /// lowercased and trimmed, or nil when the fence carried none.
     case codeBlock(language: String?, lines: [String])
+    /// An unordered list — items marked `-`, `*` or `+` — in source order.
     case bulletList([MarkdownListItem])
     /// `start` is the first marker's number, so `3.` renders as 3.
     case orderedList(start: Int, items: [MarkdownListItem])
+    /// `> quoted` lines, with the markers stripped and the remainder
+    /// parsed as blocks of its own, so a quote can hold lists, code or
+    /// another quote.
     case blockQuote([MarkdownBlock])
     /// `---`, `***`, `___`.
     case thematicBreak
@@ -34,8 +41,11 @@ public enum MarkdownBlock: Equatable, Sendable {
 /// One item of a list. Holds blocks rather than inlines so an item can carry a
 /// nested list or a code block, which agent output routinely does.
 public struct MarkdownListItem: Equatable, Sendable {
+    /// The item's content: usually one paragraph, followed by whatever was
+    /// indented beneath the marker.
     public let blocks: [MarkdownBlock]
 
+    /// Creates an item from its parsed content.
     public init(blocks: [MarkdownBlock]) {
         self.blocks = blocks
     }

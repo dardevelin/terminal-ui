@@ -35,6 +35,7 @@ public struct ScrollableScrollView<Content: TerminalView>: TerminalView {
     /// The wrapped scroll view whose offset the key handler drives.
     public let content: ScrollView<Content>
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         content
             .focusable()

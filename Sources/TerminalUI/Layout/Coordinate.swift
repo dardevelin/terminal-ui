@@ -31,6 +31,8 @@ public protocol Coordinate: Equatable, Sendable, Comparable, Hashable {
 /// `Int` is the cell-grid coordinate type — the one terminal rendering
 /// uses (`Rect`, `CellRect`).
 extension Int: Coordinate {
+    /// The larger of the two cell counts; `extent.max(0)` floors a
+    /// computed width or height at zero.
     @inlinable
     public func max(_ other: Int) -> Int { Swift.max(self, other) }
 }
@@ -38,6 +40,8 @@ extension Int: Coordinate {
 /// `Double` is the fractional coordinate type for pixel-space rects
 /// (`PixelRect`).
 extension Double: Coordinate {
+    /// The larger of the two pixel values; `extent.max(0)` floors a
+    /// computed width or height at zero.
     @inlinable
     public func max(_ other: Double) -> Double { Swift.max(self, other) }
 }

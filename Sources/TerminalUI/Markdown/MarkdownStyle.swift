@@ -44,8 +44,14 @@ public struct MarkdownStyle: Sendable, Equatable {
         public var foreground: Color?
         /// See ``MarkdownStyle``'s Background section for what this fills.
         public var background: Color?
+        /// Bold weight. `false` turns off bold the element would otherwise
+        /// have — a ``MarkdownStyle/strong`` that stands out by colour alone.
         public var bold: Bool?
+        /// Italic, where the terminal draws it. `false` turns it off, as on
+        /// ``MarkdownStyle/emphasis`` shown by colour instead.
         public var italic: Bool?
+        /// Underline. `false` turns it off — on ``MarkdownStyle/link``, say,
+        /// where the theme default underlines.
         public var underline: Bool?
         /// Drawn before the element's text, in the element's style — a
         /// heading marker such as `"## "`, or padding that widens a chip.

@@ -54,5 +54,6 @@ public struct SplitView: TerminalView {
         self.state = state
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError("SplitView is a layout primitive — graph dispatches via LayoutKind.split") }
 }

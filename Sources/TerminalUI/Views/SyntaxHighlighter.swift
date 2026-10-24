@@ -313,6 +313,10 @@ public struct SwiftSyntaxHighlighter: SyntaxHighlighter {
     /// construct per body evaluation.
     public init() {}
 
+    /// Classifies one line in isolation, covering it end to end, whitespace
+    /// included as plain spans. A `/*` or string left open runs to the end
+    /// of the line and stops there; use ``tokenize(line:state:)`` to carry
+    /// it onto the next.
     public func tokenize(line: String) -> [SyntaxSpan] {
         guard !line.isEmpty else { return [] }
         var spans: [SyntaxSpan] = []

@@ -51,6 +51,9 @@ MODULE_WITH_BREAKS = re.compile(r"^\d+ breaking changes? detected in (\S+):$")
 MODULE_WITHOUT_BREAKS = re.compile(r"^No breaking changes detected in (\S+)$")
 BREAK = re.compile(r"^\s*💔\s*(API breakage: .*)$")
 BASELINE = re.compile(r"^baseline\s+(\S+)$")
+# What the digester reports that no caller can notice: hiding a declaration
+# from the documentation changes no line that compiles against it.
+NOT_A_BREAK = re.compile(r" is now with @_documentation$")
 
 
 @dataclass
@@ -73,7 +76,7 @@ def reported_breaks(output: str) -> set[str]:
             module = None
             continue
         found = BREAK.match(line)
-        if found and module:
+        if found and module and not NOT_A_BREAK.search(found.group(1)):
             breaks.add(f"{module}: {found.group(1)}")
     return breaks
 

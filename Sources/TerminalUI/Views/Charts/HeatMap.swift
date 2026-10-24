@@ -80,6 +80,7 @@ public struct HeatMap: TerminalView {
         self.maxValue = max
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Colored by default (I24) — build per-cell TextSpans so each
         // cell gets its palette-mapped foreground. Previous default went

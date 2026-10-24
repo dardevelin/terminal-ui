@@ -65,6 +65,7 @@ public struct Toggle: TerminalView {
         }
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         labelledBody
             .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)

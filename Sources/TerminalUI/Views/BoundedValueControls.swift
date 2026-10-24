@@ -103,6 +103,7 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
 
     @TerminalEnvironment(\.theme) private var theme
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         #if DEBUG
         if !scale.isValid {
@@ -267,6 +268,7 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
 
     @TerminalEnvironment(\.theme) private var theme
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         #if DEBUG
         if !boundsAreValid {
@@ -380,6 +382,7 @@ public struct Gauge<V: BinaryFloatingPoint>: TerminalView {
     @TerminalEnvironment(\.theme) private var theme
 
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let fraction = scale.fraction(of: value)
         let filled = Int((Double(fraction) * Double(defaultTrackWidth)).rounded())

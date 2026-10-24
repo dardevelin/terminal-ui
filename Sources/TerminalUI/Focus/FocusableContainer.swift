@@ -167,6 +167,11 @@ public enum FocusGranularity: Sendable, Equatable {
 // whole subtree. Scroll wraps a single child, so there is nothing to
 // traverse. Tab and floating containers join when those layout kinds exist.
 extension AttributeNode: FocusableContainer {
+    /// The arrow-key destinations inside this node. A split offers each pane
+    /// that leads to something focusable, plus empty panes when panes are
+    /// focus units; a stack the user wrote offers its focusable children,
+    /// looking through compiler-introduced grouping. Every other node
+    /// returns an empty array and stays transparent to navigation.
     public func focusableChildren() -> [AttributeNode] {
         guard case .layout(let info) = kind else { return [] }
         switch info.kind {
@@ -232,6 +237,10 @@ extension AttributeNode: FocusableContainer {
         }
     }
 
+    /// The axis this node navigates along. A split follows its own axis and
+    /// lets arrows leave it; a `VStack` handles Up/Down and an `HStack`
+    /// Left/Right, both holding arrows in. Any other node reports `.both`
+    /// and permeable, so it never captures an arrow.
     public var traversalGeometry: TraversalGeometry {
         guard case .layout(let info) = kind else {
             return TraversalGeometry(axis: .both, isPermeable: true)
@@ -251,6 +260,8 @@ extension AttributeNode: FocusableContainer {
         }
     }
 
+    /// `true` only for a split, whose children are panes; every other node,
+    /// stacks included, treats its children as content.
     public var childrenAreFocusUnits: Bool {
         guard case .layout(let info) = kind, case .split = info.kind else {
             return false

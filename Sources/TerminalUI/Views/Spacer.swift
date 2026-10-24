@@ -23,5 +23,6 @@ public struct Spacer: TerminalView {
     /// Creates a spacer; the axis it stretches on comes from the enclosing
     /// stack.
     public init() {}
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }

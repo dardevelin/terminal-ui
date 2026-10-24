@@ -110,7 +110,11 @@ extension KeyEvent {
 
 /// Modifier keys held during a key press, as an option set.
 public struct KeyModifiers: OptionSet, Sendable, Hashable {
+    /// The held modifiers as bits: Shift in bit 0, Alt in bit 1, Control in
+    /// bit 2 — xterm's modifier parameter less its +1 offset. Modifiers a
+    /// terminal reports beyond these three have no bit and are dropped.
     public let rawValue: UInt8
+    /// Creates a set from its bit pattern; prefer the named members.
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
     /// The Shift key.

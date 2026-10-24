@@ -69,6 +69,9 @@ public struct Cell: Equatable, Sendable {
 
 // Make Color equatable for Cell diffing
 extension Color: Equatable {
+    /// Compares how a colour is encoded, not how it looks: `.red`,
+    /// `.ansi256(1)` and an RGB that matches the terminal's red are three
+    /// different values, because each emits a different SGR sequence.
     public static func == (lhs: Color, rhs: Color) -> Bool {
         switch (lhs, rhs) {
         case (.default, .default),

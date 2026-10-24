@@ -80,6 +80,7 @@ python3 tools/scripts/storybook_smoke.py   # behavioural suite vs every example 
 python3 tools/scripts/integration_suite.py # every test_* script, in turn
 python3 tools/scripts/tool_tests.py        # tests of the checks and the harness verdict
 python3 tools/scripts/check_api_compat.py  # public API vs the last release (own .build-api/)
+python3 tools/scripts/check_doc_pages.py   # every published doc page says something (.build-docs/)
 
 # The whole local gate in one command: tooling tests and repository checks →
 # build (tests included, warnings as errors) → public API → test → walk →
@@ -127,7 +128,12 @@ tracker-id checks, and after the release build `check_api_compat.py`: Swift's
 API digester against the release `tools/api-breakage-allowlist.txt` names as
 its baseline, failing on any break the list does not accept with why, and on
 any listed break that no longer occurs. After a major release is tagged, the
-baseline becomes the new tag and the list empties. The PTY
+baseline becomes the new tag and the list empties. Then `check_doc_pages.py`
+builds the documentation as `docs.yml` publishes it and fails on any public
+symbol whose page says nothing, and on any DocC warning: document a new
+public symbol, or keep plumbing no reader uses (a view's `body`, a
+modifier's `ModifierType`) off the site with
+`@_documentation(visibility: internal)`. The PTY
 harness is a merge gate, not a local nicety — a change that renders differently
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the

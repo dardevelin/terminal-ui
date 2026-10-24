@@ -231,49 +231,91 @@ extension Theme {
         }
     }
 
+    /// Unstated: ``ThemeDerivation/automatic``, so the roles a theme leaves out
+    /// are mixed from the ones it states. With ``ThemeDerivation/off`` each
+    /// takes the colour it would have been mixed from.
     public var derivation: ThemeDerivation { .automatic }
 
+    /// Unstated: cyan, from the terminal's own palette.
     public var accent: Color { .cyan }
+    /// Unstated: ``accent``.
     public var primary: Color { accent }
+    /// Unstated: ``accent``, so a gradient from ``primary`` to it is one colour
+    /// until a theme states both.
     public var secondary: Color { accent }
+    /// Unstated: bright white, legible on the stock cyan.
     public var onPrimary: Color { .brightWhite }
 
+    /// Unstated: ``foreground`` lifted toward bright white by the muted step
+    /// (0.45), or white when ``foreground`` is the terminal's own colour, which
+    /// cannot be mixed.
     public var foregroundEmphasis: Color {
         foreground.nominalRGB == nil ? .white : derived(foreground, toward: .brightWhite, RampStep.muted)
     }
+    /// Unstated: the terminal's own text colour, ``Color/default``.
     public var foreground: Color { .default }
+    /// Unstated: ``foreground`` a quarter of the way toward ``background``.
     public var foregroundSubtle: Color { derived(foreground, toward: background, RampStep.subtle) }
+    /// Unstated: ``muted``, 1.0's name for this step, so a theme written then
+    /// keeps its colour.
     public var foregroundMuted: Color { muted }
+    /// Unstated: ``foreground`` 0.45 of the way toward ``background``, or gray
+    /// when ``foreground`` is the terminal's own colour.
     public var muted: Color {
         foreground.nominalRGB == nil ? .gray : derived(foreground, toward: background, RampStep.muted)
     }
+    /// Unstated: ``foregroundMuted`` 0.4 of the way toward ``background``.
     public var foregroundFaint: Color { derived(foregroundMuted, toward: background, RampStep.faint) }
 
+    /// Unstated: the terminal's own ground, ``Color/default`` — the framework
+    /// paints no ground of its own.
     public var background: Color { .default }
+    /// Unstated: ``background`` 0.08 of the way toward ``foreground``: a panel
+    /// one shade off the ground. On the terminal's own ground, which cannot be
+    /// mixed, it is that ground.
     public var backgroundRaised: Color { derived(background, toward: foreground, RampStep.raised) }
+    /// Unstated: ``background`` 0.16 of the way toward ``foreground``, a step
+    /// above ``backgroundRaised``.
     public var backgroundOverlay: Color { derived(background, toward: foreground, RampStep.overlay) }
-    // Blue rather than a derived step: this is the selection fill the
-    // components already drew, and a ramp derived from a `.default`
-    // background would resolve to no highlight at all.
+    /// Unstated: blue rather than a derived step — the selection fill the
+    /// components already drew, where a step mixed from the terminal's own
+    /// ground would resolve to no highlight at all.
     public var backgroundSelected: Color { .blue }
 
+    /// Unstated: ``foregroundMuted``.
     public var separator: Color { foregroundMuted }
+    /// Unstated: the terminal's own colour, ``Color/default``.
     public var borderIdle: Color { .default }
+    /// Unstated: ``accent``.
     public var borderActive: Color { accent }
+    /// Unstated: ``BorderStyle/rounded``.
     public var border: BorderStyle { .rounded }
 
+    /// Unstated: green.
     public var success: Color { .green }
+    /// Unstated: ``success`` 0.4 of the way toward ``background``: the same
+    /// hue, quieter.
     public var successSubtle: Color { derived(success, toward: background, RampStep.statusSubtle) }
+    /// Unstated: yellow.
     public var warning: Color { .yellow }
+    /// Unstated: ``warning`` 0.4 of the way toward ``background``.
     public var warningSubtle: Color { derived(warning, toward: background, RampStep.statusSubtle) }
+    /// Unstated: red.
     public var error: Color { .red }
+    /// Unstated: ``error`` 0.4 of the way toward ``background``.
     public var errorSubtle: Color { derived(error, toward: background, RampStep.statusSubtle) }
+    /// Unstated: blue.
     public var info: Color { .blue }
+    /// Unstated: ``info`` 0.4 of the way toward ``background``.
     public var infoSubtle: Color { derived(info, toward: background, RampStep.statusSubtle) }
+    /// Unstated: ``warning``.
     public var attention: Color { warning }
+    /// Unstated: ``accent``.
     public var busy: Color { accent }
+    /// Unstated: ``error``.
     public var destructive: Color { error }
 
+    /// Unstated: ``SyntaxTheme/defaultDark``.
     public var syntax: SyntaxTheme { .defaultDark }
 }
 
@@ -307,39 +349,72 @@ public struct DefaultTheme: Theme {
     /// other role.
     public var derivation: ThemeDerivation = .automatic
 
+    /// Cyan, from the terminal's own palette, as every component drew before
+    /// themes.
     public var accent: Color = .cyan
+    /// Cyan, matching ``accent``.
     public var primary: Color = .cyan
+    /// Blue.
     public var secondary: Color = .blue
+    /// Bright white, legible on the cyan primary.
     public var onPrimary: Color = .brightWhite
 
+    /// White.
     public var foregroundEmphasis: Color = .white
+    /// The terminal's own text colour, ``Color/default``.
     public var foreground: Color = .default
+    /// The terminal's own text colour: with no colour to mix from, the stock
+    /// theme does not quiet secondary text.
     public var foregroundSubtle: Color = .default
+    /// Gray: hints, placeholders and chrome, as before themes.
     public var foregroundMuted: Color = .gray
+    /// Gray, the same as ``foregroundMuted``.
     public var foregroundFaint: Color = .gray
 
+    /// The terminal's own ground, ``Color/default``: the stock theme paints no
+    /// ground of its own.
     public var background: Color = .default
+    /// The terminal's own ground: the stock theme draws no panel bands, so
+    /// inline code and a light terminal stay readable.
     public var backgroundRaised: Color = .default
+    /// The terminal's own ground.
     public var backgroundOverlay: Color = .default
+    /// Blue, the selection fill.
     public var backgroundSelected: Color = .blue
 
+    /// Gray.
     public var separator: Color = .gray
+    /// The terminal's own colour, ``Color/default``.
     public var borderIdle: Color = .default
+    /// Cyan, matching ``accent``.
     public var borderActive: Color = .cyan
+    /// ``BorderStyle/rounded``.
     public var border: BorderStyle = .rounded
 
+    /// Green.
     public var success: Color = .green
+    /// Green: on the terminal's own ground there is no quieter shade to mix.
     public var successSubtle: Color = .green
+    /// Yellow.
     public var warning: Color = .yellow
+    /// Yellow.
     public var warningSubtle: Color = .yellow
+    /// Red.
     public var error: Color = .red
+    /// Red.
     public var errorSubtle: Color = .red
+    /// Blue.
     public var info: Color = .blue
+    /// Blue.
     public var infoSubtle: Color = .blue
+    /// Yellow, matching ``warning``.
     public var attention: Color = .yellow
+    /// Cyan, matching ``accent``.
     public var busy: Color = .cyan
+    /// Red, matching ``error``.
     public var destructive: Color = .red
 
+    /// ``SyntaxTheme/defaultDark``.
     public var syntax: SyntaxTheme = .defaultDark
 
     /// Creates the default palette; every property can be mutated after.

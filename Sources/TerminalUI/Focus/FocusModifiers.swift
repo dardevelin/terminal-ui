@@ -1,12 +1,14 @@
 /// Modifier that marks a view as focusable.
 /// When focused, it renders with a focus ring and receives key events.
 public struct FocusableModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
 }
 
 /// Payload of `.prefersDefaultFocus(_:)`: whether the subtree asks for focus
 /// when nothing holds it.
 public struct PrefersDefaultFocusModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
     /// Whether the subtree asks.
     public let prefers: Bool
@@ -18,6 +20,7 @@ public struct PrefersDefaultFocusModifier: ViewModifier {
 /// Tab/Shift+Tab ignore scopes and traverse all focusables in document order,
 /// which matches the SwiftUI convention (Tab = major sections, arrows = local).
 public struct FocusScopeModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = String
     /// The scope's name; arrow navigation stays inside members sharing
     /// it.
@@ -28,6 +31,7 @@ public struct FocusScopeModifier: ViewModifier {
 /// The handler is invoked when this view (or its focusable ancestor) is focused
 /// and a key event is received.
 public struct OnKeyPressModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = KeyEventResult
     /// Receives key events first while focused; return `.handled` to
     /// consume, `.ignored` to let the event bubble.
@@ -37,6 +41,7 @@ public struct OnKeyPressModifier: ViewModifier {
 /// Modifier that attaches a click handler to a view.
 /// Receives coordinates relative to the view's rect origin.
 public struct OnClickModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Void
     /// Receives the click position in cells, relative to the view's own
     /// top-left corner.
@@ -53,6 +58,7 @@ public struct OnClickModifier: ViewModifier {
 /// since the closure is the user-driven path that policy turns
 /// framework auto-routing OFF for.
 public struct OnHoverModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Void
     /// Fires with `true` on cursor entry and `false` on exit — state
     /// transitions only, never per-move.
@@ -66,6 +72,7 @@ public struct OnHoverModifier: ViewModifier {
 /// the type-filter form (`.onPaste(of:)`) since terminals only
 /// transport text.
 public struct OnPasteModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Void
     /// Receives the full decoded paste payload, newlines included.
     public let handler: (_ payload: String) -> Void

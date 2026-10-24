@@ -63,7 +63,12 @@ public enum SubCellGlyph: Sendable, Equatable {
 /// "Block Elements" — there are exactly 16 patterns and Unicode
 /// reserves a code point for each.
 public struct QuadrantMask: OptionSet, Sendable, Equatable, Hashable {
+    /// The lit quadrants as bits: top-left, top-right, bottom-left,
+    /// bottom-right from the low bit up. Only the low four bits mean
+    /// anything.
     public let rawValue: UInt8
+    /// Creates a mask from its bit pattern, laid out as ``rawValue``
+    /// describes.
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
     /// Upper-left quadrant (alone: U+2598 ▘).
@@ -156,7 +161,12 @@ public enum EighthMask: Sendable, Equatable, Hashable {
 ///   3 6
 ///   7 8
 public struct BrailleDots: OptionSet, Sendable, Equatable, Hashable {
+    /// The raised dots as bits, dot 1 in the low bit through dot 8 in the
+    /// high bit — Unicode's own braille encoding, so the value is the
+    /// glyph's offset from U+2800.
     public let rawValue: UInt8
+    /// Creates a pattern from its bit pattern; every one of the 256 values
+    /// is a valid braille glyph.
     public init(rawValue: UInt8) { self.rawValue = rawValue }
 
     /// Left column, row 1 (top).
