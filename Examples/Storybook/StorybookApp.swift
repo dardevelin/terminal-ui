@@ -87,6 +87,7 @@ final class StorybookState {
     // that focus containment holds.
     var modalPresented: Bool = false
     var inspectorPresented: Bool = false
+    var disclosureExpanded: Bool = true
     // Alert demos. Separate flags so each page's dialog is independent, and
     // a result line per page so the fired action is visible after dismissal
     // — the dialog is gone by then, so the page itself has to report it.

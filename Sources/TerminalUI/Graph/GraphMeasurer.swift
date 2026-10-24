@@ -181,6 +181,7 @@ public enum GraphMeasurer {
             if case .frame(let width, _, _, _, _, _, _) = effect, let width { return width }
 
             var base = measureWidth(child)
+            if let panel = node.inspectorPanel { base += measureWidth(panel) }
             if case .padding(let insets) = effect { base += insets.horizontal }
             if case .border(_, _, let edges) = effect { base += edges.horizontalInset }
             if case .frame(_, _, let minW, let maxW, _, _, _) = effect {
@@ -338,7 +339,8 @@ public enum GraphMeasurer {
             // non-positive width is the "unconstrained" sentinel and passes
             // through as it is.
             let childWidth = proposedWidth > 0
-                ? max(1, Layout.childWidth(for: effect, outerWidth: proposedWidth))
+                ? max(1, Layout.childWidth(for: effect, outerWidth: proposedWidth)
+                    - Layout.inspectorColumn(of: node, outerWidth: proposedWidth))
                 : proposedWidth
             var base = measureHeight(child, proposedWidth: childWidth)
             if case .padding(let insets) = effect { base += insets.vertical }

@@ -55,10 +55,13 @@ extension TerminalView {
         ModifiedView(content: self, modifier: ModalModifier(isPresented: isPresented, content: content()))
     }
 
-    /// Present a panel along the trailing edge while `isPresented` is true,
-    /// full height and as wide as `content`, beside what it presents over
-    /// rather than over a dimmed screen — a review, a detail, a set of
-    /// properties to edit. Give the content a width with `.frame(width:)`.
+    /// Present a panel along this view's trailing edge while `isPresented`
+    /// is true, this view's full height and as wide as `content`, beside
+    /// what it presents over rather than over a dimmed screen — a review, a
+    /// detail, a set of properties to edit. Declare it on the part of the
+    /// screen it should cover: on the whole app it covers every row; on the
+    /// area above a footer, the footer stays in view. Give the content a
+    /// width with `.frame(width:)`.
     ///
     /// Unlike SwiftUI's inspector it holds the keyboard while it is up, as
     /// a dialog does: focus moves into it, Tab stays inside, a click beside

@@ -53,6 +53,25 @@ struct DropInContractTests {
         #expect(hasContent(buffer), "empty list should render the placeholder row")
     }
 
+    @Test("An empty List is still a Tab stop, as SwiftUI's is")
+    @MainActor
+    func listEmptyIsFocusable() {
+        // A list whose rows arrive later — read from disk, from git — is
+        // focused when its screen opens; were it focusable only once it had
+        // rows, focus would settle elsewhere and stay there.
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            graph.update(from: List([Row](), selection: .constant(nil as Int?), visibleCount: 3) { Text($0.label) })
+        }
+        var buffer = CellBuffer(width: 20, height: 4)
+        let rect = Rect(x: 0, y: 0, width: 20, height: 4)
+        Layout.measureAndPlace(graph: graph.root!, in: rect)
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+        engine.rebuildIndex(root: graph.root!)
+        #expect(engine.collectFocusables(graph.root!).count == 1)
+    }
+
     @Test("PromptInput renders with only text and state bindings")
     func promptInputMinimal() {
         // Simulated bindings — real usage would be @TerminalState.

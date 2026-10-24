@@ -674,13 +674,19 @@ public enum GraphRenderer {
                  .onKeyPress, .onAppear, .onChange, .onDisappear,
                  .onClick, .onHover, .onPaste,
                  .actions, .environment, .explicitID,
-                 .padding, .border, .task:
+                 .padding, .border, .task,
+                 // The second subtree is sized to the base — an overlay, a
+                 // background — or drawn apart from it — a dialog, an
+                 // inspector's panel — so the base is what is laid out here.
+                 // Treated as fixed, a flexible transcript under an inspector
+                 // took its whole natural height and pushed the rows below
+                 // it off screen.
+                 .overlay, .backgroundView, .modal:
                 return node.children.first
-            // A frame and `.flexible` state a size on their own behalf; the
-            // presentation shapes carry a second subtree whose flexibility is
-            // not the base view's to inherit. Listed rather than defaulted so
-            // a new effect has to answer this question.
-            case .frame, .flexible, .overlay, .backgroundView, .modal:
+            // A frame and `.flexible` state a size on their own behalf.
+            // Listed rather than defaulted so a new effect has to answer
+            // this question.
+            case .frame, .flexible:
                 return nil
             }
         default:
@@ -1600,9 +1606,12 @@ public enum GraphRenderer {
             }
 
         case .modal:
-            // The base only: what it presents is drawn over the whole screen
-            // once the tree is done, by `render`.
-            renderNode(child, into: &buffer, context: ctx)
+            // The base only: what it presents is drawn once the tree is
+            // done, by `render` — a dialog over the whole screen, an
+            // inspector in the column taken off this node's trailing edge.
+            var baseContext = ctx
+            baseContext.rect.width -= Layout.inspectorColumn(of: node, outerWidth: ctx.rect.width)
+            renderNode(child, into: &buffer, context: baseContext)
         }
     }
 
@@ -1665,19 +1674,24 @@ public enum GraphRenderer {
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
     }
 
-    /// An inspector: full height against the trailing edge, as wide as its
-    /// content, over a screen left as it is — the panel sits beside what it
-    /// presents over rather than above it.
+    /// An inspector: in the column taken off the trailing edge of the view
+    /// it was declared on, that view's full height, as wide as its content,
+    /// with nothing dimmed — the panel sits beside what it presents over
+    /// rather than above it. The declaring view's rect is already in screen
+    /// coordinates: the walk, scroll views and earlier presentations have
+    /// placed it by the time presentations are drawn.
     private static func compositeInspector(_ panel: AttributeNode, into buffer: inout CellBuffer) {
-        let width = min(measureWidth(panel), buffer.width)
-        guard width > 0, buffer.height > 0 else { return }
-        let x = buffer.width - width
-        var layer = Layer(width: width, height: buffer.height, x: x, y: 0,
+        let screen = Rect(x: 0, y: 0, width: buffer.width, height: buffer.height)
+        let area = (panel.parent?.rect ?? screen).intersected(with: screen)
+        let width = panel.parent.map { Layout.inspectorColumn(of: $0, outerWidth: area.width) } ?? 0
+        guard width > 0, area.height > 0 else { return }
+        let x = area.x + area.width - width
+        var layer = Layer(width: width, height: area.height, x: x, y: area.y,
                           style: ModifierEffect.modal(isPresented: true).compositingStyle)
-        let rect = Rect(x: 0, y: 0, width: width, height: buffer.height)
+        let rect = Rect(x: 0, y: 0, width: width, height: area.height)
         Layout.measureAndPlace(graph: panel, in: rect)
         renderNode(panel, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
-        offsetRects(of: panel, dx: x, dy: 0)
+        offsetRects(of: panel, dx: x, dy: area.y)
         Compositor.composite(layers: [layer], into: &buffer)
     }
 

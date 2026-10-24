@@ -71,31 +71,42 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     }
 
     @TerminalEnvironment(\.theme) private var theme
+    /// The offset a list given no `scroll` binding keeps for itself, so its
+    /// window stays where it was between frames instead of being worked out
+    /// from the top each time.
+    @TerminalState private var ownScroll = 0
 
     @_documentation(visibility: internal)
     public var body: some TerminalView {
+        // Projected here, in `body`: inside the GeometryReader's closure it
+        // would capture the reader's node rather than this one.
+        let scroll = self.scroll ?? $ownScroll
         // An explicit `visibleCount` is a declared size: the list is exactly
         // that many rows and measures as such. Only a size-driven list needs
         // the GeometryReader — which also makes it greedy in stack layout,
         // the way a size-reading view has to be.
+        //
+        // Empty, it is still one Tab stop, as SwiftUI's is: a list whose
+        // rows arrive later — read from disk, from git — is focused when its
+        // screen opens, and focus is there when they come.
         if let declaredCount = visibleCount {
             if data.isEmpty {
-                _EmptyPlaceholder()
+                _EmptyPlaceholder().focusable()
             } else {
-                renderList(visibleCount: declaredCount)
+                renderList(visibleCount: declaredCount, scroll: scroll)
             }
         } else {
             GeometryReader { size in
                 if self.data.isEmpty {
-                    _EmptyPlaceholder()
+                    _EmptyPlaceholder().focusable()
                 } else {
-                    self.renderList(visibleCount: max(1, size.height))
+                    self.renderList(visibleCount: max(1, size.height), scroll: scroll)
                 }
             }
         }
     }
 
-    private func renderList(visibleCount: Int) -> some TerminalView {
+    private func renderList(visibleCount: Int, scroll: Binding<Int>) -> some TerminalView {
         // Materialize ONLY the visible window. `data` is a
         // RandomAccessCollection, so .count and integer-offset indexing
         // are O(1); we never need to walk every element. The selected-
@@ -114,14 +125,16 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         }()
 
         // Get stored scroll offset or compute from scratch
-        var scrollOffset = scroll?.get() ?? 0
+        var scrollOffset = scroll.get()
 
         // Adjust scroll offset only if selection is outside visible window
         let adjusted = adjustScrollOffset(scrollOffset: scrollOffset, selectedIndex: selectedIndex, total: total, visibleCount: visibleCount)
         scrollOffset = adjusted
 
-        // Write back adjusted offset
-        scroll?.set(scrollOffset)
+        // Written back only when it moved: this runs in `body`, and a write
+        // notifies its observers whether or not the value changed — an
+        // unconditional one redrew an idle list every frame.
+        if scroll.get() != scrollOffset { scroll.set(scrollOffset) }
 
         // How many lines are used by scroll indicators (within the budget)
         let hasUpIndicator = scrollOffset > 0
@@ -171,9 +184,9 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             guard let sel = selection else { return }
             let total = data.count
             guard total > 0 else { return }
-            let hasUpInd = (scroll?.get() ?? 0) > 0
+            let hasUpInd = scroll.get() > 0
             let rowOffset = hasUpInd ? relY - 1 : relY
-            let itemIndex = (scroll?.get() ?? 0) + rowOffset
+            let itemIndex = scroll.get() + rowOffset
             if itemIndex >= 0 && itemIndex < total {
                 let idx = data.index(data.startIndex, offsetBy: itemIndex)
                 sel.set(data[idx].id)

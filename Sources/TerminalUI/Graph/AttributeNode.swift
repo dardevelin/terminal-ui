@@ -338,6 +338,12 @@ public class AttributeNode: @unchecked Sendable {
 
     /// The content this node presents over the screen — the second child of
     /// a presented modal — or nil when it presents nothing.
+    /// The panel of a presented inspector, which takes a column of this
+    /// node's width rather than drawing over the screen.
+    var inspectorPanel: AttributeNode? {
+        presentationPlacement == .trailing ? presentedContent : nil
+    }
+
     var presentedContent: AttributeNode? {
         guard case .modifier(.modal(let isPresented)) = kind, isPresented,
               children.count > 1 else { return nil }
