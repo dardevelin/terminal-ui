@@ -136,8 +136,9 @@ STEPS: tuple[Step, ...] = (
         Stage([Type("1")], shows=["☐ Ship it"]),
     ]),
     Step("tasks3-02-01", [
-        Stage([Press("down")], shows=["Detail", "Build a task list", "id 2"]),
-        Stage([Press("down")], shows=["id 3"]),
+        # The detail follows the selection, and so does the list's mark.
+        Stage([Press("down")], shows=["▸ ☐ Build a task list", "Detail", "id 2"]),
+        Stage([Press("down")], shows=["▸ ☐ Ship it", "id 3"]),
         # Focus has left the tab bar for the prompt: a digit types.
         Stage([Type("2")], shows=["❯ 2"], hides=["Show completed"]),
     ]),

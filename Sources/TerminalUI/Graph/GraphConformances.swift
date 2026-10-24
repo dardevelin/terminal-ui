@@ -349,7 +349,7 @@ extension ForEach: _GraphForEach {
         let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .vstack, isStructural: true)))
         for element in data {
             let childID = id.appending(.explicit(AnyHashable(element.id)))
-            let childView = content(element)
+            let childView = graph.trackingRow(of: node) { content(element) }
             let childNode = graph.constructNode(for: childView, id: childID)
             childNode.parent = node
             node.children.append(childNode)
@@ -381,12 +381,12 @@ extension ForEach: _GraphForEach {
 
             if let existing = existingByID[key] {
                 // Reuse — update in place
-                let childView = content(element)
+                let childView = graph.trackingRow(of: node) { content(element) }
                 graph.updateNode(existing, from: childView)
                 newChildren.append(existing)
             } else {
                 // New element — construct
-                let childView = content(element)
+                let childView = graph.trackingRow(of: node) { content(element) }
                 let childNode = graph.constructNode(for: childView, id: childID)
                 childNode.parent = node
                 newChildren.append(childNode)
@@ -409,7 +409,7 @@ extension ForEachWithID: _GraphForEach {
         for element in data {
             let key = element[keyPath: idKeyPath]
             let childID = id.appending(.explicit(AnyHashable(key)))
-            let childView = content(element)
+            let childView = graph.trackingRow(of: node) { content(element) }
             let childNode = graph.constructNode(for: childView, id: childID)
             childNode.parent = node
             node.children.append(childNode)
@@ -436,11 +436,11 @@ extension ForEachWithID: _GraphForEach {
             let childID = node.id.appending(.explicit(key))
 
             if let existing = existingByID[key] {
-                let childView = content(element)
+                let childView = graph.trackingRow(of: node) { content(element) }
                 graph.updateNode(existing, from: childView)
                 newChildren.append(existing)
             } else {
-                let childView = content(element)
+                let childView = graph.trackingRow(of: node) { content(element) }
                 let childNode = graph.constructNode(for: childView, id: childID)
                 childNode.parent = node
                 newChildren.append(childNode)
