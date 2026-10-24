@@ -34,7 +34,7 @@ let package = Package(
     name: "YourApp",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/dardevelin/terminal-ui", from: "1.0.0"),
+        .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.0.0"),
     ],
     targets: [
         .executableTarget(
@@ -99,5 +99,5 @@ Press `+`, `-`, `q`. That's the full programming model.
 
 - Explore the full API catalog via `swift run Storybook` in the TerminalUI repo
   (35 pages, one per component, with live previews).
-- Learn the framework's architecture: <doc:ArchitecturalModels>, <doc:AttributeGraph>, <doc:Layering>.
+- Learn the framework's architecture: <doc:ArchitecturalModels>, <doc:UnderstandingTheAttributeGraph>, <doc:Layering>.
 - Look at `Examples/Demo` in the TerminalUI repo for a 12-tab feature showcase.

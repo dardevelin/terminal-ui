@@ -335,10 +335,9 @@ Everything user-facing lives in `Sources/TerminalUI/TerminalUI.docc/`:
 
 | Path | What it holds |
 |------|---------------|
-| `Articles/` | Architecture + history prose — `AttributeGraph`, `Layering`, `ArchitecturalModels`, `Performance`, `GettingStarted`, `KnownIssues` |
+| `Articles/` | Architecture + history prose — `UnderstandingTheAttributeGraph` (not `AttributeGraph`: an article named like a symbol replaces the symbol's page), `Layering`, `ArchitecturalModels`, `Performance`, `GettingStarted`, `KnownIssues` |
 | `Tutorials/` | The guided course: `TerminalUITutorials` (the table of contents) plus per-chapter `.tutorial` files — BuildATaskList, GiveItStructure, AddInputAndTheMouse, NavigateToDetail, ShowTheNumbers, ArchitectForGrowth, MakeItProduction |
 | `Resources/` | Tutorial code steps (`tasks-SS-NN.swift` for chapter 1, `tasks<chapter>-SS-NN.swift` after), chapter cards, and demo GIFs |
-| `Extensions/` | DocC stubs documenting symbols that can't carry doc comments (the `GraphContext` `@TaskLocal` projections) |
 
 ```bash
 TUI_BUILD_DOCS=1 swift package generate-documentation   # one-shot build

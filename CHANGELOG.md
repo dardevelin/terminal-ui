@@ -6,6 +6,47 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-10-24 — Themed, SwiftUI-shaped, hardened
+
+Every component now draws in the app's theme, from a ramp of semantic roles
+that derives what a theme leaves unstated. Much more of SwiftUI's vocabulary
+is here: stack alignment, edge padding, `.task`, `@Binding`, the two-way
+`.scrollPosition`, `.defaultScrollAnchor`, `.prefersDefaultFocus` and
+`.onScrollTargetVisibilityChange`. Markdown and code views come with it. The
+runtime underneath was hardened against what an agent-chat app does to it:
+idle apps cost nothing, signals and crashes restore the terminal, races
+found by the Thread Sanitizer are gone, and layout measures what it lays
+out.
+
+It is a major release because a few things a 1.x app could write no longer
+compile. Everything that could be kept compiling was, and the public API is
+now checked against the last release on every change.
+
+### Upgrading from 1.x
+
+- **A `switch` over one of these enums needs its new case:**
+  `BorderStyle.halfBlock`, `TextWrapMode.truncate(_:)`,
+  `DotMatrixText.RenderMode.halfBlock`,
+  `TerminalRuntimeError.wakePipeUnavailable` and
+  `FrameworkWarningCode.debugSocketUnavailable`.
+- **`TextArea.theme` is a `SyntaxTheme?`.** `nil`, the default, takes the
+  app theme's `syntax` colours; read it with `?? .defaultDark` where a value
+  is needed.
+- **The graph's internals changed shape.** They are public for the renderer,
+  the inspector and remote control, and an app rarely touches them:
+  `ModifierEffect.background` takes a `Color?`, `.padding` an `EdgeInsets`,
+  `.border` a style, colour and edges, and there is a new `.prefersDefaultFocus`
+  case; `PaddingModifier.ModifierType` is `EdgeInsets`;
+  `AttributeGraph.hasDirtyNodes` and `AttributeNode.containmentDepth` are
+  read-only; and a `RemoteControlRuntime` implements
+  `remoteTerminalInputTaken()`.
+- **Some things behave differently** — see Changed below. Most visible:
+  `GeometryReader` is greedy, as in SwiftUI; `TextInput`, `TextArea` and
+  `PromptInput` draw their cursor only while focused; in `TextArea`, Ctrl+Y
+  yanks and Ctrl+Shift+Z redoes.
+- **A theme that states `muted` keeps working.** The ramp names it
+  `foregroundMuted` now, and a theme may state either.
+
 ### Added
 
 - **`DotMatrixText` half blocks and gradients.** `mode: .halfBlock` packs two
@@ -255,6 +296,10 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Deprecated
 
+- **`DefaultTheme.muted`** — renamed `foregroundMuted`; it still reads and
+  sets the muted step. `Theme.muted` itself stays, for themes written for
+  1.0.
+- **`PaddingModifier.amount`** — padding may differ by edge; read `insets`.
 - **`BoundaryFeedbackProbe`.** The environment's `boundaryHit` action already
   routes a hit to the subtree's bell and `.onBoundaryHit` callback; a test
   supplies those and reads what they received. It keeps working until the
@@ -770,7 +815,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...v1.0.0
 [0.8.0]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.8.0
 [0.7.2]: https://github.com/dardevelin/terminal-ui/releases/tag/v0.7.2

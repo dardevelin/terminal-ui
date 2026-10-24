@@ -1,7 +1,8 @@
 #if DEBUG
 
 /// In-app inspector — crosshair cursor that shows node info for any cell.
-/// Toggle with ctrl+i. Arrow keys move the crosshair.
+/// Toggled by the `toggle_inspector` binding, F3 by default. Arrow keys move
+/// the crosshair.
 /// Shows: node type, declared values, resolved rect, modifier chain.
 public final class Inspector {
     /// Whether the overlay renders; toggled by the inspector keybinding.

@@ -1,21 +1,31 @@
+# Known Issues
 
-# Known Issues — 2026-04-11
+Limitations of TerminalUI 2.0 that an app may run into, and what to do
+about each.
 
-## Input parsing limitations
-- ctrl+i = tab (byte 9) — can't distinguish them
-- Some terminal emulators intercept certain ctrl combos
-- No mouse support yet
-- No detection of terminal capabilities (which escape sequences are supported)
-- Need a proper input abstraction layer that handles terminal differences
+## Keys the terminal sends as one
 
-## Crosshair rendering
-- The crosshair horizontal/vertical lines modify cell backgrounds, which may fight with the app's own styling
-- The node bounds highlight (blue tint) applies to the entire rect including border characters
+A terminal's legacy keyboard encoding sends some pairs of keys as the same
+byte, so no program can tell them apart: Ctrl+I and Tab, Ctrl+M and Return,
+Ctrl+[ and Escape, Ctrl+H and Backspace. The input parser reads the kitty
+keyboard protocol, which distinguishes them, but the framework does not yet
+ask a terminal to switch it on. Bind actions to keys outside these pairs.
 
-## Debug always-render performance
-- When debug tools are active, frame skipping is disabled, which means the framework does full rebuilds at the uncapped rate
-- Should have a separate debug frame rate cap (e.g. 30fps) to avoid burning CPU while debugging
+Terminal emulators, multiplexers and window managers also keep some
+combinations for themselves — Ctrl+Tab, Cmd+anything on macOS, tmux's prefix
+— and those never reach the app.
 
-## Modal modifier chain
-- The graph shows `modal → border` in the chain even when the modal is dismissed
-- The modal modifier node persists in the graph; only its extra child (modal content) is added/removed
+## Colour depth
+
+Output is truecolor. A theme's named ANSI colours follow the user's terminal
+palette on any terminal, but an `.rgb` colour reaches a terminal that has
+only 256 or 16 colours as whatever that terminal makes of a 24-bit sequence.
+Downconversion is planned; until then, a theme that must look right
+everywhere states named colours.
+
+## The inspector draws over the frame
+
+The debug inspector's crosshair recolours every cell on its row and column,
+and the highlight on the node under it covers the node's whole rect,
+borders included. It is a debugging aid in debug builds only; release builds
+contain none of it.

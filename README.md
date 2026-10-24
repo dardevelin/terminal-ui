@@ -118,7 +118,7 @@ there are no transitive dependencies, including build-time ones.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/dardevelin/terminal-ui", from: "1.0.0"),
+    .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.0.0"),
 ],
 targets: [
     .executableTarget(
@@ -354,9 +354,11 @@ decoders.
 
 ## Status
 
-v1.0.0. 1094 tests in 233 suites, run on macOS and Linux, plus a PTY-driven
-behavioural harness that walks every Storybook page. Builds with zero
-warnings under `-warnings-as-errors`.
+v2.0.0. 1526 tests in 297 suites, run on macOS and Linux, plus a PTY-driven
+harness that walks every Storybook page and runs 128 behavioural cases
+against the example apps, and a Thread Sanitizer build of both. Builds with
+zero warnings under `-warnings-as-errors`, and every change is checked for
+breaking the public API of the last release.
 
 ## How this was built
 
