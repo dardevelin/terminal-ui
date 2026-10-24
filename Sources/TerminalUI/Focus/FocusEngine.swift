@@ -692,7 +692,13 @@ public final class FocusEngine: @unchecked Sendable {
             return
         }
         var nowHovered: Set<NodeID> = []
-        collectHoveredHandlers(x: x, y: y, in: root, into: &nowHovered)
+        var holder = findHoverHandlerAt(x: x, y: y, in: root)
+        while let node = holder {
+            if hoverHandlers[node.id] != nil, node.rect.contains(x: x, y: y) {
+                nowHovered.insert(node.id)
+            }
+            holder = node.parent
+        }
 
         // Fire enter callbacks for newly entered rects.
         for id in nowHovered.subtracting(hoveredHandlerIDs) {
@@ -705,17 +711,15 @@ public final class FocusEngine: @unchecked Sendable {
         hoveredHandlerIDs = nowHovered
     }
 
-    /// Walk the tree collecting IDs of nodes that have a registered
-    /// hover handler AND whose rect contains (x, y). Order does not
-    /// matter — the result is consumed as a Set.
-    private func collectHoveredHandlers(x: Int, y: Int, in node: AttributeNode, into result: inout Set<NodeID>) {
-        if hoverHandlers[node.id] != nil, node.rect.contains(x: x, y: y) {
-            result.insert(node.id)
+    /// The deepest hover handler under (x, y) on top: the one a click there
+    /// would reach, by the rule `findClickableAt` follows. It and the
+    /// handlers holding it are hovered; one drawn under it is not, as in
+    /// SwiftUI, where a view covered by another does not see the pointer.
+    private func findHoverHandlerAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+            if let hit = findHoverHandlerAt(x: x, y: y, in: child) { return hit }
         }
-        guard Self.pointerReachesContent(of: node, x: x, y: y) else { return }
-        for child in node.children {
-            collectHoveredHandlers(x: x, y: y, in: child, into: &result)
-        }
+        return hoverHandlers[node.id] != nil && node.rect.contains(x: x, y: y) ? node : nil
     }
 
     /// Handle mouse click — transfer keyboard focus and invoke click handler.

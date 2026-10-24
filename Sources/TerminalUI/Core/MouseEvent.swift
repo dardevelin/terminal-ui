@@ -3,8 +3,8 @@
 /// The runtime enables SGR 1006 tracking on startup, so every press, release,
 /// drag, movement, and scroll tick arrives as one of these — coordinates are
 /// cell positions, not pixels. Most apps never handle mouse events directly:
-/// the runtime routes clicks to `.focusable`/`.onClick` views and translates
-/// scroll ticks into arrow-key events for the view under the cursor. Handle
+/// the runtime routes clicks to `.focusable`/`.onClick` views, and scroll
+/// ticks to the nearest view under the cursor that scrolls. Handle
 /// `TerminalEvent.mouse(_:)` in `onEvent(_:)` only for app-global gestures
 /// the focus system doesn't cover.
 public struct MouseEvent: Sendable {

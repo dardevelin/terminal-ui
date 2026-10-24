@@ -73,6 +73,8 @@ final class StorybookState {
     // Hover/policy demo state
     var hoverIndicator: String = "(not hovering)"
     var hoveredScrollRow: String = "none"
+    /// Which of a card and the badge drawn over it the pointer is on.
+    var hoveredLayer: String = "none"
     // Action graph demo state
     var actionFired: Int = 0
     // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit

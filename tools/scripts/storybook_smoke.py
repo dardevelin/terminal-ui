@@ -1298,6 +1298,47 @@ def storybook_hover_follows_content_scrolled_under_the_pointer(app: Client) -> N
                 f"the row scrolled under the pointer should be hovered; preview:\n{app.preview_text()}")
 
 
+def storybook_hover_reaches_only_the_view_on_top(app: Client) -> None:
+    """`.onHover` page: a badge drawn over a card. Over the badge only the
+    badge is hovered; beside it, and below it, the card is. Every handler
+    whose rect held the pointer fired, so over the badge the card lit too,
+    and leaving the badge for the card never told the card it had come."""
+    app.goto_page(".onHover")
+    rows = app.text().split("\n")
+    y = next(i for i, row in enumerate(rows) if "[badge]" in row)
+    x = rows[y].index("[badge]") + 1
+    app.mouse_move(x, y)
+    assert_true("on top: badge" in app.preview_text(), f"expected the badge; preview:\n{app.preview_text()}")
+    app.mouse_move(x, y + 1)
+    assert_true("on top: card" in app.preview_text(), f"expected the card; preview:\n{app.preview_text()}")
+    app.mouse_move(x, y)
+    assert_true("on top: badge" in app.preview_text(), f"expected the badge; preview:\n{app.preview_text()}")
+    app.mouse_move(x + 9, y)
+    assert_true("on top: card" in app.preview_text(),
+                f"beside the badge, the card; preview:\n{app.preview_text()}")
+
+
+def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
+    """List page: a click on a row selects it, and after the wheel has
+    scrolled the list, a click selects the row now drawn there."""
+    app.goto_page("List")
+
+    def click_on(label: str) -> None:
+        rows = app.text().split("\n")
+        y = next(i for i, row in enumerate(rows) if f"  {label}" in row or f"▸ {label}" in row)
+        app.mouse_click(rows[y].index(label), y)
+
+    click_on("gamma")
+    assert_true("▸ gamma" in app.preview_text(), f"expected gamma selected:\n{app.preview_text()}")
+    rows = app.text().split("\n")
+    y = next(i for i, row in enumerate(rows) if "▸ gamma" in row)
+    app.mouse_wheel("down", rows[y].index("gamma"), y)
+    assert_true("more" in app.preview_text() and "epsilon" in app.preview_text(),
+                f"the wheel should scroll the list:\n{app.preview_text()}")
+    click_on("epsilon")
+    assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2733,6 +2774,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
     SmokeCase("storybook.hover_follows_content_scrolled_under_the_pointer", "Storybook",
               storybook_hover_follows_content_scrolled_under_the_pointer),
+    SmokeCase("storybook.hover_reaches_only_the_view_on_top", "Storybook",
+              storybook_hover_reaches_only_the_view_on_top),
+    SmokeCase("storybook.a_click_on_a_list_row_selects_it", "Storybook",
+              storybook_a_click_on_a_list_row_selects_it),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
