@@ -365,7 +365,7 @@ decoders.
 
 ## Status
 
-v2.0.0. 1531 tests in 298 suites, run on macOS and Linux, plus a PTY-driven
+v2.0.1. 1543 tests in 301 suites, run on macOS and Linux, plus a PTY-driven
 harness that walks every Storybook page and runs 129 behavioural cases
 against the example apps, and a Thread Sanitizer build of both. Builds with
 zero warnings under `-warnings-as-errors`, and every change is checked for
