@@ -15,6 +15,12 @@ All notable changes to TerminalUI are documented here. Format based on
   dialog does: focus moves in, Tab stays inside, a click beside it reaches
   nothing, and focus returns when it closes. Bind Escape in its content to
   close it.
+- **`TerminalAppProtocol.windowBackground`** — the colour the terminal
+  itself takes behind the app (OSC 11), which also fills the padding a
+  terminal draws around its grid, so an app's colour reaches the window's
+  edge rather than stopping a frame short of it. Read every frame, so it can
+  follow a theme; the terminal's own is put back (OSC 111) however the app
+  ends, a crash included. `nil`, the default, leaves the terminal alone.
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.

@@ -2234,6 +2234,19 @@ def coder_clicking_the_summary_folds_the_files(app: Client) -> None:
     assert_true(app.text().count("notes.md") == 2, "a second click should unfold it")
 
 
+def coder_paints_the_terminal_and_puts_its_own_back(app: Client) -> None:
+    """Coder sets the terminal's own background to its theme's (OSC 11), so
+    the padding around the grid is Coder's colour, and puts the terminal's
+    own back (OSC 111) when it quits."""
+    # What the app wrote reaches the runner's reader in its own time.
+    assert_true(app.wait_until(lambda client: b"\x1b]11;rgb:" in client.pty_output()),
+                "expected OSC 11 with the theme's colour")
+    app.send_key("c", "ctrl")
+    assert_true(app.wait_for_exit(5.0) is not None, "Ctrl+C should quit")
+    assert_true(app.wait_until(lambda client: b"\x1b]111\x1b\\" in client.pty_output()),
+                "expected OSC 111 on the way out")
+
+
 def coder_wheel_burst_keeps_running(app: Client) -> None:
     """A burst of real wheel reports — raw SGR 1006 bytes through the PTY,
     as a trackpad sends them — leaves the app running. Regression: debug
@@ -2261,7 +2274,8 @@ def coder_crash_restores_the_terminal(app: Client) -> None:
     before = len(app.pty_output())
     app.expected_exit_signal = signal.SIGSEGV
     app.crash()
-    restored = (b"\x1b[?1006l", b"\x1b[?1000l", b"\x1b[?1049l", b"\x1b[?25h")
+    # The terminal's own background too: Coder set it with OSC 11.
+    restored = (b"\x1b[?1006l", b"\x1b[?1000l", b"\x1b[?1049l", b"\x1b[?25h", b"\x1b]111\x1b\\")
     deadline = time.monotonic() + 5.0
     while time.monotonic() < deadline:
         after = app.pty_output()[before:]
@@ -2811,6 +2825,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.a_raw_wheel_scrolls_down_and_back", "Coder", coder_a_raw_wheel_scrolls_down_and_back),
     SmokeCase("coder.clicking_the_summary_folds_the_files", "Coder", coder_clicking_the_summary_folds_the_files,
               project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.paints_the_terminal_and_puts_its_own_back", "Coder",
+              coder_paints_the_terminal_and_puts_its_own_back),
     SmokeCase("coder.outside_a_repository_the_review_says_so", "Coder",
               coder_outside_a_repository_the_review_says_so, project_files=CODER_REVIEW_PROJECT),
     SmokeCase("coder.scrolling_keeps_the_selection_in_sight", "Coder",

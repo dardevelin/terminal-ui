@@ -287,6 +287,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// when the terminal geometry changes.
     private var renderBuffer = CellBuffer(width: 0, height: 0)
     private var needsRender: Bool = true
+    /// The app's `TerminalAppProtocol.windowBackground`, read each frame.
+    var windowBackground: () -> Color? = { nil }
+    /// What the terminal's background was last set to: the terminal's own
+    /// until the app names a colour.
+    private var lastWindowBackgroundSequence = Terminal.windowBackgroundReset
     /// The wheel moved content under a pointer that stayed still: what it
     /// hovers is worked out again once the next frame has placed it, as a
     /// move would. Left alone, a row scrolled away stayed hovered — and its
@@ -548,6 +553,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             if diagnosticsAreWritable { DiagPaths.cleanupOwnDir() }
             #endif
             Terminal.disableBracketedPaste()
+            Terminal.restoreWindowBackground()
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
 
@@ -1207,6 +1213,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         let changedCells = renderBuffer.countDiff(from: previousBuffer)
         renderBuffer.renderDiff(from: previousBuffer, into: &outputBuffer)
+        let wantedBackground = windowBackground()
+        let windowBackgroundSequence = Terminal.windowBackgroundSequence(wantedBackground)
+        if windowBackgroundSequence != lastWindowBackgroundSequence {
+            Terminal.setWindowBackground(wantedBackground, into: &outputBuffer)
+            lastWindowBackgroundSequence = windowBackgroundSequence
+        }
         if bell.take() { outputBuffer.write(TerminalBell.sequence) }
         let buildEnd = monotonicNanoseconds()
 
@@ -1529,12 +1541,20 @@ public protocol TerminalAppProtocol {
     /// in, and says where. Read once, before the app takes the terminal;
     /// what cannot be read is printed to stderr and the rest applies.
     static var userKeymap: UserKeymapSource { get }
+    /// The colour the terminal itself takes behind the app — its default
+    /// background, which also fills the padding a terminal draws around
+    /// the cell grid — or `nil`, the default, to leave it as the user set
+    /// it. Read every frame, so it can follow a theme. The terminal's own
+    /// is put back when the app ends.
+    static var windowBackground: Color? { get }
     /// Builds the root view. Re-invoked whenever the runtime needs a
     /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
 }
 
 extension TerminalAppProtocol {
+    /// Default: `nil`, the terminal's own background.
+    public static var windowBackground: Color? { nil }
     /// Default: `.fps60`.
     public static var renderMode: RenderMode { .fps60 }
     /// Default: no timers.
@@ -1582,6 +1602,7 @@ extension TerminalAppProtocol {
             onEvent: { onEvent($0) },
             content: { content() }
         )
+        runtime.windowBackground = { windowBackground }
         // Default @main shim: surface raw-mode failure via TerminalLog
         // (auto-routes to stderr for warn/error/critical) and exit
         // with status 1. App authors who want richer non-TTY handling

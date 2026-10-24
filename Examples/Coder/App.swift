@@ -17,6 +17,11 @@ struct CoderMain: TerminalAppProtocol {
         true
     }
 
+    /// The theme's ground behind the whole terminal, so the padding a
+    /// terminal draws around its grid is Coder's colour rather than a frame
+    /// of the terminal's own around it.
+    static var windowBackground: Color? { CoderTheme.dark.background }
+
     /// The user's own editing keys, in `~/.config/coder/keys.toml`.
     static var userKeymap: UserKeymapSource { .configFile(named: "coder") }
 

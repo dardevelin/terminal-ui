@@ -651,6 +651,44 @@ public enum Terminal {
 
     // MARK: - Crash-path cleanup
 
+    /// OSC 11 or OSC 111 (xterm ctlseqs, "Operating System Commands"): the
+    /// terminal's default background set to `color` — what a cell with no
+    /// background of its own shows, and the padding a terminal draws around
+    /// its grid — or, for `nil` or a colour with no value of its own, the
+    /// terminal's own put back. ST ends it: BEL would ring on terminals
+    /// that do not know the command.
+    static func windowBackgroundSequence(_ color: Color?) -> String {
+        guard let rgb = color?.nominalRGB else { return windowBackgroundReset }
+        let hex = { (channel: UInt8) in (channel < 0x10 ? "0" : "") + String(channel, radix: 16) }
+        return "\u{1B}]11;rgb:\(hex(rgb.red))/\(hex(rgb.green))/\(hex(rgb.blue))\u{1B}\\"
+    }
+
+    /// OSC 111: the terminal's own default background put back.
+    static let windowBackgroundReset = "\u{1B}]111\u{1B}\\"
+
+    /// Whether the app has set the terminal's background, so cleanup — the
+    /// signal handlers' included — knows to put it back.
+    static let windowBackgroundIsSet = Atomic<Bool>(false)
+
+    /// Puts the terminal's own background back, if the app set it. Only an
+    /// app that set it does: a reset sent regardless would undo a colour the
+    /// user set before starting the app. Async-signal-safe — an atomic
+    /// exchange, `strlen` and `write` — so the signal handlers call it too.
+    static func restoreWindowBackground() {
+        guard windowBackgroundIsSet.exchange(false, ordering: .sequentiallyConsistent) else { return }
+        windowBackgroundReset.withCString { ptr in
+            _ = posixWrite(STDOUT_FILENO, ptr, strlen(ptr))
+        }
+    }
+
+    /// Writes the terminal's background for `color`, and records whether
+    /// cleanup must put the terminal's own back.
+    static func setWindowBackground(_ color: Color?, into output: inout OutputBuffer) {
+        let sequence = windowBackgroundSequence(color)
+        for byte in sequence.utf8 { output.write(byte) }
+        windowBackgroundIsSet.store(sequence != windowBackgroundReset, ordering: .sequentiallyConsistent)
+    }
+
     /// Concatenated DEC private-mode disable sequence covering every
     /// state TerminalApp.run() enables. Precomputed at file scope so
     /// the signal handler doesn't allocate or call the Swift runtime
@@ -699,6 +737,7 @@ public enum Terminal {
             let len = strlen(ptr)
             _ = posixWrite(STDOUT_FILENO, ptr, len)
         }
+        restoreWindowBackground()
         // Restore termios from the cached value taken before raw mode.
         // tcsetattr is on the POSIX list of async-signal-safe functions.
         if var orig = originalTermios {
