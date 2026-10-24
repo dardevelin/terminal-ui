@@ -811,6 +811,12 @@ public enum GraphRenderer {
     /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
     /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
     /// HStacks — see `isVFlexChild` for why the reader is here.
+    /// Whether `node` takes whatever width it is offered, as a Spacer or a
+    /// row holding one does.
+    static func takesOfferedWidth(_ node: AttributeNode) -> Bool {
+        isFlexChild(node)
+    }
+
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
         if node.geometryRebuilder != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
@@ -818,6 +824,24 @@ public enum GraphRenderer {
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }
         if case .modifier(.frame(_, _, _, let maxW, _, _, _)) = node.kind, maxW == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isFlexChild(child) }
+        // A stack holding a view that takes what it is offered takes it
+        // itself, as SwiftUI's does: an HStack with a Spacer, nested in
+        // another, stayed at its natural width, and what followed the Spacer
+        // never reached the edge. A Spacer in a VStack stretches only down
+        // the VStack, so it does not make the VStack wide.
+        if case .layout(let info) = node.kind {
+            switch info.kind {
+            case .hstack:
+                return node.children.contains(where: isFlexChild)
+            case .vstack:
+                return node.children.contains { child in
+                    if case .primitive(.spacer) = child.kind { return false }
+                    return isFlexChild(child)
+                }
+            default:
+                break
+            }
+        }
         return false
     }
 

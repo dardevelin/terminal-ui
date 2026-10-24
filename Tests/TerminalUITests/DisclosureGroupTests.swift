@@ -93,6 +93,37 @@ struct DisclosureGroupTests {
         #expect(harness.folding.isExpanded)
     }
 
+    @Test func theLabelRowSpansTheGroupsWidth() {
+        let harness = Harness()
+        let rows = harness.frame()
+        // The rows are 30 wide; the label's row reaches the last cell.
+        let row = harness.engine.collectFocusables(harness.graph.root!).first!.rect
+        #expect(row.width == 30, "\(row) \(rows)")
+    }
+
+    @Test func aLabelLaidOutAsARowReachesTheEdge() {
+        let folding = Folding()
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        GraphContext.$currentFocusEngine.withValue(engine) {
+            graph.update(from: DisclosureGroup(isExpanded: Binding(get: { folding.isExpanded },
+                                                                   set: { folding.isExpanded = $0 })) {
+                Text("content")
+            } label: {
+                HStack(spacing: 1) {
+                    Text("path").flexible(.horizontal)
+                    Text("[end]")
+                }
+            })
+        }
+        var buffer = CellBuffer(width: 30, height: 3)
+        let rect = Rect(x: 0, y: 0, width: 30, height: 3)
+        Layout.measureAndPlace(graph: graph.root!, in: rect)
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+        #expect(buffer.text(row: 0).hasSuffix("[end]") && buffer.text(row: 0).count == 30,
+                "\(buffer.rowTexts)")
+    }
+
     @Test func theLabelIsOneTabStop() {
         let harness = Harness()
         harness.frame()

@@ -853,7 +853,10 @@ def storybook_spacer_pushes_edges(app: Client) -> None:
     """HStack{Text, Spacer, Text} — [left] + [right] appear on the same
     row, separated by ≥5 blank cells. Catches Spacer flex regressions."""
     app.goto_page("Spacer")
-    for row in app.preview_text().split("\n"):
+    # The box by its corners: the preview spans the pane, wider than the
+    # fixed rect `preview_text` reads.
+    _, rows = app.boxed_rows("Preview")
+    for row in rows:
         l = row.find("[left]")
         r = row.find("[right]")
         if l >= 0 and r >= 0:
@@ -2112,13 +2115,25 @@ def coder_the_review_follows_the_working_tree(app: Client) -> None:
     assert_true(CODER_REVIEW_NOTE in app.text(), "its content should show as additions")
 
 
-def coder_down_shows_the_next_files_diff(app: Client) -> None:
+def coder_the_review_stacks_every_files_change(app: Client) -> None:
+    """Every file's change is in one scroll under its own header, so more
+    than one is in view at once, as in Claude Code's panel."""
+    _coder_change_the_project(app)
+    text = _coder_open_review_on(app, "2 files changed")
+    assert_true(CODER_REVIEW_ADDED_LINE in text and CODER_REVIEW_NOTE in text,
+                f"both changes should be in view; screen:\n{text}")
+    assert_true("notes.md  (untracked)" in text, "a file git does not track is marked so")
+
+
+def coder_a_click_on_a_files_header_folds_its_change(app: Client) -> None:
     _coder_change_the_project(app)
     _coder_open_review_on(app, "2 files changed")
-    app.send_key("down")
+    x, y = _coder_find(app, "▾ Sources/App.swift")
+    app.mouse_click(x + 4, y)
     text = app.text()
-    assert_true(CODER_REVIEW_NOTE in text and CODER_REVIEW_ADDED_LINE not in text,
-                "Down should show the second file's diff in place of the first's")
+    assert_true("▸ Sources/App.swift" in text and CODER_REVIEW_ADDED_LINE not in text,
+                f"the click should fold that file's change; screen:\n{text}")
+    assert_true(CODER_REVIEW_NOTE in text, "the other file's change stays open")
 
 
 def coder_arrows_switch_the_review_source(app: Client) -> None:
@@ -2212,10 +2227,11 @@ def coder_clicking_the_summary_folds_the_files(app: Client) -> None:
     x, y = _coder_find(app, "2 files changed")
     app.mouse_click(x, y)
     text = app.text()
-    assert_true("▸ 2 files changed" in text and "notes.md" not in text,
+    # Listed, and again over its section below: folded, only the section.
+    assert_true("▸ 2 files changed" in text and text.count("notes.md") == 1,
                 f"the click should fold the list; screen:\n{text}")
     app.mouse_click(x, y)
-    assert_true("notes.md" in app.text(), "a second click should unfold it")
+    assert_true(app.text().count("notes.md") == 2, "a second click should unfold it")
 
 
 def coder_wheel_burst_keeps_running(app: Client) -> None:
@@ -2777,7 +2793,10 @@ CASES: list[SmokeCase] = [
               project_files=CODER_REVIEW_PROJECT, git_repo=True),
     SmokeCase("coder.the_review_follows_the_working_tree", "Coder", coder_the_review_follows_the_working_tree,
               project_files=CODER_REVIEW_PROJECT, git_repo=True),
-    SmokeCase("coder.down_shows_the_next_files_diff", "Coder", coder_down_shows_the_next_files_diff,
+    SmokeCase("coder.the_review_stacks_every_files_change", "Coder", coder_the_review_stacks_every_files_change,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.a_click_on_a_files_header_folds_its_change", "Coder",
+              coder_a_click_on_a_files_header_folds_its_change,
               project_files=CODER_REVIEW_PROJECT, git_repo=True),
     SmokeCase("coder.arrows_switch_the_review_source", "Coder", coder_arrows_switch_the_review_source,
               project_files=CODER_REVIEW_PROJECT, git_repo=True),

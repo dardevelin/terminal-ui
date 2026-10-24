@@ -279,7 +279,12 @@ public enum Layout {
         guard case .frame(_, _, _, _, _, _, let alignment) = effect,
               alignment != .topLeading else { return rect }
 
-        let width = min(rect.width, GraphMeasurer.measureWidth(child))
+        // A child that takes the width it is offered takes the frame's, as
+        // in SwiftUI, where a frame proposes its size: placed at its natural
+        // width instead, a row's Spacer had nothing to grow into.
+        let width = GraphRenderer.takesOfferedWidth(child)
+            ? rect.width
+            : min(rect.width, GraphMeasurer.measureWidth(child))
         let height = min(rect.height,
                          GraphMeasurer.measureHeight(child, proposedWidth: max(1, width)))
         return Rect(
