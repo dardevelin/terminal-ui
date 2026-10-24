@@ -55,6 +55,12 @@ def a_synthesized_decoder_is_not_ours_to_document() -> None:
     assert checker.naked_pages([page("CellSlice/init(from:)", "Initializer")]) == []
 
 
+def a_macro_projection_is_not_ours_to_document() -> None:
+    # `@TaskLocal` writes `$currentNode`; newer DocC publishes it, older
+    # DocC does not, and neither gives it a line to comment.
+    assert checker.naked_pages([page("GraphContext/$currentNode", "Type Property")]) == []
+
+
 def a_hand_written_initializer_still_needs_words() -> None:
     [finding] = checker.naked_pages([page("MarkdownListItem/init(blocks:)", "Initializer")])
     assert finding.startswith("MarkdownListItem/init(blocks:)"), finding
@@ -71,6 +77,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("a documented page passes", a_documented_page_passes),
     ("an article is not a symbol", an_article_is_not_a_symbol),
     ("a synthesized decoder is not ours to document", a_synthesized_decoder_is_not_ours_to_document),
+    ("a macro's projection is not ours to document", a_macro_projection_is_not_ours_to_document),
     ("a hand-written initializer still needs words", a_hand_written_initializer_still_needs_words),
     ("warnings are counted", warnings_are_counted),
 ]
