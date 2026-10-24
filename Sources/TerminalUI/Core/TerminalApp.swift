@@ -599,7 +599,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // thread of its own, not a task: blocked for the app's whole life, a
         // task would hold one of the cooperative pool's few threads for good.
         let wake = self.wake
+        // The signals the app handles go to the input thread alone, which
+        // waits for the bytes their handlers write.
+        let signalMask = Terminal.blockWakingSignals()
+        defer { Terminal.restoreSignalMask(signalMask) }
         let inputThread = BlockingThread(name: "TerminalUI input") {
+            Terminal.unblockWakingSignals()
             // One source for the life of the task, reading in chunks: bytes a
             // read took past the event it was for are the next event's.
             var source = StdinByteSource(input: STDIN_FILENO, buffered: true, wakes: wakePipes.wakes)
