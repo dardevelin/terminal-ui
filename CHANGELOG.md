@@ -8,6 +8,18 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
+- **The tutorials teach 2.0, and every picture in them is made from their
+  own code.** The previews, chapter animations and cards had been made by
+  hand and showed 1.0; `tools/scripts/record_media.py` now records each from
+  the code step it illustrates, with the tapes in `tools/recordings/`. Along
+  the way the course was corrected: a prompt no longer quits on `q` (a task
+  called "quick fix" ended the app) and gives the list its arrows instead of
+  recalling history with them; the selection stays on rows the filter shows;
+  leaving the Tasks tab no longer reloads it over the user's changes; a
+  saved empty list stays empty; and the chart, focus and debug-tool
+  instructions match what 2.0 does. Each chapter's finished code is a
+  download now, so a chapter that builds on another links to its start.
+
 - **`swtui` is a product,** so an app's own package can drive the debug build
   it is running: `swift run swtui ctl screenshot` from the app's directory.
   As a bare target it ran only from this checkout.

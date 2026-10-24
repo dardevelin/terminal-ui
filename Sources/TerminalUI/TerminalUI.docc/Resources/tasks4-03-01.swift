@@ -65,10 +65,9 @@ struct TasksApp: TerminalAppProtocol {
     static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let keyEvent) = event {
             switch keyEvent.key {
-            // Letters belong to the text field — quit stays on q, but only
-            // when the draft is empty.
-            case .character("q") where store.draft.isEmpty: return false
-            // Esc still means quit — but only at the root. While a screen is
+            // Letters belong to the text field now, so no letter quits: q would
+            // end the app as the first letter of "quick fix". Ctrl+C always
+            // quits, and Esc does too — but only at the root. While a screen is
             // pushed the runtime hands Esc to the stack instead, which pops.
             case .escape: return false
             // The arrow and Enter cases are gone: the rows are focusable
@@ -144,7 +143,10 @@ struct TasksTab: TerminalView {
                     heightPolicy: .fixed(3),
                     onSubmit: { _ in store.addDraft() }
                 )
-                Text("type + Enter add   ↑↓ move   Enter open   q quit")
+                // The arrows move focus between the rows, so the prompt gives them
+                // up; Ctrl+P and Ctrl+N still recall what was typed before.
+                .textKeymap(.standard.merging([.keyboard(.up, []): [], .keyboard(.down, []): []]))
+                Text("type + Enter add   ↑↓ move   Enter open   esc quit")
                     .foreground(.gray)
             }
         }

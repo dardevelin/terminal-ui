@@ -62,6 +62,7 @@ jobs:
         run: |
           cp .github/pages/index.html docs-site/index.html
           cp assets/logo.svg docs-site/logo.svg
+          cp assets/demo.gif docs-site/demo.gif
 
       # Inside tutorials, reference links open in a slide-over panel instead
       # of navigating away — inject the enhancement into every SPA bootstrap
@@ -76,16 +77,20 @@ jobs:
           find docs-site -mindepth 2 -name index.html -print0 |
             xargs -0 sed -i "s|</body>|$snippet|"
 
-      # The tutorial's final step is a complete program; package it as the
-      # downloadable sample the landing page and tutorial link to. One
-      # source of truth — the tutorial resource itself. The swift image
-      # ships no zip binary — install it, as CI does for python3.
-      - name: Build sample project download
+      # Every chapter's last step is a complete program; each is packaged as
+      # a download — the starting point a later chapter links to — and the
+      # course's last, chapter 7's, is also the finished sample the landing
+      # page offers. One source of truth: the tutorial resources themselves.
+      # The swift image ships no zip binary — install it, as CI does for
+      # python3.
+      - name: Build sample project downloads
         run: |
           apt-get update -qq && apt-get install -y -qq zip
-          mkdir -p sample/Tasks/Sources/Tasks docs-site/downloads
-          cp Sources/TerminalUI/TerminalUI.docc/Resources/tasks-04-01.swift sample/Tasks/Sources/Tasks/main.swift
-          cat > sample/Tasks/Package.swift <<'MANIFEST'
+          mkdir -p docs-site/downloads
+          package() {  # step, zip name, what it is
+            rm -rf sample && mkdir -p sample/Tasks/Sources/Tasks
+            cp "Sources/TerminalUI/TerminalUI.docc/Resources/$1.swift" sample/Tasks/Sources/Tasks/main.swift
+            cat > sample/Tasks/Package.swift <<'MANIFEST'
           // swift-tools-version: 6.2
           import PackageDescription
 
@@ -103,16 +108,17 @@ jobs:
               ]
           )
           MANIFEST
-          cat > sample/Tasks/README.md <<'NOTE'
-          # Tasks — the TerminalUI tutorial app
-
-          The finished app from the "Build a task list" tutorial.
-
-              swift run
-
-          Keys: up/down or j/k to move, space or Enter to toggle, q to quit.
-          NOTE
-          (cd sample && zip -qr ../docs-site/downloads/build-a-task-list.zip Tasks)
+            printf '# Tasks — the TerminalUI tutorial app\n\n%s\n\n    swift run\n' "$3" > sample/Tasks/README.md
+            (cd sample && zip -qr "../docs-site/downloads/$2" Tasks)
+          }
+          package tasks-04-01  tasks-chapter-1.zip "The task list as chapter 1, Foundations, leaves it."
+          package tasks2-03-01 tasks-chapter-2.zip "The task list as chapter 2, Interaction, leaves it."
+          package tasks3-03-01 tasks-chapter-3.zip "The task list as chapter 3, Structure, leaves it."
+          package tasks4-03-01 tasks-chapter-4.zip "The task list as chapter 4, Navigation, leaves it."
+          package tasks5-03-01 tasks-chapter-5.zip "The task list as chapter 5, Data, leaves it."
+          package tasks6-03-01 tasks-chapter-6.zip "The task list as chapter 6, Production, leaves it."
+          package tasks7-03-01 tasks-chapter-7.zip "The task list as chapter 7, Architecture, leaves it."
+          package tasks7-03-01 build-a-task-list.zip "The finished app from the TerminalUI tutorials. Type and Enter to add a task, Up and Down to move, Enter on an empty prompt to toggle, Backspace on an empty prompt to delete, Tab between panes, 1 and 2 for tabs, Escape to quit."
 
       - uses: actions/upload-pages-artifact@v4
         with:

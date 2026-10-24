@@ -16,7 +16,15 @@ final class TaskStore {
     ]
     var selectedID = 1
     var tab = 0
-    var showCompleted = true
+    var showCompleted = true {
+        // Hiding the selected task would leave the selection — and the
+        // detail pane — on a row the reader cannot see.
+        didSet {
+            if !visibleTasks.contains(where: { $0.id == selectedID }) {
+                selectedID = visibleTasks.first?.id ?? selectedID
+            }
+        }
+    }
     var draft = ""
     var promptState = PromptInputState()
     private var nextID = 4
@@ -44,10 +52,13 @@ final class TaskStore {
     }
 
     func moveSelection(_ delta: Int) {
-        guard !tasks.isEmpty else { return }
-        let current = tasks.firstIndex { $0.id == selectedID } ?? 0
-        let next = min(max(current + delta, 0), tasks.count - 1)
-        selectedID = tasks[next].id
+        // Over the rows on screen: with completed tasks hidden, a step
+        // through `tasks` could land on one the reader cannot see.
+        let rows = visibleTasks
+        guard !rows.isEmpty else { return }
+        let current = rows.firstIndex { $0.id == selectedID } ?? 0
+        let next = min(max(current + delta, 0), rows.count - 1)
+        selectedID = rows[next].id
     }
 
     func toggleSelected() {
@@ -80,10 +91,9 @@ struct TasksApp: TerminalAppProtocol {
     static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let keyEvent) = event {
             switch keyEvent.key {
-            // Letters belong to the text field now — a global chord on a
-            // typeable key would fire while the user is writing a task.
-            // Quit stays on q, but only when the draft is empty.
-            case .character("q") where store.draft.isEmpty: return false
+            // Letters belong to the text field now, so no letter quits: q would
+            // end the app as the first letter of "quick fix". Escape quits, and
+            // Ctrl+C always does.
             case .escape: return false
             case .up: store.moveSelection(-1)
             case .down: store.moveSelection(1)
@@ -167,7 +177,10 @@ struct TasksSplit: TerminalView {
                 heightPolicy: .fixed(3),
                 onSubmit: { _ in store.addDraft() }
             )
-            Text("type + Enter add   click or Enter toggle   ↑↓ move   q quit")
+            // The arrows move the list's selection, so the prompt gives them
+            // up; Ctrl+P and Ctrl+N still recall what was typed before.
+            .textKeymap(.standard.merging([.keyboard(.up, []): [], .keyboard(.down, []): []]))
+            Text("type + Enter add   click or Enter toggle   ↑↓ move   esc quit")
                 .foreground(.gray)
         }
     }

@@ -164,8 +164,9 @@
                 dirty and the next frame re-renders what changed.
 
                 @Justification(reaction: "Right.") {
-                    Observation tracking is the only re-render trigger —
-                    the same model SwiftUI uses.
+                    Observation is what makes a view's content change: a
+                    view re-runs its body when state it read changes — the
+                    same model SwiftUI uses.
                 }
             }
 

@@ -1,5 +1,5 @@
 # vhs script for the README debug-tools GIF.
-# Regenerate with:  swift build && vhs assets/debug.tape
+# Regenerate with:  python3 tools/scripts/record_media.py readme
 #
 # vhs cannot send function keys, so the tape backgrounds a timed driver that
 # injects them through the app's own remote-control socket — the same
@@ -17,7 +17,7 @@ Set Padding 12
 Set Theme "Catppuccin Mocha"
 
 Hide
-Type `(sleep 3; B=.build/debug/swtui; until $B ctl ping; do sleep 0.3; done; $B ctl send-key f1; sleep 3; $B ctl send-key f2; sleep 3.5; $B ctl send-key f2; $B ctl send-key f3; sleep 3.5; $B ctl quit) >/dev/null 2>&1 & .build/debug/Demo`
+Type `(sleep 3; B=.build-recordings/app/debug/swtui; until $B ctl ping; do sleep 0.3; done; $B ctl send-key f1; sleep 3; $B ctl send-key f2; sleep 3.5; $B ctl send-key f2; $B ctl send-key f3; sleep 3.5; $B ctl quit) >/dev/null 2>&1 & .build-recordings/app/debug/Demo`
 Enter
 Sleep 1.5s
 Show

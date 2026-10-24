@@ -5,8 +5,9 @@
         asynchronously instead of appearing by magic, and you meet the
         debug tools that every TerminalUI debug build carries for free.
 
-        Continue from the third tutorial's finished code, or
-        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        This chapter continues from <doc:GiveItStructure>'s finished code —
+        the navigation and stats chapters were side roads — or
+        [download that code](https://dardevelin.github.io/terminal-ui/downloads/tasks-chapter-3.zip)
         as the base to edit.
 
         @Image(source: "demo-ch6.gif", alt: "The app loading, then a guarded delete with a confirmation dialog.")
@@ -33,11 +34,11 @@
                 `.confirmationDialog` binding reads is the one `onEvent`
                 checks to keep app bindings quiet while the dialog is up.
 
-                Backspace, not a letter: handled keys still reach the
-                focused ``PromptInput``, so a `d` chord would also type
-                itself into the draft — the same reasoning that gated `q`.
-                With an empty draft, Backspace has nothing to erase and is
-                free to mean "delete task". Press it: the dialog appears,
+                Backspace, not a letter: `onEvent` sees a key first and the
+                focused view after it, so with the ``PromptInput`` focused a
+                `d` chord would also type itself into the draft — the same
+                reason no letter quits. With an empty draft, Backspace has
+                nothing to erase and is free to mean "delete task". Press it: the dialog appears,
                 with focus on Cancel and Delete rendered in the theme's
                 destructive color.
 
@@ -97,13 +98,16 @@
                 the detail pane says "Loading…" while the load runs.
 
                 Then run the app and press **F1** — live frame stats float
-                over your UI. **F2** opens the debug panel; **F3** drops an
+                over your UI. **F2** opens the debug panel, and each press
+                after shows its next view — the graph tree, the frame
+                timeline, the input log — then closes it; **F3** drops an
                 inspector you can move over any cell to see which view
-                owns it. From another shell, `swift run swtui ctl
-                screenshot` captures the app's cells over its per-process
-                socket, and `swtui ctl tree` prints the live view graph —
-                the same tools work on any TerminalUI app you will ever
-                build, including this one, with zero setup.
+                owns it. From another shell in the same directory,
+                `swift run swtui ctl cells` prints the app's screen over its
+                per-process socket, and `swift run swtui ctl tree` prints
+                the live view graph as JSON — the same tools work on any
+                TerminalUI app you will ever build, including this one,
+                with zero setup.
 
                 @Code(name: "main.swift", file: "tasks6-03-01.swift") {
                     @Image(source: "preview-tasks6-03-01.png", alt: "The finished app: a checked-off task rendered dim, a yellow open count, and the detail pane showing done in green.")

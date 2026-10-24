@@ -48,7 +48,7 @@
         Tables, sparklines, bars, and gauges — choosing the display form
         that fits what the number means.
 
-        @Image(source: "card-ch5.png", alt: "A stats tab: table, sparkline, and bar chart.")
+        @Image(source: "card-ch5.png", alt: "A stats tab: table, sparkline, bar chart, and gauge.")
 
         @TutorialReference(tutorial: "doc:ShowTheNumbers")
     }

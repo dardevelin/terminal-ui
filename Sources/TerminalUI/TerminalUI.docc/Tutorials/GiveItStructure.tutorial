@@ -56,7 +56,10 @@
                 the prompt and the key hints move below it, full width.
 
                 Move the selection with the arrows: the detail follows,
-                because both panes read the same store.
+                because both panes read the same store. At launch the tab
+                bar holds focus — that is what lets `1` and `2` switch tabs —
+                and the first Down moves focus out of it, into the prompt,
+                so from then on a digit types.
 
                 @Code(name: "main.swift", file: "tasks3-02-01.swift") {
                     @Image(source: "preview-tasks3-02-01.png", alt: "List on the left, a detail pane for the selected task on the right.")
@@ -83,9 +86,10 @@
                 ``Section`` and one ``Toggle`` — "Show completed" — and
                 filter the list through a `visibleTasks` computed property.
 
-                Press `2` for Settings, toggle it, press `1`: completed
-                tasks are gone from the list. State in one place, three
-                views reading it.
+                Launch it, press `2` for Settings, Tab to the toggle and
+                press Space, then Shift+Tab back to the tab bar and press
+                `1`: completed tasks are gone from the list. State in one
+                place, three views reading it.
 
                 @Code(name: "main.swift", file: "tasks3-03-01.swift") {
                     @Image(source: "preview-tasks3-03-01.png", alt: "The Settings tab: a form with a Show completed toggle.")

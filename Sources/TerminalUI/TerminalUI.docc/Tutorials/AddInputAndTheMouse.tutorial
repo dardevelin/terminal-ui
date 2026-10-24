@@ -30,10 +30,16 @@
                 an `addDraft()` that turns the draft into a task, and the
                 ``PromptInput`` above the footer with `onSubmit` calling it.
 
-                Two keys changed meaning. The `j`/`k` chords are gone —
-                letters must reach the field, a rule the framework's own
-                apps follow. And `q` now quits only when the draft is
-                empty: the same key that types the letter q mid-task.
+                Some keys changed meaning. Letters must reach the field, so
+                the `j`/`k` chords are gone, and so is quitting on `q` — a
+                task called "quick fix" would end the app at its first
+                letter; Escape quits, and Ctrl+C always does. Space types a
+                space now, so toggling waits for the next section. The
+                arrows still move the selection, but in a ``PromptInput``
+                they recall earlier entries, and every key reaches `onEvent`
+                first and the focused view after — so the prompt gives them
+                up through `.textKeymap`, where an empty list unbinds a key,
+                and keeps Ctrl+P and Ctrl+N for history.
 
                 @Code(name: "main.swift", file: "tasks2-01-01.swift") {
                     @Image(source: "preview-tasks2-01-01.png", alt: "Typing a new task into the prompt at the bottom of the app.")
@@ -57,10 +63,10 @@
                 the closure captures the row's own task, so there is
                 nothing to look up.
 
-                Enter gets a second job behind the same gate as `q`: with
-                a non-empty draft it submits; with nothing typed it
-                toggles the selected task. One key, two meanings, cleanly
-                separated by state.
+                Enter gets a second job, gated on the draft: with text
+                typed it submits; with nothing typed it toggles the
+                selected task. One key, two meanings, cleanly separated by
+                state.
 
                 @Code(name: "main.swift", file: "tasks2-02-01.swift") {
                     @Image(source: "preview-tasks2-02-01.png", alt: "A task toggled done from the keyboard, checkbox filled.")
@@ -105,8 +111,9 @@
 
                 @Justification(reaction: "Right.") {
                     Global chords must never claim keys a focused text
-                    input needs; gate them on state, or use non-typing
-                    keys like arrows.
+                    input needs. Even a non-typing key can collide: the
+                    prompt wanted the arrows for history, and had to give
+                    them up through its keymap.
                 }
             }
 
@@ -124,8 +131,10 @@
                 Arrow keys are faster than `j`/`k`.
 
                 @Justification(reaction: "Not quite.") {
-                    Speed is not the issue — conflict is. Arrows survive
-                    because they don't type characters.
+                    Speed is not the issue — conflict is. Arrows type no
+                    character, but the prompt still had a use for them;
+                    the app keeps them only because the prompt's keymap
+                    gives them up.
                 }
             }
         }
