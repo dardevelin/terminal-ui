@@ -144,6 +144,17 @@ public protocol Theme: Sendable {
     /// that something already went wrong.
     var destructive: Color { get }
 
+    // MARK: Changes
+
+    /// The ground of a line a change added — a diff's `+` row. Tinted by
+    /// ``success`` but near the ground, so code on it stays legible; the
+    /// row's colour says it changed, which leaves its text free to be
+    /// highlighted.
+    var addedBackground: Color { get }
+    /// The ground of a line a change removed — a diff's `-` row, tinted by
+    /// ``error``.
+    var removedBackground: Color { get }
+
     // MARK: Code
 
     /// Colours for highlighted source: ``CodeView``, fenced blocks in
@@ -206,6 +217,12 @@ private enum RampStep {
     /// different colour rather than a different height is too far.
     static let raised = 0.08
     static let overlay = 0.16
+    /// A changed line's ground, mixed from the ground toward its status:
+    /// far enough to read as added or removed at a glance, near enough the
+    /// ground that the code on it keeps its contrast. Mixed this way round
+    /// so a ground that cannot be resolved stays the ground — no tint —
+    /// rather than becoming the full status colour behind the code.
+    static let changeSurface = 0.2
 }
 
 /// Defaults for every role, so a conforming type states only what it changes.
@@ -316,6 +333,13 @@ extension Theme {
     public var destructive: Color { error }
 
     /// Unstated: ``SyntaxTheme/defaultDark``.
+    /// Unstated: ``background`` 0.2 of the way toward ``success``. On the
+    /// terminal's own ground, which cannot be mixed, it is that ground — no
+    /// tint.
+    public var addedBackground: Color { derived(background, toward: success, RampStep.changeSurface) }
+    /// Unstated: ``background`` 0.2 of the way toward ``error``.
+    public var removedBackground: Color { derived(background, toward: error, RampStep.changeSurface) }
+
     public var syntax: SyntaxTheme { .defaultDark }
 }
 
@@ -413,6 +437,12 @@ public struct DefaultTheme: Theme {
     public var busy: Color = .cyan
     /// Red, matching ``error``.
     public var destructive: Color = .red
+
+    /// The terminal's own ground: a full status colour behind code would
+    /// bury it, and there is no ground to mix a quieter one from.
+    public var addedBackground: Color = .default
+    /// The terminal's own ground, as ``addedBackground`` is.
+    public var removedBackground: Color = .default
 
     /// ``SyntaxTheme/defaultDark``.
     public var syntax: SyntaxTheme = .defaultDark

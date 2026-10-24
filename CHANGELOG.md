@@ -6,6 +6,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **A diff's changed rows take their status as a ground, and its code can be
+  highlighted.** `Theme` gains `addedBackground` and `removedBackground`: by
+  default the ground mixed a fifth of the way toward `success` or `error`,
+  which on the terminal's own ground — the stock theme — is no tint at all.
+  `DiffView` paints each changed row's whole width in them, and
+  `.diffLanguage(_:)` highlights the code with the lexer registered for the
+  language, the `+` and `-` keeping the status colour. A theme that states
+  its own tint is used as stated.
+
 ## [2.0.1] — 2026-10-24 — Runs on small machines
 
 A patch release: nothing a 2.0.0 app writes changes. An app on a machine
