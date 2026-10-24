@@ -68,6 +68,10 @@ jobs:
 
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py
+      # Every tutorial code step builds without a warning, in a package of
+      # its own against this checkout, and does what its captions say.
+      - name: Every tutorial step builds and behaves as its page says
+        run: python3 tools/scripts/check_tutorial_steps.py
 
   macos:
     name: macOS (Swift 6.2)
@@ -161,6 +165,10 @@ jobs:
 
       - name: Behavioural smoke suite
         run: python3 tools/scripts/storybook_smoke.py
+      # Every tutorial code step builds without a warning, in a package of
+      # its own against this checkout, and does what its captions say.
+      - name: Every tutorial step builds and behaves as its page says
+        run: python3 tools/scripts/check_tutorial_steps.py
 
   thread-sanitizer:
     name: Thread Sanitizer (macOS)

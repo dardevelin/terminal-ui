@@ -17,6 +17,8 @@ same bridge our smoke tests use. Steps:
 7. ``storybook_walk.py`` — every Storybook page, as CI walks them.
 8. ``integration_suite.py`` — every ``test_*`` script.
 9. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
+10. ``check_tutorial_steps.py`` — every tutorial step builds and does what
+    its captions say.
 
 Each failure prints the relevant output and exits with code 2 so the
 stop-hook surfaces it to the conversation.
@@ -53,6 +55,9 @@ INTEGRATION_TIMEOUT_SECONDS = 600
 WALK_TIMEOUT_SECONDS = 180
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
+# The steps build as a package of their own, the framework with them: minutes
+# the first time, seconds after.
+TUTORIAL_TIMEOUT_SECONDS = 600
 # The first run builds the baseline release and the package in a directory
 # of their own; later runs reuse both.
 API_TIMEOUT_SECONDS = 600
@@ -221,6 +226,12 @@ def run_gate() -> int:
         print(out.rstrip())
     if rc != 0:
         return fail("smoke regression(s) above")
+
+    rc, out = step("tutorial steps", [sys.executable, "tools/scripts/check_tutorial_steps.py"],
+                   TUTORIAL_TIMEOUT_SECONDS)
+    if rc != 0:
+        return fail("a tutorial step does not build, or no longer does what its page says", out)
+    print(f"tutorial steps: {out.strip().splitlines()[-1]}")
     return 0
 
 
