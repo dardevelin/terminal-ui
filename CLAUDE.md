@@ -79,19 +79,23 @@ python3 tools/scripts/storybook_smoke.py   # behavioural suite vs every example 
                                            # cases run side by side, half the cores; --jobs N
 python3 tools/scripts/integration_suite.py # every test_* script, in turn
 python3 tools/scripts/tool_tests.py        # tests of the checks and the harness verdict
+python3 tools/scripts/check_api_compat.py  # public API vs the last release (own .build-api/)
 
 # The whole local gate in one command: tooling tests and repository checks →
-# build → test → walk → integration scripts → smoke. Skips itself when the turn touched no .swift / .py file. Builds
-# into .build-automation/.
+# build (tests included, warnings as errors) → public API → test → walk →
+# integration scripts → smoke. Skips itself when the turn touched no .swift /
+# .py file. Builds into .build-automation/.
 python3 tools/scripts/verify.py
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
 # locks a build directory for the length of a build or test, so sharing .build
 # left the developer's `swift run Coder` waiting on "Another instance of
 # SwiftPM is already running". TERMINALUI_BUILD_DIR points every harness
-# script, and the swtui they call, at the automation build.
-swift build --scratch-path .build-automation
-swift test  --scratch-path .build-automation
+# script, and the swtui they call, at the automation build. verify.py builds
+# it with warnings as errors; a build there without the variable changes a
+# build setting and recompiles everything, so set it by hand too.
+TUI_WARNINGS_AS_ERRORS=1 swift build --scratch-path .build-automation
+TUI_WARNINGS_AS_ERRORS=1 swift test  --scratch-path .build-automation
 TERMINALUI_BUILD_DIR=.build-automation/debug python3 tools/scripts/storybook_smoke.py
 
 # Thread Sanitizer: run before merging anything that touches a lock, a
@@ -109,7 +113,8 @@ reason the harness cannot run inside the container — PTYs work fine there.
 
 **CI runs the same matrix twice, Linux (`swift:6.2` container) and macOS 15**,
 and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
-warnings-as-errors release → `storybook_walk.py` → `integration_suite.py`,
+warnings-as-errors release (the debug one builds the tests too: plain
+`swift build` never compiles a test target) → `storybook_walk.py` → `integration_suite.py`,
 which finds and runs every `test_*` script in `tools/scripts/`
 (name a new one that way and it gates) → `storybook_smoke.py`. What one app
 driven by one client shows is a smoke case, its terminal, environment and
@@ -118,7 +123,11 @@ or verify.py itself is an integration script. Ahead of
 the build, the macOS leg runs `tool_tests.py` — every `tools/tests/test_*.py`,
 the tests of the checks and of the runner's exit verdict
 (`tools/terminalui/verdict.py`) — then the escape-hatch, colour-literal and
-tracker-id checks. The PTY
+tracker-id checks, and after the release build `check_api_compat.py`: Swift's
+API digester against the release `tools/api-breakage-allowlist.txt` names as
+its baseline, failing on any break the list does not accept with why, and on
+any listed break that no longer occurs. After a major release is tagged, the
+baseline becomes the new tag and the list empties. The PTY
 harness is a merge gate, not a local nicety — a change that renders differently
 fails CI even with a green `swift test`. The Linux leg `apt-get install`s
 python3 first; the macOS leg selects the newest Xcode on the image, because the

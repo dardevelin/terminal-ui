@@ -8,11 +8,13 @@ same bridge our smoke tests use. Steps:
 2. Tear down any leftover debug apps + stale sockets.
 3. Repository checks: the tooling's own tests (``tool_tests.py``), then the
    escape-hatch, colour-literal and tracker-id checks they test.
-4. ``swift build`` — compile check (release build is deferred to CI).
-5. ``swift test`` — unit + component suites.
-6. ``storybook_walk.py`` — every Storybook page, as CI walks them.
-7. ``integration_suite.py`` — every ``test_*`` script.
-8. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
+4. ``swift build --build-tests`` with warnings as errors — the library, the
+   examples and the tests (release build is deferred to CI).
+5. ``check_api_compat.py`` — the public API against the last release.
+6. ``swift test`` — unit + component suites.
+7. ``storybook_walk.py`` — every Storybook page, as CI walks them.
+8. ``integration_suite.py`` — every ``test_*`` script.
+9. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
 
 Each failure prints the relevant output and exits with code 2 so the
 stop-hook surfaces it to the conversation.
@@ -20,6 +22,7 @@ stop-hook surfaces it to the conversation.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -48,6 +51,9 @@ INTEGRATION_TIMEOUT_SECONDS = 600
 WALK_TIMEOUT_SECONDS = 180
 BUILD_TIMEOUT_SECONDS = 180
 TEST_TIMEOUT_SECONDS = 180
+# The first run builds the baseline release and the package in a directory
+# of their own; later runs reuse both.
+API_TIMEOUT_SECONDS = 600
 
 
 def dirty_relevant_sources() -> bool:
@@ -142,10 +148,21 @@ def run_gate() -> int:
         if rc != 0:
             return fail(failure, out)
 
-    rc, out = step("swift build", ["swift", "build", "--scratch-path", SCRATCH_PATH],
+    # Warnings as errors for every build in the gate, tests included: a
+    # warning in a test target passed `swift build`, which never compiles
+    # one. Set once for the whole run, since a build setting that changes
+    # between steps rebuilds the directory from scratch.
+    os.environ["TUI_WARNINGS_AS_ERRORS"] = "1"
+    rc, out = step("swift build",
+                   ["swift", "build", "--build-tests", "--scratch-path", SCRATCH_PATH],
                    BUILD_TIMEOUT_SECONDS)
     if rc != 0:
         return fail("swift build failed", out)
+
+    rc, out = step("public API", [sys.executable, "tools/scripts/check_api_compat.py"],
+                   API_TIMEOUT_SECONDS)
+    if rc != 0:
+        return fail("the public API breaks what the last release offered", out)
 
     rc, out = step("swift test", ["swift", "test", "--scratch-path", SCRATCH_PATH],
                    TEST_TIMEOUT_SECONDS)
