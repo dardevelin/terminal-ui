@@ -26,6 +26,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An app runs on a machine with one or two cores.** The input loop blocks
+  in `poll()` between events for the app's whole life, and it ran as a
+  detached task, holding one of Swift's cooperative pool threads — one per
+  core — for good. Where the pool is a thread or two wide, timers and every
+  task the app started waited behind it: on a one-thread pool an app did
+  not even answer its control socket, and on CI's three-core macOS runner
+  the test suite, which starts several such loops at once, deadlocked. The
+  input loop has a thread of its own now.
 - **Storybook's code panel wraps cleanly, and is highlighted.** It wrapped
   code by hand to a width it guessed, and a continuation line overflowed it:
   `Text("row 2").foreground(.yellow)` broke into a fragment, a blank line and

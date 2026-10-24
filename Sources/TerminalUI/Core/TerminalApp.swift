@@ -584,9 +584,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         // Blocks in one poll() between events — no timeout — so an idle app's
         // input thread sleeps; a resize arrives the same way, from SIGWINCH.
-        // Cancellation cannot interrupt poll(); the shutdown pipe ends it.
+        // Nothing interrupts poll() but the shutdown pipe, which ends it. A
+        // thread of its own, not a task: blocked for the app's whole life, a
+        // task would hold one of the cooperative pool's few threads for good.
         let wake = self.wake
-        let inputTask = Task.detached {
+        let inputThread = BlockingThread(name: "TerminalUI input") {
             // One source for the life of the task, reading in chunks: bytes a
             // read took past the event it was for are the next event's.
             var source = StdinByteSource(input: STDIN_FILENO, buffered: true, wakes: wakePipes.wakes)
@@ -795,14 +797,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
             }
         }
 
-        // Wake the input task out of its blocked poll() so quit doesn't hang.
+        // Wake the input thread out of its blocked poll() so quit doesn't hang.
         wakePipes.shutdown.signal()
         // `run()` clears the pipe's descriptor and closes the pipe as soon as
-        // this returns, and the input task reads both on its own thread.
+        // this returns, and the input thread reads both.
         // Unwaited, it could poll a closed descriptor, or one the cleanup that
         // follows has reopened, or fall back to a blocking read of a stdin the
         // shell has taken back.
-        await inputTask.value
+        await inputThread.value
         for t in timerTasks { t.cancel() }
     }
 
