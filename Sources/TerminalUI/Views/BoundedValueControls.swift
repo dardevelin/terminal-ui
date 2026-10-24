@@ -140,8 +140,10 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
             // is padded to the shared column, not to `label.count`.
             let offset = relativeX - labelCells
             let lastIndex = defaultTrackWidth - 1
-            let clamped = max(0, min(lastIndex, offset))
-            value.set(scale.value(atFraction: V(clamped) / V(lastIndex)))
+            // Only the track sets the value. Clamped instead, a click on the
+            // label set the minimum and one on the value text the maximum.
+            guard (0...lastIndex).contains(offset) else { return }
+            value.set(scale.value(atFraction: V(offset) / V(lastIndex)))
         }
         .onKeyPress { event in
             guard interactive, !event.isModifiedNavigation else { return .ignored }
@@ -167,7 +169,7 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
 
     /// Cells the label occupies as drawn, which is where the track begins.
     private var labelWidthAsDrawn: Int {
-        FormLabel.rendered(text: label ?? "", width: formLabelWidth, stacks: formStacksRows).count
+        FormLabel.rendered(text: label ?? "", width: formLabelWidth, stacks: formStacksRows).displayWidth
     }
 
     /// The track with the thumb placed proportionally.
@@ -218,7 +220,7 @@ public struct Stepper<V: Strideable>: TerminalView where V.Stride: SignedNumeric
     /// shared column — the mistake that made `Slider`'s track clicks land far
     /// from where the user pressed.
     private var labelWidthAsDrawn: Int {
-        FormLabel.rendered(text: label, width: formLabelWidth, stacks: formStacksRows).count
+        FormLabel.rendered(text: label, width: formLabelWidth, stacks: formStacksRows).displayWidth
     }
 
     /// Creates a stepper over a closed range.

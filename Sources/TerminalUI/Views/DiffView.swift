@@ -353,6 +353,7 @@ public struct DiffView: TerminalView {
             content
                 .focusable()
                 .onKeyPress(scrollHandler())
+                .onScrollWheel(wheelHandler())
         } else {
             content
         }
@@ -385,34 +386,46 @@ public struct DiffView: TerminalView {
         }
     }
 
-    private func scrollHandler() -> (KeyEvent) -> KeyEventResult {
-        { [lines, $scrollOffset] event in
-            guard !event.isModifiedNavigation else { return .ignored }
-            let total = lines.count
-            let pageSize = 20
+    /// The farthest the window goes: the last row on the last line of the
+    /// view. Scrolling to the last row alone left a screen of blank space
+    /// under a diff's final line.
+    private var maxScrollOffset: Int {
+        max(0, contentRowCount - visibleHeight)
+    }
 
+    private func scrollHandler() -> (KeyEvent) -> KeyEventResult {
+        { [maxScrollOffset, visibleHeight, $scrollOffset] event in
+            guard !event.isModifiedNavigation else { return .ignored }
+            // A page keeps one row of the last in view, as a pager does.
+            let pageSize = max(1, visibleHeight - 1)
+            let current = $scrollOffset.get()
+            let next: Int
             switch event.key {
-            case .up:
-                $scrollOffset.set(max(0, $scrollOffset.get() - 1))
-                return .handled
-            case .down:
-                $scrollOffset.set(max(0, min(total - 1, $scrollOffset.get() + 1)))
-                return .handled
-            case .pageUp:
-                $scrollOffset.set(max(0, $scrollOffset.get() - pageSize))
-                return .handled
-            case .pageDown:
-                $scrollOffset.set(max(0, min(total - 1, $scrollOffset.get() + pageSize)))
-                return .handled
-            case .home:
-                $scrollOffset.set(0)
-                return .handled
-            case .end:
-                $scrollOffset.set(max(0, total - 1))
-                return .handled
-            default:
-                return .ignored
+            case .up: next = current - 1
+            case .down: next = current + 1
+            case .pageUp: next = current - pageSize
+            case .pageDown: next = current + pageSize
+            case .home: next = 0
+            case .end: next = maxScrollOffset
+            default: return .ignored
             }
+            $scrollOffset.set(max(0, min(maxScrollOffset, next)))
+            return .handled
+        }
+    }
+
+    private func wheelHandler() -> (Key) -> Bool {
+        { [maxScrollOffset, $scrollOffset] key in
+            let current = $scrollOffset.get()
+            let next: Int
+            switch key {
+            case .up: next = max(0, current - 1)
+            case .down: next = min(maxScrollOffset, current + 1)
+            default: return false
+            }
+            guard next != current else { return false }
+            $scrollOffset.set(next)
+            return true
         }
     }
 
@@ -435,7 +448,7 @@ public struct DiffView: TerminalView {
     /// syntax colours and only the `+` / `-` takes the status colour.
     @TerminalViewBuilder
     private func renderUnified(lineNumberWidth: Int) -> some TerminalView {
-        let visible = Array(lines.dropFirst(scrollOffset).prefix(visibleHeight))
+        let visible = Array(lines.dropFirst(min(scrollOffset, maxScrollOffset)).prefix(visibleHeight))
         if visible.isEmpty {
             Text("(no changes)")
         } else {
@@ -483,7 +496,7 @@ public struct DiffView: TerminalView {
         // 20-row viewport processes 20 pairs per render, not 5,000.
         // The unified path already does this; the side-by-side path
         // had silently fallen out of step.
-        let visible = pairs.dropFirst(scrollOffset).prefix(visibleHeight)
+        let visible = pairs.dropFirst(min(scrollOffset, maxScrollOffset)).prefix(visibleHeight)
         // Every left half as wide as the widest in view, in cells, so the
         // separator is one column down the whole diff.
         let leftWidth = visible.map { 1 + $0.leftText.displayWidth }.max() ?? 1

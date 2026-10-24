@@ -287,6 +287,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// when the terminal geometry changes.
     private var renderBuffer = CellBuffer(width: 0, height: 0)
     private var needsRender: Bool = true
+    /// The wheel moved content under a pointer that stayed still: what it
+    /// hovers is worked out again once the next frame has placed it, as a
+    /// move would. Left alone, a row scrolled away stayed hovered — and its
+    /// `.onHover` entered — until the pointer next moved.
+    private var hoverIsStale = false
     private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
     /// Raised by every source of work, so the frame loop sleeps while there
@@ -721,7 +726,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     case .moved, .drag:
                         pendingPointer = .motion(mouseEvent)
                     case .scrollUp, .scrollDown:
-                        let key: Key = mouseEvent.kind == .scrollUp ? .up : .down
+                        // Shift turns the wheel sideways, as terminals and
+                        // platforms take it; a tilting wheel's ticks arrive
+                        // that way too (see `InputParser.parseSgrMouse`).
+                        let sideways = mouseEvent.modifiers.contains(.shift)
+                        let key: Key = mouseEvent.kind == .scrollUp
+                            ? (sideways ? .left : .up)
+                            : (sideways ? .right : .down)
                         if case .wheel(key, mouseEvent.x, mouseEvent.y, let notches) = pendingPointer {
                             pendingPointer = .wheel(key: key, x: mouseEvent.x, y: mouseEvent.y, notches: notches + 1)
                         } else {
@@ -861,9 +872,12 @@ public final class TerminalRuntime<RootView: TerminalView> {
         guard let root = graph.root else { return }
         switch pending {
         case .wheel(let key, let x, let y, let notches):
-            let at = MouseEvent(kind: key == .up ? .scrollUp : .scrollDown, x: x, y: y)
-            _ = focusEngine.routeWheel(KeyEvent(key: key), root: root, x: x, y: y,
-                                       policy: mousePolicy(at: at), steps: notches * linesPerWheelNotch)
+            let at = MouseEvent(kind: key == .up || key == .left ? .scrollUp : .scrollDown, x: x, y: y)
+            focusEngine.mousePosition = (x, y)
+            if focusEngine.routeWheel(KeyEvent(key: key), root: root, x: x, y: y,
+                                      policy: mousePolicy(at: at), steps: notches * linesPerWheelNotch) {
+                hoverIsStale = true
+            }
         case .motion(let mouseEvent):
             focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: root,
                                        policy: mousePolicy(at: mouseEvent))
@@ -1165,6 +1179,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
             Layout.measureAndPlace(graph: root, in: context.rect)
             GraphRenderer.render(root, into: &renderBuffer, context: context)
             GraphRenderer.reportScrollTargetVisibility(root: root)
+            if hoverIsStale {
+                hoverIsStale = false
+                let (x, y) = focusEngine.mousePosition
+                let hovered = focusEngine.mouseHoverID
+                focusEngine.applyMouseMove(x: x, y: y, root: root,
+                                           policy: mousePolicy(at: MouseEvent(kind: .moved, x: x, y: y)))
+                // Rects are placed by this frame's walk, so a changed hover
+                // is drawn by the next.
+                if focusEngine.mouseHoverID != hovered { needsRender = true }
+            }
         }
 
         // Focus indicators

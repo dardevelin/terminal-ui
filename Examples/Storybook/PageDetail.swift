@@ -582,6 +582,20 @@ struct PreviewPane: TerminalView {
                         state.hoverIndicator = isHovering ? "hovering" : "left"
                     }
                 Text("hover indicator: \(state.hoverIndicator)").foreground(.gray)
+                // Scroll under a still pointer: the row now beneath it is
+                // the one hovered, without the pointer moving.
+                ScrollView(.vertical) {
+                    VStack(spacing: 0) {
+                        ForEachWithID(0..<12, id: \.self) { row in
+                            Text("scrolling row \(row)")
+                                .onHover { [state] isHovering in
+                                    if isHovering { state.hoveredScrollRow = "row \(row)" }
+                                }
+                        }
+                    }
+                }
+                .frame(height: 3)
+                Text("under the pointer: \(state.hoveredScrollRow)").foreground(.gray)
             }
         case .mouseFocusPolicy:
             VStack {

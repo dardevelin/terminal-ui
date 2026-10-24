@@ -29,6 +29,8 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Registered click handlers — keyed by NodeID.
     var clickHandlers: [NodeID: (_ relativeX: Int, _ relativeY: Int) -> Void] = [:]
+    /// Views that scroll themselves under the wheel; see `routeWheel`.
+    private var wheelHandlers: [NodeID: (Key) -> Bool] = [:]
 
     /// Registered hover handlers — keyed by NodeID. Fired on hover
     /// state transitions only (cursor enters or leaves the rect).
@@ -217,6 +219,9 @@ public final class FocusEngine: @unchecked Sendable {
         if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
             clickHandlers[node.id] = clickHandler
         }
+        if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
+            wheelHandlers[node.id] = wheelHandler
+        }
         var prefersDefaultFocus = prefersDefaultFocus
         if case .modifier(.prefersDefaultFocus(true)) = node.kind {
             prefersDefaultFocus = true
@@ -308,6 +313,19 @@ public final class FocusEngine: @unchecked Sendable {
     /// click, a hover or the wheel any more than it answers Tab.
     private func pointerScope(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
         Presentations.pointerScope(x: x, y: y, root: root, topmost: topmostPresentation)
+    }
+
+    /// Where the wheel at (x, y) may reach. As `pointerScope`, but beside an
+    /// inspector the content there: the panel holds the keyboard and a click
+    /// beside it reaches nothing, but the wheel only moves the view, and the
+    /// transcript beside a review is there to be read. A dialog's dim still
+    /// takes it.
+    private func wheelScope(x: Int, y: Int, root: AttributeNode) -> AttributeNode? {
+        if let topmost = topmostPresentation, topmost.parent?.presentationPlacement == .trailing,
+           !topmost.rect.contains(x: x, y: y) {
+            return root
+        }
+        return pointerScope(x: x, y: y, root: root)
     }
 
 
@@ -573,30 +591,31 @@ public final class FocusEngine: @unchecked Sendable {
         return false
     }
 
-    /// Route a wheel event to whatever owns it under the cursor.
+    /// Route a wheel event to whatever moves for it under the cursor.
     ///
-    /// A focusable under the cursor gets first refusal, because some of them
-    /// scroll their own contents — a `List`, a `TextArea`, anything holding
-    /// its own offset. When one declines the event, the wheel belongs to the
-    /// deepest scroll region under the cursor, the same rule that applies when
-    /// there is no focusable there at all.
+    /// The wheel climbs from the deepest view under the cursor toward the
+    /// window, and the first that moves takes it: a scroll view on the
+    /// wheel's axis, or a view that scrolls itself — a `List`, a `TreeView`,
+    /// a `DiffView` — through its wheel handler. Only moving counts, so a
+    /// list at its end hands the wheel to the scroll view holding it, and a
+    /// vertical wheel over a horizontal scroller reaches the vertical one
+    /// around it.
     ///
-    /// Trying only the focusable and stopping is what left a `Form` unable to
-    /// scroll under the mouse: every row is focusable and no row does anything
-    /// with a wheel, so the event died on a control that had already refused
-    /// it while the scroll view enclosing it never heard about it. The user
-    /// reads that as "the wheel works over the gaps and not over the rows".
+    /// It is never delivered as a key. Sent to views as ↑/↓ it moved a
+    /// list's selection and a text field's caret, cleared a selection, and
+    /// reached every `.onKeyPress(.up)` above the pointer — a prompt's
+    /// history recall among them — none of which could tell the wheel from
+    /// the keyboard.
     ///
-    /// The policy decides where it lands: the focusable under the cursor for
-    /// `.clickToLock` and `.hoverFollows`, the keyboard-focused view for
-    /// `.clickOnly`, nowhere for `.disabled`.
+    /// `event.key` is the direction: `.up`/`.down`, or `.left`/`.right` for
+    /// a sideways wheel. The policy decides where the climb starts: under
+    /// the cursor for `.clickToLock` and `.hoverFollows`, at the keyboard
+    /// focus for `.clickOnly`, nowhere for `.disabled`.
     ///
-    /// `steps` delivers a run of identical wheel events at once: the target
+    /// `steps` delivers a run of identical wheel events at once: the climb
     /// is found once — the tree walks that find it are the cost — and moved
-    /// step by step, so a `List` at its end hands the rest to the scroll view
-    /// holding it. A step nothing takes changes nothing, so the steps after it
-    /// would be refused too, and the run ends there. Returns whether anything
-    /// took the event.
+    /// step by step, so the rest of a run passes outward when an inner view
+    /// reaches its end. Returns whether anything moved.
     public func routeWheel(
         _ event: KeyEvent,
         root: AttributeNode,
@@ -605,39 +624,42 @@ public final class FocusEngine: @unchecked Sendable {
         policy: MouseFocusPolicy,
         steps: Int = 1
     ) -> Bool {
-        let focusable = wheelTargetID(x: x, y: y, root: root, policy: policy)
-            .flatMap { findNode(id: $0, in: root) }
-        // `.disabled` drops auto-routed wheel events by policy, and
-        // `wheelTargetID` has already returned nil for it.
-        let scrollNode = policy == .disabled ? nil : findScrollNodeAt(x: x, y: y, root: root)
-
-        // Deepest under the cursor gets first refusal. A control inside a
-        // scroll view is deeper than it, so the control is asked first and a
-        // form row that ignores the wheel falls through to the pane holding
-        // it. A scroll view inside a focusable *area* is the other way round:
-        // the area exists so the engine has something to cycle to, and a wheel
-        // over the list it contains means scroll the list — not "operate the
-        // area", which for a list means moving its selection.
-        let focusableFirst = depth(of: focusable) >= depth(of: scrollNode)
-
-        func step() -> Bool {
-            if focusableFirst, let id = focusable?.id,
-               routeKeyEvent(event, root: root, startingFrom: id) {
-                return true
-            }
-            if let scrollNode {
-                let before = scrollNode.scrollOffset
-                dispatchWheelToScrollNode(scrollNode, event: event)
-                if scrollNode.scrollOffset != before { return true }
-            }
-            if !focusableFirst, let id = focusable?.id {
-                return routeKeyEvent(event, root: root, startingFrom: id)
-            }
-            return false
+        let wantedAxis: ScrollAxis
+        switch event.key {
+        case .up, .down: wantedAxis = .vertical
+        case .left, .right: wantedAxis = .horizontal
+        default: return false
         }
+        let start: AttributeNode?
+        switch policy {
+        case .disabled:
+            start = nil
+        case .clickOnly:
+            start = keyboardFocusID.flatMap { findNode(id: $0, in: root) }
+        case .clickToLock, .hoverFollows:
+            start = wheelScope(x: x, y: y, root: root).flatMap { findDeepestRectContaining(x: x, y: y, in: $0) }
+        }
+
+        // What may move for the wheel, innermost first.
+        var movers: [() -> Bool] = []
+        var node = start
+        while let current = node {
+            if let handler = wheelHandlers[current.id] {
+                movers.append { handler(event.key) }
+            }
+            if case .layout(let info) = current.kind, case .scroll(let axis) = info.kind, axis == wantedAxis {
+                movers.append {
+                    let before = current.scrollOffset
+                    _ = _ScrollMath.mutateOffset(event: event, axis: axis, node: current)
+                    return current.scrollOffset != before
+                }
+            }
+            node = current.parentWithinPresentation
+        }
+
         var taken = false
         for _ in 0..<steps {
-            guard step() else { break }
+            guard movers.contains(where: { $0() }) else { break }
             taken = true
         }
         return taken
@@ -690,6 +712,7 @@ public final class FocusEngine: @unchecked Sendable {
         if hoverHandlers[node.id] != nil, node.rect.contains(x: x, y: y) {
             result.insert(node.id)
         }
+        guard Self.pointerReachesContent(of: node, x: x, y: y) else { return }
         for child in node.children {
             collectHoveredHandlers(x: x, y: y, in: child, into: &result)
         }
@@ -735,10 +758,20 @@ public final class FocusEngine: @unchecked Sendable {
                 innerHandler(x - inner.rect.x, y - inner.rect.y)
                 return
             }
-            if let handler = findClickHandler(for: target, root: root) {
-                let relX = x - target.rect.x
-                let relY = y - target.rect.y
-                handler(relX, relY)
+            // The control's own click handler, then its own activation — a
+            // Button in a clickable row runs the Button — and only then a
+            // handler above it, given the point in its own view. Asking above
+            // first ran the row's handler for the Button, with coordinates
+            // measured from whatever had taken focus.
+            if let handler = clickHandlers[target.id] {
+                handler(x - target.rect.x, y - target.rect.y)
+            } else if let ownHandler = keyHandlers[target.id],
+                      GraphContext.$currentRoutingNodeID.withValue(target.id, operation: {
+                          ownHandler(KeyEvent(key: .activate))
+                      }) == .handled {
+                return
+            } else if let (owner, handler) = findClickHandlerAbove(target) {
+                handler(x - owner.rect.x, y - owner.rect.y)
             } else {
                 // Synthesize `.activate` (not `.enter`) so click-to-
                 // activate works for Button without inserting newlines
@@ -797,7 +830,7 @@ public final class FocusEngine: @unchecked Sendable {
     private func findScrollAffordanceAt(x: Int, y: Int, in node: AttributeNode)
         -> (AttributeNode, ScrollAxis, Rect)?
     {
-        for child in node.children.reversed() {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findScrollAffordanceAt(x: x, y: y, in: child) { return hit }
         }
         guard case .layout(let info) = node.kind, case .scroll(let axis) = info.kind,
@@ -828,7 +861,7 @@ public final class FocusEngine: @unchecked Sendable {
     private func findClickableAt(x: Int, y: Int, in node: AttributeNode)
         -> (AttributeNode, (_ relX: Int, _ relY: Int) -> Void)?
     {
-        for child in node.children.reversed() {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findClickableAt(x: x, y: y, in: child) {
                 return hit
             }
@@ -841,12 +874,15 @@ public final class FocusEngine: @unchecked Sendable {
         return nil
     }
 
-    private func findClickHandler(for node: AttributeNode, root: AttributeNode) -> ((_ relativeX: Int, _ relativeY: Int) -> Void)? {
-        if let handler = clickHandlers[node.id] { return handler }
+    /// The nearest click handler above `node`, with the node it belongs to,
+    /// whose rect the click's coordinates are measured from.
+    private func findClickHandlerAbove(_ node: AttributeNode)
+        -> (AttributeNode, (_ relativeX: Int, _ relativeY: Int) -> Void)?
+    {
         var ancestor = node.parent
-        while let a = ancestor {
-            if let handler = clickHandlers[a.id] { return handler }
-            ancestor = a.parent
+        while let owner = ancestor {
+            if let handler = clickHandlers[owner.id] { return (owner, handler) }
+            ancestor = owner.parent
         }
         return nil
     }
@@ -914,6 +950,12 @@ public final class FocusEngine: @unchecked Sendable {
         keyHandlers[nodeID] = handler
     }
 
+    /// Register a wheel handler for a node. Called during graph construction
+    /// by the framework's self-scrolling views.
+    func registerWheelHandler(for nodeID: NodeID, handler: @escaping (Key) -> Bool) {
+        wheelHandlers[nodeID] = handler
+    }
+
     /// Register a click handler for a node. Called during graph construction.
     public func registerClickHandler(for nodeID: NodeID, handler: @escaping (_ relativeX: Int, _ relativeY: Int) -> Void) {
         clickHandlers[nodeID] = handler
@@ -967,6 +1009,7 @@ public final class FocusEngine: @unchecked Sendable {
     public func clearHandlers() {
         keyHandlers.removeAll(keepingCapacity: true)
         clickHandlers.removeAll(keepingCapacity: true)
+        wheelHandlers.removeAll(keepingCapacity: true)
         hoverHandlers.removeAll(keepingCapacity: true)
         pasteHandlers.removeAll(keepingCapacity: true)
         // hoveredHandlerIDs is intentionally NOT cleared — it tracks
@@ -1043,7 +1086,7 @@ public final class FocusEngine: @unchecked Sendable {
         let containsHere = node.rect.contains(x: x, y: y)
         // Children walked deepest-first so a leaf's rect wins over an
         // ancestor's larger rect.
-        for child in node.children.reversed() {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findDeepestRectContaining(x: x, y: y, in: child) {
                 return hit
             }
@@ -1051,9 +1094,20 @@ public final class FocusEngine: @unchecked Sendable {
         return containsHere ? node : nil
     }
 
+    /// Whether the pointer at (x, y) may reach into `node`'s children. A
+    /// scroll view shows its content only through its viewport: rows
+    /// scrolled out of it keep rects outside it, over whatever is drawn
+    /// above and below, and a lookup that walked into them found a row
+    /// nobody could see. Every pointer lookup asks here, and `HitTest` —
+    /// what `swtui ctl probe` reports — prunes the same way.
+    static func pointerReachesContent(of node: AttributeNode, x: Int, y: Int) -> Bool {
+        guard case .layout(let info) = node.kind, case .scroll = info.kind else { return true }
+        return node.rect.contains(x: x, y: y)
+    }
+
     /// Find the deepest focusable node whose rect contains the point.
     func findFocusableAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        for child in node.children.reversed() {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let found = findFocusableAt(x: x, y: y, in: child) {
                 return found
             }
@@ -1131,7 +1185,7 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     private func findScrollNode(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        for child in node.children.reversed() {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findScrollNode(x: x, y: y, in: child) {
                 return hit
             }

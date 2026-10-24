@@ -72,6 +72,7 @@ final class StorybookState {
     var hunkFileName: String = "example.swift"
     // Hover/policy demo state
     var hoverIndicator: String = "(not hovering)"
+    var hoveredScrollRow: String = "none"
     // Action graph demo state
     var actionFired: Int = 0
     // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit

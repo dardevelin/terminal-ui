@@ -34,8 +34,43 @@ All notable changes to TerminalUI are documented here. Format based on
   language, the `+` and `-` keeping the status colour. A theme that states
   its own tint is used as stated.
 
+### Changed
+
+- **The wheel is not a key.** It climbs from the view under the pointer to
+  the first that moves for it — a scroll view on its axis, or a `List`,
+  `TreeView`, `DiffView` or `TextArea` — and only moving counts, so the end
+  of an inner list hands it to the view holding it, and a vertical wheel
+  over a horizontal scroller reaches the vertical one around it. Delivered
+  as ↑/↓ it moved a list's selection and a text field's caret, cleared a
+  selection, and reached every `.onKeyPress(.up)` above the pointer. Over a
+  `List`, `TreeView` or `TextArea` it now scrolls the view and leaves the
+  selection and caret where they are. An app that read the wheel from
+  `.onKeyPress` reads `MouseEvent`s in `onEvent` instead.
+- **Shift turns the wheel sideways**, and a tilting wheel's ticks arrive as
+  shift-wheel, until `MouseEventKind` can grow cases of its own in 3.0.
+- **The wheel reaches the content beside an open `.inspector`**; clicks
+  still do not.
+
 ### Fixed
 
+- **The pointer reaches only what a viewport shows.** Rows scrolled out of a
+  scroll view kept rects over the header and footer around it, and a click,
+  a wheel or a hover there found a row nobody could see.
+- **The mouse protocol is read as xterm writes it.** Sideways wheel ticks
+  (codes 66, 67) were both read as wheel-down; the back and forward buttons
+  (code 128 and up) as a left click; a zero coordinate as −1; and a report
+  cut off by typing swallowed keys until a literal `M` arrived.
+- **A `Button` in a clickable row runs its own action**, and a click handler
+  above the control clicked gets coordinates in its own view rather than in
+  the control's.
+- **A `Slider` click on its label or its value no longer sets the minimum or
+  maximum**, and `Slider`, `Stepper` and `TabView` measure labels in cells,
+  so a label of wide characters puts the clickable parts where they are
+  drawn.
+- **A `DiffView` stops at its last page** instead of scrolling into blank
+  rows, and pages by its own height.
+- **Hover follows content scrolled under a still pointer**, instead of
+  staying on the row scrolled away until the pointer moved.
 - **A `List` given no `scroll` binding keeps its own offset**, as its
   documentation said it did. It worked its window out from the top every
   frame: moving the selection back up snapped the window to the top while

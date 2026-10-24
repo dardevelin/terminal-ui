@@ -390,3 +390,38 @@ private final class StepperClickModel {
     var value = 4
     var binding: Binding<Int> { Binding(get: { self.value }, set: { self.value = $0 }) }
 }
+
+// A slider's click lands on its track; the label before it and the value
+// after it are not part of it. A click on the label set the minimum and one
+// on the value text the maximum, clamped from offsets that were never on the
+// track.
+@Suite("Slider clicks off the track")
+@MainActor
+struct SliderClickTests {
+
+    private func clicked(_ label: String, atColumnOf needle: String) -> Double {
+        let model = Value(50)
+        let engine = FocusEngine()
+        let graph = AttributeGraph()
+        buildWithEngine(engine, graph, Slider(value: model.doubleBinding, in: 0...100, label: label))
+        let buffer = render(graph)
+        // The cell the needle starts in: a wide label takes two cells a
+        // character, so its column in characters would be short.
+        let cells = (0..<buffer.width).first { buffer[$0, 0].character == needle.first! }!
+        engine.handleMouseClick(x: cells, y: 0, root: graph.root!)
+        return model.double
+    }
+
+    @Test func aClickOnTheLabelLeavesTheValue() {
+        #expect(clicked("Volume", atColumnOf: "Volume") == 50)
+    }
+
+    @Test func aClickOnTheValueTextLeavesTheValue() {
+        #expect(clicked("Volume", atColumnOf: "50") == 50)
+    }
+
+    @Test func aWideLabelPutsTheTrackWhereItIsDrawn() {
+        // The track's first cell, after a label of two-cell characters.
+        #expect(clicked("音量", atColumnOf: "─") == 0)
+    }
+}

@@ -259,8 +259,10 @@ struct TabBar: TerminalView {
     /// Every tab when they all fit; otherwise as many as fit around the
     /// selected one, with a marker on each side that has more.
     static func layout(tabs: [TabDescriptor], selected: Int, availableWidth: Int) -> Layout {
-        // Each label is drawn with a cell of padding either side.
-        let labelWidths = tabs.map { $0.label.count + 2 }
+        // Each label is drawn with a cell of padding either side. Measured in
+        // cells: a label of wide characters counted by characters put every
+        // tab after it short of where it is drawn.
+        let labelWidths = tabs.map { $0.label.displayWidth + 2 }
         let totalWidth = labelWidths.reduce(0, +) + max(0, tabs.count - 1) * separatorWidth
 
         let visible = totalWidth <= availableWidth

@@ -265,6 +265,56 @@ struct InputParserMouseTests {
         expectMouse(event, kind: .press(.left), x: 0, y: 0, modifiers: .shift)
     }
 
+    // xterm ctlseqs, "Mouse Tracking": wheel buttons 4–7 arrive as codes
+    // 64–67 — up, down, left, right. A sideways tick is reported as the
+    // shift-wheel terminals already send for horizontal scrolling, until
+    // MouseEventKind can grow its own cases in a major release.
+    @Test("sideways wheel left (code 66) is shift + wheel up")
+    func wheelLeft() {
+        expectMouse(parse(Array("\u{1B}[<66;5;5M".utf8)), kind: .scrollUp, x: 4, y: 4, modifiers: .shift)
+    }
+
+    @Test("sideways wheel right (code 67) is shift + wheel down")
+    func wheelRight() {
+        expectMouse(parse(Array("\u{1B}[<67;5;5M".utf8)), kind: .scrollDown, x: 4, y: 4, modifiers: .shift)
+    }
+
+    // Buttons 8–11 (back, forward) set bit 128. Read through the two low
+    // bits alone they were a left press: the back button clicked.
+    @Test("an extra button (code 128) is not a click")
+    func extraButton() {
+        let event = parse(Array("\u{1B}[<128;5;5M".utf8))
+        if case .mouse(let mouse) = event {
+            Issue.record("expected no mouse event, got \(mouse)")
+        }
+    }
+
+    // Coordinates are 1-based on the wire; 0 is not a cell.
+    @Test("a zero coordinate is not a cell")
+    func zeroCoordinate() {
+        let event = parse(Array("\u{1B}[<0;0;5M".utf8))
+        if case .mouse(let mouse) = event {
+            Issue.record("expected no mouse event, got \(mouse)")
+        }
+    }
+
+    @Test("the last column and row map to the last cell")
+    func lastCell() {
+        expectMouse(parse(Array("\u{1B}[<0;80;24M".utf8)), kind: .press(.left), x: 79, y: 23)
+    }
+
+    // Only digits and ';' may come between `ESC[<` and the final M/m. A
+    // sequence cut off and followed by typing must not swallow keys until
+    // a literal M happens along.
+    @Test("a sequence broken by another byte ends there")
+    func brokenSequence() {
+        var source = ArrayByteSource(Array("\u{1B}[<0;5x".utf8) + Array("hi".utf8))
+        let first = InputParser.parseEvent(from: &source)
+        if case .mouse = first { Issue.record("expected the broken sequence to be no mouse event") }
+        let next = InputParser.parseEvent(from: &source)
+        expectKey(next, .character("h"))
+    }
+
     @Test("ctrl-click (button code 16)")
     func ctrlClick() {
         let event = parse([0x1B, 0x5B, 0x3C, 0x31, 0x36, 0x3B, 0x31, 0x3B, 0x31, 0x4D])

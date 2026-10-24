@@ -247,6 +247,9 @@ public class AttributeNode: @unchecked Sendable {
     /// the same principle containment stamping uses.
     public var _keyHandler: ((KeyEvent) -> KeyEventResult)?
     public var _clickHandler: ((Int, Int) -> Void)?
+    /// Scrolls this view one wheel step toward the given arrow, and says
+    /// whether it moved; see `View.onScrollWheel`.
+    var _wheelHandler: ((Key) -> Bool)?
 
     /// Memoised: true iff this node OR any descendant has `.viewBody`
     /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`

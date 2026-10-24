@@ -46,8 +46,16 @@ private enum SGRMouse {
     static let ctrlBit = 16
     static let motionFlag = 32
     static let scrollFlag = 64
+    /// Buttons 8–11 — back, forward and the like — set this bit. Read
+    /// through the two low bits alone they came out as a left press.
+    static let extendedButtonFlag = 128
     static let buttonMask = 0x43
     static let buttonNumberMask = 3
+    /// Wheel buttons 4–7 in their two low bits: up, down, left, right.
+    static let wheelLeft = 2
+    /// Only digits and the separator come between `ESC[<` and the final
+    /// byte, and no real report is longer than this.
+    static let longestParameters = 32
 }
 
 // MARK: - xterm Modifier Encoding
@@ -570,6 +578,13 @@ public enum InputParser {
                 break
             }
             rawBytes.append(byte)
+            // A byte that cannot be part of a report ends it here: a
+            // sequence cut off and followed by typing swallowed every key
+            // until a literal M or m came along.
+            let isParameter = (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) || byte == UInt8(ascii: ";")
+            if !isParameter || rawBytes.count > SGRMouse.longestParameters {
+                return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), UInt8(ascii: "<")] + rawBytes)))
+            }
         }
 
         let paramStr = String(rawBytes.map { Character(UnicodeScalar($0)) })
@@ -579,7 +594,12 @@ public enum InputParser {
         }
 
         let buttonCode = parts[0]
-        let column = parts[1] - 1  // SGR coordinates are 1-indexed, we use 0-indexed
+        // Coordinates are 1-based on the wire: 0 names no cell, and an extra
+        // button has nothing here to stand for.
+        guard parts[1] >= 1, parts[2] >= 1, buttonCode & SGRMouse.extendedButtonFlag == 0 else {
+            return .key(KeyEvent(key: .unknown([ASCII.escape, UInt8(ascii: "["), UInt8(ascii: "<")] + rawBytes + [finalByte])))
+        }
+        let column = parts[1] - 1
         let row = parts[2] - 1
 
         var mods = KeyModifiers()
@@ -593,8 +613,19 @@ public enum InputParser {
         let kind: MouseEventKind
 
         if buttonCode & SGRMouse.scrollFlag != 0 {
-            let scrollDirection = buttonIdentity & SGRMouse.buttonNumberMask
-            kind = scrollDirection == 0 ? .scrollUp : .scrollDown
+            // A sideways tick is reported as the shift-wheel terminals send
+            // for horizontal scrolling — left as up, right as down — until
+            // `MouseEventKind` can grow cases of its own in a major release.
+            switch buttonIdentity & SGRMouse.buttonNumberMask {
+            case 0: kind = .scrollUp
+            case 1: kind = .scrollDown
+            case SGRMouse.wheelLeft:
+                kind = .scrollUp
+                mods.insert(.shift)
+            default:
+                kind = .scrollDown
+                mods.insert(.shift)
+            }
         } else if buttonCode & SGRMouse.motionFlag != 0 {
             let buttonNumber = buttonIdentity & SGRMouse.buttonNumberMask
             if buttonNumber == 3 {

@@ -17,6 +17,13 @@ extension OnKeyPressModifier: _FocusGraphModifier {
     }
 }
 
+extension OnScrollWheelModifier: _FocusGraphModifier {
+    func registerWithFocusEngine(node: AttributeNode) {
+        node._wheelHandler = handler
+        GraphContext.currentFocusEngine?.registerWheelHandler(for: node.id, handler: handler)
+    }
+}
+
 extension OnClickModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
         node._clickHandler = handler

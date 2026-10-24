@@ -127,6 +127,10 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     @TerminalState var selectedIndex: Int = 0
     @TerminalState var scrollOffset: Int = 0
     @TerminalState var initialized: Bool = false
+    /// The selected row the window last moved to show. The window follows
+    /// the selection only when it changes, so the wheel can scroll the tree
+    /// without the next frame pulling it back.
+    @TerminalState var followedIndex: Int? = nil
     @TerminalEnvironment(\.theme) private var theme
 
     /// Creates a tree over hierarchical data.
@@ -168,6 +172,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         let selectedIdxBinding = $selectedIndex
         let scrollBinding = $scrollOffset
         let initBinding = $initialized
+        let followedBinding = $followedIndex
         let theme = theme
         // An explicit `visibleCount` is a declared size — no GeometryReader,
         // so the tree measures fixed instead of greedily filling its stack.
@@ -178,7 +183,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                 expandedBinding: expandedBinding,
                 selectedIdxBinding: selectedIdxBinding,
                 scrollBinding: scrollBinding,
-                initBinding: initBinding
+                initBinding: initBinding,
+                followedBinding: followedBinding
             )
         } else {
             GeometryReader { size in
@@ -188,7 +194,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                     expandedBinding: expandedBinding,
                     selectedIdxBinding: selectedIdxBinding,
                     scrollBinding: scrollBinding,
-                    initBinding: initBinding
+                    initBinding: initBinding,
+                    followedBinding: followedBinding
                 )
             }
         }
@@ -200,7 +207,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         expandedBinding: Binding<Set<AnyHashableID>>,
         selectedIdxBinding: Binding<Int>,
         scrollBinding: Binding<Int>,
-        initBinding: Binding<Bool>
+        initBinding: Binding<Bool>,
+        followedBinding: Binding<Int?>
     ) -> some TerminalView {
         // Auto-expand root items on first render
         let _ = {
@@ -218,6 +226,10 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         let expanded = expandedBinding.get()
         let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
         let total = rows.count
+        // The offset that shows the last row at the bottom: the farthest the
+        // wheel may take the window.
+        let maxOffset = TreeViewHelpers.adjustScroll(scrollOffset: 0, selectedIndex: max(0, total - 1),
+                                                     total: total, visibleCount: visibleCount)
 
         // Sync selectedIndex bounds and scroll (side effects, not views)
         let currentIndex = min(max(selectedIdxBinding.get(), 0), max(total - 1, 0))
@@ -228,12 +240,16 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             if let sel = selection, total > 0 {
                 sel.set(rows[currentIndex].item.id)
             }
-            let offset = TreeViewHelpers.adjustScroll(
-                scrollOffset: scrollBinding.get(),
-                selectedIndex: currentIndex,
-                total: total,
-                visibleCount: visibleCount
-            )
+            var offset = min(max(0, scrollBinding.get()), maxOffset)
+            if followedBinding.get() != currentIndex {
+                offset = TreeViewHelpers.adjustScroll(
+                    scrollOffset: offset,
+                    selectedIndex: currentIndex,
+                    total: total,
+                    visibleCount: visibleCount
+                )
+                followedBinding.set(currentIndex)
+            }
             if offset != scrollBinding.get() {
                 scrollBinding.set(offset)
             }
@@ -265,6 +281,19 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         }
         .frame(minHeight: FrameDimension(visibleCount))
         .focusable()
+        // The wheel scrolls the window and leaves the selection alone.
+        .onScrollWheel { key in
+            let current = scrollBinding.get()
+            let next: Int
+            switch key {
+            case .up: next = max(0, current - 1)
+            case .down: next = min(maxOffset, current + 1)
+            default: return false
+            }
+            guard next != current else { return false }
+            scrollBinding.set(next)
+            return true
+        }
         .onClick { [selection, expandedBinding, selectedIdxBinding, scrollBinding] _, relY in
             let expanded = expandedBinding.get()
             let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)

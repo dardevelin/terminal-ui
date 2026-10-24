@@ -45,6 +45,10 @@ public struct TextAreaState: Equatable, Sendable {
     public var selection: TextAreaSelection?
     /// Desired column preserved during vertical movement (sticky column).
     public var desiredCol: Int?
+    /// The caret the view last moved to show. The view follows the caret
+    /// only when it moves, so the wheel can scroll the text away from it
+    /// without the next frame pulling the view back. Not part of `==`.
+    var followedCursor: TextAreaCursor?
     /// Bounded undo/redo history. Each text-mutating key path pushes
     /// a snapshot of (text, cursor, selection) BEFORE the mutation.
     /// Ctrl+Z restores from `undoStack.undo()`; Ctrl+Shift+Z restores
@@ -313,23 +317,42 @@ public struct TextArea: TerminalView {
         // display-row-keyed so wrapped chunks of an earlier line
         // count toward the scroll position. `.logical` mode keeps the
         // legacy logical-row scroll for backward-compat.
-        let scrollOffset: Int
+        let rowCount: Int
         switch arrowMode {
         case .logical:
-            scrollOffset = Self.clampScroll(
-                cursor: cursor,
-                currentScroll: editorState.scrollOffset,
-                visibleHeight: visibleHeight
-            )
+            rowCount = lines.count
         case .display:
-            scrollOffset = Self.clampScrollDisplayRows(
-                cursorLogicalRow: cursor.row,
-                cursorLogicalCol: cursor.col,
-                lines: lines,
-                currentScroll: editorState.scrollOffset,
-                visibleHeight: visibleHeight,
-                wrapWidth: wrapWidth
-            )
+            rowCount = Self.cursorDisplayRow(cursorLogicalRow: max(0, lines.count - 1),
+                                             cursorLogicalCol: lines.last?.count ?? 0,
+                                             lines: lines, wrapWidth: wrapWidth) + 1
+        }
+        // The farthest the wheel takes the view: the last row at the bottom.
+        let maxScroll = max(0, rowCount - visibleHeight)
+        var scrollOffset = min(max(0, editorState.scrollOffset), maxScroll)
+        // A caret that moved brings the view to it; one that did not leaves
+        // the view wherever the wheel put it.
+        if editorState.followedCursor != cursor {
+            switch arrowMode {
+            case .logical:
+                scrollOffset = Self.clampScroll(
+                    cursor: cursor,
+                    currentScroll: editorState.scrollOffset,
+                    visibleHeight: visibleHeight
+                )
+            case .display:
+                scrollOffset = Self.clampScrollDisplayRows(
+                    cursorLogicalRow: cursor.row,
+                    cursorLogicalCol: cursor.col,
+                    lines: lines,
+                    currentScroll: editorState.scrollOffset,
+                    visibleHeight: visibleHeight,
+                    wrapWidth: wrapWidth
+                )
+            }
+            var followed = editorState
+            followed.followedCursor = cursor
+            followed.scrollOffset = scrollOffset
+            state.set(followed)
         }
         let rows = TextAreaRows(
             lines: lines,
@@ -342,7 +365,22 @@ public struct TextArea: TerminalView {
             highlighter: highlighter,
             theme: theme ?? appTheme.syntax
         )
-        return rows
+        // The wheel scrolls the text and leaves the caret and the selection
+        // alone; as arrows it moved the caret and cleared the selection.
+        return rows.onScrollWheel { [state] key in
+            var editor = state.get()
+            let current = min(max(0, editor.scrollOffset), maxScroll)
+            let next: Int
+            switch key {
+            case .up: next = max(0, current - 1)
+            case .down: next = min(maxScroll, current + 1)
+            default: return false
+            }
+            guard next != current else { return false }
+            editor.scrollOffset = next
+            state.set(editor)
+            return true
+        }
             .labelForeground(enabled: isEnabled, theme: appTheme)
             .focusable()
             .onKeyPress { [text, state, arrowMode, textEditing] event in
