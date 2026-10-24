@@ -392,8 +392,11 @@ exists.
   one until it returns, and on a small machine everything else waits — the
   input loop did this for an app's whole life. Blocking work goes on a
   thread of its own (`BlockingThread`, which also serves tests). verify.py
-  and CI run the suite once more with `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`
-  (a one-thread pool, macOS only), where any such block deadlocks.
+  runs the suite once more with `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1` (a
+  one-thread pool, macOS only), where any such block deadlocks. CI cannot:
+  the switch reaches SwiftPM, which deadlocks under it on the runner. There
+  the three-core runner's own small pool, and each job's 60-minute limit,
+  are what turn a block into a failure.
 - **Concurrency escape hatches are listed.** `@unchecked Sendable` and
   `nonisolated(unsafe)` switch the compiler's checking off, and every data race
   this framework shipped sat behind one. Prefer what the compiler checks:
