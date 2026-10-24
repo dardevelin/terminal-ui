@@ -44,17 +44,11 @@ class CaseFailed(Exception):
     """Raised inside a case to signal a deliberate failure with a message."""
 
 
-class CaseSkipped(Exception):
-    """Raised inside a case that cannot observe what it checks in the build
-    under test, with the reason."""
-
-
 @dataclass
 class CaseResult:
     name: str
     ok: bool
     detail: str
-    skipped: bool = False
 
 
 @dataclass
@@ -111,8 +105,6 @@ class SmokeCase:
             return CaseResult(self.name, False, f"AppExitedBadly: {objection}")
         except CaseFailed as failure:
             return CaseResult(self.name, False, str(failure))
-        except CaseSkipped as reason:
-            return CaseResult(self.name, True, f"skipped: {reason}", skipped=True)
         except Exception as exc:  # noqa: BLE001
             return CaseResult(self.name, False, f"{type(exc).__name__}: {exc}")
 
@@ -2372,6 +2364,22 @@ def navigation_invoke_action_quits_an_idle_app(app: Client) -> None:
     assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after app.quit")
 
 
+def navigation_sigterm_quits_an_idle_app(app: Client) -> None:
+    """A terminating signal quits an app that has gone idle, through the
+    teardown the runner checks. Regression: under Thread Sanitizer, which
+    runs a handler at once only on a thread waiting in a call it intercepts,
+    the signal reached the main thread, asleep in a wait it does not; the
+    handler waited for the thread to wake, which an idle app's never did, and
+    SIGTERM was ignored until the app was killed. The runner stops every app
+    this way, and a case whose app went idle before the stop failed."""
+    import signal
+
+    time.sleep(IDLE_SETTLE_SECONDS)
+    app.expected_exit_signal = signal.SIGTERM
+    os.kill(app.pid, signal.SIGTERM)
+    assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after SIGTERM")
+
+
 # ---------------------------------------------------------------------------
 # The harness contract: input is drawn before the next reply
 #
@@ -2430,9 +2438,6 @@ def coder_sigterm_during_an_unfinished_paste_quits_at_once(app: Client) -> None:
     waited them out."""
     import signal
 
-    if app.sanitizer == "thread":
-        raise CaseSkipped("Thread Sanitizer runs a signal's handler only once the thread it reached "
-                          "calls into its runtime, and an idle app's threads sleep in the kernel")
     app.write_raw(b"\x1b[200~half a paste", unfinished=True)
     # Not a settle: the parser has to be inside the paste when the signal
     # comes, and nothing it does there can be observed.
@@ -2706,6 +2711,7 @@ CASES: list[SmokeCase] = [
               navigation_an_idle_app_acts_on_remote_commands),
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
               navigation_invoke_action_quits_an_idle_app),
+    SmokeCase("navigation.sigterm_quits_an_idle_app", "Navigation", navigation_sigterm_quits_an_idle_app),
     SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
     SmokeCase("coder.sigterm_during_an_unfinished_paste_quits_at_once", "Coder",
               coder_sigterm_during_an_unfinished_paste_quits_at_once),
@@ -2891,8 +2897,6 @@ CASES: list[SmokeCase] = [
 
 
 def _tick(result: CaseResult) -> str:
-    if result.skipped:
-        return "–"
     return "✓" if result.ok else "✗"
 
 
@@ -2929,15 +2933,13 @@ def main(argv: list[str]) -> int:
     pool.shutdown()
 
     failed = [r for r in results if not r.ok]
-    skipped = [r for r in results if r.skipped]
-    if failed or skipped:
+    if failed:
         print()
-    for result in skipped + failed:
+    for result in failed:
         print(f"  {_tick(result)} {result.name:<40} {result.detail}")
 
     print()
-    passed = len(results) - len(failed) - len(skipped)
-    print(f"{passed}/{len(results)} cases passed" + (f", {len(skipped)} skipped" if skipped else ""))
+    print(f"{len(results) - len(failed)}/{len(results)} cases passed")
     return 0 if not failed else 1
 
 

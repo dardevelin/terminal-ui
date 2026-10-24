@@ -226,9 +226,10 @@ extension StdinByteSource {
             pollfd(fd: wakes.terminate, events: Int16(POLLIN), revents: 0),
             pollfd(fd: wakes.shutdown, events: Int16(POLLIN), revents: 0),
         ]
-        // The task's pool thread blocks the signals the app handles, so they
-        // reach it as pipe bytes; a poll() interrupted all the same returns
-        // EINTR, whatever SA_RESTART says, and that is not activity.
+        // The runtime's input thread takes the signals the app handles, and
+        // their handlers' bytes are the activity: the interrupted poll()
+        // returns EINTR, whatever SA_RESTART says (POSIX `poll`), and polls
+        // again to see them.
         var ready: Int32
         repeat {
             ready = poll(&fds, nfds_t(fds.count), timeoutMilliseconds)

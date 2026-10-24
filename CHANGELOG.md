@@ -61,6 +61,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An idle app built with Thread Sanitizer quits on SIGTERM.** The signal
+  reached the main thread, asleep in a wait TSan does not intercept, and TSan
+  held its handler until the thread woke, which an idle app's never did. The
+  signals the runtime handles — SIGINT, SIGTERM, SIGHUP, SIGWINCH — now go to
+  its input thread alone, which waits for what their handlers write; while
+  the app runs, they are blocked on the thread that called `run()`, and on
+  threads it starts.
 - **A stack holding a view that takes the width it is offered takes it
   too**, as in SwiftUI. An `HStack` with a `Spacer`, nested in another,
   stayed at its natural width, so what followed the `Spacer` never reached
