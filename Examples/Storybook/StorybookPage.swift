@@ -40,7 +40,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Primitives
     case text, gradient, forEach, subCell, timeline, asyncTask, capabilities
     // Input
-    case button, textInput, textArea, toggle, picker, slider, stepper, gauge, form, navigationStack, promptInput
+    case button, textInput, textArea, toggle, disclosureGroup, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
     case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView, markdown, codeView
     // Charts
@@ -296,6 +296,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 VStack {
                     Toggle("enabled", isOn: $flag)
                     Text("→ \\(flag ? "on" : "off")").foreground(.gray)
+                }
+                """)
+        case .disclosureGroup: return PageInfo(id: self, category: .input, name: "DisclosureGroup",
+            summary: "A label that folds its content away. Enter, Space or a click flips it; → opens, ← closes. Closed, the content takes no rows and what follows moves up — a pane of a stacked panel folds with one.",
+            code: """
+                DisclosureGroup(isExpanded: $showsFiles) {
+                    Text("Sources/App.swift")
+                    Text("README.md")
+                } label: {
+                    Text("2 files changed")
                 }
                 """)
         case .picker: return PageInfo(id: self, category: .input, name: "Picker",

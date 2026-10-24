@@ -272,6 +272,17 @@ struct PreviewPane: TerminalView {
                                       set: { state.toggleValue = $0 }))
                 Text("→ \(state.toggleValue ? "on" : "off")").foreground(.gray)
             }
+        case .disclosureGroup:
+            VStack {
+                DisclosureGroup(isExpanded: Binding(get: { state.disclosureExpanded },
+                                                    set: { state.disclosureExpanded = $0 })) {
+                    Text("  Sources/App.swift      +3 −1")
+                    Text("  README.md              +2 −0")
+                } label: {
+                    Text("2 files changed")
+                }
+                Text("— below: moves up when the group folds —").foreground(.gray)
+            }
         case .picker:
             Picker("Theme",
                    selection: Binding(get: { state.pickerTheme },
@@ -881,11 +892,13 @@ struct PreviewPane: TerminalView {
                     }
                 Text("content — still in view beside the panel").foreground(.gray)
             }
+            // The panel is as tall as the view it is declared on.
+            .frame(height: 8, alignment: .topLeading)
             .inspector(isPresented: Binding(get: { state.inspectorPresented },
                                             set: { state.inspectorPresented = $0 })) {
                 VStack {
                     Text("Inspector").bold()
-                    Text("A panel along the trailing edge.").foreground(.gray)
+                    Text("Beside the content.").foreground(.gray)
                     Text("  [ Close ]  ")
                         .focusable()
                         .onKeyPress { key in

@@ -175,38 +175,20 @@ enum Fixtures {
         ]
     }
 
+    /// The session's edits, as its transcript shows them. The other sources
+    /// are read from git when the review opens.
     static func changes() -> [ReviewSource: [FileChange]] {
-        func change(_ id: Int, _ path: String, from before: String, to after: String) -> FileChange {
-            FileChange(id: id, path: path, lines: DiffEngine.diff(original: before, modified: after))
+        func change(_ path: String, from before: String, to after: String) -> FileChange {
+            FileChange(path: path, lines: DiffEngine.diff(original: before, modified: after))
         }
-        let session = [
-            change(1, "Rendering/Compositor.swift", from: compositorBefore, to: compositorAfter),
-            change(2, "Core/FrameStats.swift", from: frameStatsBefore, to: frameStatsAfter),
-            change(3, "Tests/CompositorTests.swift", from: "", to: compositorTests),
-        ]
         return [
-            // Everything not yet committed: the session's work, and a change
-            // the user made by hand alongside it.
-            .uncommitted: session + [change(4, "README.md", from: readmeBefore, to: readmeAfter)],
-            .session: session,
-            .lastCommit: [
-                change(5, "Rendering/OutputBuffer.swift", from: outputBufferBefore, to: outputBufferAfter),
+            .session: [
+                change("Rendering/Compositor.swift", from: compositorBefore, to: compositorAfter),
+                change("Core/FrameStats.swift", from: frameStatsBefore, to: frameStatsAfter),
+                change("Tests/CompositorTests.swift", from: "", to: compositorTests),
             ],
         ]
     }
-
-    private static let readmeBefore = """
-        ## Status
-
-        Frames are diffed against the last one written.
-        """
-
-    private static let readmeAfter = """
-        ## Status
-
-        Frames are diffed against the last one written, and a skipped frame
-        writes nothing at all.
-        """
 
     private static let frameStatsBefore = """
         struct FrameStats {
@@ -242,23 +224,6 @@ enum Fixtures {
                 let result = compositor.flush(CellBuffer(width: 4, height: 1))
                 #expect(result.isFullRepaint)
             }
-        }
-        """
-
-    private static let outputBufferBefore = """
-        func flush() {
-            for byte in bytes {
-                write(fd, [byte], 1)
-            }
-            bytes.removeAll()
-        }
-        """
-
-    private static let outputBufferAfter = """
-        func flush() {
-            // One write per frame: a syscall per byte cost more than the bytes.
-            bytes.withUnsafeBytes { _ = write(fd, $0.baseAddress, $0.count) }
-            bytes.removeAll(keepingCapacity: true)
         }
         """
 

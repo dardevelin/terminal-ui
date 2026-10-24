@@ -8,16 +8,22 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Added
 
-- **`.inspector(isPresented:content:)`** — a panel along the trailing edge,
-  full height and as wide as its content, beside what it presents over
-  rather than over a dimmed screen. Unlike SwiftUI's it holds the keyboard
-  while it is up, as a dialog does: focus moves in, Tab stays inside, a click
-  beside it reaches nothing, and focus returns when it closes. Bind Escape
-  in its content to close it.
-- **Coder reviews its changes**, as Claude Code's `/diff` does: Ctrl+R lists
-  the uncommitted changes, Enter opens a file's diff, Escape steps back, ←/→
-  switches to the session's changes or the last commit's. A settings dialog
-  (Ctrl+O) makes the review full-screen.
+- **`.inspector(isPresented:content:)`** — a panel in a column taken off the
+  trailing edge of the view it is declared on, that view's full height and as
+  wide as its content; the view beside it is laid out narrower, as beside
+  SwiftUI's. Unlike SwiftUI's it holds the keyboard while it is up, as a
+  dialog does: focus moves in, Tab stays inside, a click beside it reaches
+  nothing, and focus returns when it closes. Bind Escape in its content to
+  close it.
+- **`DisclosureGroup`** — a label that folds its content away: Enter, Space
+  or a click flips it, → opens and ← closes it. Closed, its content takes no
+  rows, so a pane of a stacked panel folds with one.
+- **Coder reviews its changes**, as Claude Code's `/diff` panel does: Ctrl+R
+  opens it in the sidebar's place, a third of the window, on what git holds
+  uncommitted — read again every second while it is open, so a file changed
+  meanwhile appears. The files fold under their summary, the chosen file's
+  diff stacked below; ←/→ switch to the session's changes or the last
+  commit's. A settings dialog (Ctrl+O) makes the review full-screen.
 
 - **A diff's changed rows take their status as a ground, and its code can be
   highlighted.** `Theme` gains `addedBackground` and `removedBackground`: by
@@ -29,6 +35,19 @@ All notable changes to TerminalUI are documented here. Format based on
   its own tint is used as stated.
 
 ### Fixed
+
+- **A `List` given no `scroll` binding keeps its own offset**, as its
+  documentation said it did. It worked its window out from the top every
+  frame: moving the selection back up snapped the window to the top while
+  the selection was still in view, and a click on a row of a scrolled list
+  chose the row that many places from the top.
+- **An empty `List` is a Tab stop**, as SwiftUI's is. A list whose rows
+  arrived after its screen opened was skipped when focus was placed, and
+  focus stayed wherever it had gone.
+- **A view behind `.overlay`, `.background` or `.modal` keeps its
+  flexibility.** Those modifiers were treated as fixed size, so a flexible
+  transcript under one took its whole natural height and pushed the rows
+  below it off screen.
 
 - **Side by side, a diff's columns line up.** The separator sat wherever the
   left line ended, so a long line pushed its row's `│` out past the others.

@@ -100,19 +100,23 @@ struct Resource: Identifiable, Sendable {
 
 /// One file's change: its path and the diff, from which the counts follow.
 struct FileChange: Identifiable, Sendable, Equatable {
-    let id: Int
     let path: String
     let lines: [DiffLine]
 
     var added: Int { lines.count { $0.kind == .added } }
     var removed: Int { lines.count { $0.kind == .removed } }
     var language: String? { FileExcerpt.language(ofPath: path) }
+    /// A path names one file in a source, and stays its name across
+    /// refreshes, so the selection does too.
+    var id: String { path }
 }
 
 /// Whose changes the review shows. It opens on what is uncommitted, as
-/// Claude Code's `/diff` panel does.
+/// Claude Code's `/diff` panel does. That and the last commit are read from
+/// `git` in the directory Coder runs in; the session's are the edits its
+/// transcript shows.
 enum ReviewSource: String, CaseIterable, Identifiable, Sendable {
-    case uncommitted = "Uncommitted changes"
+    case uncommitted = "Uncommitted"
     case session = "This session"
     case lastCommit = "Last commit"
 
@@ -151,6 +155,8 @@ final class CoderState {
     var resources: [Resource]
     /// Every source's changes; the sidebar lists the session's.
     var changes: [ReviewSource: [FileChange]]
+    /// Why the git sources are empty, when it is not that nothing changed.
+    var gitProblem: String?
     var todos: [Todo]
 
     var draft: String
@@ -175,10 +181,9 @@ final class CoderState {
     /// of them is selected.
     var showsReview = false
     var reviewSource = ReviewSource.uncommitted
-    var reviewFileID: Int?
-    /// Whether the review shows the selected file's diff rather than the
-    /// list of files — the two levels of Claude Code's `/diff`.
-    var reviewShowsDiff = false
+    var reviewFileID: String?
+    /// Whether the review's file list is unfolded above the diff.
+    var reviewListExpanded = true
 
     /// The files this session touched.
     var files: [FileChange] { changes[.session] ?? [] }
@@ -189,17 +194,37 @@ final class CoderState {
         reviewChanges.first { $0.id == reviewFileID } ?? reviewChanges.first
     }
 
-    /// Opens the review on `file`'s diff, or on the uncommitted changes'
-    /// list, where `/diff` opens.
-    func openReview(on file: FileChange? = nil) {
-        if let file {
-            reviewSource = .session
-            reviewFileID = file.id
-        } else {
-            reviewSource = .uncommitted
-            reviewFileID = nil
+    /// How often the open review reads git again: often enough that a file
+    /// an agent writes appears while the user is looking, as in Claude
+    /// Code, and seldom enough that git's cost stays out of sight.
+    static let gitRefreshInterval = Duration.seconds(1)
+
+    /// Reads the git sources again, while the review is open. A `git` call
+    /// blocks until git exits, so it runs on a thread of its own: on the
+    /// cooperative pool it would hold one of a few threads every second.
+    @MainActor
+    func refreshFromGit() async {
+        let directory = FileManager.default.currentDirectoryPath
+        let snapshot = await withCheckedContinuation { continuation in
+            Thread.detachNewThread { continuation.resume(returning: Git.snapshot(of: directory)) }
         }
-        reviewShowsDiff = file != nil
+        switch snapshot {
+        case .success(let snapshot):
+            // Assigned only when they differ: an unchanged tree redraws
+            // nothing.
+            if changes[.uncommitted] != snapshot.uncommitted { changes[.uncommitted] = snapshot.uncommitted }
+            if changes[.lastCommit] != snapshot.lastCommit { changes[.lastCommit] = snapshot.lastCommit }
+            if gitProblem != nil { gitProblem = nil }
+        case .failure(let problem):
+            if gitProblem != problem.message { gitProblem = problem.message }
+        }
+    }
+
+    /// Opens the review on `file`, or on the uncommitted changes, where
+    /// `/diff` opens.
+    func openReview(on file: FileChange? = nil) {
+        reviewSource = file == nil ? .uncommitted : .session
+        reviewFileID = file?.id
         showsReview = true
     }
 
@@ -217,16 +242,6 @@ final class CoderState {
             showsReview = false
         } else {
             openReview()
-        }
-    }
-
-    /// Escape in the review: from a file's diff back to the list, from the
-    /// list out of the review.
-    func stepBackInReview() {
-        if reviewShowsDiff {
-            reviewShowsDiff = false
-        } else {
-            showsReview = false
         }
     }
 

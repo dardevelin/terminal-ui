@@ -252,6 +252,7 @@ public enum Layout {
     private static func placeModifier(_ node: AttributeNode, effect: ModifierEffect, in rect: Rect) {
         guard let child = node.children.first else { return }
         var childRect = transformedRect(for: effect, parentRect: rect)
+        childRect.width -= inspectorColumn(of: node, outerWidth: childRect.width)
         childRect = aligned(childRect, of: child, for: effect)
         measureAndPlace(graph: child, in: childRect)
 
@@ -305,6 +306,16 @@ public enum Layout {
     /// top edges, and its width.
     static func childRect(for effect: ModifierEffect, outerWidth: Int) -> Rect {
         transformedRect(for: effect, parentRect: Rect(x: 0, y: 0, width: outerWidth, height: 0))
+    }
+
+    /// The columns a presented inspector takes off the trailing edge of the
+    /// view it was declared on — as SwiftUI's does, the view beside it is
+    /// laid out narrower rather than drawn over. Measuring, layout, the
+    /// render walk and the panel's drawing all ask here, so none of them
+    /// can disagree about where the panel is.
+    static func inspectorColumn(of node: AttributeNode, outerWidth: Int) -> Int {
+        guard let panel = node.inspectorPanel, outerWidth > 0 else { return 0 }
+        return min(GraphRenderer.measureWidth(panel), outerWidth)
     }
 
     private static func transformedRect(for effect: ModifierEffect, parentRect rect: Rect) -> Rect {

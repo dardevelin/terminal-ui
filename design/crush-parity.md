@@ -797,12 +797,16 @@ again.
 features)*
 
 Crush reviews what the agent changed; the demo's form of it is Claude Code's
-`/diff`: Ctrl+R opens the uncommitted changes listed with their counts, Enter
-opens one file's diff, Escape steps back, ←/→ moves to the session's changes or
-the last commit's, and `[ ask ]` drafts a question about the file in the
-composer. A click on a Modified Files row opens straight to its diff.
+`/diff` panel: Ctrl+R opens it in the sidebar's place, a third of the window,
+the transcript narrowing beside it. What git holds uncommitted is listed with
+its counts, folding under the summary, and the chosen file's diff is stacked
+below; ↑/↓ choose the file and the diff follows, ←/→ move to the session's
+changes or the last commit's, and `[ ask ]` drafts a question about the file in
+the composer. git is read again every second while the panel is open, so a file
+an agent writes appears in it. A click on a Modified Files row opens the
+session's change to it.
 
-Three things the framework lacked, each built when the review needed it:
+What the framework lacked, each built when the review needed it:
 
 - **Diff tint** — changed rows take `Theme.addedBackground` /
   `removedBackground`, roles derived 0.2 of the way from the ground toward
@@ -811,15 +815,21 @@ Three things the framework lacked, each built when the review needed it:
   lexers.
 - **Side-by-side alignment** — the left half pads to a common width, so the
   columns line up.
-- **`.inspector(isPresented:content:)`** — the review is a panel over the
-  sidebar's side of the window, the transcript in view beside it. An overlay
-  could draw that but left focus in the composer underneath, so keys typed into
-  the review went to the prompt. The inspector is a presentation like a modal's,
-  placed full height at the trailing edge without the dim. Unlike SwiftUI's,
-  it holds the keyboard while it is up.
+- **`.inspector(isPresented:content:)`** — an overlay could draw the panel but
+  left focus in the composer underneath, so keys typed into the review went to
+  the prompt. The inspector is a presentation like a modal's, in a column taken
+  off the trailing edge of the view it is declared on, which is laid out
+  narrower beside it, as SwiftUI's is. Unlike SwiftUI's, it holds the keyboard
+  while it is up.
+- **`DisclosureGroup`** — the stacked panes fold: the file list under its
+  summary, giving the diff the rows.
+- Three bugs the panel found: an empty `List` was no Tab stop, so focus
+  settled elsewhere before git answered; a `List` without a scroll binding
+  kept no offset, so scrolling back up snapped its window to the top; and a
+  view behind a presentation modifier lost its flexibility.
 
-A setting (Ctrl+O) widens the review to the whole window. Not built: real
-`git` sources; the demo's are fixtures, as its transcript is.
+A setting (Ctrl+O) widens the review to the whole window. The session's
+changes stay fixtures, as the transcript that made them is.
 
 ### Ledger — open
 - **G6 — lexers beyond Swift.** The registry exists (L11); the first lexer
