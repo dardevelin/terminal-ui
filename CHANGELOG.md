@@ -67,6 +67,15 @@ All notable changes to TerminalUI are documented here. Format based on
   the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
   a child at its natural width rather than giving it the frame's. A `Spacer`
   in a `VStack` stretches only down it, and does not make it wide.
+- **Hover reaches only what is drawn on top.** `.onHover` fired for every
+  handler whose rect held the pointer, so a card under a badge lit with the
+  badge; now the handler a click there would reach is hovered, with those
+  holding it. A `ZStack` child that states its size — a
+  `.frame(width:height:)` — is laid out at that size rather than over the
+  whole stack, where it caught the pointer everywhere.
+- **A `List` row takes its own clicks.** The row was found by counting lines
+  from the list's top, so on rows taller than a line a click selected the
+  wrong one.
 - **The pointer reaches only what a viewport shows.** Rows scrolled out of a
   scroll view kept rects over the header and footer around it, and a click,
   a wheel or a hover there found a row nobody could see.

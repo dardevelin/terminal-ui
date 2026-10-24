@@ -596,6 +596,21 @@ struct PreviewPane: TerminalView {
                 }
                 .frame(height: 3)
                 Text("under the pointer: \(state.hoveredScrollRow)").foreground(.gray)
+                // A badge drawn over a card: over the badge, the card under
+                // it is not hovered.
+                ZStack(alignment: .topLeading) {
+                    Text("card ·········\n·············")
+                        .onHover { [state] isHovering in
+                            if isHovering { state.hoveredLayer = "card" }
+                        }
+                    Text("[badge]").foreground(.magenta)
+                        .frame(width: 7, height: 1)
+                        .onHover { [state] isHovering in
+                            if isHovering { state.hoveredLayer = "badge" }
+                        }
+                }
+                .frame(width: 13, height: 2)
+                Text("on top: \(state.hoveredLayer)").foreground(.gray)
             }
         case .mouseFocusPolicy:
             VStack {

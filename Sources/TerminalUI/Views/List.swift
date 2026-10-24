@@ -182,6 +182,10 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                     content(item.element)
                 }
                 .foreground(item.isSelected ? theme.foregroundEmphasis : theme.foreground)
+                // Each row takes its own clicks, so a row is found by where
+                // it is drawn rather than by counting lines from the top: a
+                // row may be several lines tall.
+                .onClick { [selection] _, _ in selection?.set(item.element.id) }
             }
 
             if hasDownIndicator {
@@ -204,18 +208,6 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             guard next != current else { return false }
             scroll.set(next)
             return true
-        }
-        .onClick { [selection] _, relY in
-            guard let sel = selection else { return }
-            let total = data.count
-            guard total > 0 else { return }
-            let hasUpInd = scroll.get() > 0
-            let rowOffset = hasUpInd ? relY - 1 : relY
-            let itemIndex = scroll.get() + rowOffset
-            if itemIndex >= 0 && itemIndex < total {
-                let idx = data.index(data.startIndex, offsetBy: itemIndex)
-                sel.set(data[idx].id)
-            }
         }
         .onKeyPress { [selection, visibleCount] event in
             guard let sel = selection else { return .ignored }

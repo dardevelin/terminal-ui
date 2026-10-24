@@ -1179,29 +1179,11 @@ public enum GraphRenderer {
 
     static func renderZStack(_ children: [AttributeNode], info: LayoutInfo,
                              into buffer: inout CellBuffer, context: RenderContext) {
-        // Layer 2: Layout stamps every ZStack child's rect to the parent's
-        // rect. Render reads the pre-stamped rect — last child wins on
-        // overlapping cells.
-        //
-        // Under the default `.topLeading` that is the whole story. Any other
-        // alignment means placing children, which needs each one's own size,
-        // so those measure and re-stamp.
-        let alignment = info.alignment
+        // Layer 2: `Layout.stacked` stamped each child's rect. Render reads
+        // them — last child wins on overlapping cells.
         for child in children {
             var childCtx = context
             childCtx.rect = child.rect
-            if alignment != .topLeading {
-                let width = min(context.rect.width,
-                                declaredWidth(of: child) ?? measureWidth(child))
-                let height = min(context.rect.height,
-                                 declaredHeight(of: child)
-                                    ?? measureHeight(child, proposedWidth: max(1, width)))
-                childCtx.rect = Rect(
-                    x: context.rect.x + alignment.horizontal.offset(for: width, in: context.rect.width),
-                    y: context.rect.y + alignment.vertical.offset(for: height, in: context.rect.height),
-                    width: max(1, width), height: max(1, height))
-                Layout.measureAndPlace(graph: child, in: childCtx.rect)
-            }
             renderNode(child, into: &buffer, context: childCtx)
         }
     }
