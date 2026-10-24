@@ -86,23 +86,32 @@ It is the wrong fit when:
 
 ## What's included
 
-34 views and 7 chart components. Every name below links to its documentation,
+37 views and 7 chart components. Every name below links to its documentation,
 and every one has a live page in the Storybook — `swift run Storybook` is the
 animated version of this table.
 
 | | Components |
 |---|---|
-| **Layout** | [`VStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/vstack) · [`HStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hstack) · [`ZStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/zstack) · [`Spacer`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spacer) · [`Divider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/divider) · [`ScrollView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/scrollview) · [`SplitView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/splitview) · [`GeometryReader`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/geometryreader) |
-| **Content & data** | [`Text`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/text) · [`ForEach`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/foreach) · [`List`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/list) · [`Table`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/table) · [`TabView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tabview) · [`TreeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/treeview) · [`DiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/diffview) · [`HunkDiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hunkdiffview) · [`BufferView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/bufferview) · [`ProgressBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/progressbar) · [`Gauge`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/gauge) · [`Spinner`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spinner) · [`StatusBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/statusbar) |
+| **Layout** | [`VStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/vstack) · [`HStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hstack) · [`ZStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/zstack) · [`Spacer`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spacer) · [`Divider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/divider) · [`ScrollView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/scrollview) · [`SplitView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/splitview) · [`GeometryReader`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/geometryreader) · [`WidthReader`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/widthreader) |
+| **Content & data** | [`Text`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/text) · [`MarkdownView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/markdownview) · [`CodeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/codeview) · [`ForEach`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/foreach) · [`List`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/list) · [`Table`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/table) · [`TabView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tabview) · [`TreeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/treeview) · [`DiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/diffview) · [`HunkDiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hunkdiffview) · [`BufferView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/bufferview) · [`ProgressBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/progressbar) · [`Gauge`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/gauge) · [`Spinner`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spinner) · [`StatusBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/statusbar) |
 | **Input & forms** | [`Button`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/button) · [`TextInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textinput) · [`TextArea`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textarea) · [`Toggle`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/toggle) · [`Picker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/picker) · [`Slider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/slider) · [`Stepper`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/stepper) · [`PromptInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/promptinput) · [`Form`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/form) · [`Section`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/section) · [`LabeledContent`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/labeledcontent) · [`NavigationStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationstack) · [`NavigationLink`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationlink) |
 | **Charts** | [`BarChart`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/barchart) · [`Sparkline`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/sparkline) · [`HeatMap`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/heatmap) · [`BrailleCanvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/braillecanvas) · [`DotMatrixText`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotmatrixtext) · [`DotFont`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotfont) · [`MorseTicker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/morseticker) |
 | **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
 
 Beyond the components:
 
-- **Input**: SGR 1006 mouse (click, wheel, hover), kitty keyboard protocol
-  (distinguishes Alt+Enter, Shift+Enter, modifier arrows), Option-as-Meta on
-  macOS, bracketed paste.
+- **Theming**: components draw semantic roles — `accent`, `foregroundMuted`,
+  `errorSubtle`, ~30 in all — from the app's `Theme`. A theme states the
+  colours it cares about and the rest are derived from them, so a brand
+  palette restyles every component at once.
+- **Markdown and code**: `MarkdownView` renders the CommonMark agents write,
+  restyled through `MarkdownStyle`; `CodeView` and `TextArea` highlight
+  source through registered lexers, coloured by the theme.
+- **Text editing**: one readline keymap in every input — Ctrl+A/E/K/U/W/Y,
+  Alt+B/F — that an app can rebind, and can let its users rebind.
+- **Input**: SGR 1006 mouse (click, wheel, hover), modifier arrows,
+  Option-as-Meta on macOS, bracketed paste, and the kitty keyboard
+  protocol's key reports where the terminal sends them.
 - **Focus**: independent keyboard and mouse focus, Tab cycling between areas,
   scope-aware arrow navigation, directional movement between panes.
 - **Debug tooling**: in-app inspector, frame stats, and a remote-control
@@ -152,7 +161,7 @@ lockfile stops caring about the network.
 ```bash
 git clone https://github.com/dardevelin/terminal-ui
 cd terminal-ui
-swift test                 # full suite — 1094 tests
+swift test                 # the full suite
 swift run Storybook        # every public API, one page each
 ```
 
@@ -212,6 +221,7 @@ struct CounterApp: TerminalAppProtocol {
 | `swift run ComponentsDemo` | Component gallery with realistic data |
 | `swift run GitClient` | A small git client: staging list, hunk diff, commit prompt |
 | `swift run Chat` | A chat interface: scrollback, prompt input, timed replies |
+| `swift run Coder` | An agent-chat app in the shape of Crush: transcript, tool cards, diffs, sidebar |
 
 A few more single-purpose targets live in `Examples/` (`AsyncState`,
 `Navigation`, `Settings`, `DotMatrixDemo`); they double as fixtures for the
@@ -278,7 +288,8 @@ tests keeps working release after release.
 
 Diagnostics are configured per-project in `.terminalui/terminalui.toml`
 (`swift run swtui init`), and every running app writes to its own
-PID-isolated output directory, so concurrent sessions never collide.
+PID-isolated output directory, readable by you alone, so concurrent sessions
+never collide.
 
 ## How rendering works
 

@@ -250,7 +250,7 @@ drawing code fails unless `tools/colour-literals.txt` lists it with why. Read
 the theme once in `body` — `let theme = theme` — and pass `any Theme` down:
 each read of the wrapper copies the environment, and a read inside a
 `WidthReader` or `GeometryReader` closure runs against the wrong node.
-`Theme` (`Style/Theme.swift`) is a protocol of ~26 roles organised as ramps
+`Theme` (`Style/Theme.swift`) is a protocol of ~30 roles organised as ramps
 (foreground, background, status + `…Subtle`), each with a default in a protocol
 extension, so a conforming theme states only what it changes.
 
