@@ -55,6 +55,10 @@ let package = Package(
         // without image needs don't pay the cost. Hosts ImageBuffer,
         // ImageDecoder protocol, future Image view + renderers.
         .library(name: "TerminalUIIO", targets: ["TerminalUIIO"]),
+        // swtui: the diagnostic CLI. A product so an app's own package can
+        // `swift run swtui ctl …` against the debug build it is running —
+        // as a bare target it ran only from this checkout.
+        .executable(name: "swtui", targets: ["swtui"]),
     ],
     dependencies: docsDependency,
     targets: [
