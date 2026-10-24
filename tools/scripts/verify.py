@@ -11,7 +11,8 @@ same bridge our smoke tests use. Steps:
 4. ``swift build --build-tests`` with warnings as errors — the library, the
    examples and the tests (release build is deferred to CI).
 5. ``check_api_compat.py`` — the public API against the last release.
-6. ``swift test`` — unit + component suites.
+6. ``swift test`` — unit + component suites, then again on a one-thread
+   cooperative pool (macOS), where blocking a pool thread deadlocks.
 7. ``storybook_walk.py`` — every Storybook page, as CI walks them.
 8. ``integration_suite.py`` — every ``test_*`` script.
 9. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
@@ -174,6 +175,17 @@ def run_gate() -> int:
         return fail("swift test failed", out)
     if test_summary:
         print(test_summary)
+
+    # Once more on a one-thread cooperative pool, a Darwin-only switch: a
+    # test or framework code that blocks a pool thread deadlocks here, as it
+    # did on CI's three-core runner, instead of passing on a many-core Mac.
+    if sys.platform == "darwin":
+        os.environ["LIBDISPATCH_COOPERATIVE_POOL_STRICT"] = "1"
+        rc, out = step("swift test, one-thread pool",
+                       ["swift", "test", "--scratch-path", SCRATCH_PATH], TEST_TIMEOUT_SECONDS)
+        del os.environ["LIBDISPATCH_COOPERATIVE_POOL_STRICT"]
+        if rc != 0:
+            return fail("on a one-thread pool the tests deadlock or fail: something blocks a pool thread", out)
 
     # The quick checks first: a walk and the integration scripts take
     # seconds, the smoke suite minutes.

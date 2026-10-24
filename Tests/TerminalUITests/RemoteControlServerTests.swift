@@ -47,8 +47,8 @@ struct RemoteControlBackpressureTests {
 
         // The client starts reading only after a while, as a busy one might.
         let finished = ReadFinished()
-        let reader = Task.detached { () -> Data in
-            try? await Task.sleep(for: .milliseconds(150))
+        let reader = BlockingThread(name: "slow client") { () -> Data in
+            Thread.sleep(forTimeInterval: 0.15)
             defer { finished.flag.store(true, ordering: .releasing) }
             return Data(UnixSocket.readLine(from: client))
         }
@@ -86,7 +86,7 @@ struct RemoteControlBackpressureTests {
         }
         #expect(dispatcher.answered == 1)
 
-        let reader = Task.detached { UnixSocket.readLine(from: client) }
+        let reader = BlockingThread(name: "client") { UnixSocket.readLine(from: client) }
         while dispatcher.answered < 2 {
             server.pump()
             try? await Task.sleep(for: .milliseconds(1))

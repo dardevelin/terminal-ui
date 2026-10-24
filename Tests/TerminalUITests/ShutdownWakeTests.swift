@@ -46,7 +46,7 @@ struct ShutdownWakeTests {
             pipes.close()
         }
         terminal.send("\u{1B}[200~half a paste")
-        let reader = Task.detached {
+        let reader = BlockingThread(name: "test read") {
             var source = StdinByteSource(input: terminal.read, buffered: true, wakes: pipes.wakes)
             _ = InputParser.readEvent(from: &source)
             return source.cutShort && source.waitForActivity() == .terminate

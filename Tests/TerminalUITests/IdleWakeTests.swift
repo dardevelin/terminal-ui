@@ -117,7 +117,7 @@ struct InputActivityTests {
     @Test func withNothingToReadItWaitsPastAnyTimeout() async throws {
         let pipes = try Pipes()
         defer { pipes.close() }
-        let waiter = Task.detached { pipes.wait() }
+        let waiter = BlockingThread(name: "test wait") { pipes.wait() }
         try? await Task.sleep(for: .milliseconds(300))
         pipes.shutdown.signal()
         #expect(await waiter.value == .shutdown, "it returned before the shutdown was sent")

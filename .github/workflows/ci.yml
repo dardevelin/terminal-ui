@@ -16,6 +16,9 @@ jobs:
   linux:
     name: Linux (Swift 6.2)
     runs-on: ubuntu-latest
+    # A hang fails the job, not the six-hour default: a suite that
+    # deadlocked on the runner's small thread pool ran for hours.
+    timeout-minutes: 60
     # Package.swift requires swift-tools-version 6.2; swift:6.0 rejects the
     # manifest outright.
     container: swift:6.2
@@ -69,6 +72,9 @@ jobs:
   macos:
     name: macOS (Swift 6.2)
     runs-on: macos-15
+    # A hang fails the job, not the six-hour default: a suite that
+    # deadlocked on the runner's small thread pool ran for hours.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
         with:
@@ -127,6 +133,12 @@ jobs:
       - name: Test
         run: swift test
 
+      # Once more on a one-thread cooperative pool (a Darwin switch): any
+      # test, or framework code, that blocks a pool thread deadlocks here
+      # instead of only on a runner with few cores, or an app on one.
+      - name: Test on a one-thread pool
+        run: LIBDISPATCH_COOPERATIVE_POOL_STRICT=1 swift test
+
       # --build-tests: `swift build` alone never compiles a test target, so
       # a warning in one passed.
       - name: Build with warnings as errors
@@ -159,6 +171,9 @@ jobs:
   thread-sanitizer:
     name: Thread Sanitizer (macOS)
     runs-on: macos-15
+    # A hang fails the job, not the six-hour default: a suite that
+    # deadlocked on the runner's small thread pool ran for hours.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
 

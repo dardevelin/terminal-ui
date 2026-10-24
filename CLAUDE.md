@@ -387,6 +387,13 @@ exists.
   `windowSize`. Prefer full words: `paramString`, not `numStr`.
 - **ExistentialAny** — protocol-as-type must use `any`: `[any DebugSink]`,
   `any AnyStateStorage`, `as? any _FocusGraphModifier`.
+- **Never block a cooperative pool thread.** The pool has a thread per
+  core; a task that blocks in a syscall, a semaphore or `Thread.sleep` holds
+  one until it returns, and on a small machine everything else waits — the
+  input loop did this for an app's whole life. Blocking work goes on a
+  thread of its own (`BlockingThread`, which also serves tests). verify.py
+  and CI run the suite once more with `LIBDISPATCH_COOPERATIVE_POOL_STRICT=1`
+  (a one-thread pool, macOS only), where any such block deadlocks.
 - **Concurrency escape hatches are listed.** `@unchecked Sendable` and
   `nonisolated(unsafe)` switch the compiler's checking off, and every data race
   this framework shipped sat behind one. Prefer what the compiler checks:
