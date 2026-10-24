@@ -1411,13 +1411,18 @@ struct GraphModifier {
     var foregroundYieldsToStated = false
     /// Where a presented modal's content is drawn.
     var placement = PresentationPlacement.centered
+    /// Closes the presentation: what a press outside a menu does, or
+    /// choosing an item in it.
+    var dismissal: (() -> Void)?
 }
 
 /// Where a presentation is drawn: a dialog centred over the dimmed screen,
-/// or an inspector along the trailing edge beside what it presents over.
-enum PresentationPlacement {
+/// an inspector along the trailing edge beside what it presents over, or a
+/// menu at the cell it was opened from.
+enum PresentationPlacement: Equatable {
     case centered
     case trailing
+    case anchored(Point)
 }
 
 protocol _GraphModified {

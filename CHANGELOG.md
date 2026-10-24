@@ -35,6 +35,11 @@ All notable changes to TerminalUI are documented here. Format based on
   the panes either side and writes the new ratios to its `SplitState`, a
   scrollbar scrolls along its track, and a `Slider` slides from its track.
   `swtui ctl` and the harness client send drags (`mouse_drag`).
+- **`.contextMenu(menuItems:)`** — a menu where a view is right-clicked, as
+  SwiftUI's. It opens at the cell clicked, kept on the screen, and holds the
+  keyboard while it is open; choosing an item runs it and closes the menu,
+  and Escape or a press outside closes it alone. The secondary button had
+  reached nothing.
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.

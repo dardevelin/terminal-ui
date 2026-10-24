@@ -766,7 +766,12 @@ public final class FocusEngine: @unchecked Sendable {
         // clicking the content it dims must not reach it. The click is
         // swallowed rather than redirected — dismissal is the modal's own
         // explicit action.
-        guard let root, let scope = pointerScope(x: x, y: y, root: root) else { return }
+        guard let root else { return }
+        guard let scope = pointerScope(x: x, y: y, root: root) else {
+            // Outside an open menu, a press closes it, as a platform's does.
+            menuDismissal?()
+            return
+        }
         guard press.button == .left else {
             if let (target, handler) = findPressHandlerAt(press, in: scope) {
                 handler(x - target.rect.x, y - target.rect.y)
@@ -807,6 +812,7 @@ public final class FocusEngine: @unchecked Sendable {
                       GraphContext.$currentRoutingNodeID.withValue(target.id, operation: {
                           ownHandler(KeyEvent(key: .activate))
                       }) == .handled {
+                menuDismissal?()
                 return
             } else if let (owner, handler) = findPressHandlerAbove(target, for: press) {
                 handler(x - owner.rect.x, y - owner.rect.y)
@@ -986,7 +992,7 @@ public final class FocusEngine: @unchecked Sendable {
         -> ((_ relativeX: Int, _ relativeY: Int) -> Void)?
     {
         if let tap = tapHandlers[node.id], tap.accepts(press) {
-            return { _, _ in tap.action() }
+            return { _, _ in tap.action(press) }
         }
         return press.button == .left ? clickHandlers[node.id] : nil
     }
@@ -1037,7 +1043,19 @@ public final class FocusEngine: @unchecked Sendable {
     /// handlers on internal structure.
     public func routeKeyEvent(_ event: KeyEvent, root: AttributeNode?) -> Bool {
         guard let focused = keyboardFocusID, let root else { return false }
-        return routeKeyEvent(event, root: root, startingFrom: focused)
+        let handled = routeKeyEvent(event, root: root, startingFrom: focused)
+        // An item chosen from a menu closes it, as a platform's menu does.
+        if handled, [.enter, .character(" "), .activate].contains(event.key) {
+            menuDismissal?()
+        }
+        return handled
+    }
+
+    /// Closes the menu on top, when the presentation on top is a menu.
+    private var menuDismissal: (() -> Void)? {
+        guard let presenter = topmostPresentation?.parent,
+              case .anchored = presenter.presentationPlacement else { return nil }
+        return presenter.presentationDismissal
     }
 
     /// Route a key event starting from a specific node (instead of

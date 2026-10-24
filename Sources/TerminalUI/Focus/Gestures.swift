@@ -36,16 +36,17 @@ struct ClickCounter {
 
 /// What a tap gesture waits for, and what it does.
 struct TapRecognizer {
+    var button = MouseButton.left
     let count: Int
     let modifiers: KeyModifiers?
-    let action: () -> Void
+    let action: (PointerPress) -> Void
 
-    /// A single tap takes every left click, as a button does, however
-    /// quickly they come; a double tap takes the second of a pair, a triple
-    /// the third. Required modifiers must be exactly the ones held; with
-    /// none required, any are.
+    /// A single tap takes every click of its button, as a button does,
+    /// however quickly they come; a double tap takes the second of a pair,
+    /// a triple the third. Required modifiers must be exactly the ones
+    /// held; with none required, any are.
     func accepts(_ press: PointerPress) -> Bool {
-        guard press.button == .left else { return false }
+        guard press.button == button else { return false }
         guard count == 1 || press.count == count else { return false }
         return modifiers.map { $0 == press.modifiers } ?? true
     }
@@ -79,7 +80,8 @@ public struct TapGesture {
     /// a double tap.
     public let count: Int
     var requiredModifiers: KeyModifiers?
-    var action: () -> Void = {}
+    var button = MouseButton.left
+    var action: (PointerPress) -> Void = { _ in }
 
     /// A gesture that waits for `count` clicks in a row.
     public init(count: Int = 1) {
@@ -89,7 +91,7 @@ public struct TapGesture {
     /// The gesture with `action` to run when it happens.
     public func onEnded(_ action: @escaping () -> Void) -> TapGesture {
         var gesture = self
-        gesture.action = action
+        gesture.action = { _ in action() }
         return gesture
     }
 
@@ -102,7 +104,7 @@ public struct TapGesture {
     }
 
     var recognizer: TapRecognizer {
-        TapRecognizer(count: count, modifiers: requiredModifiers, action: action)
+        TapRecognizer(button: button, count: count, modifiers: requiredModifiers, action: action)
     }
 }
 
@@ -119,6 +121,16 @@ extension TerminalView {
     /// count of clicks in a row, with modifiers held. See ``TapGesture``.
     public func gesture(_ gesture: TapGesture) -> ModifiedView<Self, TapGestureModifier> {
         ModifiedView(content: self, modifier: TapGestureModifier(gesture: gesture))
+    }
+
+    /// Run `action` with the press when the view is clicked with the
+    /// secondary button: what opens a context menu.
+    func onSecondaryClick(perform action: @escaping (PointerPress) -> Void)
+        -> ModifiedView<Self, TapGestureModifier> {
+        var tap = TapGesture()
+        tap.button = .right
+        tap.action = action
+        return gesture(tap)
     }
 
     /// Run `action` when the view is clicked `count` times in a row —

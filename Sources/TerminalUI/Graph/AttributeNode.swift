@@ -50,12 +50,16 @@ public class AttributeNode: @unchecked Sendable {
     var foregroundYieldsToStated = false
     /// Where this node's presented content is drawn, when it is a modal.
     var presentationPlacement = PresentationPlacement.centered
+    /// Closes this node's presentation, when it is a menu: see
+    /// `GraphModifier.dismissal`.
+    var presentationDismissal: (() -> Void)?
 
     /// Takes a modifier's effect and what rides with it.
     func apply(_ modifier: GraphModifier) {
         kind = .modifier(modifier.effect)
         foregroundYieldsToStated = modifier.foregroundYieldsToStated
         presentationPlacement = modifier.placement
+        presentationDismissal = modifier.dismissal
     }
 
     /// Identifier of the nearest enclosing focus scope, or nil if not in one.
