@@ -31,7 +31,7 @@ public enum GraphRenderer {
     /// scrolled pane instead of over the app. Drawing presentations after the
     /// walk detaches them from wherever they happen to be declared, which is
     /// the same reason SwiftUI's sheets don't inherit the declaring view's
-    /// geometry. ``Presentations`` decides the order, so focus and the
+    /// geometry. `Presentations` decides the order, so focus and the
     /// pointer agree with what ends up on top.
     public static func render(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
         renderNode(node, into: &buffer, context: context)

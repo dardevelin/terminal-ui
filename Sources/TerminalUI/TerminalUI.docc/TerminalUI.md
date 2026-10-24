@@ -60,7 +60,7 @@ Step-by-step, building a real app — start here if you learn by doing.
 In-depth: how the framework works, for when you need to reason about it.
 
 - <doc:ArchitecturalModels>
-- <doc:AttributeGraph>
+- <doc:UnderstandingTheAttributeGraph>
 - <doc:Layering>
 - <doc:Performance>
 

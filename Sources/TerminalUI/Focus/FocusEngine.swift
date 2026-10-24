@@ -1077,7 +1077,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// nothing holds focus, or the focused node has been detached — the
     /// window itself. `nil` only when there is no graph.
     ///
-    /// The window is stood for by ``windowContent(in:)``, not by the root.
+    /// The window is stood for by `windowContent(in:)`, not by the root.
     /// Action dispatch walks *up* from this node, and every scope an app
     /// attaches around its content sits below the root; starting there
     /// skipped all of them, so an app with no focusable view could not

@@ -75,7 +75,7 @@ View Structs → Attribute Graph → Surgical Invalidation → Render
 Strength: surgical precision, zero wasted work, type-safe.
 Weakness: attribute graph is complex to build.
 
-See <doc:AttributeGraph> for the details of how TerminalUI implements this.
+See <doc:UnderstandingTheAttributeGraph> for the details of how TerminalUI implements this.
 
 ## TerminalUI's approach
 

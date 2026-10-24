@@ -33,6 +33,11 @@
 /// callbacks, off-main `@Observable` mutations) all five values read as
 /// nil — exactly what the old "implicitly cleared" contract intended, but
 /// now compiler-enforced.
+///
+/// Each value is rebound through its projection, scoped to a closure and
+/// restored when it returns — `GraphContext.$currentEnvironment.withValue(environment) { … }`
+/// is how an environment override reaches exactly its subtree. Read the
+/// plain property for the value.
 public enum GraphContext {
     /// The node whose body is currently being evaluated (or rendered); nil
     /// outside the runtime's `withValue` chain — notably in event handlers,

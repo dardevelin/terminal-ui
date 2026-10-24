@@ -72,7 +72,7 @@ struct InputWakePipes: Sendable {
 /// Runtime source — reads STDIN in raw mode: a chunk at a time when
 /// buffered, as the runtime's input task keeps it, a byte at a time otherwise.
 ///
-/// Between events the input task waits in ``waitForActivity()``. A read
+/// Between events the input task waits in `waitForActivity()`. A read
 /// waits at most 100ms, which the parser relies on part-way through an
 /// escape sequence, and ends at once on a wake to stop — a byte on the
 /// terminate or shutdown pipe — returning nil. The byte stays in its pipe, so
@@ -96,7 +96,7 @@ public struct StdinByteSource: ByteSource {
     /// the task to stop — rather than waiting out its timeout. The parser
     /// takes the `nil` such a read returns for a pause, and makes an event
     /// of what it had: one nobody sent. The input task drops it, and its next
-    /// ``waitForActivity()`` says what ended the read, since a hang-up and a
+    /// `waitForActivity()` says what ended the read, since a hang-up and a
     /// wake's byte both stay to be seen.
     private(set) var cutShort = false
 
@@ -215,7 +215,7 @@ extension StdinByteSource {
         pollActivity(watchingResize: true, timeoutMilliseconds: -1) ?? .shutdown
     }
 
-    /// What is ready, by the order ``waitForActivity()`` gives, or nil when
+    /// What is ready, by the order `waitForActivity()` gives, or nil when
     /// nothing is within the timeout; -1 waits for ever. A read part-way
     /// through a sequence leaves a resize for later. POSIX guarantees pollfd
     /// layout across Darwin and Glibc.
