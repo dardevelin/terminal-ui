@@ -29,6 +29,8 @@ public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
     public let isPresented: Bool
     /// The panel content, centered over the dimmed screen while presented.
     public let content: ModalContent
+    /// Centred for `.modal`, along the trailing edge for `.inspector`.
+    var placement = PresentationPlacement.centered
 }
 
 extension TerminalView {
@@ -51,6 +53,26 @@ extension TerminalView {
     /// Present a floating modal over the entire screen when isPresented is true.
     public func modal<V: TerminalView>(isPresented: Bool, @TerminalViewBuilder content: () -> V) -> ModifiedView<Self, ModalModifier<V>> {
         ModifiedView(content: self, modifier: ModalModifier(isPresented: isPresented, content: content()))
+    }
+
+    /// Present a panel along the trailing edge while `isPresented` is true,
+    /// full height and as wide as `content`, beside what it presents over
+    /// rather than over a dimmed screen — a review, a detail, a set of
+    /// properties to edit. Give the content a width with `.frame(width:)`.
+    ///
+    /// Unlike SwiftUI's inspector it holds the keyboard while it is up, as
+    /// a dialog does: focus moves into it, Tab stays inside, a click beside
+    /// it does not reach what it covers, and focus goes back where it was
+    /// when it closes. Nothing closes it but the binding; bind Escape in its
+    /// content to set it false.
+    ///
+    /// SwiftUI parity: `View.inspector(isPresented:content:)`.
+    public func inspector<V: TerminalView>(
+        isPresented: Binding<Bool>,
+        @TerminalViewBuilder content: () -> V
+    ) -> ModifiedView<Self, ModalModifier<V>> {
+        ModifiedView(content: self, modifier: ModalModifier(
+            isPresented: isPresented.wrappedValue, content: content(), placement: .trailing))
     }
 
     /// Present an alert over this view while `isPresented` is true.

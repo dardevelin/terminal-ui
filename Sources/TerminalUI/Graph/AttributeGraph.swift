@@ -339,9 +339,9 @@ public final class AttributeGraph: @unchecked Sendable {
         // Modifiers — update effect + child + extra child
         if let modified = view as? any _GraphModified {
             if case .modifier = node.kind {
-                let (newEffect, yieldsToStated) = modified.graphEffect()
-                node.kind = .modifier(newEffect)
-                node.foregroundYieldsToStated = yieldsToStated
+                let graphModifier = modified.graphEffect()
+                let newEffect = graphModifier.effect
+                node.apply(graphModifier)
 
                 // Keep focusable flag in sync
                 if case .focusable = newEffect {
@@ -1167,9 +1167,10 @@ public final class AttributeGraph: @unchecked Sendable {
     }
 
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
-        let (effect, yieldsToStated) = modified.graphEffect()
+        let graphModifier = modified.graphEffect()
+        let effect = graphModifier.effect
         let node = AttributeNode(id: id, kind: .modifier(effect))
-        node.foregroundYieldsToStated = yieldsToStated
+        node.apply(graphModifier)
 
         // Mark focusable during construction so it's available before first render
         if case .focusable = effect {
@@ -1368,10 +1369,26 @@ extension _GraphHStack {
     var layoutAlignment: Alignment { .topLeading }
 }
 
+/// What a modifier makes of its node: the effect, and what the effect's
+/// public payload has no room for.
+struct GraphModifier {
+    let effect: ModifierEffect
+    /// Whether a `.foreground` gives way to a colour stated above it (see
+    /// `ForegroundModifier.yieldsToStated`).
+    var foregroundYieldsToStated = false
+    /// Where a presented modal's content is drawn.
+    var placement = PresentationPlacement.centered
+}
+
+/// Where a presentation is drawn: a dialog centred over the dimmed screen,
+/// or an inspector along the trailing edge beside what it presents over.
+enum PresentationPlacement {
+    case centered
+    case trailing
+}
+
 protocol _GraphModified {
-    /// The node's effect, and whether a `.foreground` one gives way to a
-    /// colour stated above it (see `ForegroundModifier.yieldsToStated`).
-    func graphEffect() -> (effect: ModifierEffect, foregroundYieldsToStated: Bool)
+    func graphEffect() -> GraphModifier
     func constructChildNode(id: NodeID, graph: AttributeGraph) -> AttributeNode
     func updateChild(_ child: AttributeNode, graph: AttributeGraph)
     /// For overlay/background/modal: construct the extra child node

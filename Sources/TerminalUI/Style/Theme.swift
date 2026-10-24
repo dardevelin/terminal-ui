@@ -332,7 +332,6 @@ extension Theme {
     /// Unstated: ``error``.
     public var destructive: Color { error }
 
-    /// Unstated: ``SyntaxTheme/defaultDark``.
     /// Unstated: ``background`` 0.2 of the way toward ``success``. On the
     /// terminal's own ground, which cannot be mixed, it is that ground — no
     /// tint.
@@ -340,6 +339,7 @@ extension Theme {
     /// Unstated: ``background`` 0.2 of the way toward ``error``.
     public var removedBackground: Color { derived(background, toward: error, RampStep.changeSurface) }
 
+    /// Unstated: ``SyntaxTheme/defaultDark``.
     public var syntax: SyntaxTheme { .defaultDark }
 }
 

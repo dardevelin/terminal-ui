@@ -46,7 +46,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Charts
     case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
     // Modifiers
-    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, alert, confirmationDialog
+    case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, alert, confirmationDialog
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -850,6 +850,18 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         Text("[ Delete ]").focusable()
                     }
                 }
+                """)
+        case .inspector: return PageInfo(id: self, category: .modifiers, name: ".inspector",
+            summary: "Presents a panel along the trailing edge, full height, beside the content rather than over a dimmed screen. It holds the keyboard while it is up — Tab stays inside — and Escape, bound in its content, closes it.",
+            code: """
+                Text("content").focusable()
+                    .inspector(isPresented: $showInspector) {
+                        VStack {
+                            Text("Inspector").bold()
+                            Text("[ Close ]").focusable()
+                        }
+                        .frame(width: 30)
+                    }
                 """)
         case .alert: return PageInfo(id: self, category: .modifiers, name: ".alert",
             summary: "Presents an alert with role-tagged actions. Esc always dismisses and fires the .cancel action; Return fires the .default one, which also takes initial focus. A .destructive action renders in the theme's error colour and is never focused first.",

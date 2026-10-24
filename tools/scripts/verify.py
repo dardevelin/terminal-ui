@@ -10,7 +10,8 @@ same bridge our smoke tests use. Steps:
    escape-hatch, colour-literal and tracker-id checks they test.
 4. ``swift build --build-tests`` with warnings as errors — the library, the
    examples and the tests (release build is deferred to CI).
-5. ``check_api_compat.py`` — the public API against the last release.
+5. ``check_api_compat.py`` — the public API against the last release, then
+   ``check_doc_pages.py`` — every published documentation page says something.
 6. ``swift test`` — unit + component suites, then again on a one-thread
    cooperative pool (macOS), where blocking a pool thread deadlocks.
 7. ``storybook_walk.py`` — every Storybook page, as CI walks them.
@@ -164,6 +165,11 @@ def run_gate() -> int:
                    API_TIMEOUT_SECONDS)
     if rc != 0:
         return fail("the public API breaks what the last release offered", out)
+
+    rc, out = step("documentation pages", [sys.executable, "tools/scripts/check_doc_pages.py"],
+                   API_TIMEOUT_SECONDS)
+    if rc != 0:
+        return fail("a documentation page says nothing, or DocC warned", out)
 
     rc, out = step("swift test", ["swift", "test", "--scratch-path", SCRATCH_PATH],
                    TEST_TIMEOUT_SECONDS)
