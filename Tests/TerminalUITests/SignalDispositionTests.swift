@@ -33,3 +33,40 @@ struct SignalDispositionTests {
         #endif
     }
 }
+
+// A signal sent to the process reaches any one thread not blocking it. The
+// runtime blocks the ones it handles on the thread that starts its input
+// thread, which inherits the mask and lifts it for itself: the input thread,
+// waiting in `poll()` for the bytes their handlers write, takes them all.
+// Under Thread Sanitizer, a SIGTERM that reached the idle main thread instead
+// waited there until the app was killed.
+
+@Suite("The input thread alone takes the signals the app handles")
+struct WakingSignalMaskTests {
+
+    /// The waking signals the calling thread blocks.
+    private static func blocked() -> [Int32] {
+        var mask = sigset_t()
+        pthread_sigmask(SIG_BLOCK, nil, &mask)
+        return Terminal.wakingSignals.filter { sigismember(&mask, $0) == 1 }
+    }
+
+    @Test func aThreadStartedAfterTheBlockInheritsItAndCanLiftIt() async {
+        let before = Self.blocked()
+        let previous = Terminal.blockWakingSignals()
+        let blockedOnStarter = Self.blocked()
+        let thread = BlockingThread(name: "waking-signal-test") { () -> ([Int32], [Int32]) in
+            let inherited = Self.blocked()
+            Terminal.unblockWakingSignals()
+            return (inherited, Self.blocked())
+        }
+        Terminal.restoreSignalMask(previous)
+        let restored = Self.blocked()
+        let (inherited, lifted) = await thread.value
+
+        #expect(blockedOnStarter == Terminal.wakingSignals)
+        #expect(inherited == Terminal.wakingSignals)
+        #expect(lifted.isEmpty)
+        #expect(restored == before)
+    }
+}

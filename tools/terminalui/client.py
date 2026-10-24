@@ -453,6 +453,13 @@ class Client:
         self._call("send_mouse", kind="press", x=x, y=y, button=button,
                    modifiers=list(modifiers) or None)
 
+    def mouse_drag(self, x: int, y: int, button: str = "left",
+                   *modifiers: str) -> None:
+        """Inject motion to (x, y) with ``button`` held, between a
+        ``mouse_press`` and a ``mouse_release``."""
+        self._call("send_mouse", kind="drag", x=x, y=y, button=button,
+                   modifiers=list(modifiers) or None)
+
     def mouse_release(self, x: int, y: int, button: str = "left",
                       *modifiers: str) -> None:
         self._call("send_mouse", kind="release", x=x, y=y, button=button,
@@ -663,6 +670,14 @@ class Client:
                 rows.append(stripped)
         return rows
 
+    @staticmethod
+    def sidebar_names(row: str, title: str) -> bool:
+        """Whether a sidebar row names the page titled ``title``: a name
+        too long for the sidebar is cut short with an ellipsis."""
+        if row.endswith("…"):
+            return title.startswith(row[:-1])
+        return row == title
+
     def storybook_pages(self, *, max_pages: int = 200) -> list[str]:
         """Enumerate every page title in navigation order, starting from
         the current position.
@@ -706,7 +721,8 @@ class Client:
         sidebar. The sidebar renders a scrolled window onto the catalog, so
         it can only prove pages were *missed*, never that all were seen —
         which is the direction that matters here."""
-        missed = [row for row in self.storybook_sidebar_rows() if row not in titles]
+        missed = [row for row in self.storybook_sidebar_rows()
+                  if not any(self.sidebar_names(row, title) for title in titles)]
         if missed:
             raise RuntimeError(
                 f"navigation stalled on {titles[-1]!r} but the sidebar still "

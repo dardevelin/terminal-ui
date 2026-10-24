@@ -29,8 +29,11 @@ public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
     public let isPresented: Bool
     /// The panel content, centered over the dimmed screen while presented.
     public let content: ModalContent
-    /// Centred for `.modal`, along the trailing edge for `.inspector`.
+    /// Centred for `.modal`, along the trailing edge for `.inspector`, at
+    /// the pointer for `.contextMenu`.
     var placement = PresentationPlacement.centered
+    /// For a menu: closes it.
+    var dismissal: (() -> Void)?
 }
 
 extension TerminalView {

@@ -19,7 +19,7 @@
 ///
 ///   - Modifier rect transforms — padding (inset by amount), border
 ///     (inset by 1), frame (clamp dimensions).
-///   - ZStack — every child inherits the parent's rect.
+///   - ZStack — each child at its stated size, aligned in the stack.
 ///
 /// Layer 3 (still on `GraphRenderer.renderLayout` until extracted)
 /// owns flex distribution:
@@ -84,7 +84,7 @@ public enum Layout {
 
     /// Place a layout container's children in `rect`.
     ///
-    /// **Layer 2** (here): ZStack — every child gets the parent's rect.
+    /// **Layer 2** (here): ZStack — each child placed by `stacked`.
     ///
     /// **Layer 3** (still in `GraphRenderer.renderLayout`): VStack,
     /// HStack, ScrollView. Layout falls back to "recurse with same
@@ -95,12 +95,10 @@ public enum Layout {
     private static func placeLayout(_ node: AttributeNode, info: LayoutInfo, in rect: Rect) {
         switch info.kind {
         case .zstack:
-            // ZStack semantics: every child draws over the parent's
-            // full rect, last child wins on overlapping cells. The
-            // render walk treats children identically; layout matches
-            // by stamping each child with the parent's rect.
+            // Last child wins on overlapping cells; each is placed by
+            // `stacked`, and the render walk reads the rects it stamps.
             for child in node.children {
-                measureAndPlace(graph: child, in: rect)
+                measureAndPlace(graph: child, in: stacked(child, in: rect, alignment: info.alignment))
             }
 
         case .vstack, .hstack, .scroll:
@@ -120,6 +118,49 @@ public enum Layout {
             // children by node.splitRatios, accounting for one
             // divider cell per sibling boundary.
             placeSplit(node, axis: axis, in: rect)
+        }
+    }
+
+    /// Where a ZStack places `child` in its `rect`. A size the child states
+    /// is its size, as a stack's cross axis honours one: stamped with the
+    /// whole stack, a `.frame(width: 4, height: 1)` on top held the pointer
+    /// everywhere in it, and nothing under it could be hovered or clicked.
+    /// What the child leaves unstated it takes from the stack under
+    /// `.topLeading`, which draws exactly as before; any other alignment
+    /// places the child at its measured size, a child that takes the width
+    /// it is offered at the stack's, as `aligned` places a frame's content.
+    private static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
+        let fills = alignment == .topLeading
+        let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
+            ?? (fills || GraphRenderer.takesOfferedWidth(child) ? rect.width : GraphMeasurer.measureWidth(child)))
+        let height = min(rect.height, GraphRenderer.declaredHeight(of: child)
+            ?? (fills ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
+        return Rect(
+            x: rect.x + alignment.horizontal.offset(for: width, in: rect.width),
+            y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
+            width: max(1, width), height: max(1, height)
+        )
+    }
+
+    /// The column — or, for a `.vertical` split, the row — of each divider
+    /// between `panes`: the one-cell gap `placeSplit` leaves after each pane
+    /// but the last. Where the renderer draws them and a press finds them.
+    static func splitDividers(of panes: [Rect], axis: SplitAxis) -> [Int] {
+        panes.dropLast().map { axis == .horizontal ? $0.x + $0.width : $0.y + $0.height }
+    }
+
+    /// Ratios `placeSplit` lays children out at exactly `sizes` with: what
+    /// a divider dragged to a cell writes back. Each non-last child takes
+    /// the ceiling of its share, so a ratio of exactly `size / available`
+    /// may land a cell long when its product rounds up past the integer —
+    /// 20 / 29 × 29 is 20.000000000000004. A share a hair under the size
+    /// keeps the ceiling on it.
+    static func splitRatios(placing sizes: [Int]) -> [Double] {
+        let available = Double(sizes.reduce(0, +))
+        guard available > 0 else { return sizes.map { _ in 1 } }
+        return sizes.enumerated().map { index, size in
+            let share = Double(size) / available
+            return index == sizes.count - 1 ? share : share - 1e-9
         }
     }
 

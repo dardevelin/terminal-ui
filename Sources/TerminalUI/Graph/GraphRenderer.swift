@@ -39,6 +39,7 @@ public enum GraphRenderer {
             switch content.parent?.presentationPlacement ?? .centered {
             case .centered: compositePresentation(content, effect: .modal(isPresented: true), into: &buffer)
             case .trailing: compositeInspector(content, into: &buffer)
+            case .anchored(let point): compositeMenu(content, at: point, into: &buffer)
             }
         }
     }
@@ -325,7 +326,7 @@ public enum GraphRenderer {
         case .hstack:
             renderHStack(children, info: info, into: &buffer, context: context)
         case .zstack:
-            renderZStack(children, info: info, into: &buffer, context: context)
+            renderZStack(children, into: &buffer, context: context)
         case .scroll(let axis):
             renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
         case .split(let axis):
@@ -353,18 +354,15 @@ public enum GraphRenderer {
 
         // Dividers sit in the 1-cell gap between adjacent child rects.
         let glyph: Character = axis == .horizontal ? "│" : "─"
-        for i in 0..<(children.count - 1) {
-            let leading = children[i].rect
+        for divider in Layout.splitDividers(of: children.map(\.rect), axis: axis) {
             switch axis {
             case .horizontal:
-                let dividerX = leading.x + leading.width
                 for y in context.rect.y..<(context.rect.y + context.rect.height) {
-                    buffer[dividerX, y] = Cell(character: glyph, style: context.style)
+                    buffer[divider, y] = Cell(character: glyph, style: context.style)
                 }
             case .vertical:
-                let dividerY = leading.y + leading.height
                 for x in context.rect.x..<(context.rect.x + context.rect.width) {
-                    buffer[x, dividerY] = Cell(character: glyph, style: context.style)
+                    buffer[x, divider] = Cell(character: glyph, style: context.style)
                 }
             }
         }
@@ -1177,31 +1175,13 @@ public enum GraphRenderer {
         return nil
     }
 
-    static func renderZStack(_ children: [AttributeNode], info: LayoutInfo,
+    static func renderZStack(_ children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
-        // Layer 2: Layout stamps every ZStack child's rect to the parent's
-        // rect. Render reads the pre-stamped rect — last child wins on
-        // overlapping cells.
-        //
-        // Under the default `.topLeading` that is the whole story. Any other
-        // alignment means placing children, which needs each one's own size,
-        // so those measure and re-stamp.
-        let alignment = info.alignment
+        // Layer 2: `Layout.stacked` stamped each child's rect. Render reads
+        // them — last child wins on overlapping cells.
         for child in children {
             var childCtx = context
             childCtx.rect = child.rect
-            if alignment != .topLeading {
-                let width = min(context.rect.width,
-                                declaredWidth(of: child) ?? measureWidth(child))
-                let height = min(context.rect.height,
-                                 declaredHeight(of: child)
-                                    ?? measureHeight(child, proposedWidth: max(1, width)))
-                childCtx.rect = Rect(
-                    x: context.rect.x + alignment.horizontal.offset(for: width, in: context.rect.width),
-                    y: context.rect.y + alignment.vertical.offset(for: height, in: context.rect.height),
-                    width: max(1, width), height: max(1, height))
-                Layout.measureAndPlace(graph: child, in: childCtx.rect)
-            }
             renderNode(child, into: &buffer, context: childCtx)
         }
     }
@@ -1698,6 +1678,33 @@ public enum GraphRenderer {
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
     }
 
+    /// A menu: at its content's size, with its top-left corner on the cell
+    /// it was opened from, as a platform's context menu opens — moved left,
+    /// or up, as far as it must to stay on the screen. Nothing is dimmed.
+    private static func compositeMenu(_ menu: AttributeNode, at point: Point,
+                                      into buffer: inout CellBuffer) {
+        let width = min(measureWidth(menu), buffer.width)
+        let height = min(measureHeight(menu, proposedWidth: width), buffer.height)
+        guard width > 0, height > 0 else { return }
+        compositePanel(menu, at: Rect(x: max(0, min(point.x, buffer.width - width)),
+                                      y: max(0, min(point.y, buffer.height - height)),
+                                      width: width, height: height), into: &buffer)
+    }
+
+    /// Draws `content` laid out at `area`'s size into its own layer at
+    /// `area`, over the buffer, nothing dimmed: an inspector's column or a
+    /// menu.
+    private static func compositePanel(_ content: AttributeNode, at area: Rect,
+                                       into buffer: inout CellBuffer) {
+        var layer = Layer(width: area.width, height: area.height, x: area.x, y: area.y,
+                          style: ModifierEffect.modal(isPresented: true).compositingStyle)
+        let rect = Rect(x: 0, y: 0, width: area.width, height: area.height)
+        Layout.measureAndPlace(graph: content, in: rect)
+        renderNode(content, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
+        offsetRects(of: content, dx: area.x, dy: area.y)
+        Compositor.composite(layers: [layer], into: &buffer)
+    }
+
     /// An inspector: in the column taken off the trailing edge of the view
     /// it was declared on, that view's full height, as wide as its content,
     /// with nothing dimmed — the panel sits beside what it presents over
@@ -1709,14 +1716,8 @@ public enum GraphRenderer {
         let area = (panel.parent?.rect ?? screen).intersected(with: screen)
         let width = panel.parent.map { Layout.inspectorColumn(of: $0, outerWidth: area.width) } ?? 0
         guard width > 0, area.height > 0 else { return }
-        let x = area.x + area.width - width
-        var layer = Layer(width: width, height: area.height, x: x, y: area.y,
-                          style: ModifierEffect.modal(isPresented: true).compositingStyle)
-        let rect = Rect(x: 0, y: 0, width: width, height: area.height)
-        Layout.measureAndPlace(graph: panel, in: rect)
-        renderNode(panel, into: &layer.buffer, context: RenderContext(style: .plain, rect: rect))
-        offsetRects(of: panel, dx: x, dy: area.y)
-        Compositor.composite(layers: [layer], into: &buffer)
+        compositePanel(panel, at: Rect(x: area.x + area.width - width, y: area.y,
+                                       width: width, height: area.height), into: &buffer)
     }
 
     static func renderBorder(_ style: BorderStyle, color: Color?, edges: BorderEdges,

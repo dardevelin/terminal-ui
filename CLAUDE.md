@@ -81,10 +81,12 @@ python3 tools/scripts/integration_suite.py # every test_* script, in turn
 python3 tools/scripts/tool_tests.py        # tests of the checks and the harness verdict
 python3 tools/scripts/check_api_compat.py  # public API vs the last release (own .build-api/)
 python3 tools/scripts/check_doc_pages.py   # every published doc page says something (.build-docs/)
+python3 tools/scripts/check_tutorial_steps.py  # every tutorial step builds, warning-free, and does
+                                               # what its captions say (.build-tutorial/)
 
 # The whole local gate in one command: tooling tests and repository checks →
 # build (tests included, warnings as errors) → public API → test → walk →
-# integration scripts → smoke. Skips itself when the turn touched no .swift /
+# integration scripts → smoke → tutorial steps. Skips itself when the turn touched no .swift /
 # .py file. Builds into .build-automation/.
 python3 tools/scripts/verify.py
 
@@ -117,7 +119,8 @@ and each leg is: `swift build` → `swift test` → warnings-as-errors debug →
 warnings-as-errors release (the debug one builds the tests too: plain
 `swift build` never compiles a test target) → `storybook_walk.py` → `integration_suite.py`,
 which finds and runs every `test_*` script in `tools/scripts/`
-(name a new one that way and it gates) → `storybook_smoke.py`. What one app
+(name a new one that way and it gates) → `storybook_smoke.py` →
+`check_tutorial_steps.py`. What one app
 driven by one client shows is a smoke case, its terminal, environment and
 project files set on the `SmokeCase`; only what takes several apps, `swtui`
 or verify.py itself is an integration script. Ahead of
@@ -146,12 +149,13 @@ every run. Signal handlers must be installed with `sigaction` (see
 `installSignalDisposition` in Terminal.swift), never `signal()`: TSan
 intercepts only `sigaction`, and a handler it does not know about runs inside
 whatever the thread was doing — in `free`, it aborted on TSan's own lock.
-TSan also runs a signal's handler only once the thread the signal reached
-calls into its runtime, and an idle app's threads sleep in the kernel: a
-sanitized app sent SIGTERM while idle does not act on it until something
-wakes it. The runner's stop works because closing its socket wakes the app;
-a case that signals an idle app on purpose raises `CaseSkipped` when
-`client.sanitizer == "thread"`.
+TSan also runs a signal's handler at once only on a thread waiting in a call
+it intercepts, and holds it on any other until that thread calls into its
+runtime: an idle main thread waits in `mach_msg`, which it does not, and a
+SIGTERM that reached it was ignored. So the runtime blocks the signals it
+handles on every thread but its input thread, whose `poll()` TSan does
+intercept (`Terminal.blockWakingSignals`); a thread an app starts before
+`run()` keeps its own mask, and may take them.
 
 **Every app the harness spawns is checked on the way out**, by
 `tools/terminalui/verdict.py`, which `runner.py` consults as each app ends: a
@@ -372,7 +376,10 @@ those same steps, so after changing a step, re-record its preview. The
 **The tutorial code steps are real, compiled-by-the-reader code.** Changing a
 public API means updating the affected `Resources/tasks-*.swift` steps and the
 `.tutorial` files that narrate them, or the course teaches an API that no longer
-exists.
+exists. `check_tutorial_steps.py` (CI, verify.py) builds every step with
+warnings as errors and drives each through what its captions claim — the
+stages `tools/terminalui/tutorial.py` lists, which also drive the recorded
+previews. A caption that promises new behaviour gets a stage there.
 
 ## Code standards
 

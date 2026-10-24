@@ -6,6 +6,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
+
+A minor release: an app written for 2.0 compiles unchanged. The mouse does
+what it does on a desktop — clicks that count and know their modifiers,
+drags, right-click menus, a caret placed by a click, a wheel that scrolls
+what is under it and hover on what is drawn on top — and the panels an
+agent's review needs: an inspector beside the content, and groups that
+fold. Every tutorial step is now built and run against the page that
+teaches it. One change in behaviour: the wheel no longer reaches
+`.onKeyPress` as arrow keys (see Changed).
+
 ### Added
 
 - **`.inspector(isPresented:content:)`** — a panel in a column taken off the
@@ -21,6 +32,32 @@ All notable changes to TerminalUI are documented here. Format based on
   edge rather than stopping a frame short of it. Read every frame, so it can
   follow a theme; the terminal's own is put back (OSC 111) however the app
   ends, a crash included. `nil`, the default, leaves the terminal alone.
+- **Taps that count clicks and know their modifiers**: `TapGesture`,
+  `.gesture(_:)` and `.onTapGesture(count:perform:)`, as in SwiftUI. A
+  press of the same button on the same cell within 500 ms continues a run
+  of clicks, as AppKit counts them, so `.onTapGesture(count: 2)` opens what
+  `.onTapGesture` selects; `TapGesture().modifiers(.ctrl)` takes only
+  Ctrl+clicks. `.onClick` still takes every left click.
+- **Drags**: `DragGesture` and `.gesture(_:)`, as in SwiftUI — `onChanged`
+  as the pointer moves with the button held, `onEnded` at the release, each
+  with where the drag started, where it is and how far it has come. The
+  drag belongs to the view pressed and follows the pointer out of it.
+  The framework's own controls drag too: a `SplitView`'s divider resizes
+  the panes either side and writes the new ratios to its `SplitState`, a
+  scrollbar scrolls along its track, and a `Slider` slides from its track.
+  `swtui ctl` and the harness client send drags (`mouse_drag`).
+- **`.contextMenu(menuItems:)`** — a menu where a view is right-clicked, as
+  SwiftUI's. It opens at the cell clicked, kept on the screen, and holds the
+  keyboard while it is open; choosing an item runs it and closes the menu,
+  and Escape or a press outside closes it alone. The secondary button had
+  reached nothing.
+- **A click places the caret** in `TextInput`, `TextArea` and `PromptInput`,
+  on the character it lands on — through the line-number gutter, wrapped
+  rows, a scrolled view, the caret's own cell and wide characters; inside a
+  collapsed paste, at its nearer edge. A click focused the field and left
+  the caret where it was.
+- **`TerminalAppProtocol.linesPerWheelNotch`** — how many lines a notch of
+  the wheel scrolls; 3 by default, as before.
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.
@@ -61,12 +98,42 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **An idle app built with Thread Sanitizer quits on SIGTERM.** The signal
+  reached the main thread, asleep in a wait TSan does not intercept, and TSan
+  held its handler until the thread woke, which an idle app's never did. The
+  signals the runtime handles — SIGINT, SIGTERM, SIGHUP, SIGWINCH — now go to
+  its input thread alone, which waits for what their handlers write; while
+  the app runs, they are blocked on the thread that called `run()`, and on
+  threads it starts.
 - **A stack holding a view that takes the width it is offered takes it
   too**, as in SwiftUI. An `HStack` with a `Spacer`, nested in another,
   stayed at its natural width, so what followed the `Spacer` never reached
   the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
   a child at its natural width rather than giving it the frame's. A `Spacer`
   in a `VStack` stretches only down it, and does not make it wide.
+- **A wrapped line in a numbered `TextArea` continues under its start.**
+  Continuation rows were indented one cell less than the first.
+- **What a `ForEach` row reads redraws it.** A row closure runs after the
+  body holding the `ForEach` has returned, so what it read from an
+  `@Observable` model was tracked by no body: a list whose rows read the
+  selection kept its old marks when only the selection changed. It was
+  hidden while a `SplitView` rebuilt its panes on every update.
+- **A `SplitView`'s panes keep their state.** It rebuilt them from nothing
+  on every update, so a pane's `@TerminalState` reset whenever anything
+  above the split drew again, and on every resize. Panes are reconciled by
+  position, as a stack's children are.
+- **A view disabled after it was drawn no longer takes clicks or keys.** Its
+  handlers, kept on the graph node so a cached update can restore them,
+  were restored every frame after `.disabled()` too.
+- **Hover reaches only what is drawn on top.** `.onHover` fired for every
+  handler whose rect held the pointer, so a card under a badge lit with the
+  badge; now the handler a click there would reach is hovered, with those
+  holding it. A `ZStack` child that states its size — a
+  `.frame(width:height:)` — is laid out at that size rather than over the
+  whole stack, where it caught the pointer everywhere.
+- **A `List` row takes its own clicks.** The row was found by counting lines
+  from the list's top, so on rows taller than a line a click selected the
+  wrong one.
 - **The pointer reaches only what a viewport shows.** Rows scrolled out of a
   scroll view kept rects over the header and footer around it, and a click,
   a wheel or a hover there found a row nobody could see.
@@ -987,7 +1054,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...v1.0.0

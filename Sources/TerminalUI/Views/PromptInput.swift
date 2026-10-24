@@ -693,6 +693,13 @@ public struct PromptInput: TerminalView {
         )
         return rows
             .focusable()
+            // A click puts the cursor on the character it lands on.
+            .onClick { [state] x, y in
+                var current = state.get()
+                (current.cursorRow, current.cursorCol) = Self.cursor(
+                    atColumn: x - prefix.width, row: y, rows: rows)
+                state.set(current)
+            }
             .onKeyPress { [text, state, onSubmit, arrowMode, textEditing] event in
                 Self.handleKey(
                     event, text: text, state: state,
@@ -811,6 +818,34 @@ public struct PromptInput: TerminalView {
         // Defensive: cursor past end — pin at end of last chunk.
         let lastIdx = max(0, chunks.count - 1)
         return (displayRow + lastIdx, chunks[lastIdx].count)
+    }
+
+    /// Where in the text a click at column `x` of the text — past the
+    /// prefix — and row `y` of `rows` as `buildDisplay` draws them puts the
+    /// cursor: on the character there, at the end of a row clicked past
+    /// its end, and at the nearer edge of a collapsed paste marker clicked
+    /// inside, as the cursor never lives within one.
+    static func cursor(atColumn x: Int, row y: Int, rows: PromptRows) -> (row: Int, col: Int) {
+        let expandedLines = TextLines.split(rows.text)
+        guard !rows.text.isEmpty else { return (0, 0) }
+        var target = max(0, min(rows.firstVisibleRow + y, rows.totalDisplayRows - 1))
+        var lineIndex = 0
+        var columnInLine = 0
+        for (index, chunks) in rows.wraps.enumerated() {
+            guard target >= chunks.count else {
+                // Chunks follow one another in the line, as `projectCursor`
+                // counts them.
+                columnInLine = chunks.prefix(target).reduce(0) { $0 + $1.count }
+                    + max(0, min(x, chunks[target].count))
+                lineIndex = index
+                break
+            }
+            target -= chunks.count
+            lineIndex = index
+            columnInLine = rows.lines.indices.contains(index) ? rows.lines[index].count : 0
+        }
+        let offset = TextLines.offset(row: lineIndex, col: columnInLine, in: rows.lines)
+        return TextLines.position(of: untranslateOffset(offset, in: rows.projection), in: expandedLines)
     }
 
     // MARK: - Collapsed-display projection
@@ -953,6 +988,23 @@ public struct PromptInput: TerminalView {
         return expandedOffset + cumulative
     }
 
+    /// The inverse of `translateOffset`: the offset in the expanded text of
+    /// a display offset, which inside a collapsed marker is the nearer of
+    /// its edges, as the cursor never lives within one.
+    static func untranslateOffset(_ displayOffset: Int, in projection: CollapsedProjection) -> Int {
+        var offset = displayOffset
+        let markers = projection.markerRanges.filter { !$0.isExpanded }
+        if let marker = markers.first(where: { $0.start < offset && offset < $0.end }) {
+            offset = offset - marker.start <= marker.end - offset ? marker.start : marker.end
+        }
+        // Each collapsed marker before the offset moved it by its delta.
+        var delta = 0
+        for (marker, point) in zip(markers, projection.deltas) where offset >= marker.end {
+            delta = point.delta
+        }
+        return offset - delta
+    }
+
     // MARK: - Display
 
     /// The spans for `rows`, drawn for whether the prompt holds focus: the
@@ -981,7 +1033,7 @@ public struct PromptInput: TerminalView {
         )
 
         // Flatten (logicalRow, chunkIndex) pairs for the visible window.
-        let startDisplayRow = max(0, min(st.scrollDisplayRow, max(0, rows.totalDisplayRows - rows.visibleLines)))
+        let startDisplayRow = rows.firstVisibleRow
         let endDisplayRow = min(rows.totalDisplayRows, startDisplayRow + rows.visibleLines)
         let cursorStyle = (foreground: theme.foregroundEmphasis,
                            background: theme.cursorColor(lit: cursorLit))
@@ -1593,6 +1645,12 @@ struct PromptRows: TerminalView {
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.theme) var theme
     @TerminalEnvironment(\.cursorFlash) var cursorFlash
+
+    /// The display row drawn first: the scroll position, kept from showing
+    /// rows past the end.
+    var firstVisibleRow: Int {
+        max(0, min(state.scrollDisplayRow, max(0, totalDisplayRows - visibleLines)))
+    }
 
     var body: some TerminalView {
         Text(spans: PromptInput.buildDisplay(self, isFocused: isFocused,

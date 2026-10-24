@@ -616,6 +616,56 @@ public enum Terminal {
         exit(128 + signum)
     }
 
+    /// The signals the runtime handles by unwinding the terminal and
+    /// quitting; see `installSignalCleanup`.
+    static let terminatingSignals: [Int32] = [SIGINT, SIGTERM, SIGHUP]
+
+    /// The signals the runtime's handlers answer by waking its input thread:
+    /// the terminating ones and SIGWINCH.
+    static let wakingSignals: [Int32] = terminatingSignals + [SIGWINCH]
+
+    /// Keeps the waking signals off the calling thread, and off every thread
+    /// it starts from now on, which inherit its mask (POSIX
+    /// `pthread_create`); returns the mask to put back.
+    ///
+    /// A signal sent to the process reaches any one thread not blocking it
+    /// (POSIX.1 §2.4.1), and its handler only wakes the input thread, so the
+    /// input thread is the one that should take it. Under Thread Sanitizer
+    /// it must: TSan runs a handler at once only on a thread waiting in a
+    /// call it intercepts, such as the input thread's `poll()`, and holds it
+    /// on any other thread until that thread next calls into its runtime.
+    /// The main thread of an idle app waits in `mach_msg`, which it does not
+    /// intercept, and a SIGTERM that reached it waited there until the app
+    /// was killed.
+    static func blockWakingSignals() -> sigset_t {
+        var previous = sigset_t()
+        var waking = wakingSignalSet
+        pthread_sigmask(SIG_BLOCK, &waking, &previous)
+        return previous
+    }
+
+    /// Lets the waking signals reach the calling thread: the input thread,
+    /// started with them blocked.
+    static func unblockWakingSignals() {
+        var waking = wakingSignalSet
+        pthread_sigmask(SIG_UNBLOCK, &waking, nil)
+    }
+
+    /// Puts back the mask `blockWakingSignals()` returned.
+    static func restoreSignalMask(_ mask: sigset_t) {
+        var mask = mask
+        pthread_sigmask(SIG_SETMASK, &mask, nil)
+    }
+
+    private static var wakingSignalSet: sigset_t {
+        var set = sigset_t()
+        sigemptyset(&set)
+        for signum in wakingSignals {
+            sigaddset(&set, signum)
+        }
+        return set
+    }
+
     #if DEBUG
     /// Forget a termination request. For tests, which call the handler
     /// directly.
@@ -771,7 +821,7 @@ public enum Terminal {
         // forbids C-function-pointer formation from any closure that
         // captures Self / context, even via static-function calls.
         // File-scope free functions sidestep that.
-        for signum in [SIGINT, SIGTERM, SIGHUP] {
+        for signum in terminatingSignals {
             installSignalDisposition(signum, _terminalSignalHandler)
         }
         // A static `let` is initialised on first use, which allocates — the

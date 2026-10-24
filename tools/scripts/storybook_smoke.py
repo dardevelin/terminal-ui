@@ -31,6 +31,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui import Client, CellSlice, Probe  # noqa: E402
+from terminalui.process import usable_cpus  # noqa: E402
 from terminalui.runner import BOOT_TIMEOUT, AppExitedBadly, spawn_and_connect  # noqa: E402
 
 
@@ -43,17 +44,11 @@ class CaseFailed(Exception):
     """Raised inside a case to signal a deliberate failure with a message."""
 
 
-class CaseSkipped(Exception):
-    """Raised inside a case that cannot observe what it checks in the build
-    under test, with the reason."""
-
-
 @dataclass
 class CaseResult:
     name: str
     ok: bool
     detail: str
-    skipped: bool = False
 
 
 @dataclass
@@ -110,8 +105,6 @@ class SmokeCase:
             return CaseResult(self.name, False, f"AppExitedBadly: {objection}")
         except CaseFailed as failure:
             return CaseResult(self.name, False, str(failure))
-        except CaseSkipped as reason:
-            return CaseResult(self.name, True, f"skipped: {reason}", skipped=True)
         except Exception as exc:  # noqa: BLE001
             return CaseResult(self.name, False, f"{type(exc).__name__}: {exc}")
 
@@ -241,7 +234,8 @@ def storybook_sidebar_order_matches_navigation(app: Client) -> None:
     # class).
     visible_prefix = titles[: len(initial_sidebar)]
     assert_true(
-        visible_prefix == initial_sidebar,
+        len(visible_prefix) == len(initial_sidebar)
+        and all(app.sidebar_names(row, title) for row, title in zip(initial_sidebar, visible_prefix)),
         f"navigation order doesn't match sidebar display order:\n"
         f"  sidebar  : {initial_sidebar!r}\n"
         f"  navigated: {visible_prefix!r}",
@@ -1297,6 +1291,193 @@ def storybook_hover_follows_content_scrolled_under_the_pointer(app: Client) -> N
                 f"the row scrolled under the pointer should be hovered; preview:\n{app.preview_text()}")
 
 
+def storybook_hover_reaches_only_the_view_on_top(app: Client) -> None:
+    """`.onHover` page: a badge drawn over a card. Over the badge only the
+    badge is hovered; beside it, and below it, the card is. Every handler
+    whose rect held the pointer fired, so over the badge the card lit too,
+    and leaving the badge for the card never told the card it had come."""
+    app.goto_page(".onHover")
+    rows = app.text().split("\n")
+    y = next(i for i, row in enumerate(rows) if "[badge]" in row)
+    x = rows[y].index("[badge]") + 1
+    app.mouse_move(x, y)
+    assert_true("on top: badge" in app.preview_text(), f"expected the badge; preview:\n{app.preview_text()}")
+    app.mouse_move(x, y + 1)
+    assert_true("on top: card" in app.preview_text(), f"expected the card; preview:\n{app.preview_text()}")
+    app.mouse_move(x, y)
+    assert_true("on top: badge" in app.preview_text(), f"expected the badge; preview:\n{app.preview_text()}")
+    app.mouse_move(x + 9, y)
+    assert_true("on top: card" in app.preview_text(),
+                f"beside the badge, the card; preview:\n{app.preview_text()}")
+
+
+def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
+    """List page: a click on a row selects it, and after the wheel has
+    scrolled the list, a click selects the row now drawn there."""
+    app.goto_page("List")
+
+    def click_on(label: str) -> None:
+        rows = app.text().split("\n")
+        y = next(i for i, row in enumerate(rows) if f"  {label}" in row or f"▸ {label}" in row)
+        app.mouse_click(rows[y].index(label), y)
+
+    click_on("gamma")
+    assert_true("▸ gamma" in app.preview_text(), f"expected gamma selected:\n{app.preview_text()}")
+    rows = app.text().split("\n")
+    y = next(i for i, row in enumerate(rows) if "▸ gamma" in row)
+    app.mouse_wheel("down", rows[y].index("gamma"), y)
+    assert_true("more" in app.preview_text() and "epsilon" in app.preview_text(),
+                f"the wheel should scroll the list:\n{app.preview_text()}")
+    click_on("epsilon")
+    assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
+
+
+def storybook_taps_count_and_know_their_modifiers(app: Client) -> None:
+    """`.onTapGesture` page: a click is a tap; a second click on the same
+    cell soon after is a double tap, which the single tap leaves alone; a
+    Ctrl+click is the Ctrl tap's alone. Clicks knew neither their count
+    nor their modifiers."""
+    app.goto_page(".onTapGesture")
+    rows = app.text().split("\n")
+    # The preview's, not the code pane's `Text("[ notes.md ]")`.
+    y = next(i for i, row in enumerate(rows) if "[ notes.md ]" in row and "Text(" not in row)
+    x = rows[y].index("notes.md")
+    app.mouse_click(x, y)
+    assert_true("taps: 1   opens: 0" in app.preview_text(), f"one click, one tap:\n{app.preview_text()}")
+    app.mouse_click(x, y)
+    assert_true("taps: 1   opens: 1" in app.preview_text(),
+                f"the second click of a double click opens:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "left", "ctrl")
+    assert_true("taps: 1   opens: 1   marked: yes" in app.preview_text(),
+                f"Ctrl+click marks, and is no tap:\n{app.preview_text()}")
+
+
+def _find(app: Client, needle: str, after: str = "Preview") -> tuple[int, int]:
+    """The column and row of the first ``needle`` drawn below the first
+    row holding ``after`` — the preview, not the code pane above it."""
+    rows = app.text().split("\n")
+    start = next(i for i, row in enumerate(rows) if after in row)
+    y = next(i for i in range(start, len(rows)) if needle in rows[i])
+    return rows[y].index(needle), y
+
+
+def storybook_a_drag_moves_what_it_holds(app: Client) -> None:
+    """`.gesture(DragGesture)` page: dragging the handle six cells right
+    widens the bar by six, and the release keeps it. Nothing followed a
+    drag."""
+    app.goto_page(".gesture(DragGesture)")
+    x, y = _find(app, "▐")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 3, y)
+    app.mouse_drag(x + 6, y + 1)
+    app.mouse_release(x + 6, y + 1)
+    assert_true("width: 16" in app.preview_text(), f"the bar should be 16 wide:\n{app.preview_text()}")
+    x, y = _find(app, "▐")
+    app.mouse_press(x, y)
+    app.mouse_drag(x - 4, y)
+    app.mouse_release(x - 4, y)
+    assert_true("width: 12" in app.preview_text(),
+                f"a second drag starts from where the first ended:\n{app.preview_text()}")
+
+
+def storybook_a_split_divider_drags(app: Client) -> None:
+    """SplitView page: dragging the divider between the left pane and the
+    right ones moves it with the pointer."""
+    app.goto_page("SplitView")
+    x, y = _find(app, "│top right")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 5, y)
+    app.mouse_release(x + 5, y)
+    moved, _ = _find(app, "│top right")
+    assert_true(moved == x + 5, f"the divider should be at {x + 5}, is at {moved}:\n{app.preview_text()}")
+
+
+def storybook_a_slider_drags(app: Client) -> None:
+    """Slider page: a drag from the knob to past the track's end takes the
+    value to its maximum."""
+    app.goto_page("Slider")
+    x, y = _find(app, "●")
+    app.mouse_press(x, y)
+    app.mouse_drag(x + 40, y)
+    app.mouse_release(x + 40, y)
+    assert_true("● 100" in app.preview_text(), f"the slider should be at 100:\n{app.preview_text()}")
+
+
+def storybook_a_scrollbar_drags(app: Client) -> None:
+    """ScrollView page: pressing the track and dragging to its foot scrolls
+    to the end."""
+    app.goto_page("ScrollView")
+    x, y = _find(app, "row 1")
+    rows = app.text().split("\n")
+    bar = rows[y].rindex("│", 0, rows[y].rindex("│"))
+    _, foot = _find(app, "▼")
+    app.mouse_press(bar, y)
+    app.mouse_drag(bar, foot + 3)
+    app.mouse_release(bar, foot + 3)
+    assert_true("row 0" not in app.preview_text(), f"the view should have scrolled:\n{app.preview_text()}")
+    assert_true(app.wait_until(lambda c: "▲" in c.preview_text()),
+                f"scrolled to the end, the track's head steps up:\n{app.preview_text()}")
+
+
+def storybook_a_right_click_opens_a_context_menu(app: Client) -> None:
+    """`.contextMenu` page: a right click opens the menu where it lands; a
+    click on an item runs it and closes the menu; Escape, and a press
+    outside, close it and run nothing. The secondary button reached
+    nothing."""
+    app.goto_page(".contextMenu")
+    x, y = _find(app, "notes.md — right-click")
+    app.mouse_click(x + 2, y, "right")
+    assert_true("[ Duplicate ]" in app.text(), f"the menu should be open:\n{app.preview_text()}")
+    dx, dy = _find(app, "[ Duplicate ]")
+    app.mouse_click(dx + 2, dy)
+    assert_true("chosen: Duplicate" in app.preview_text() and "[ Duplicate ]" not in app.text(),
+                f"choosing an item runs it and closes the menu:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "right")
+    app.send_key("down")
+    app.send_key("escape")
+    assert_true("[ Duplicate ]" not in app.text() and "chosen: Duplicate" in app.preview_text(),
+                f"Escape closes the menu and runs nothing:\n{app.preview_text()}")
+    app.mouse_click(x + 2, y, "right")
+    app.mouse_click(1, 1)
+    assert_true("[ Duplicate ]" not in app.text(), f"a press outside closes the menu:\n{app.text()}")
+
+
+def storybook_a_click_places_the_caret_in_a_text_area(app: Client) -> None:
+    """TextArea page: a click on a character puts the caret there, past the
+    line-number gutter, and typing goes in where it was clicked. A click
+    focused the editor and left the caret where it was."""
+    app.goto_page("TextArea")
+    x, y = _find(app, "TextArea.")
+    app.mouse_click(x, y)
+    app.send_text("big ")
+    assert_true("This is a big TextArea." in app.preview_text(),
+                f"typing should land where the click was:\n{app.preview_text()}")
+
+
+def storybook_a_click_places_the_cursor_in_a_text_input(app: Client) -> None:
+    """TextInput page: with text in the field, a click in its middle puts
+    the cursor there."""
+    app.goto_page("TextInput")
+    x, y = _find(app, "type an email")
+    app.mouse_click(x, y)
+    app.send_text("ada@example.com")
+    x, y = _find(app, "example.com")
+    app.mouse_click(x, y)
+    app.send_text("mail.")
+    assert_true("ada@mail.example.com" in app.preview_text(),
+                f"typing should land where the click was:\n{app.preview_text()}")
+
+
+def coder_a_click_places_the_cursor_in_the_composer(app: Client) -> None:
+    """Coder: a click in the composer's text puts the cursor there, so a
+    word can be fixed without arrowing to it."""
+    app.send_text("hello world")
+    x, y = _find(app, "hello world", after="hello world")
+    app.mouse_click(x + 6, y)
+    app.send_text("big ")
+    assert_true(app.contains("hello big world"), f"typing should land where the click was:\n{app.text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2330,6 +2511,22 @@ def navigation_invoke_action_quits_an_idle_app(app: Client) -> None:
     assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after app.quit")
 
 
+def navigation_sigterm_quits_an_idle_app(app: Client) -> None:
+    """A terminating signal quits an app that has gone idle, through the
+    teardown the runner checks. Regression: under Thread Sanitizer, which
+    runs a handler at once only on a thread waiting in a call it intercepts,
+    the signal reached the main thread, asleep in a wait it does not; the
+    handler waited for the thread to wake, which an idle app's never did, and
+    SIGTERM was ignored until the app was killed. The runner stops every app
+    this way, and a case whose app went idle before the stop failed."""
+    import signal
+
+    time.sleep(IDLE_SETTLE_SECONDS)
+    app.expected_exit_signal = signal.SIGTERM
+    os.kill(app.pid, signal.SIGTERM)
+    assert_true(app.wait_for_exit(3.0) is not None, "the app was still running 3s after SIGTERM")
+
+
 # ---------------------------------------------------------------------------
 # The harness contract: input is drawn before the next reply
 #
@@ -2388,9 +2585,6 @@ def coder_sigterm_during_an_unfinished_paste_quits_at_once(app: Client) -> None:
     waited them out."""
     import signal
 
-    if app.sanitizer == "thread":
-        raise CaseSkipped("Thread Sanitizer runs a signal's handler only once the thread it reached "
-                          "calls into its runtime, and an idle app's threads sleep in the kernel")
     app.write_raw(b"\x1b[200~half a paste", unfinished=True)
     # Not a settle: the parser has to be inside the paste when the signal
     # comes, and nothing it does there can be observed.
@@ -2664,6 +2858,7 @@ CASES: list[SmokeCase] = [
               navigation_an_idle_app_acts_on_remote_commands),
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
               navigation_invoke_action_quits_an_idle_app),
+    SmokeCase("navigation.sigterm_quits_an_idle_app", "Navigation", navigation_sigterm_quits_an_idle_app),
     SmokeCase("coder.a_resize_redraws_at_the_new_size", "Coder", coder_a_resize_redraws_at_the_new_size),
     SmokeCase("coder.sigterm_during_an_unfinished_paste_quits_at_once", "Coder",
               coder_sigterm_during_an_unfinished_paste_quits_at_once),
@@ -2732,6 +2927,24 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
     SmokeCase("storybook.hover_follows_content_scrolled_under_the_pointer", "Storybook",
               storybook_hover_follows_content_scrolled_under_the_pointer),
+    SmokeCase("storybook.hover_reaches_only_the_view_on_top", "Storybook",
+              storybook_hover_reaches_only_the_view_on_top),
+    SmokeCase("storybook.a_click_on_a_list_row_selects_it", "Storybook",
+              storybook_a_click_on_a_list_row_selects_it),
+    SmokeCase("storybook.taps_count_and_know_their_modifiers", "Storybook",
+              storybook_taps_count_and_know_their_modifiers),
+    SmokeCase("storybook.a_drag_moves_what_it_holds", "Storybook", storybook_a_drag_moves_what_it_holds),
+    SmokeCase("storybook.a_split_divider_drags", "Storybook", storybook_a_split_divider_drags),
+    SmokeCase("storybook.a_slider_drags", "Storybook", storybook_a_slider_drags),
+    SmokeCase("storybook.a_scrollbar_drags", "Storybook", storybook_a_scrollbar_drags),
+    SmokeCase("storybook.a_right_click_opens_a_context_menu", "Storybook",
+              storybook_a_right_click_opens_a_context_menu),
+    SmokeCase("storybook.a_click_places_the_caret_in_a_text_area", "Storybook",
+              storybook_a_click_places_the_caret_in_a_text_area),
+    SmokeCase("storybook.a_click_places_the_cursor_in_a_text_input", "Storybook",
+              storybook_a_click_places_the_cursor_in_a_text_input),
+    SmokeCase("coder.a_click_places_the_cursor_in_the_composer", "Coder",
+              coder_a_click_places_the_cursor_in_the_composer),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
@@ -2844,18 +3057,7 @@ CASES: list[SmokeCase] = [
 ]
 
 
-def _usable_cpus() -> int:
-    """The CPUs this process may run on — a container's share, not the host's."""
-    if hasattr(os, "process_cpu_count"):
-        return os.process_cpu_count() or 1
-    if hasattr(os, "sched_getaffinity"):
-        return len(os.sched_getaffinity(0))
-    return os.cpu_count() or 1
-
-
 def _tick(result: CaseResult) -> str:
-    if result.skipped:
-        return "–"
     return "✓" if result.ok else "✗"
 
 
@@ -2876,7 +3078,7 @@ def main(argv: list[str]) -> int:
     # Half the CPUs: every case is an app under a PTY plus its client, and a
     # timing-sensitive case — an idle app's CPU, a burst of input — must not
     # be starved by its neighbours. Each app owns its own data dir and socket.
-    parser.add_argument("--jobs", type=int, default=_usable_cpus() // 2,
+    parser.add_argument("--jobs", type=int, default=usable_cpus() // 2,
                         help="cases run at once (default: half the CPUs; 1 runs them in turn)")
     args = parser.parse_args(argv)
 
@@ -2892,15 +3094,13 @@ def main(argv: list[str]) -> int:
     pool.shutdown()
 
     failed = [r for r in results if not r.ok]
-    skipped = [r for r in results if r.skipped]
-    if failed or skipped:
+    if failed:
         print()
-    for result in skipped + failed:
+    for result in failed:
         print(f"  {_tick(result)} {result.name:<40} {result.detail}")
 
     print()
-    passed = len(results) - len(failed) - len(skipped)
-    print(f"{passed}/{len(results)} cases passed" + (f", {len(skipped)} skipped" if skipped else ""))
+    print(f"{len(results) - len(failed)}/{len(results)} cases passed")
     return 0 if not failed else 1
 
 

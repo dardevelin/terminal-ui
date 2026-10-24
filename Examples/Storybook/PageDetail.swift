@@ -596,6 +596,43 @@ struct PreviewPane: TerminalView {
                 }
                 .frame(height: 3)
                 Text("under the pointer: \(state.hoveredScrollRow)").foreground(.gray)
+                // A badge drawn over a card: over the badge, the card under
+                // it is not hovered.
+                ZStack(alignment: .topLeading) {
+                    Text("card ·········\n·············")
+                        .onHover { [state] isHovering in
+                            if isHovering { state.hoveredLayer = "card" }
+                        }
+                    Text("[badge]").foreground(.magenta)
+                        .frame(width: 7, height: 1)
+                        .onHover { [state] isHovering in
+                            if isHovering { state.hoveredLayer = "badge" }
+                        }
+                }
+                .frame(width: 13, height: 2)
+                Text("on top: \(state.hoveredLayer)").foreground(.gray)
+            }
+        case .onTapGesture:
+            VStack {
+                Text(state.marked ? "[ notes.md ] ✓" : "[ notes.md ]").foreground(.cyan)
+                    .gesture(TapGesture().modifiers(.ctrl).onEnded { [state] in state.marked.toggle() })
+                    .onTapGesture(count: 2) { [state] in state.opens += 1 }
+                    .onTapGesture { [state] in state.taps += 1 }
+                Text("taps: \(state.taps)   opens: \(state.opens)   marked: \(state.marked ? "yes" : "no")")
+                    .foreground(.gray)
+            }
+        case .dragGesture:
+            VStack {
+                HStack(spacing: 0) {
+                    Text(String(repeating: "█", count: state.dragWidth)).foreground(.cyan)
+                    Text("▐").foreground(.yellow)
+                        .gesture(DragGesture()
+                            .onChanged { [state] drag in
+                                state.dragWidth = max(1, min(60, state.dragStartWidth + drag.translation.width))
+                            }
+                            .onEnded { [state] _ in state.dragStartWidth = state.dragWidth })
+                }
+                Text("width: \(state.dragWidth) — drag the ▐ handle").foreground(.gray)
             }
         case .mouseFocusPolicy:
             VStack {
@@ -954,6 +991,16 @@ struct PreviewPane: TerminalView {
             ) {
                 AlertAction("Delete", role: .destructive) { recordAlertChoice("Delete") }
                 AlertAction("Cancel", role: .cancel) { recordAlertChoice("Cancel") }
+            }
+        case .contextMenu:
+            VStack {
+                Text("notes.md — right-click me").foreground(.cyan)
+                    .contextMenu {
+                        Button("Open") { [state] in state.menuChoice = "Open" }
+                        Button("Duplicate") { [state] in state.menuChoice = "Duplicate" }
+                        Button("Delete") { [state] in state.menuChoice = "Delete" }
+                    }
+                Text("chosen: \(state.menuChoice)").foreground(.gray)
             }
         case .confirmationDialog:
             VStack {

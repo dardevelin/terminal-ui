@@ -249,7 +249,11 @@ public struct TextInput: TerminalView {
                     axis: axis,
                     windowStart: windowStartBinding,
                     theme: theme)
-                return TextInputRow(spans: composed.spans, caret: composed.caret)
+                return TextInputRow(spans: composed.spans, caret: composed.caret,
+                                    promptSpans: prompt.isEmpty ? 0 : 1,
+                                    placeCursor: composed.valueStart.map { start in
+                                        { cursorBinding.set(min(start + $0, value.count)) }
+                                    })
                     .focusable()
                     .onKeyPress { [text, cursorBinding, textEditing, maxLength] event in
                         Self.handleKey(event,
@@ -460,14 +464,17 @@ public struct TextInput: TerminalView {
     ///   single-row (clipping is inherently single-line).
     ///
     /// `caret` is the index in `spans` of the cursor glyph's own span, which
-    /// the row drops while the field does not hold focus.
+    /// the row drops while the field does not hold focus; `valueStart` the
+    /// value index of the first value character in them, nil where the
+    /// drawn columns do not map to the value: wrapped rows, whose cursor
+    /// is drawn at the end whatever it is.
     private func composeSpans(value: String, cursor: Int,
                                showPlaceholder: Bool,
                                maxValueWidth: Int,
                                mode: LineBreakMode,
                                axis: TextInputAxis,
                                windowStart: Binding<Int>,
-                               theme: any Theme) -> (spans: [TextSpan], caret: Int?) {
+                               theme: any Theme) -> (spans: [TextSpan], caret: Int?, valueStart: Int?) {
         var spans: [TextSpan] = []
         if !prompt.isEmpty {
             spans.append(TextSpan(prompt, foreground: theme.foregroundMuted))
@@ -478,12 +485,12 @@ public struct TextInput: TerminalView {
             spans.append(TextSpan("│"))
             let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
             spans.append(TextSpan(clipped, foreground: theme.foregroundFaint))
-            return (spans, caret)
+            return (spans, caret, 0)
         }
         if value.isEmpty {
             let caret = spans.count
             spans.append(TextSpan("│"))
-            return (spans, caret)
+            return (spans, caret, 0)
         }
         // Reserve 1 cell for the cursor glyph so the visible value
         // fits in `valueRoom` cells.
@@ -505,7 +512,7 @@ public struct TextInput: TerminalView {
                 }
                 let caret = spans.count
                 spans.append(TextSpan("│"))
-                return (spans, caret)
+                return (spans, caret, nil)
             case .byClipping, .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
                 // Fall through to single-row path below — clipping
                 // and truncation are inherently single-line.
@@ -535,7 +542,7 @@ public struct TextInput: TerminalView {
             let caret = Self.appendWithCursor(into: &spans,
                                               text: result.visible,
                                               cursorIndex: result.cursorOffset)
-            return (spans, caret)
+            return (spans, caret, result.windowStart)
         case .byTruncatingHead, .byTruncatingMiddle, .byTruncatingTail:
             // Truncation modes: apply to fit the value into
             // `valueRoom`, then drop the cursor at the matching
@@ -548,7 +555,7 @@ public struct TextInput: TerminalView {
             let caret = Self.appendWithCursor(into: &spans,
                                               text: visible,
                                               cursorIndex: visibleCursor)
-            return (spans, caret)
+            return (spans, caret, 0)
         }
     }
 
@@ -650,6 +657,12 @@ public struct TextInput: TerminalView {
 struct TextInputRow: TerminalView {
     let spans: [TextSpan]
     let caret: Int?
+    /// How many of `spans` lead the value: the prompt's.
+    let promptSpans: Int
+    /// Puts the cursor after that many of the characters drawn: what a
+    /// click does. Nil where the columns drawn do not map to the value
+    /// (see `TextInput.composeSpans`).
+    let placeCursor: ((Int) -> Void)?
 
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.cursorFlash) var cursorFlash
@@ -660,8 +673,39 @@ struct TextInputRow: TerminalView {
         // is lit: a read is a subscription, and every other field would
         // redraw at each hit for nothing.
         let lit = isFocused && cursorFlash?.isLit == true
+        let (spans, caret, promptSpans, placeCursor) = (spans, caret, promptSpans, placeCursor)
+        let caretDrawn = caret != nil && isFocused
         return Text(spans: Self.visibleSpans(spans, caret: caret, isFocused: isFocused,
                                              litColor: lit ? theme.cursorColor(lit: true) : nil))
+            // A click puts the cursor before the character it lands on, as
+            // the frame it was made on drew them.
+            .onClick { x, _ in
+                placeCursor?(Self.characters(before: x, in: spans, from: promptSpans,
+                                             caret: caretDrawn ? caret : nil))
+            }
+    }
+
+    /// How many value characters lie before column `x` of the row drawn
+    /// from `spans`: those of the spans from `first` on, the caret's
+    /// `caret` span taking a cell of its own and no character. A click on
+    /// the right half of a wide character still lands before it.
+    static func characters(before x: Int, in spans: [TextSpan], from first: Int, caret: Int?) -> Int {
+        var column = spans.prefix(first).reduce(0) { $0 + $1.text.displayWidth }
+        var count = 0
+        for (index, span) in spans.enumerated().dropFirst(first) {
+            if index == caret {
+                if x <= column { return count }
+                column += span.text.displayWidth
+                continue
+            }
+            for character in span.text {
+                let width = character.displayWidth
+                if x < column + width { return count }
+                column += width
+                count += 1
+            }
+        }
+        return count
     }
 
     /// `spans` as drawn: the caret dropped while the field is not focused,

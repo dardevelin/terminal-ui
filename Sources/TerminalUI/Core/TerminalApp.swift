@@ -177,8 +177,10 @@ final class EventQueue: Sendable {
     #endif
 }
 
-/// A wheel notch scrolls three lines, as terminals and most platforms do.
-private let linesPerWheelNotch = 3
+/// A wheel notch scrolls three lines, as terminals and most platforms do:
+/// Windows' `SPI_GETWHEELSCROLLLINES` default, and GTK's and AppKit's
+/// line step for a notch.
+let defaultLinesPerWheelNotch = 3
 
 /// Pointer events held back while a batch is drained. A trackpad sends
 /// hundreds a second, and finding what is under the cursor is the cost, so
@@ -289,6 +291,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     private var needsRender: Bool = true
     /// The app's `TerminalAppProtocol.windowBackground`, read each frame.
     var windowBackground: () -> Color? = { nil }
+    /// The app's `TerminalAppProtocol.linesPerWheelNotch`.
+    var linesPerWheelNotch = defaultLinesPerWheelNotch
     /// What the terminal's background was last set to: the terminal's own
     /// until the app names a colour.
     private var lastWindowBackgroundSequence = Terminal.windowBackgroundReset
@@ -297,6 +301,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// move would. Left alone, a row scrolled away stayed hovered — and its
     /// `.onHover` entered — until the pointer next moved.
     private var hoverIsStale = false
+    /// Counts presses into double and triple clicks.
+    private var clickCounter = ClickCounter()
     private var captureCurrentFrame: Bool = false
     private let frameCounter = FrameCounter()
     /// Raised by every source of work, so the frame loop sleeps while there
@@ -599,7 +605,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // thread of its own, not a task: blocked for the app's whole life, a
         // task would hold one of the cooperative pool's few threads for good.
         let wake = self.wake
+        // The signals the app handles are kept off this thread and the
+        // threads it starts, so they reach the input thread, which waits for
+        // the bytes their handlers write (see `blockWakingSignals`).
+        let signalMask = Terminal.blockWakingSignals()
+        defer { Terminal.restoreSignalMask(signalMask) }
         let inputThread = BlockingThread(name: "TerminalUI input") {
+            Terminal.unblockWakingSignals()
             // One source for the life of the task, reading in chunks: bytes a
             // read took past the event it was for are the next event's.
             var source = StdinByteSource(input: STDIN_FILENO, buffered: true, wakes: wakePipes.wakes)
@@ -719,18 +731,25 @@ public final class TerminalRuntime<RootView: TerminalView> {
                     }
                     #endif
                     switch mouseEvent.kind {
-                    case .press(.left):
+                    case .press(let button):
+                        let press = PointerPress(
+                            x: mouseEvent.x, y: mouseEvent.y, button: button,
+                            count: clickCounter.count(button, x: mouseEvent.x, y: mouseEvent.y,
+                                                      at: ContinuousClock.now),
+                            modifiers: mouseEvent.modifiers)
                         if mousePolicy(at: mouseEvent) == .disabled {
                             // .disabled: no auto-focus promotion. Fire any
-                            // .onClick handler under the cursor, then stop.
+                            // handler under the cursor, then stop.
                             if let root = graph.root {
-                                focusEngine.fireClickHandlerOnly(x: mouseEvent.x, y: mouseEvent.y, root: root)
+                                focusEngine.firePressHandlerOnly(press, root: root)
                             }
                         } else {
-                            focusEngine.handleMouseClick(x: mouseEvent.x, y: mouseEvent.y, root: graph.root)
+                            focusEngine.handlePress(press, root: graph.root)
                         }
                     case .moved, .drag:
                         pendingPointer = .motion(mouseEvent)
+                    case .release(.left):
+                        focusEngine.endDrag(x: mouseEvent.x, y: mouseEvent.y)
                     case .scrollUp, .scrollDown:
                         // Shift turns the wheel sideways, as terminals and
                         // platforms take it; a tilting wheel's ticks arrive
@@ -885,6 +904,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 hoverIsStale = true
             }
         case .motion(let mouseEvent):
+            // Of a run of motions only the last arrives, so a drag follows
+            // the pointer to where it is, once a frame.
+            if mouseEvent.kind == .drag(.left) {
+                focusEngine.continueDrag(x: mouseEvent.x, y: mouseEvent.y)
+            }
             focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: root,
                                        policy: mousePolicy(at: mouseEvent))
         case nil:
@@ -1547,6 +1571,10 @@ public protocol TerminalAppProtocol {
     /// it. Read every frame, so it can follow a theme. The terminal's own
     /// is put back when the app ends.
     static var windowBackground: Color? { get }
+    /// How many lines a notch of the mouse wheel scrolls; the default is
+    /// 3, as terminals and most platforms scroll. Read once, when the app
+    /// starts.
+    static var linesPerWheelNotch: Int { get }
     /// Builds the root view. Re-invoked whenever the runtime needs a
     /// structural rebuild; keep it a pure function of app state.
     @TerminalViewBuilder static func content() -> Content
@@ -1555,6 +1583,14 @@ public protocol TerminalAppProtocol {
 extension TerminalAppProtocol {
     /// Default: `nil`, the terminal's own background.
     public static var windowBackground: Color? { nil }
+    /// Default: 3.
+    public static var linesPerWheelNotch: Int { defaultLinesPerWheelNotch }
+
+    /// Hands `runtime` what the app says about itself beyond its content.
+    @MainActor static func configure(_ runtime: TerminalRuntime<Content>) {
+        runtime.windowBackground = { windowBackground }
+        runtime.linesPerWheelNotch = max(1, linesPerWheelNotch)
+    }
     /// Default: `.fps60`.
     public static var renderMode: RenderMode { .fps60 }
     /// Default: no timers.
@@ -1602,7 +1638,7 @@ extension TerminalAppProtocol {
             onEvent: { onEvent($0) },
             content: { content() }
         )
-        runtime.windowBackground = { windowBackground }
+        configure(runtime)
         // Default @main shim: surface raw-mode failure via TerminalLog
         // (auto-routes to stderr for warn/error/critical) and exit
         // with status 1. App authors who want richer non-TTY handling

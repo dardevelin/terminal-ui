@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -24,3 +25,12 @@ def step(name: str, cmd: list[str], timeout: int, cwd: Optional[Path] = None) ->
                 return value.decode("utf-8", errors="replace")
             return str(value)
         return 124, f"{name} timed out after {timeout}s\n{_decode(err.stdout)}{_decode(err.stderr)}"
+
+
+def usable_cpus() -> int:
+    """The CPUs this process may run on — a container's share, not the host's."""
+    if hasattr(os, "process_cpu_count"):
+        return os.process_cpu_count() or 1
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1

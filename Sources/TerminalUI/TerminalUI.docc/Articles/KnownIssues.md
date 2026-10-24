@@ -1,6 +1,6 @@
 # Known Issues
 
-Limitations of TerminalUI 2.0 that an app may run into, and what to do
+Limitations of TerminalUI 2.1 that an app may run into, and what to do
 about each.
 
 ## Keys the terminal sends as one
@@ -14,6 +14,14 @@ ask a terminal to switch it on. Bind actions to keys outside these pairs.
 Terminal emulators, multiplexers and window managers also keep some
 combinations for themselves — Ctrl+Tab, Cmd+anything on macOS, tmux's prefix
 — and those never reach the app.
+
+## The mouse the terminal keeps
+
+Most terminals select text on Shift+click and Shift+drag, and some on
+Alt+click, so a ``TapGesture`` waiting for those modifiers may never see
+them; Ctrl+click reaches the app wherever the terminal reports the mouse.
+A tilting wheel's sideways ticks arrive as Shift plus the wheel, which
+scrolls sideways, until ``MouseEventKind`` can grow cases of its own in 3.0.
 
 ## Colour depth
 

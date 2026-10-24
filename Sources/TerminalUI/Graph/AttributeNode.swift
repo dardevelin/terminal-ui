@@ -50,12 +50,16 @@ public class AttributeNode: @unchecked Sendable {
     var foregroundYieldsToStated = false
     /// Where this node's presented content is drawn, when it is a modal.
     var presentationPlacement = PresentationPlacement.centered
+    /// Closes this node's presentation, when it is a menu: see
+    /// `GraphModifier.dismissal`.
+    var presentationDismissal: (() -> Void)?
 
     /// Takes a modifier's effect and what rides with it.
     func apply(_ modifier: GraphModifier) {
         kind = .modifier(modifier.effect)
         foregroundYieldsToStated = modifier.foregroundYieldsToStated
         presentationPlacement = modifier.placement
+        presentationDismissal = modifier.dismissal
     }
 
     /// Identifier of the nearest enclosing focus scope, or nil if not in one.
@@ -247,6 +251,24 @@ public class AttributeNode: @unchecked Sendable {
     /// the same principle containment stamping uses.
     public var _keyHandler: ((KeyEvent) -> KeyEventResult)?
     public var _clickHandler: ((Int, Int) -> Void)?
+    /// The tap gesture this view waits for.
+    var _tapHandler: TapGesture?
+
+    /// Drops every handler stamped on the node, for a view disabled since
+    /// they were.
+    func forgetHandlers() {
+        _keyHandler = nil
+        _clickHandler = nil
+        _tapHandler = nil
+        _dragHandler = nil
+        _wheelHandler = nil
+    }
+    /// The drag gesture this view follows.
+    var _dragHandler: DragGesture?
+    /// Rewrites the ratios of the SplitView split this node lays out, in the
+    /// `SplitState` it came from: what dragging a divider does.
+    var _resizeSplit: (([Double]) -> Void)?
+
     /// Scrolls this view one wheel step toward the given arrow, and says
     /// whether it moved; see `View.onScrollWheel`.
     var _wheelHandler: ((Key) -> Bool)?

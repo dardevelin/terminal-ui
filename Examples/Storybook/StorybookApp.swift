@@ -73,6 +73,18 @@ final class StorybookState {
     // Hover/policy demo state
     var hoverIndicator: String = "(not hovering)"
     var hoveredScrollRow: String = "none"
+    /// Which of a card and the badge drawn over it the pointer is on.
+    var hoveredLayer: String = "none"
+    /// The `.onTapGesture` page's counts.
+    var taps = 0
+    var opens = 0
+    var marked = false
+    /// The `.gesture(DragGesture)` page's bar, and its width when the drag
+    /// began.
+    var dragWidth = 10
+    var dragStartWidth = 10
+    /// The `.contextMenu` page's last choice.
+    var menuChoice = "nothing"
     // Action graph demo state
     var actionFired: Int = 0
     // Boundary-feedback demo: a small TextInput with .modal + onBoundaryHit
@@ -261,8 +273,11 @@ struct SidebarRow: TerminalView {
         // click handler is per-row and sets selectedIndex directly.
         // Arrow handling stays on the sidebar's outer container so
         // each row needs no key handler — no reconciliation confusion.
+        // A name too long for the sidebar ends in an ellipsis rather than
+        // wrapping onto a row of its own.
         return Text("\(prefix)\(label)")
             .foreground(isSelected ? .white : .default)
+            .wrap(.truncate(.tail))
             .onClick { [state, index] _, _ in
                 state.select(index)
             }

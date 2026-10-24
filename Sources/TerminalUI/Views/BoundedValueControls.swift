@@ -124,6 +124,11 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
         let step = self.step
         let interactive = isInteractive
         let labelCells = labelWidthAsDrawn
+        let lastTrackIndex = defaultTrackWidth - 1
+        func setValue(atTrackIndex index: Int) {
+            guard interactive else { return }
+            value.set(scale.value(atFraction: V(index) / V(lastTrackIndex)))
+        }
 
         return FormRow(label: label ?? "") {
             HStack {
@@ -134,17 +139,21 @@ public struct Slider<V: BinaryFloatingPoint>: TerminalView {
         .labelForeground(enabled: isEnabled && scale.isValid, theme: theme)
         .focusable()
         .onClick { relativeX, _ in
-            guard interactive else { return }
             // Click coordinates arrive relative to the focusable row, so the
             // track starts after the label *as rendered* — which inside a Form
             // is padded to the shared column, not to `label.count`.
             let offset = relativeX - labelCells
-            let lastIndex = defaultTrackWidth - 1
             // Only the track sets the value. Clamped instead, a click on the
             // label set the minimum and one on the value text the maximum.
-            guard (0...lastIndex).contains(offset) else { return }
-            value.set(scale.value(atFraction: V(offset) / V(lastIndex)))
+            guard (0...lastTrackIndex).contains(offset) else { return }
+            setValue(atTrackIndex: offset)
         }
+        // A drag that began on the track slides the value along it, wherever
+        // the pointer goes; one from the label or the value does nothing.
+        .gesture(DragGesture().onChanged { drag in
+            guard (0...lastTrackIndex).contains(drag.startLocation.x - labelCells) else { return }
+            setValue(atTrackIndex: min(max(0, drag.location.x - labelCells), lastTrackIndex))
+        })
         .onKeyPress { event in
             guard interactive, !event.isModifiedNavigation else { return .ignored }
             let delta = scale.resolvedStep(step)

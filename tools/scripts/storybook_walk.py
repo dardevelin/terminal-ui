@@ -99,7 +99,8 @@ def _assert_catalog_exhausted(app: Client, walked: list[str]) -> None:
     focus regression this walk exists to catch. Without the cross-check it
     would report a short walk, pass every page it did reach, and exit 0.
     """
-    missed = [row for row in app.storybook_sidebar_rows() if row not in walked]
+    missed = [row for row in app.storybook_sidebar_rows()
+              if not any(app.sidebar_names(row, title) for title in walked)]
     if missed:
         raise RuntimeError(
             f"walk ended after {len(walked)} pages but the sidebar still lists "
