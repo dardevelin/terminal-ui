@@ -484,6 +484,9 @@ public struct DiffView: TerminalView {
         // The unified path already does this; the side-by-side path
         // had silently fallen out of step.
         let visible = pairs.dropFirst(scrollOffset).prefix(visibleHeight)
+        // Every left half as wide as the widest in view, in cells, so the
+        // separator is one column down the whole diff.
+        let leftWidth = visible.map { 1 + $0.leftText.displayWidth }.max() ?? 1
 
         for (index, pair) in visible.enumerated() {
             if index > 0 {
@@ -504,6 +507,8 @@ public struct DiffView: TerminalView {
             case .empty:
                 spans.append(TextSpan(" "))
             }
+            let leftDrawn = pair.leftKind == .empty ? 1 : 1 + pair.leftText.displayWidth
+            spans.append(TextSpan(String(repeating: " ", count: max(0, leftWidth - leftDrawn))))
 
             // Separator
             spans.append(TextSpan(" \u{2502} ", foreground: theme.separator))
