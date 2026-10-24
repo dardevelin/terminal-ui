@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TerminalUI — Documentation</title>
+<meta name="description" content="TerminalUI: a SwiftUI-paradigm framework for terminal apps in Swift. macOS and Linux, zero dependencies.">
+<meta property="og:title" content="TerminalUI">
+<meta property="og:description" content="SwiftUI for the terminal. macOS, Linux, over SSH.">
 <style>
   body {
     --bg: #ffffff; --panel: #f5f5f7; --border: #d2d2d7;
@@ -49,6 +52,36 @@
   .card h2 { font-size: 1.05rem; margin-bottom: .35rem; }
   .card p { color: var(--muted); font-size: .88rem; line-height: 1.45; }
   .card .hint { display: inline-block; margin-top: .8rem; color: var(--accent); font-size: .85rem; }
+  .release {
+    display: flex; flex-wrap: wrap; gap: .4rem .9rem; align-items: center; justify-content: center;
+    margin: -1.5rem 0 1.8rem; font-size: .9rem; color: var(--muted); text-align: center;
+  }
+  .release .pill {
+    color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+    padding: 2px 10px; font-weight: 600; font-size: .8rem;
+  }
+  .release a { color: var(--accent); text-decoration: none; }
+  .release a:hover { text-decoration: underline; }
+  .install {
+    display: flex; align-items: center; gap: .6rem; width: 100%; max-width: 820px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: .7rem .9rem; margin-bottom: 1.4rem;
+  }
+  .install code {
+    flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap;
+    font: .85rem ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .install button {
+    font: inherit; font-size: .8rem; cursor: pointer; color: var(--muted); background: none;
+    border: 1px solid var(--border); border-radius: 6px; padding: 3px 10px; flex: none;
+  }
+  .install button:hover { color: var(--accent); border-color: var(--accent); }
+  figure.demo { width: 100%; max-width: 820px; margin-top: 2.5rem; }
+  figure.demo img {
+    width: 100%; height: auto; display: block;
+    border-radius: 12px; border: 1px solid var(--border);
+  }
+  figure.demo figcaption { color: var(--muted); font-size: .8rem; text-align: center; margin-top: .5rem; }
   footer { margin-top: auto; padding-top: 3rem; color: var(--muted); font-size: .85rem; }
   footer a { color: var(--muted); }
 </style>
@@ -57,6 +90,19 @@
   <img class="logo" src="logo.svg" alt="TerminalUI — Ember Fox mascot">
   <h1>TerminalUI</h1>
   <p class="tag">SwiftUI for the terminal. macOS, Linux, over SSH.</p>
+
+  <div class="release">
+    <span class="pill">2.0</span>
+    <span>Themed, SwiftUI-shaped, hardened.</span>
+    <a href="https://github.com/dardevelin/terminal-ui/blob/main/CHANGELOG.md#200--2026-10-24--themed-swiftui-shaped-hardened">What's new</a>
+    <a href="https://github.com/dardevelin/terminal-ui/blob/main/CHANGELOG.md#upgrading-from-1x">Upgrading from 1.x</a>
+  </div>
+
+  <div class="install">
+    <code id="install">.package(url: "https://github.com/dardevelin/terminal-ui", from: "2.0.0")</code>
+    <button type="button" id="copy-install">Copy</button>
+  </div>
+
 
   <div class="cards">
     <a class="card" href="tutorials/terminaluitutorials">
@@ -77,11 +123,17 @@
     <a class="card" href="downloads/build-a-task-list.zip">
       <span class="glyph">⬇︎</span>
       <h2>Sample project</h2>
-      <p>The finished tutorial app as a runnable Swift package —
-         download, <code>swift run</code>, and poke at it locally.</p>
+      <p>The finished tutorial app — all seven chapters — as a runnable
+         Swift package: download, <code>swift run</code>, and poke at it
+         locally.</p>
       <span class="hint">Download the Tasks app →</span>
     </a>
   </div>
+
+  <figure class="demo">
+    <img src="demo.gif" alt="A walk through the Storybook example app: layout, input, display and chart components, one page each." width="1020" height="700" loading="lazy">
+    <figcaption>The Storybook example app — every public component, one page each. <code>swift run Storybook</code></figcaption>
+  </figure>
 
   <footer>
     <a href="https://github.com/dardevelin/terminal-ui">Source on GitHub</a>
@@ -91,6 +143,21 @@
       <button data-scheme="auto">Auto</button>
     </span>
   </footer>
+  <script>
+    (function () {
+      var button = document.getElementById("copy-install");
+      var text = document.getElementById("install").textContent;
+      button.addEventListener("click", function () {
+        function done() {
+          button.textContent = "Copied";
+          setTimeout(function () { button.textContent = "Copy"; }, 1500);
+        }
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(text).then(done, function () {});
+        }
+      });
+    })();
+  </script>
   <script>
     // Same setting docc-render persists, so the choice follows the reader
     // across the landing page, the reference, and the tutorials.

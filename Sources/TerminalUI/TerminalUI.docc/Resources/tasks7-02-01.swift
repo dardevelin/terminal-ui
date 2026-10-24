@@ -28,14 +28,24 @@ struct InMemoryTaskService: TaskService {
 @Observable
 final class TaskStore {
     // MARK: State
-    // Stored properties are private territory: nothing outside this class
-    // writes them, and views prefer the queries below over reading them raw.
+    // Stored properties are private territory: views read the queries below,
+    // and change state through the commands. The one sanctioned exception is
+    // a control's binding — the prompt's draft, the tab, the Settings toggle —
+    // which writes the property it edits, as SwiftUI's controls do.
     var tasks: [TaskItem] = []
     var isLoading = true
     var spinnerFrame = 0
     var selectedID = 1
     var tab = 0
-    var showCompleted = true
+    var showCompleted = true {
+        // Hiding the selected task would leave the selection — and the
+        // detail pane — on a row the reader cannot see.
+        didSet {
+            if !visibleTasks.contains(where: { $0.id == selectedID }) {
+                selectedID = visibleTasks.first?.id ?? selectedID
+            }
+        }
+    }
     var draft = ""
     var promptState = PromptInputState()
     var confirmDelete = false
@@ -77,7 +87,12 @@ final class TaskStore {
 
     @MainActor
     func load() async {
+        // `.task` runs each time its view appears, so this runs again when
+        // the reader comes back from Settings; the tasks load once.
+        guard isLoading else { return }
         let loaded = await service.load()
+        // Left before the load landed: the next appearance loads again.
+        guard !Task.isCancelled else { return }
         tasks = loaded
         nextID = (loaded.map(\.id).max() ?? 0) + 1
         selectedID = loaded.first?.id ?? selectedID
@@ -94,10 +109,13 @@ final class TaskStore {
     }
 
     func moveSelection(_ delta: Int) {
-        guard !tasks.isEmpty else { return }
-        let current = tasks.firstIndex { $0.id == selectedID } ?? 0
-        let next = min(max(current + delta, 0), tasks.count - 1)
-        selectedID = tasks[next].id
+        // Over the rows on screen: with completed tasks hidden, a step
+        // through `tasks` could land on one the reader cannot see.
+        let rows = visibleTasks
+        guard !rows.isEmpty else { return }
+        let current = rows.firstIndex { $0.id == selectedID } ?? 0
+        let next = min(max(current + delta, 0), rows.count - 1)
+        selectedID = rows[next].id
     }
 
     func toggleSelected() {
@@ -148,7 +166,6 @@ struct TasksApp: TerminalAppProtocol {
         if case .key(let keyEvent) = event {
             guard !store.confirmDelete else { return true }
             switch keyEvent.key {
-            case .character("q") where store.draft.isEmpty: return false
             case .escape: return false
             case .up: store.moveSelection(-1)
             case .down: store.moveSelection(1)
@@ -223,7 +240,10 @@ struct TasksSplit: TerminalView {
                 heightPolicy: .fixed(3),
                 onSubmit: { _ in store.addDraft() }
             )
-            Text("type + Enter add   Enter toggle   ↑↓ move   ⌫ delete   q quit")
+            // The arrows move the list's selection, so the prompt gives them
+            // up; Ctrl+P and Ctrl+N still recall what was typed before.
+            .textKeymap(.standard.merging([.keyboard(.up, []): [], .keyboard(.down, []): []]))
+            Text("type + Enter add   Enter toggle   ↑↓ move   ⌫ delete   esc quit")
                 .foreground(.gray)
         }
         .task {
@@ -253,7 +273,7 @@ struct TasksPane: TerminalView {
                     Text("Loading tasks…").foreground(.gray)
                 }
                 .task {
-                    while store.isLoading {
+                    while store.isLoading && !Task.isCancelled {
                         try? await Task.sleep(for: .milliseconds(100))
                         store.spinnerFrame += 1
                     }

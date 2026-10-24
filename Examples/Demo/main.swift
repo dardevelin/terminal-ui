@@ -231,7 +231,7 @@ struct TitleBar: TerminalView {
                 .foreground(.cyan)
                 .bold()
             Spacer()
-            Text("v0.6")
+            Text("showcase")
                 .foreground(.gray)
         }
     }

@@ -62,10 +62,9 @@ struct TasksApp: TerminalAppProtocol {
     static func onEvent(_ event: TerminalEvent) -> Bool {
         if case .key(let keyEvent) = event {
             switch keyEvent.key {
-            // Letters belong to the text field now — a global chord on a
-            // typeable key would fire while the user is writing a task.
-            // Quit stays on q, but only when the draft is empty.
-            case .character("q") where store.draft.isEmpty: return false
+            // Letters belong to the text field now, so no letter quits: q would
+            // end the app as the first letter of "quick fix". Escape quits, and
+            // Ctrl+C always does.
             case .escape: return false
             case .up: store.moveSelection(-1)
             case .down: store.moveSelection(1)
@@ -94,7 +93,10 @@ struct TasksApp: TerminalAppProtocol {
                 heightPolicy: .fixed(3),
                 onSubmit: { _ in store.addDraft() }
             )
-            Text("type + Enter add   ↑↓ move   q quit").foreground(.gray)
+            // The arrows move the list's selection, so the prompt gives them
+            // up; Ctrl+P and Ctrl+N still recall what was typed before.
+            .textKeymap(.standard.merging([.keyboard(.up, []): [], .keyboard(.down, []): []]))
+            Text("type + Enter add   ↑↓ move   esc quit").foreground(.gray)
         }
         .padding(1)
     }

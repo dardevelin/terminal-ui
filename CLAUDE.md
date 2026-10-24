@@ -361,8 +361,12 @@ four things beyond `generate-documentation`, all of which break silently if a
 path moves: swaps DocC's 404ing root for `.github/pages/index.html`, injects
 `reference-pane.{js,css}` + `docc-fixes.css` into every SPA bootstrap copy (so
 reference links inside tutorials open in a slide-over instead of navigating
-away), and zips the tutorial's final step — `Resources/tasks-04-01.swift`, the
-single source of truth — into the downloadable sample project. The
+away), and zips each chapter's last code step into
+`downloads/tasks-chapter-<N>.zip` — the starting point a later chapter links
+to — with chapter 7's as `build-a-task-list.zip`, the finished sample the
+landing page offers. The steps themselves are the single source of truth.
+`tools/scripts/record_media.py` makes every picture the tutorials show from
+those same steps, so after changing a step, re-record its preview. The
 `--hosting-base-path` is derived from the repo name; don't hardcode it.
 
 **The tutorial code steps are real, compiled-by-the-reader code.** Changing a

@@ -59,9 +59,11 @@
                 Seed a `history` array on the store — completions per day —
                 and render it as a ``Sparkline``, then compare open against
                 done in a ``BarChart``. Pin the sparkline's `min:` so the
-                axis stays put as data arrives, and give both charts a fixed
-                frame — they are flexible by default, and an unbounded chart
-                would take the leftover rows.
+                axis stays put as data arrives, and give it a frame: like
+                ``GeometryReader`` it fills whatever it is offered, and in a
+                stack that sizes to its content that is nothing — it would
+                draw a single row. The bar chart needs no frame; it is as
+                tall as its bars.
 
                 Toggle a task on the Tasks tab and come back: the bars move.
                 No chart-update code exists — the bars are a function of the

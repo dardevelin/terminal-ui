@@ -8,8 +8,8 @@
         that views make no decisions. The app looks identical after every
         step — the diffs are the lesson.
 
-        Continue from the previous chapter's finished code, or
-        [download the finished project](https://dardevelin.github.io/terminal-ui/downloads/build-a-task-list.zip)
+        Continue from <doc:MakeItProduction>'s finished code, or
+        [download that code](https://dardevelin.github.io/terminal-ui/downloads/tasks-chapter-6.zip)
         as the base to edit.
 
         @Image(source: "demo-ch7.gif", alt: "The refactored app loading through its service, then toggling tasks — behavior unchanged, structure earned.")
@@ -69,7 +69,10 @@
             Queries (`visibleTasks`, `remaining`, `completion`,
             `selectedTask`) are the only surface views render, each
             derived fact computed in exactly one place. Handlers call
-            commands; bodies read queries; nothing else touches state.
+            commands; bodies read queries. The one exception is a control's
+            binding — the prompt's draft, the selected tab, the Settings
+            toggle — which writes the property it edits, as a SwiftUI control
+            does; a binding is a command the framework calls for you.
 
             Not a line of behavior changes. What changes is what you can
             answer by reading: "what can mutate the task list?" is now a
@@ -114,8 +117,9 @@
 
             The same step pays off the service seam: the composition root
             swaps `InMemoryTaskService` for a JSON-backed
-            `FileTaskService` — one changed line, nothing else touched —
-            and your tasks now survive a relaunch. That is the whole
+            `FileTaskService` — one changed line at the root, plus
+            `Codable` on `TaskItem` so it can be written to disk — and your
+            tasks now survive a relaunch. That is the whole
             argument for injection, demonstrated: the day you want a real
             backend, the store and every view are already ready.
         }

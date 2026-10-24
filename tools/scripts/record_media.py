@@ -11,8 +11,8 @@ is now made here, from the tutorial's own code steps and the tapes under
   vhs, driven by the keys in ``PREVIEWS`` into the state its caption
   describes, then captured.
 - **Chapter GIFs**, ``demo-ch<N>.gif``: ``tools/recordings/demo-ch<N>.tape``.
-- **Chapter cards**, ``card-ch<N>.png``: the chapter's last preview, framed,
-  with the fox in its corner.
+- **Chapter cards**, ``card-ch<N>.png``: a chapter's preview, framed, with
+  the fox in its corner.
 - **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``.
 
 The steps are built as one package of executables in
@@ -56,6 +56,8 @@ Set Theme "Catppuccin Mocha"
 # left to settle after each key, before anything is captured.
 LAUNCH = "Sleep 1.5s"
 SETTLE = "Sleep 300ms"
+# Long enough for the four-second load chapters 6 and 7 simulate.
+LOADED = "Sleep 4s"
 
 # The keys that bring each step into the state its preview's caption
 # describes, as vhs commands. A step whose caption is its first frame needs
@@ -67,23 +69,53 @@ PREVIEWS: dict[str, list[str]] = {
     "tasks-03-01": ["Down"],
     "tasks-03-02": ["Down", "Space"],
     "tasks-04-01": ["Down", "Space"],
+    "tasks2-01-01": ['Type "Feed the fox"'],
+    "tasks2-02-01": ["Down", "Enter"],
+    "tasks2-03-01": ['Type "Feed the fox"', "Enter", "Down", "Down", "Down", "Enter"],
+    # The tab bar holds focus at launch, so digits switch tabs.
+    "tasks3-01-01": [],
+    "tasks3-02-01": ["Down"],
+    "tasks3-03-01": ['Type "2"'],
+    "tasks4-01-01": ["Down", "Down", "Enter"],
+    "tasks4-02-01": ["Down", "Down", "Enter", "Space"],
+    "tasks4-03-01": ["Down", "Down", "Enter", "Space"],
+    "tasks5-01-01": ["Enter", 'Type "3"'],
+    "tasks5-02-01": ["Enter", 'Type "3"'],
+    "tasks5-03-01": ["Enter", 'Type "3"'],
+    "tasks6-01-01": ["Backspace"],
+    # Captured mid-load: the load takes four seconds.
+    "tasks6-02-01": [],
+    "tasks6-03-01": [LOADED, "Enter"],
+    "tasks7-01-01": [LOADED, "Enter"],
+    "tasks7-02-01": [LOADED, "Down", "Enter"],
+    "tasks7-03-01": [LOADED, "Down", "Down", "Enter"],
 }
 
-# The card frame: the chapter's last preview inset on a transparent canvas,
-# corners rounded, the fox over its top-left corner.
+# Chapter 7's last step saves its tasks to this file and loads them on the
+# next launch, so a recording starts by removing it — or it records
+# whatever the last run left — and removes it again after.
+SAVED_TASKS = '"$HOME/Library/Application Support/tasks-tutorial.json"'
+STARTS_FRESH = {"tasks7-03-01"}
+
+# The card frame: a chapter's preview inset on a transparent canvas, corners
+# rounded, the fox in the corner beside it, clear of the app's title.
 CARD_SIZE = (832, 532)
 CARD_INSET = 36
 CARD_RADIUS = 18
-FOX_WIDTH = 64
-FOX_OFFSET = (6, 2)
+FOX_WIDTH = 48
+FOX_OFFSET = (2, 0)
 
-CHAPTER_LAST_STEP = {
+# The step each chapter's card shows: its last, except where the chapter's
+# picture in the table of contents is an earlier screen — chapter 3's card
+# is the split view, not the Settings tab its last step ends on, and
+# chapter 6's the confirmation dialog.
+CARD_STEP = {
     1: "tasks-04-01",
     2: "tasks2-03-01",
-    3: "tasks3-03-01",
+    3: "tasks3-02-01",
     4: "tasks4-03-01",
     5: "tasks5-03-01",
-    6: "tasks6-03-01",
+    6: "tasks6-01-01",
     7: "tasks7-03-01",
 }
 
@@ -133,6 +165,8 @@ def vhs(tape: str, name: str) -> None:
 
 
 def shrink(png: Path) -> None:
+    if not png.exists():
+        raise SystemExit(f"vhs wrote no {png.name}")
     """A terminal frame holds a handful of colours; an indexed PNG of it is
     a fraction of the size, and the docs ship every one."""
     run(["magick", str(png), "-colors", "128", f"PNG8:{png}"])
@@ -141,12 +175,18 @@ def shrink(png: Path) -> None:
 def record_preview(step: str) -> None:
     keys = "".join(f"{key}\n{SETTLE}\n" for key in PREVIEWS[step])
     output = RESOURCES / f"preview-{step}.png"
-    vhs(TUTORIAL_SETTINGS
-        + "Hide\n"
+    # Removed first, so a shot vhs fails to take cannot leave the old picture
+    # in place looking new.
+    output.unlink(missing_ok=True)
+    fresh = f"Type `rm -f {SAVED_TASKS}`\nEnter\n" if step in STARTS_FRESH else ""
+    vhs(f'Output "{WORK / "frames" / (step + ".gif")}"\n' + TUTORIAL_SETTINGS
+        + "Hide\n" + fresh
         + f'Type "{STEP_BINARIES / binary_name(step)}"\nEnter\n{LAUNCH}\n'
         + keys
-        + f'Show\n{SETTLE}\nScreenshot "{output}"\n'
-        + "Hide\nCtrl+C\n", f"preview-{step}")
+        # vhs takes the shot from the next frame it records: hidden at
+        # once, there is no next frame and the file is never written.
+        + f'Show\n{SETTLE}\nScreenshot "{output}"\n{SETTLE}\n'
+        + "Hide\nCtrl+C\nSleep 300ms\n" + fresh, f"preview-{step}")
     shrink(output)
 
 
@@ -155,7 +195,7 @@ def record_gif(chapter: int) -> None:
 
 
 def make_card(chapter: int) -> None:
-    preview = RESOURCES / f"preview-{CHAPTER_LAST_STEP[chapter]}.png"
+    preview = RESOURCES / f"preview-{CARD_STEP[chapter]}.png"
     card = RESOURCES / f"card-ch{chapter}.png"
     width, height = CARD_SIZE
     fox = WORK / "fox.png"
@@ -189,16 +229,17 @@ def main() -> int:
             if args.only in (None, step):
                 record_preview(step)
     if args.what in ("gifs", "all"):
-        for chapter in CHAPTER_LAST_STEP:
+        for chapter in CARD_STEP:
             if args.only in (None, str(chapter)):
                 record_gif(chapter)
     if args.what in ("cards", "all"):
-        for chapter in CHAPTER_LAST_STEP:
+        for chapter in CARD_STEP:
             if args.only in (None, str(chapter)):
                 make_card(chapter)
     if args.what in ("readme", "all"):
-        run(["swift", "build", "-c", "release"])
-        run(["swift", "build"])
+        # Apart from .build, whose lock a developer's own `swift run` holds.
+        run(["swift", "build", "-c", "release", "--scratch-path", str(WORK / "app")])
+        run(["swift", "build", "--scratch-path", str(WORK / "app")])
         run(["vhs", "assets/demo.tape"])
         run(["vhs", "assets/debug.tape"])
     return 0
