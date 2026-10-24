@@ -356,6 +356,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// before each event drain, so injected keystrokes land in the frame they
     /// arrive in, and whenever its socket wakes an idle loop.
     private var remoteControl: RemoteControlServer?
+    /// Whether this run may write diagnostics: false when its `/tmp` data
+    /// dir is not its owner's alone (see `DiagPaths.prepareDataDirectories`),
+    /// and then nothing — trace, screenshots, captures, warnings, socket —
+    /// goes there.
+    private var diagnosticsAreWritable = true
     #endif
 
     /// Creates a runtime for `content` without starting it — call ``run()``
@@ -403,9 +408,16 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #if DEBUG
         // Load .terminalui/terminalui.toml and merge with programmatic overrides
         let fileConfig = DiagPaths.loadConfig()
-        DiagPaths.ensureDirectories(config: fileConfig)
+        diagnosticsAreWritable = DiagPaths.prepareDataDirectories(config: fileConfig)
+        if !diagnosticsAreWritable {
+            Log("TerminalUI").warn(
+                "\(DiagPaths.tmpDataDir) is not yours alone — another user's, a link, or readable "
+                + "by others — so this run writes no diagnostics and opens no control socket")
+        }
 
-        if let devTrace {
+        if !diagnosticsAreWritable {
+            tracer.configure(.default)
+        } else if let devTrace {
             tracer.configure(devTrace, diagConfig: fileConfig)
         } else {
             tracer.configure(
@@ -482,7 +494,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // of stderr — stderr writes corrupt the rendered viewport.
         let liveDiagConfig = DiagPaths.loadConfig()
         let warningsURL = URL(fileURLWithPath: DiagPaths.warningsLogPath(useTmp: liveDiagConfig.useTmp))
-        DebugStream.shared.setLiveTUI(true, logFileURL: warningsURL)
+        DebugStream.shared.setLiveTUI(true, logFileURL: diagnosticsAreWritable ? warningsURL : nil)
         #endif
 
         #if DEBUG
@@ -496,7 +508,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // suppress the socket — security review, noisy /tmp, locked-down
         // environments — set `enabled = false` under `[socket]`.
         let diagConfig = DiagPaths.loadConfig()
-        if diagConfig.socketEnabled {
+        if diagConfig.socketEnabled, diagnosticsAreWritable {
             let socketDir = DiagPaths.socketDir(useTmp: diagConfig.useTmp)
             try? FileManager.default.createDirectory(atPath: socketDir, withIntermediateDirectories: true)
             let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
@@ -528,7 +540,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // quit, which it is doing. After, the signal ends the process
             // at once, and SIGTERM sent to an app quitting on its own left
             // the dir behind.
-            DiagPaths.cleanupOwnDir()
+            if diagnosticsAreWritable { DiagPaths.cleanupOwnDir() }
             #endif
             Terminal.disableBracketedPaste()
             Terminal.exitAlternateScreen()
@@ -1233,6 +1245,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     }
 
     private func captureFrame(buffer: CellBuffer) {
+        guard diagnosticsAreWritable else { return }
         let fileConfig = DiagPaths.loadConfig()
         let captureDir = DiagPaths.capturesDir(useTmp: fileConfig.useTmp)
         try? FileManager.default.createDirectory(atPath: captureDir, withIntermediateDirectories: true)
