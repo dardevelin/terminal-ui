@@ -306,12 +306,30 @@ public enum DiagPaths {
 
     /// Create the data dirs and record the app's name in them.
     public static func ensureDirectories(config: DiagConfig) {
+        prepareDataDirectories(config: config)
+    }
+
+    /// Create the data dirs and record the app's name in them; false when
+    /// the `/tmp` data dir is not this process's owner's alone, and nothing
+    /// may be written there.
+    ///
+    /// The dir holds the frames a debug build traces — every key typed in
+    /// them — its screenshots and its control socket, under a name any
+    /// local user can predict. So it is created readable by its owner
+    /// alone, and one already there is used only if it is a directory that
+    /// owner made private: another user's, or a link to somewhere else, is
+    /// refused rather than written into.
+    @discardableResult
+    public static func prepareDataDirectories(config: DiagConfig) -> Bool {
         let fm = FileManager.default
 
         // Config dir always exists
         try? fm.createDirectory(atPath: configDir, withIntermediateDirectories: true)
 
         let root = dataDir(useTmp: config.useTmp)
+        if root == tmpDataDir, !ensurePrivateDirectory(atPath: root) {
+            return false
+        }
 
         // Create the data root and subdirectories
         for subdir in subdirectories {
@@ -322,6 +340,28 @@ public enum DiagPaths {
         if root == tmpDataDir {
             try? recordAppName(ProcessInfo.processInfo.processName, inDataDir: root)
         }
+        return true
+    }
+
+    /// Whether `path` is a directory only its owner can enter, owned by
+    /// this process's user, creating it so when nothing is there. A link
+    /// is refused, not followed.
+    public static func ensurePrivateDirectory(atPath path: String) -> Bool {
+        if mkdir(path, Permission.ownerOnly) == 0 { return true }
+        guard errno == EEXIST else { return false }
+        var info = stat()
+        guard lstat(path, &info) == 0 else { return false }
+        return info.st_mode & S_IFMT == S_IFDIR
+            && info.st_uid == geteuid()
+            && info.st_mode & Permission.groupAndOthers == 0
+    }
+
+    /// POSIX permission bits (`<sys/stat.h>`).
+    private enum Permission {
+        /// rwx for the owner, nothing for anyone else.
+        static let ownerOnly: mode_t = 0o700
+        /// Every bit that grants the group or others anything.
+        static let groupAndOthers: mode_t = 0o077
     }
 
     /// Remove the output of every app from this project that is no longer

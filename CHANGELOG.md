@@ -320,6 +320,16 @@ now checked against the last release on every change.
 
 ### Fixed
 
+- **A debug app's output is its owner's alone.** A debug build traces its
+  first frames — every key typed in them — and keeps screenshots and its
+  control socket in `/tmp/terminalui-{hash}-{pid}/`, a name any local user can
+  predict. The directory was made with the default mode, readable by every
+  user on the machine, and one another user had made there first was written
+  into all the same. It is created for its owner alone now, and a directory
+  that is not — another user's, a link, one others can read — is refused: the
+  run writes no diagnostics, opens no socket, and says why. Release builds
+  never had any of this.
+
 - **A theme written for 1.0 lost its `muted` colour.** Components read
   `foregroundMuted` now, and `muted` had become an extension alias, so a
   theme's own `muted` still compiled and was ignored: its hints and

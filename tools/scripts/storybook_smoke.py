@@ -1714,6 +1714,16 @@ def chat_q_in_empty_prompt_quits(app: Client) -> None:
     assert_true(app.wait_for_exit(5.0) is not None, "q in an empty prompt should quit")
 
 
+def debug_output_is_the_owners_alone(app: Client) -> None:
+    """A debug app's data dir — its traced keystrokes, screenshots and
+    control socket — is readable by its owner alone. Regression: it was
+    made with the default mode under a name any local user can predict, so
+    every user on the machine could read what was typed into a debug app."""
+    data_dir = Path(app.socket_path).parent.parent
+    mode = data_dir.stat().st_mode & 0o777
+    assert_true(mode & 0o077 == 0, f"{data_dir} is mode {mode:o}; group and others should get nothing")
+
+
 # ---- Coder demo --------------------------------------------------------
 # The Crush-parity forcing function (design/crush-parity.md §5). Its
 # transcript embeds framework components inside cards, which is where a
@@ -2384,6 +2394,7 @@ def storybook_a_disabled_socket_is_never_opened(app: Client) -> None:
 CASES: list[SmokeCase] = [
     SmokeCase("storybook.auto_focus_on_boot", "Storybook", storybook_auto_focus_on_boot),
     SmokeCase("navigation.idle_costs_nothing", "Navigation", idle_costs_nothing),
+    SmokeCase("navigation.debug_output_is_the_owners_alone", "Navigation", debug_output_is_the_owners_alone),
     SmokeCase("coder.idle_costs_nothing", "Coder", idle_costs_nothing),
     SmokeCase("navigation.an_idle_app_acts_on_remote_commands", "Navigation",
               navigation_an_idle_app_acts_on_remote_commands),
