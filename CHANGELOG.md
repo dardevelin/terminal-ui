@@ -27,6 +27,14 @@ All notable changes to TerminalUI are documented here. Format based on
   of clicks, as AppKit counts them, so `.onTapGesture(count: 2)` opens what
   `.onTapGesture` selects; `TapGesture().modifiers(.ctrl)` takes only
   Ctrl+clicks. `.onClick` still takes every left click.
+- **Drags**: `DragGesture` and `.gesture(_:)`, as in SwiftUI — `onChanged`
+  as the pointer moves with the button held, `onEnded` at the release, each
+  with where the drag started, where it is and how far it has come. The
+  drag belongs to the view pressed and follows the pointer out of it.
+  The framework's own controls drag too: a `SplitView`'s divider resizes
+  the panes either side and writes the new ratios to its `SplitState`, a
+  scrollbar scrolls along its track, and a `Slider` slides from its track.
+  `swtui ctl` and the harness client send drags (`mouse_drag`).
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.
@@ -80,6 +88,10 @@ All notable changes to TerminalUI are documented here. Format based on
   the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
   a child at its natural width rather than giving it the frame's. A `Spacer`
   in a `VStack` stretches only down it, and does not make it wide.
+- **A `SplitView`'s panes keep their state.** It rebuilt them from nothing
+  on every update, so a pane's `@TerminalState` reset whenever anything
+  above the split drew again, and on every resize. Panes are reconciled by
+  position, as a stack's children are.
 - **A view disabled after it was drawn no longer takes clicks or keys.** Its
   handlers, kept on the graph node so a cached update can restore them,
   were restored every frame after `.disabled()` too.

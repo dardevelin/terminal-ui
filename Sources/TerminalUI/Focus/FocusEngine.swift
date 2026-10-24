@@ -32,6 +32,10 @@ public final class FocusEngine: @unchecked Sendable {
     /// Tap gestures, which a press reaches only when it is the click they
     /// wait for; see `TapRecognizer`.
     private var tapHandlers: [NodeID: TapRecognizer] = [:]
+    /// Drag gestures, which a left press under them begins.
+    private var dragHandlers: [NodeID: DragGesture] = [:]
+    /// The drag a left press began, until the button comes up.
+    private var dragSession: DragSession?
     /// Views that scroll themselves under the wheel; see `routeWheel`.
     private var wheelHandlers: [NodeID: (Key) -> Bool] = [:]
 
@@ -224,6 +228,9 @@ public final class FocusEngine: @unchecked Sendable {
         }
         if let tap = node._tapHandler, tapHandlers[node.id] == nil {
             tapHandlers[node.id] = tap
+        }
+        if let drag = node._dragHandler, dragHandlers[node.id] == nil {
+            dragHandlers[node.id] = drag
         }
         if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
             wheelHandlers[node.id] = wheelHandler
@@ -771,6 +778,12 @@ public final class FocusEngine: @unchecked Sendable {
         // otherwise a press on the track would both scroll and activate
         // whatever it was drawn on top of.
         if handleScrollAffordanceClick(x: x, y: y, root: scope) { return }
+        // A split's divider is no pane's; a press there resizes.
+        if let session = splitDividerDrag(x: x, y: y, in: scope) {
+            dragSession = session
+            return
+        }
+        beginDrag(at: press, in: scope)
         if let target = findFocusableAt(x: x, y: y, in: scope) {
             keyboardFocusID = target.id
             // A row inside a focusable pane keeps its own click handler.
@@ -818,11 +831,8 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     /// Press on a scrollbar: the ends step, anywhere else on the track jumps
-    /// the viewport to that position. Returns whether the press was taken.
-    ///
-    /// Dragging the thumb is deliberately absent — a press-move-release
-    /// gesture is a different mechanism, and stepping and jumping are what
-    /// make the drawn affordance answer at all.
+    /// the viewport to that position, and a drag from there scrolls with
+    /// the pointer. Returns whether the press was taken.
     private func handleScrollAffordanceClick(x: Int, y: Int, root: AttributeNode) -> Bool {
         guard let (node, axis, affordance) = findScrollAffordanceAt(x: x, y: y, in: root) else {
             return false
@@ -840,13 +850,102 @@ public final class FocusEngine: @unchecked Sendable {
             )
         default:
             // The ends are the step buttons, so the track the press maps onto
-            // is what lies between them.
-            _ScrollMath.jump(
-                toFraction: Double(position - 1) / Double(max(1, extent - 3)),
-                axis: axis, node: node
-            )
+            // is what lies between them; dragging along it scrolls on.
+            func jump(to position: Int) {
+                _ScrollMath.jump(
+                    toFraction: Double(position - 1) / Double(max(1, extent - 3)),
+                    axis: axis, node: node
+                )
+            }
+            jump(to: position)
+            dragSession = DragSession(startX: x, startY: y, minimumDistance: 1) { x, y in
+                jump(to: max(1, min(extent - 2, axis == .vertical ? y - affordance.y : x - affordance.x)))
+            }
         }
         return true
+    }
+
+    // MARK: - Drag
+
+    /// Begins the drag of the deepest drag gesture under `press`, if any.
+    private func beginDrag(at press: PointerPress, in scope: AttributeNode) {
+        guard let owner = findDragHandlerAt(x: press.x, y: press.y, in: scope),
+              let gesture = dragHandlers[owner.id] else { return }
+        let ownerID = owner.id
+        let origin = (x: owner.rect.x, y: owner.rect.y)
+        let start = Point(x: press.x - origin.x, y: press.y - origin.y)
+        // Looked up again at each motion: the view draws between them, and
+        // its gesture's closures are the ones its latest body made.
+        func value(_ x: Int, _ y: Int) -> DragGesture.Value {
+            DragGesture.Value(startLocation: start, location: Point(x: x - origin.x, y: y - origin.y))
+        }
+        var session = DragSession(startX: press.x, startY: press.y,
+                                  minimumDistance: gesture.minimumDistance) { [weak self] x, y in
+            self?.dragHandlers[ownerID]?.changed(value(x, y))
+        }
+        session.ended = { [weak self] x, y in
+            self?.dragHandlers[ownerID]?.ended(value(x, y))
+        }
+        dragSession = session
+        if gesture.minimumDistance == 0 {
+            continueDrag(x: press.x, y: press.y)
+        }
+    }
+
+    /// The pointer moved with the left button held.
+    func continueDrag(x: Int, y: Int) {
+        guard var session = dragSession else { return }
+        if !session.begun {
+            guard session.reaches(x: x, y: y) else { return }
+            session.begun = true
+            dragSession = session
+        }
+        session.changed(x, y)
+    }
+
+    /// The left button came up: the drag, if it began, ends there.
+    func endDrag(x: Int, y: Int) {
+        guard let session = dragSession else { return }
+        dragSession = nil
+        if session.begun {
+            session.ended(x, y)
+        }
+    }
+
+    /// The deepest node under (x, y) with a drag gesture, topmost first.
+    private func findDragHandlerAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+            if let hit = findDragHandlerAt(x: x, y: y, in: child) { return hit }
+        }
+        return dragHandlers[node.id] != nil && node.rect.contains(x: x, y: y) ? node : nil
+    }
+
+    /// A drag resizing the two panes either side of the SplitView divider
+    /// at (x, y), if there is one. The divider follows the pointer, and the
+    /// panes' new sizes are written back to the split's state as ratios.
+    private func splitDividerDrag(x: Int, y: Int, in node: AttributeNode) -> DragSession? {
+        guard node.rect.contains(x: x, y: y) else { return nil }
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+            if let session = splitDividerDrag(x: x, y: y, in: child) { return session }
+        }
+        guard case .layout(let info) = node.kind, case .split(let axis) = info.kind,
+              let resize = node._resizeSplit, node.children.count > 1 else { return nil }
+        let horizontal = axis == .horizontal
+        func start(_ rect: Rect) -> Int { horizontal ? rect.x : rect.y }
+        func length(_ rect: Rect) -> Int { horizontal ? rect.width : rect.height }
+        let pointer = horizontal ? x : y
+        let panes = node.children.map(\.rect)
+        guard let index = panes.dropLast().indices.first(where: { start(panes[$0]) + length(panes[$0]) == pointer })
+        else { return nil }
+        let sizes = panes.map(length)
+        let pair = sizes[index] + sizes[index + 1]
+        let first = start(panes[index])
+        return DragSession(startX: x, startY: y, minimumDistance: 1) { x, y in
+            var resized = sizes
+            resized[index] = max(1, min(pair - 1, (horizontal ? x : y) - first))
+            resized[index + 1] = pair - resized[index]
+            resize(Layout.splitRatios(placing: resized))
+        }
     }
 
     /// The deepest scroll node whose painted scrollbar covers (x, y).
@@ -1003,6 +1102,11 @@ public final class FocusEngine: @unchecked Sendable {
         tapHandlers[nodeID] = recognizer
     }
 
+    /// Register a drag gesture for a node. Called during graph construction.
+    func registerDragHandler(for nodeID: NodeID, gesture: DragGesture) {
+        dragHandlers[nodeID] = gesture
+    }
+
     /// Register a hover handler for a node. Called during graph
     /// construction by the `.onHover` modifier. The handler fires on
     /// state transitions only (see `applyMouseMove`).
@@ -1052,6 +1156,7 @@ public final class FocusEngine: @unchecked Sendable {
         keyHandlers.removeAll(keepingCapacity: true)
         clickHandlers.removeAll(keepingCapacity: true)
         tapHandlers.removeAll(keepingCapacity: true)
+        dragHandlers.removeAll(keepingCapacity: true)
         wheelHandlers.removeAll(keepingCapacity: true)
         hoverHandlers.removeAll(keepingCapacity: true)
         pasteHandlers.removeAll(keepingCapacity: true)

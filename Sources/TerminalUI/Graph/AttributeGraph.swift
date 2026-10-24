@@ -422,7 +422,7 @@ public final class AttributeGraph: @unchecked Sendable {
         // current root, pane by pane; see `updateSplitChildren`.
         if let split = view as? any _GraphSplitView {
             if case .layout(let info) = node.kind, case .split = info.kind {
-                updateSplitChildren(node, from: split.state.root)
+                updateSplitChildren(node, from: split.state.root, state: split.state, path: [])
                 node.isDirty = false
                 return
             }
@@ -1089,10 +1089,12 @@ public final class AttributeGraph: @unchecked Sendable {
     ///
     /// Reassigning `root` re-enters via `rebuildSplitChildren`.
     func constructSplitView(_ split: any _GraphSplitView, id: NodeID) -> AttributeNode {
-        constructSplitNode(split.state.root, id: id)
+        constructSplitNode(split.state.root, id: id, state: split.state, path: [])
     }
 
-    private func constructSplitNode(_ tree: SplitNode, id: NodeID) -> AttributeNode {
+    /// `path` is the child indices from the state's root to `tree`.
+    private func constructSplitNode(_ tree: SplitNode, id: NodeID, state: SplitState,
+                                    path: [Int]) -> AttributeNode {
         switch tree {
         case .leaf(let view, _):
             // The marker is for serialisation only; the graph identifies nodes
@@ -1102,13 +1104,22 @@ public final class AttributeGraph: @unchecked Sendable {
         case .split(let axis, let children, let ratios):
             let node = AttributeNode(id: id, kind: .layout(LayoutInfo(kind: .split(axis))))
             node.splitRatios = ratios
+            Self.stampResize(node, state: state, path: path)
             for (i, child) in children.enumerated() {
                 let childID = id.appending(.index(i))
-                let childNode = constructSplitNode(child, id: childID)
+                let childNode = constructSplitNode(child, id: childID, state: state, path: path + [i])
                 childNode.parent = node
                 node.children.append(childNode)
             }
             return node
+        }
+    }
+
+    /// Lets a dragged divider write the split's new ratios into `state`.
+    private static func stampResize(_ node: AttributeNode, state: SplitState, path: [Int]) {
+        node._resizeSplit = { [weak state] ratios in
+            guard let state else { return }
+            state.root = state.root.settingRatios(ratios, at: path[...])
         }
     }
 
@@ -1121,7 +1132,8 @@ public final class AttributeGraph: @unchecked Sendable {
     /// resizing — which assigns new ratios — reset every pane. A split
     /// whose child count changed is rebuilt: SplitNode carries no stable
     /// identifiers to diff by.
-    private func updateSplitChildren(_ node: AttributeNode, from tree: SplitNode) {
+    private func updateSplitChildren(_ node: AttributeNode, from tree: SplitNode, state: SplitState,
+                                     path: [Int]) {
         guard case .split(let axis, let children, let ratios) = tree else {
             // Defensive: kindMatches() rejects a leaf root before we
             // get here (the calling updateNode falls through to the
@@ -1131,6 +1143,7 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         // Sync node kind in case the axis flipped.
         node.kind = .layout(LayoutInfo(kind: .split(axis)))
+        Self.stampResize(node, state: state, path: path)
         if node.splitRatios != ratios {
             node.splitRatios = ratios
             invalidateMeasurementCache(from: node)
@@ -1142,7 +1155,8 @@ public final class AttributeGraph: @unchecked Sendable {
             }
             node.children.removeAll()
             for (i, child) in children.enumerated() {
-                let childNode = constructSplitNode(child, id: node.id.appending(.index(i)))
+                let childNode = constructSplitNode(child, id: node.id.appending(.index(i)), state: state,
+                                                   path: path + [i])
                 childNode.parent = node
                 node.children.append(childNode)
             }
@@ -1154,12 +1168,12 @@ public final class AttributeGraph: @unchecked Sendable {
             let existing = node.children[i]
             switch child {
             case .split(let childAxis, _, _) where existing.kind.isLayout(.split(childAxis)):
-                updateSplitChildren(existing, from: child)
+                updateSplitChildren(existing, from: child, state: state, path: path + [i])
             case .leaf(let view, _) where canUpdateInPlace(existing, from: view):
                 updateAnyView(existing, from: view)
             default:
                 fireDisappear(on: existing)
-                let childNode = constructSplitNode(child, id: existing.id)
+                let childNode = constructSplitNode(child, id: existing.id, state: state, path: path + [i])
                 childNode.parent = node
                 node.children[i] = childNode
                 invalidateMeasurementCache(from: node)

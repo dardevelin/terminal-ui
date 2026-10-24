@@ -743,6 +743,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         }
                     case .moved, .drag:
                         pendingPointer = .motion(mouseEvent)
+                    case .release(.left):
+                        focusEngine.endDrag(x: mouseEvent.x, y: mouseEvent.y)
                     case .scrollUp, .scrollDown:
                         // Shift turns the wheel sideways, as terminals and
                         // platforms take it; a tilting wheel's ticks arrive
@@ -897,6 +899,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 hoverIsStale = true
             }
         case .motion(let mouseEvent):
+            // Of a run of motions only the last arrives, so a drag follows
+            // the pointer to where it is, once a frame.
+            if mouseEvent.kind == .drag(.left) {
+                focusEngine.continueDrag(x: mouseEvent.x, y: mouseEvent.y)
+            }
             focusEngine.applyMouseMove(x: mouseEvent.x, y: mouseEvent.y, root: root,
                                        policy: mousePolicy(at: mouseEvent))
         case nil:

@@ -621,6 +621,19 @@ struct PreviewPane: TerminalView {
                 Text("taps: \(state.taps)   opens: \(state.opens)   marked: \(state.marked ? "yes" : "no")")
                     .foreground(.gray)
             }
+        case .dragGesture:
+            VStack {
+                HStack(spacing: 0) {
+                    Text(String(repeating: "█", count: state.dragWidth)).foreground(.cyan)
+                    Text("▐").foreground(.yellow)
+                        .gesture(DragGesture()
+                            .onChanged { [state] drag in
+                                state.dragWidth = max(1, min(60, state.dragStartWidth + drag.translation.width))
+                            }
+                            .onEnded { [state] _ in state.dragStartWidth = state.dragWidth })
+                }
+                Text("width: \(state.dragWidth) — drag the ▐ handle").foreground(.gray)
+            }
         case .mouseFocusPolicy:
             VStack {
                 Text("Outer subtree — default .clickToLock").foreground(.green)
