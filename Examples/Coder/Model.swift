@@ -102,6 +102,8 @@ struct Resource: Identifiable, Sendable {
 struct FileChange: Identifiable, Sendable, Equatable {
     let path: String
     let lines: [DiffLine]
+    /// A file git does not track yet: all of it is new.
+    var isUntracked = false
 
     var added: Int { lines.count { $0.kind == .added } }
     var removed: Int { lines.count { $0.kind == .removed } }
@@ -184,6 +186,10 @@ final class CoderState {
     var reviewFileID: String?
     /// Whether the review's file list is unfolded above the diff.
     var reviewListExpanded = true
+    /// Where the review's sections are scrolled: the file on top.
+    var reviewPosition: String?
+    /// Files whose sections are folded to their header.
+    var reviewFolded: Set<String> = []
 
     /// The files this session touched.
     var files: [FileChange] { changes[.session] ?? [] }
@@ -224,8 +230,24 @@ final class CoderState {
     /// `/diff` opens.
     func openReview(on file: FileChange? = nil) {
         reviewSource = file == nil ? .uncommitted : .session
-        reviewFileID = file?.id
+        chooseReviewFile(file?.id)
         showsReview = true
+    }
+
+    /// The list chose a file: its section scrolls to the top.
+    func chooseReviewFile(_ id: String?) {
+        reviewFileID = id
+        reviewPosition = id
+    }
+
+    /// The sections were scrolled: the list follows the file now on top.
+    func followReviewScroll(to id: String?) {
+        reviewPosition = id
+        if let id { reviewFileID = id }
+    }
+
+    func setReviewSection(_ id: String, expanded: Bool) {
+        if expanded { reviewFolded.remove(id) } else { reviewFolded.insert(id) }
     }
 
     /// The next source, or the one before: ←/→ in the review's list.
@@ -233,7 +255,7 @@ final class CoderState {
         let sources = ReviewSource.allCases
         let index = sources.firstIndex(of: reviewSource) ?? 0
         reviewSource = sources[(index + step + sources.count) % sources.count]
-        reviewFileID = nil
+        chooseReviewFile(nil)
     }
 
     /// Ctrl+R: opens the review, or closes it.

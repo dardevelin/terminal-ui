@@ -799,8 +799,9 @@ features)*
 Crush reviews what the agent changed; the demo's form of it is Claude Code's
 `/diff` panel: Ctrl+R opens it in the sidebar's place, a third of the window,
 the transcript narrowing beside it. What git holds uncommitted is listed with
-its counts, folding under the summary, and the chosen file's diff is stacked
-below; ↑/↓ choose the file and the diff follows, ←/→ move to the session's
+its counts, folding under the summary, and below it every file's change is
+stacked in one scroll, each under its own header and folding on a click there;
+↑/↓ choose a file and its section scrolls up, scrolling moves the choice, ←/→ move to the session's
 changes or the last commit's, and `[ ask ]` drafts a question about the file in
 the composer. git is read again every second while the panel is open, so a file
 an agent writes appears in it. A click on a Modified Files row opens the

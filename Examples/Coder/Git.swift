@@ -112,14 +112,14 @@ enum Git {
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         guard size <= largestUntrackedFile,
               let text = try? String(contentsOf: url, encoding: .utf8) else {
-            return FileChange(path: path, lines: [])
+            return FileChange(path: path, lines: [], isUntracked: true)
         }
         var body = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
         if body.last == "" { body.removeLast() }
         let lines = body.enumerated().map { index, text in
             DiffLine(id: index, kind: .added, text: text, oldLineNumber: nil, newLineNumber: index + 1)
         }
-        return FileChange(path: path, lines: lines)
+        return FileChange(path: path, lines: lines, isUntracked: true)
     }
 
     /// Runs `git` in `directory` and returns what it printed, or throws
