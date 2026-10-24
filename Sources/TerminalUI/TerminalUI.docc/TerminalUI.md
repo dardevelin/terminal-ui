@@ -75,6 +75,7 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``ScrollbarStyle``
 - ``GeometryReader``
 - ``WidthReader``
+- ``DisclosureGroup``
 - ``Edge``
 - ``EdgeInsets``
 
@@ -92,6 +93,15 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``Toggle``
 - ``PromptInput``
 - <doc:EditingKeys>
+
+### Gestures
+
+A press carries its button, its click count and the modifiers held; a
+gesture waits for the one it describes. A right click opens a view's
+`contextMenu(menuItems:)`.
+
+- ``TapGesture``
+- ``DragGesture``
 
 ### Display
 
