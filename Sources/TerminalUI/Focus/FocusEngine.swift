@@ -29,6 +29,9 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Registered click handlers — keyed by NodeID.
     var clickHandlers: [NodeID: (_ relativeX: Int, _ relativeY: Int) -> Void] = [:]
+    /// Tap gestures, which a press reaches only when it is the click they
+    /// wait for; see `TapRecognizer`.
+    private var tapHandlers: [NodeID: TapRecognizer] = [:]
     /// Views that scroll themselves under the wheel; see `routeWheel`.
     private var wheelHandlers: [NodeID: (Key) -> Bool] = [:]
 
@@ -218,6 +221,9 @@ public final class FocusEngine: @unchecked Sendable {
         }
         if let clickHandler = node._clickHandler, clickHandlers[node.id] == nil {
             clickHandlers[node.id] = clickHandler
+        }
+        if let tap = node._tapHandler, tapHandlers[node.id] == nil {
+            tapHandlers[node.id] = tap
         }
         if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
             wheelHandlers[node.id] = wheelHandler
@@ -712,7 +718,7 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     /// The deepest hover handler under (x, y) on top: the one a click there
-    /// would reach, by the rule `findClickableAt` follows. It and the
+    /// would reach, by the rule `findPressHandlerAt` follows. It and the
     /// handlers holding it are hovered; one drawn under it is not, as in
     /// SwiftUI, where a view covered by another does not see the pointer.
     private func findHoverHandlerAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
@@ -740,11 +746,26 @@ public final class FocusEngine: @unchecked Sendable {
     /// each row has `.onClick { selectedIndex = ... }` so a mouse click
     /// jumps directly to the corresponding page.
     public func handleMouseClick(x: Int, y: Int, root: AttributeNode?) {
+        handlePress(PointerPress(x: x, y: y), root: root)
+    }
+
+    /// A press of any button, with its click count and modifiers: what
+    /// `handleMouseClick` does for a plain left click. Only the left
+    /// button moves focus and activates; another reaches only a handler
+    /// waiting for it.
+    func handlePress(_ press: PointerPress, root: AttributeNode?) {
+        let (x, y) = (press.x, press.y)
         // The same containment rule Tab obeys: while a modal is presented,
         // clicking the content it dims must not reach it. The click is
         // swallowed rather than redirected — dismissal is the modal's own
         // explicit action.
         guard let root, let scope = pointerScope(x: x, y: y, root: root) else { return }
+        guard press.button == .left else {
+            if let (target, handler) = findPressHandlerAt(press, in: scope) {
+                handler(x - target.rect.x, y - target.rect.y)
+            }
+            return
+        }
         // A scrollbar is painted over the content's last column, so the cells
         // it occupies belong to the scroll view, not to the row underneath —
         // otherwise a press on the track would both scroll and activate
@@ -757,7 +778,7 @@ public final class FocusEngine: @unchecked Sendable {
             // and making a whole area focusable — which is how an app gives
             // the engine something to cycle to — must not swallow the clicks
             // of everything inside it.
-            if let (inner, innerHandler) = findClickableAt(x: x, y: y, in: target),
+            if let (inner, innerHandler) = findPressHandlerAt(press, in: target),
                inner.id != target.id {
                 innerHandler(x - inner.rect.x, y - inner.rect.y)
                 return
@@ -767,14 +788,14 @@ public final class FocusEngine: @unchecked Sendable {
             // handler above it, given the point in its own view. Asking above
             // first ran the row's handler for the Button, with coordinates
             // measured from whatever had taken focus.
-            if let handler = clickHandlers[target.id] {
+            if let handler = pressHandler(at: target, for: press) {
                 handler(x - target.rect.x, y - target.rect.y)
             } else if let ownHandler = keyHandlers[target.id],
                       GraphContext.$currentRoutingNodeID.withValue(target.id, operation: {
                           ownHandler(KeyEvent(key: .activate))
                       }) == .handled {
                 return
-            } else if let (owner, handler) = findClickHandlerAbove(target) {
+            } else if let (owner, handler) = findPressHandlerAbove(target, for: press) {
                 handler(x - owner.rect.x, y - owner.rect.y)
             } else {
                 // Synthesize `.activate` (not `.enter`) so click-to-
@@ -791,10 +812,8 @@ public final class FocusEngine: @unchecked Sendable {
         // No focusable under the cursor — try a click handler on any
         // node containing the click point. Walks deepest-first so a
         // row's onClick wins over its parent VStack's.
-        if let (target, handler) = findClickableAt(x: x, y: y, in: scope) {
-            let relX = x - target.rect.x
-            let relY = y - target.rect.y
-            handler(relX, relY)
+        if let (target, handler) = findPressHandlerAt(press, in: scope) {
+            handler(x - target.rect.x, y - target.rect.y)
         }
     }
 
@@ -850,42 +869,56 @@ public final class FocusEngine: @unchecked Sendable {
     /// synthesising an Enter on focusables. The escape hatch's whole
     /// point: framework auto-routing is off, callbacks still run.
     public func fireClickHandlerOnly(x: Int, y: Int, root: AttributeNode) {
-        if let scope = pointerScope(x: x, y: y, root: root),
-           let (target, handler) = findClickableAt(x: x, y: y, in: scope) {
-            let relX = x - target.rect.x
-            let relY = y - target.rect.y
-            handler(relX, relY)
+        firePressHandlerOnly(PointerPress(x: x, y: y), root: root)
+    }
+
+    /// `fireClickHandlerOnly` for a press of any button, count and
+    /// modifiers.
+    func firePressHandlerOnly(_ press: PointerPress, root: AttributeNode) {
+        if let scope = pointerScope(x: press.x, y: press.y, root: root),
+           let (target, handler) = findPressHandlerAt(press, in: scope) {
+            handler(press.x - target.rect.x, press.y - target.rect.y)
         }
     }
 
-    /// Walk the tree deepest-first looking for a node that contains
-    /// (x, y) AND has a registered click handler. Used by the
-    /// non-focusable click path so e.g. a sidebar row tagged with
-    /// `.onClick` receives the event without needing to be focusable.
-    private func findClickableAt(x: Int, y: Int, in node: AttributeNode)
+    /// What `press` does at `node`: a tap gesture there waiting for this
+    /// click, or, for the left button, its `.onClick` handler.
+    private func pressHandler(at node: AttributeNode, for press: PointerPress)
+        -> ((_ relativeX: Int, _ relativeY: Int) -> Void)?
+    {
+        if let tap = tapHandlers[node.id], tap.accepts(press) {
+            return { _, _ in tap.action() }
+        }
+        return press.button == .left ? clickHandlers[node.id] : nil
+    }
+
+    /// Walk the tree deepest-first, topmost first, for a node containing
+    /// the press with a handler for it. A tap gesture waiting for another
+    /// click — a double tap, on a single click — passes it to the view
+    /// holding it. A row tagged with `.onClick` receives the event without
+    /// needing to be focusable.
+    private func findPressHandlerAt(_ press: PointerPress, in node: AttributeNode)
         -> (AttributeNode, (_ relX: Int, _ relY: Int) -> Void)?
     {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
-            if let hit = findClickableAt(x: x, y: y, in: child) {
+        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: press.x, y: press.y) {
+            if let hit = findPressHandlerAt(press, in: child) {
                 return hit
             }
         }
-        if node.rect.contains(x: x, y: y),
-           let handler = clickHandlers[node.id]
-        {
+        if node.rect.contains(x: press.x, y: press.y), let handler = pressHandler(at: node, for: press) {
             return (node, handler)
         }
         return nil
     }
 
-    /// The nearest click handler above `node`, with the node it belongs to,
-    /// whose rect the click's coordinates are measured from.
-    private func findClickHandlerAbove(_ node: AttributeNode)
+    /// The nearest handler for `press` above `node`, with the node it
+    /// belongs to, whose rect the click's coordinates are measured from.
+    private func findPressHandlerAbove(_ node: AttributeNode, for press: PointerPress)
         -> (AttributeNode, (_ relativeX: Int, _ relativeY: Int) -> Void)?
     {
         var ancestor = node.parent
         while let owner = ancestor {
-            if let handler = clickHandlers[owner.id] { return (owner, handler) }
+            if let handler = pressHandler(at: owner, for: press) { return (owner, handler) }
             ancestor = owner.parent
         }
         return nil
@@ -965,6 +998,11 @@ public final class FocusEngine: @unchecked Sendable {
         clickHandlers[nodeID] = handler
     }
 
+    /// Register a tap gesture for a node. Called during graph construction.
+    func registerTapHandler(for nodeID: NodeID, recognizer: TapRecognizer) {
+        tapHandlers[nodeID] = recognizer
+    }
+
     /// Register a hover handler for a node. Called during graph
     /// construction by the `.onHover` modifier. The handler fires on
     /// state transitions only (see `applyMouseMove`).
@@ -1013,6 +1051,7 @@ public final class FocusEngine: @unchecked Sendable {
     public func clearHandlers() {
         keyHandlers.removeAll(keepingCapacity: true)
         clickHandlers.removeAll(keepingCapacity: true)
+        tapHandlers.removeAll(keepingCapacity: true)
         wheelHandlers.removeAll(keepingCapacity: true)
         hoverHandlers.removeAll(keepingCapacity: true)
         pasteHandlers.removeAll(keepingCapacity: true)

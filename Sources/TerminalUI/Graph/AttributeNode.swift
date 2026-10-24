@@ -247,6 +247,17 @@ public class AttributeNode: @unchecked Sendable {
     /// the same principle containment stamping uses.
     public var _keyHandler: ((KeyEvent) -> KeyEventResult)?
     public var _clickHandler: ((Int, Int) -> Void)?
+    /// The tap gesture this view waits for; see `TapRecognizer`.
+    var _tapHandler: TapRecognizer?
+
+    /// Drops every handler stamped on the node, for a view disabled since
+    /// they were.
+    func forgetHandlers() {
+        _keyHandler = nil
+        _clickHandler = nil
+        _tapHandler = nil
+        _wheelHandler = nil
+    }
     /// Scrolls this view one wheel step toward the given arrow, and says
     /// whether it moved; see `View.onScrollWheel`.
     var _wheelHandler: ((Key) -> Bool)?

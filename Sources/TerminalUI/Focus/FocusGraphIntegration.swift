@@ -31,6 +31,14 @@ extension OnClickModifier: _FocusGraphModifier {
     }
 }
 
+extension TapGestureModifier: _FocusGraphModifier {
+    func registerWithFocusEngine(node: AttributeNode) {
+        let recognizer = gesture.recognizer
+        node._tapHandler = recognizer
+        GraphContext.currentFocusEngine?.registerTapHandler(for: node.id, recognizer: recognizer)
+    }
+}
+
 extension OnPasteModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
         GraphContext.currentFocusEngine?.registerPasteHandler(for: node.id, handler: handler)
@@ -125,7 +133,12 @@ enum FocusGraphIntegration {
     static func registerIfNeeded(modifier: any ViewModifier, node: AttributeNode) {
         if let focusMod = modifier as? any _FocusGraphModifier {
             let env = GraphContext.currentEnvironment ?? EnvironmentValues()
-            guard env.isEnabled else { return }
+            guard env.isEnabled else {
+                // Disabled since it was drawn: what was stamped then would
+                // be registered again by `rebuildIndex` every frame.
+                node.forgetHandlers()
+                return
+            }
             focusMod.registerWithFocusEngine(node: node)
         }
     }
