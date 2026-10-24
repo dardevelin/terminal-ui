@@ -383,6 +383,16 @@ public struct TextArea: TerminalView {
         }
             .labelForeground(enabled: isEnabled, theme: appTheme)
             .focusable()
+            // A click puts the caret where it lands, and drops the selection.
+            .onClick { [state, lineNumbers] x, y in
+                var editor = state.get()
+                editor.cursor = Self.cursor(atColumn: x, row: y, lines: lines, scrollOffset: scrollOffset,
+                                            lineNumbers: lineNumbers, wrapWidth: wrapWidth)
+                editor.selection = nil
+                // The column the next ↑/↓ aims for is the one clicked.
+                editor.desiredCol = nil
+                state.set(editor)
+            }
             .onKeyPress { [text, state, arrowMode, textEditing] event in
                 Self.handleKey(
                     event,
@@ -811,7 +821,9 @@ public struct TextArea: TerminalView {
                         let pad = String(repeating: " ", count: max(0, gutter - gutterPadding - num.count))
                         spans.append(TextSpan(pad + num + " \u{2502} ", foreground: lineNumberFg))
                     } else {
-                        let pad = String(repeating: " ", count: max(0, gutter))
+                        // As wide as the first chunk's `pad + num + " │ "`,
+                        // so a wrapped line's text lines up under its start.
+                        let pad = String(repeating: " ", count: max(0, gutter + 1))
                         spans.append(TextSpan(pad, foreground: lineNumberFg))
                     }
                 }
@@ -934,6 +946,31 @@ public struct TextArea: TerminalView {
         }
 
         return spans
+    }
+
+    /// The caret position drawn at column `x`, row `y` of the rows
+    /// `buildDisplaySpans` lays out from `scrollOffset`: what a click there
+    /// places the caret at. Past the end of a line it is the line's end;
+    /// below the last line, the end of the last; on the gutter, the start
+    /// of the line.
+    static func cursor(atColumn x: Int, row y: Int, lines: [String], scrollOffset: Int,
+                       lineNumbers: Bool, wrapWidth: Int) -> TextAreaCursor {
+        let textStart = lineNumbers ? gutterWidth(for: lines.count) + 1 : 0
+        var displayRow = 0
+        for row in max(0, scrollOffset)..<lines.count {
+            let line = lines[row]
+            let chunks = wrapWidth > 0 && line.count > wrapWidth && !line.isEmpty
+                ? TextLayout.wrapWords(line, width: wrapWidth)
+                : [line]
+            if y < displayRow + chunks.count {
+                let col = unprojectCursor(chunks: chunks, chunkIndex: y - displayRow,
+                                          columnInChunk: max(0, x - textStart), logicalLine: line)
+                return TextAreaCursor(row: row, col: col)
+            }
+            displayRow += chunks.count
+        }
+        let last = max(0, lines.count - 1)
+        return TextAreaCursor(row: last, col: lines.indices.contains(last) ? lines[last].count : 0)
     }
 
     static func gutterWidth(for totalLines: Int) -> Int {

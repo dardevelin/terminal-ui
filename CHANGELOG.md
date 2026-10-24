@@ -40,6 +40,13 @@ All notable changes to TerminalUI are documented here. Format based on
   keyboard while it is open; choosing an item runs it and closes the menu,
   and Escape or a press outside closes it alone. The secondary button had
   reached nothing.
+- **A click places the caret** in `TextInput`, `TextArea` and `PromptInput`,
+  on the character it lands on — through the line-number gutter, wrapped
+  rows, a scrolled view, the caret's own cell and wide characters; inside a
+  collapsed paste, at its nearer edge. A click focused the field and left
+  the caret where it was.
+- **`TerminalAppProtocol.linesPerWheelNotch`** — how many lines a notch of
+  the wheel scrolls; 3 by default, as before.
 - **`DisclosureGroup`** — a label that folds its content away: Enter, Space
   or a click flips it, → opens and ← closes it. Closed, its content takes no
   rows, so a pane of a stacked panel folds with one.
@@ -93,6 +100,8 @@ All notable changes to TerminalUI are documented here. Format based on
   the edge; and a `.frame(maxWidth: .infinity)` with an alignment placed such
   a child at its natural width rather than giving it the frame's. A `Spacer`
   in a `VStack` stretches only down it, and does not make it wide.
+- **A wrapped line in a numbered `TextArea` continues under its start.**
+  Continuation rows were indented one cell less than the first.
 - **A `SplitView`'s panes keep their state.** It rebuilt them from nothing
   on every update, so a pane's `@TerminalState` reset whenever anything
   above the split drew again, and on every resize. Panes are reconciled by
