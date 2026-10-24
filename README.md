@@ -330,33 +330,41 @@ DocC plugin to build a library that doesn't need it.
 
 ## Library products
 
-One package, five products — consumers pull only the layer they need:
+One package, five products — four libraries, so consumers pull only the
+layer they need, and the `swtui` command-line tool:
 
 ```mermaid
 graph TD
     App["your app"] --> TUI
     ImgApp["your app,<br/>with images"] --> IO
     CLI["a plain CLI that wants<br/>styled output or logging"] --> Log
+    Dev["you, or an agent,<br/>driving a debug build"] --> SW
 
-    IO["TerminalUIIO<br/><i>PNG decoding, half-block &amp; kitty rendering</i>"] --> TUI
+    IO["TerminalUIIO<br/><i>image buffer, half-block rendering</i>"] --> TUI
+    SW["swtui<br/><i>diagnostics and remote control</i>"] --> TUI
     TUI["TerminalUI<br/><i>the full TUI runtime</i>"] --> Ink
     TUI --> Log
-    TUI --> Config["TerminalUIConfig<br/><i>diagnostics config</i>"]
+    TUI -.-> Config["TerminalUIConfig<br/><i>internal: TOML, key spelling, diagnostics</i>"]
+    SW -.-> Config
     Log["TerminalLog<br/><i>structured, leveled logging</i>"] --> Ink
     Ink["TerminalInk<br/><i>colors, capability detection, ANSI SGR</i>"]
 ```
 
 | Product | Depends on | Purpose |
 |---|---|---|
-| `TerminalUI` | Config, Ink, Log | The full TUI runtime described above |
+| `TerminalUI` | Ink, Log | The full TUI runtime described above |
 | `TerminalInk` | — | Styled output alone: color model, terminal capability detection, ANSI SGR. For CLIs that want styled stdout/stderr without a render runtime |
 | `TerminalLog` | TerminalInk | Structured logging with leveled colored prefixes; strips ANSI when output is not a TTY |
-| `TerminalUIIO` | TerminalUI | Opt-in image rendering: PNG decoding, half-block and kitty renderers |
-| `TerminalUIConfig` | — | Shared configuration for the debug/diagnostic system |
+| `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol, a half-block renderer, and a pure-Swift inflate. No image decoder ships yet — bring your own |
+| `swtui` | TerminalUI | The [debug tools](#debug-tools-and-agent-driven-development)' command line: `swift run swtui ctl …` from your own package drives the debug build you are running |
+
+`TerminalUIConfig` (the TOML parser, the one spelling of a key combination,
+the diagnostics configuration) is a target the others build on, not a
+product: nothing outside the package imports it.
 
 `import TerminalInk` in a script-sized CLI costs you the color layer and
 nothing else; `TerminalUIIO` exists so apps without image needs never carry
-decoders.
+image code.
 
 ## Requirements & compatibility
 
