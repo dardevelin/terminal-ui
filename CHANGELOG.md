@@ -6,6 +6,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
+
+A minor release: an app written for 2.0 compiles unchanged. The mouse does
+what it does on a desktop — clicks that count and know their modifiers,
+drags, right-click menus, a caret placed by a click, a wheel that scrolls
+what is under it and hover on what is drawn on top — and the panels an
+agent's review needs: an inspector beside the content, and groups that
+fold. Every tutorial step is now built and run against the page that
+teaches it. One change in behaviour: the wheel no longer reaches
+`.onKeyPress` as arrow keys (see Changed).
+
 ### Added
 
 - **`.inspector(isPresented:content:)`** — a panel in a column taken off the
@@ -1038,7 +1049,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...v2.0.0
 [1.0.0]: https://github.com/dardevelin/terminal-ui/compare/v0.8.0...v1.0.0
