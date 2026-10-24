@@ -10,6 +10,7 @@
 /// than overwriting — so `.disabled(false)` nested inside
 /// `.disabled(true)` stays disabled.
 public struct DisabledModifier: ViewModifier, _AnyEnvironmentModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
 
     /// `true` when this modifier is disabling its subtree. Stored

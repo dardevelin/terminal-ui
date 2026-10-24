@@ -33,6 +33,7 @@ public struct TaggedView<Tag: Hashable, Content: TerminalView>: TerminalView {
         self.content = content
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView { content }
 }
 

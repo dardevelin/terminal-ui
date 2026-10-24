@@ -35,6 +35,10 @@ jobs:
             docs-spm-${{ hashFiles('Package.swift') }}-
             docs-spm-
 
+      # --experimental-skip-synthesized-symbols: without it every view lists
+      # every TerminalView modifier again as its own page, and each Equatable
+      # type gets a `!=` page — some 3,500 pages that only repeat others.
+      # tools/scripts/check_doc_pages.py builds with the same options.
       # TUI_BUILD_DOCS gates the swift-docc-plugin dependency so ordinary
       # consumers resolving this package clone nothing — docs builds are the
       # one place that opts in. The hosting base path must equal the repo
@@ -45,6 +49,7 @@ jobs:
             --allow-writing-to-directory docs-site \
             generate-documentation \
             --target TerminalUI \
+            --experimental-skip-synthesized-symbols \
             --output-path docs-site \
             --transform-for-static-hosting \
             --hosting-base-path "${{ github.event.repository.name }}"

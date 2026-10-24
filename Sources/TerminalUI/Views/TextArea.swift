@@ -58,6 +58,9 @@ public struct TextAreaState: Equatable, Sendable {
     /// selection, empty 100-entry undo stack.
     public init() {}
 
+    /// Compares the editor's visible position — cursor, scroll offset,
+    /// selection and sticky column — and ignores ``undoStack``, so two
+    /// states that differ only in history are equal.
     public static func == (lhs: TextAreaState, rhs: TextAreaState) -> Bool {
         lhs.cursor == rhs.cursor
             && lhs.scrollOffset == rhs.scrollOffset
@@ -254,6 +257,7 @@ public struct TextArea: TerminalView {
 
     // MARK: - Body
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Capture boundary-feedback + isEnabled env at body-eval time;
         // the GR closure runs later when GraphContext.currentEnvironment

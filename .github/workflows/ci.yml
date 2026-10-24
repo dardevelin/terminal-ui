@@ -141,6 +141,11 @@ jobs:
       - name: The public API breaks nothing the last release offered
         run: python3 tools/scripts/check_api_compat.py
 
+      # Every published documentation page says something: a public symbol
+      # without a doc comment fails, and so does any DocC warning.
+      - name: Every documentation page says something
+        run: python3 tools/scripts/check_doc_pages.py
+
       # macOS runners ship Python 3, so no install step is needed here.
       - name: Walk every Storybook page
         run: python3 tools/scripts/storybook_walk.py

@@ -238,18 +238,25 @@ public struct DefaultPromptInputLocalizer: PromptInputLocalizer {
     /// produces identical strings.
     public init() {}
 
+    /// `[Pasted text #<id> +<lineCount> lines]` — `id` is the reference's,
+    /// so two insertions of one buffer get different numbers.
     public func textMarker(id: Int, lineCount: Int) -> String {
         "[Pasted text #\(id) +\(lineCount) lines]"
     }
 
+    /// `[Pasted text #<id> +<charCount> chars]`, for a single-line paste
+    /// long enough to collapse.
     public func charsMarker(id: Int, charCount: Int) -> String {
         "[Pasted text #\(id) +\(charCount) chars]"
     }
 
+    /// `[Image #<id>]`; an image has no length worth stating.
     public func imageMarker(id: Int) -> String {
         "[Image #\(id)]"
     }
 
+    /// `paste again to expand` — lower case, with no trailing punctuation,
+    /// as it sits in a hint row rather than a sentence.
     public func pasteAgainHint() -> String {
         "paste again to expand"
     }
@@ -280,6 +287,8 @@ public enum PasteBufferContent: Hashable, Equatable, Sendable {
 /// > *"deleting regions don't delete the buffer, they delete the
 /// > presentation, thus allowing to re-apply"*
 public struct PasteBuffer: Identifiable, Equatable, Sendable {
+    /// A buffer's identity: a counter value from its prompt's state, so two
+    /// prompts may each hold a buffer 1.
     public typealias ID = Int
     /// Buffer identity — allocated from ``PromptInputState/nextBufferID``,
     /// monotonic and never reused within a prompt's lifetime.
@@ -322,6 +331,8 @@ public struct PasteBuffer: Identifiable, Equatable, Sendable {
 /// references after each text change. Length is in UTF-8 view characters,
 /// matching how the binding's String index counts.
 public struct PasteReference: Identifiable, Equatable, Sendable {
+    /// A reference's identity: a counter value from its prompt's state,
+    /// separate from the buffer counter — the number markers show.
     public typealias ID = Int
     /// Reference identity — allocated from
     /// ``PromptInputState/nextReferenceID``, monotonic per prompt.
@@ -576,6 +587,7 @@ public struct PromptInput: TerminalView {
         self.onSubmit = onSubmit
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Soft-wrap needs the container width, which a reader supplies (see
         // `inputReader`). We do NOT apply `.frame(height:)` — the spans

@@ -48,6 +48,7 @@ public struct Button: TerminalView {
         self.action = action
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         Text("[ \(label) ]")
             .foreground(isEnabled ? theme.foreground : theme.foregroundMuted)

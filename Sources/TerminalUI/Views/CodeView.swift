@@ -54,6 +54,7 @@ public struct CodeView: TerminalView {
         self.syntaxOverride = theme
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let syntax = syntaxOverride ?? theme.syntax
         let runs = highlighters[language]?.highlight(lines: lines, theme: syntax)

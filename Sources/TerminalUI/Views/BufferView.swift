@@ -36,5 +36,6 @@ public struct BufferView: TerminalView {
         self.buffer = buffer
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }

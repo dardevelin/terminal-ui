@@ -77,6 +77,7 @@ public struct BarChart: TerminalView {
         self.showValues = showValues
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         WidthReader { width in
             Text(self.renderChart(containerWidth: width))

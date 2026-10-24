@@ -1379,6 +1379,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// updated once per frame by `FrameCounter.endFrame`.
     public func remoteCurrentFrameNumber() -> Int { frameStats.frameCount }
 
+    /// Reads the event queue's running tally: input bytes queued or
+    /// handled so far, and the size of the last resize it took. Answers
+    /// `swtui ctl`'s input acknowledgement, so a client that wrote to the
+    /// terminal can tell when the app has those bytes.
     public func remoteTerminalInputTaken() -> TerminalInputTaken { eventQueue.terminalInputTaken }
     #endif
 }

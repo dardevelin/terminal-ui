@@ -38,5 +38,6 @@ public struct ZStack<Content: TerminalView>: TerminalView {
         self.alignment = alignment
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }

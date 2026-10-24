@@ -73,6 +73,7 @@ public struct MorseTicker: TerminalView {
         self.bgColor = bgColor
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let offset = scrollBinding.get()
         let spans = renderTicker(offset: offset)

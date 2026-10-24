@@ -342,6 +342,7 @@ public struct DiffView: TerminalView {
         self.visibleHeight = visibleHeight
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         if contentRowCount > visibleHeight {
             content

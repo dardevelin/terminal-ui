@@ -635,6 +635,9 @@ public final class FileDebugSink: DebugSink, Sendable {
         output.withLock { $0.handle.closeFile() }
     }
 
+    /// Appends frame-end summaries, graph snapshots and input events to the
+    /// file, one JSON object per line; every other event is dropped, so the
+    /// file stays small enough to tail.
     public func receive(_ event: DebugEvent) {
         // Only write frame-end and snapshots to file to avoid flooding
         switch event {
@@ -688,6 +691,11 @@ public final class SocketDebugSink: DebugSink, Sendable {
         self.connection = Mutex(Connection(listenFd: listenFd))
     }
 
+    /// Sends frame-end summaries and graph snapshots to the connected
+    /// client as JSON lines, accepting a waiting client first if there is
+    /// none; other events are dropped. With no client the event is lost,
+    /// not queued, and a failed write drops the client so the next one can
+    /// connect.
     public func receive(_ event: DebugEvent) {
         switch event {
         case .frameEnd(let info):

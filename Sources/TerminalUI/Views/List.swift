@@ -72,6 +72,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
 
     @TerminalEnvironment(\.theme) private var theme
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // An explicit `visibleCount` is a declared size: the list is exactly
         // that many rows and measures as such. Only a size-driven list needs

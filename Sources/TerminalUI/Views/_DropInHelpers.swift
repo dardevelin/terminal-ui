@@ -71,6 +71,7 @@ public struct _EmptyPlaceholder: TerminalView {
         self.text = text
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         Text(text).foreground(theme.foregroundMuted)
     }

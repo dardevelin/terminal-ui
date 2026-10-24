@@ -335,6 +335,7 @@ public protocol _AnyEnvironmentModifier {
 
 /// Modifier that sets an environment value for a subtree.
 public struct EnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Value
     /// The ``EnvironmentValues`` entry this modifier writes.
     public let keyPath: WritableKeyPath<EnvironmentValues, Value>
@@ -350,6 +351,7 @@ public struct EnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier 
 
 /// Modifier that edits an inherited environment value for a subtree.
 public struct TransformEnvironmentModifier<Value>: ViewModifier, _AnyEnvironmentModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Value
     /// The ``EnvironmentValues`` entry this modifier edits.
     public let keyPath: WritableKeyPath<EnvironmentValues, Value>

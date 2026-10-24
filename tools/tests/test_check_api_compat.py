@@ -98,6 +98,15 @@ def an_accepted_break_that_is_gone_is_reported() -> None:
     assert len(checker.findings(CLEAN, accepted)) == 2
 
 
+def hiding_a_page_from_the_docs_breaks_nothing() -> None:
+    hidden = DIGESTER.replace(
+        "2 breaking changes", "3 breaking changes").replace(
+        f"  💔 {REMOVED}\n",
+        f"  💔 {REMOVED}\n  💔 API breakage: var Button.body is now with @_documentation\n")
+    accepted = allowlist(f"TerminalUI: {ADDED_CASE}", f"TerminalUI: {REMOVED}")
+    assert checker.findings(hidden, accepted) == []
+
+
 def a_run_that_compared_nothing_is_reported() -> None:
     failed = "error: the baseline failed to build\n"
     [finding] = checker.findings(failed, allowlist())
@@ -112,6 +121,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("accepted breaks pass", accepted_breaks_pass),
     ("an unaccepted break is reported", an_unaccepted_break_is_reported),
     ("an accepted break that is gone is reported", an_accepted_break_that_is_gone_is_reported),
+    ("hiding a page from the docs breaks nothing", hiding_a_page_from_the_docs_breaks_nothing),
     ("a run that compared nothing is reported", a_run_that_compared_nothing_is_reported),
 ]
 

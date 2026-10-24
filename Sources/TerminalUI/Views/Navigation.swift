@@ -62,6 +62,7 @@ public struct NavigationStack<Root: TerminalView>: TerminalView {
         self.boundPath = nil
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let destinations = self.destinations
         let path = boundPath ?? NavigationPathBinding(store: internalStore)
@@ -251,6 +252,7 @@ extension NavigationTitleView: _NavigationTitleSource {
 /// `.navigationDestination` calls on the same stack accumulate. A plain
 /// `.environment(_:_:)` set would let the outermost win and drop the rest.
 public struct NavigationDestinationModifier<Data: Hashable, Destination: TerminalView>: ViewModifier, _AnyEnvironmentModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Void
     let build: (Data) -> Destination
 
@@ -375,6 +377,7 @@ public struct NavigationLink<Label: TerminalView>: TerminalView {
         self.label = label()
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let value = self.value
         let push = self.push

@@ -11,12 +11,18 @@ import Synchronization
 /// passes over a command it does not perform — to the next one bound to the
 /// key, and after the last, to the app.
 public struct TextEditCommand: RawRepresentable, Hashable, Sendable, ExpressibleByStringLiteral {
+    /// The command's name, e.g. `"moveWordForward"` — what a keymap binds
+    /// and what an input matches on.
     public let rawValue: String
 
+    /// Names a command. Any string is accepted: one no input performs is
+    /// passed over, not rejected.
     public init(rawValue: String) {
         self.rawValue = rawValue
     }
 
+    /// Names a command with a string literal, so an app's own command is
+    /// written `"insertTimestamp"` like the built-in ones.
     public init(stringLiteral value: String) {
         self.init(rawValue: value)
     }

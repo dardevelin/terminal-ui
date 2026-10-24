@@ -1,8 +1,14 @@
 /// One side of a rectangle. SwiftUI parity: `Edge`.
 public enum Edge: Sendable, Hashable, CaseIterable {
+    /// The upper side: the rows above the content.
     case top
+    /// The side text starts from — the left, in the left-to-right layout
+    /// the terminal uses.
     case leading
+    /// The lower side: the rows below the content.
     case bottom
+    /// The side text runs toward — the right, in the left-to-right layout
+    /// the terminal uses.
     case trailing
 
     /// A set of edges — which sides a border draws, which sides padding
@@ -10,8 +16,11 @@ public enum Edge: Sendable, Hashable, CaseIterable {
     /// `.horizontal` is the leading/trailing pair and `.vertical` the
     /// top/bottom one.
     public struct Set: OptionSet, Sendable, Hashable {
+        /// The edges as bits: top, leading, bottom, trailing from the low
+        /// bit up.
         public let rawValue: UInt8
 
+        /// Creates a set from its bit pattern; prefer the named members.
         public init(rawValue: UInt8) {
             self.rawValue = rawValue
         }
@@ -26,9 +35,13 @@ public enum Edge: Sendable, Hashable, CaseIterable {
             }
         }
 
+        /// Just the top edge.
         public static let top = Set(rawValue: 1 << 0)
+        /// Just the leading (left) edge.
         public static let leading = Set(rawValue: 1 << 1)
+        /// Just the bottom edge.
         public static let bottom = Set(rawValue: 1 << 2)
+        /// Just the trailing (right) edge.
         public static let trailing = Set(rawValue: 1 << 3)
 
         /// The leading and trailing edges — the vertical pair, named for the
@@ -47,9 +60,13 @@ public enum Edge: Sendable, Hashable, CaseIterable {
 /// than they are wide; uneven insets — `EdgeInsets(top: 0, leading: 2,
 /// bottom: 0, trailing: 2)` — are the usual way to make padding look even.
 public struct EdgeInsets: Sendable, Hashable, CustomStringConvertible {
+    /// Blank rows above the content.
     public var top: Int
+    /// Blank columns to the left of the content.
     public var leading: Int
+    /// Blank rows below the content.
     public var bottom: Int
+    /// Blank columns to the right of the content.
     public var trailing: Int
 
     /// Creates insets; every side defaults to none.

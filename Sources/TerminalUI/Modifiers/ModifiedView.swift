@@ -12,6 +12,7 @@ public struct ModifiedView<Content: TerminalView, Modifier: ViewModifier>: Termi
     /// The modifier value applied to ``content``.
     public let modifier: Modifier
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -26,6 +27,7 @@ public protocol ViewModifier {
 
 /// Payload of `.foreground(_:)` — text color for the subtree.
 public struct ForegroundModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Color
     /// The foreground color applied; inner modifiers win over outer ones.
     public let color: Color
@@ -33,6 +35,7 @@ public struct ForegroundModifier: ViewModifier {
 
 /// Payload of `.background(_:)` — fill color behind the subtree's rect.
 public struct BackgroundModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Color
     /// The fill, or `nil` for none: the cells keep the ground they sit on.
     /// Only the framework's own views ask for none.
@@ -44,23 +47,27 @@ public struct BackgroundModifier: ViewModifier {
 
 /// Payload of `.bold()`. Carries no data — presence is the whole signal.
 public struct BoldModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
 }
 
 /// Payload of `.italic()`. Carries no data — presence is the whole signal.
 public struct ItalicModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
 }
 
 /// Payload of `.underline()`. Carries no data — presence is the whole
 /// signal.
 public struct UnderlineModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = Bool
 }
 
 /// Payload of `.padding(_:)` — blank space inside the view's rect, per
 /// edge.
 public struct PaddingModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = EdgeInsets
     /// Blank cells added on each side.
     public let insets: EdgeInsets
@@ -75,6 +82,7 @@ public struct PaddingModifier: ViewModifier {
 
 /// Payload of `.border(_:color:edges:)` — a one-cell box-drawing frame.
 public struct BorderModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = BorderStyle
     /// Which box-drawing glyph set the frame uses.
     public let style: BorderStyle
@@ -84,6 +92,8 @@ public struct BorderModifier: ViewModifier {
     /// Which sides are drawn, and therefore which sides inset the content.
     public let edges: BorderEdges
 
+    /// Creates the payload `.border(_:color:edges:)` stores. Defaults draw
+    /// all four sides in the inherited foreground colour.
     public init(style: BorderStyle, color: Color? = nil, edges: BorderEdges = .all) {
         self.style = style
         self.color = color
@@ -100,6 +110,7 @@ public struct BorderModifier: ViewModifier {
 /// into flex distribution, while integer literals keep
 /// `.frame(maxWidth: 40)` call sites working unchanged.
 public struct FrameModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = (Int?, Int?)
     /// Fixed width in cells; `nil` leaves width unconstrained.
     public let width: Int?
@@ -124,6 +135,7 @@ public struct FrameModifier: ViewModifier {
 /// Payload of `.id(_:)` — explicit node identity for scroll targeting and
 /// reconciliation.
 public struct IDModifier: ViewModifier {
+    @_documentation(visibility: internal)
     public typealias ModifierType = AnyHashable
     /// The erased identity value; `.scrollPosition(id:)` matches against
     /// it.

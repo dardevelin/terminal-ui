@@ -43,6 +43,7 @@ public struct ProgressBar: TerminalView {
         self.empty = empty
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 
@@ -89,6 +90,7 @@ public struct Spinner: TerminalView {
         return frames[frame % frames.count]
     }
 
+    @_documentation(visibility: internal)
     public var body: Never { fatalError() }
 }
 

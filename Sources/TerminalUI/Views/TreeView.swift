@@ -155,6 +155,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         self.content = content
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Capture bindings here — `body` is evaluated with this view's
         // node set as `GraphContext.currentNode`, so `$expandedIDs` etc.

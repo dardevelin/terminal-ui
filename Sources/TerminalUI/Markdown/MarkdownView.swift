@@ -71,6 +71,7 @@ public struct MarkdownView: TerminalView {
         self.blocks = blocks
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let context = MarkdownFlattener.Context(theme: theme, highlighters: highlighters, style: style)
         let rows = MarkdownFlattener.flatten(blocks, context: context)

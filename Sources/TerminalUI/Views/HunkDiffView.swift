@@ -172,6 +172,7 @@ public struct HunkDiffView: TerminalView {
         self.onRangeSelect = onRangeSelect
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let totalLines = hunks.reduce(0) { $0 + $1.lines.count }
         let cursorBinding = $cursor

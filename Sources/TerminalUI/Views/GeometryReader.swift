@@ -48,5 +48,6 @@ public struct GeometryReader<Content: TerminalView>: TerminalView {
     /// handled via a dedicated path that re-evaluates `content` with the
     /// render-time rect. The fallback value exists so graph construction
     /// emits a placeholder node before the rebuild happens.
+    @_documentation(visibility: internal)
     public var body: Never { fatalError("GeometryReader is rebuilt at render time; body should not be called") }
 }

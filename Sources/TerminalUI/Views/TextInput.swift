@@ -195,6 +195,7 @@ public struct TextInput: TerminalView {
         self.maxLength = maxLength
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Run validation once per render so severity drives both chrome
         // colour and the optional diagnostic row. Nil when no validator was

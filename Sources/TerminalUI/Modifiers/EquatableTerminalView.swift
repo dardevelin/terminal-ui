@@ -49,6 +49,7 @@ public struct EquatableTerminalView<Content: TerminalView & Equatable>: Terminal
     /// Wraps a view; prefer the `.equatable()` modifier at call sites.
     public init(_ content: Content) { self.content = content }
 
+    @_documentation(visibility: internal)
     public var body: Content { content }
 
     public func _equatableContentEqual(to other: any _EquatableTerminalView) -> Bool {

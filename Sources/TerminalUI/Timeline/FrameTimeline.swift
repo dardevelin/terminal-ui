@@ -55,6 +55,10 @@ public final class FrameTimeline {
         }
     }
 
+    /// Derived from the clock on each read: `.idle` before ``start()``,
+    /// `.paused` while paused, and `.finished` once a non-repeating
+    /// timeline's clock has passed the last frame — no tick is needed to
+    /// notice it finished. A repeating timeline never finishes.
     public var phase: AnimationPhase {
         if explicitPhase == .paused { return .paused }
         if startedAt == nil { return .idle }
@@ -68,6 +72,8 @@ public final class FrameTimeline {
         return .running
     }
 
+    /// Starts counting from frame 0 at the current clock time. Calling it
+    /// on a running, paused or finished timeline restarts it from frame 0.
     public func start() {
         explicitPhase = .running
         startedAt = clock.now()
@@ -75,12 +81,16 @@ public final class FrameTimeline {
         pausedAt = nil
     }
 
+    /// Holds ``currentFrame`` where it is. Ignored unless the timeline is
+    /// running.
     public func pause() {
         guard explicitPhase == .running else { return }
         explicitPhase = .paused
         pausedAt = clock.now()
     }
 
+    /// Continues from the frame ``pause()`` held, discounting the time
+    /// spent paused. Ignored unless the timeline is paused.
     public func resume() {
         guard explicitPhase == .paused, let pausedAt else { return }
         explicitPhase = .running
@@ -90,6 +100,8 @@ public final class FrameTimeline {
         self.pausedAt = nil
     }
 
+    /// Stops the timeline and returns it to `.idle` with ``currentFrame``
+    /// back at 0, from any phase.
     public func reset() {
         explicitPhase = .idle
         startedAt = nil

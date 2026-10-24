@@ -143,6 +143,7 @@ public struct StatusBar: TerminalView {
         self.barForeground = foreground
     }
 
+    @_documentation(visibility: internal)
     public var body: some TerminalView {
         let theme = theme
         let line = StatusBarLine(sections: sections(theme),
