@@ -312,8 +312,13 @@ public struct DiffView: TerminalView {
     /// Rows rendered per frame; scrolling moves the window.
     public let visibleHeight: Int
 
+    /// The language ``diffLanguage(_:)`` named, its lexer looked up in the
+    /// environment's ``SyntaxHighlighters``.
+    private var language: String?
+
     @TerminalState private var scrollOffset: Int = 0
     @TerminalEnvironment(\.theme) private var theme
+    @TerminalEnvironment(\.syntaxHighlighters) private var highlighters
 
     /// Create from two strings — computes diff automatically.
     /// - Note: This runs the Myers diff algorithm on every parent body evaluation.
@@ -425,34 +430,47 @@ public struct DiffView: TerminalView {
 
     // MARK: - Unified Mode
 
-    private func renderUnified(lineNumberWidth: Int) -> Text {
-        var spans: [TextSpan] = []
-        let visible = lines.dropFirst(scrollOffset).prefix(visibleHeight)
-
-        for (index, line) in visible.enumerated() {
-            if index > 0 {
-                spans.append(TextSpan("\n"))
-            }
-
-            let oldNum = formatLineNumber(line.oldLineNumber, width: lineNumberWidth)
-            let newNum = formatLineNumber(line.newLineNumber, width: lineNumberWidth)
-
-            spans.append(TextSpan("\(oldNum) \(newNum)  ", foreground: theme.foregroundMuted))
-            switch line.kind {
-            case .unchanged:
-                spans.append(TextSpan(" \(line.text)", foreground: theme.foreground))
-            case .added:
-                spans.append(TextSpan("+\(line.text)", foreground: theme.success))
-            case .removed:
-                spans.append(TextSpan("-\(line.text)", foreground: theme.error))
+    /// One row per line, so a changed row's ground can fill its width. The
+    /// ground says what changed, so with a language the code keeps its
+    /// syntax colours and only the `+` / `-` takes the status colour.
+    @TerminalViewBuilder
+    private func renderUnified(lineNumberWidth: Int) -> some TerminalView {
+        let visible = Array(lines.dropFirst(scrollOffset).prefix(visibleHeight))
+        if visible.isEmpty {
+            Text("(no changes)")
+        } else {
+            let highlighted = highlighters[language]?.highlight(lines: visible.map(\.text), theme: theme.syntax)
+            VStack(spacing: 0) {
+                ForEachWithID(Array(visible.enumerated()), id: \.element.id) { index, line in
+                    Text(spans: unifiedRow(line, code: highlighted?[index], lineNumberWidth: lineNumberWidth))
+                        .background(orInherit: ground(of: line.kind))
+                }
             }
         }
+    }
 
-        if spans.isEmpty {
-            return Text("(no changes)")
+    private func unifiedRow(_ line: DiffLine, code: [TextSpan]?, lineNumberWidth: Int) -> [TextSpan] {
+        let oldNum = formatLineNumber(line.oldLineNumber, width: lineNumberWidth)
+        let newNum = formatLineNumber(line.newLineNumber, width: lineNumberWidth)
+        let (marker, status): (String, Color) = switch line.kind {
+        case .unchanged: (" ", theme.foreground)
+        case .added: ("+", theme.success)
+        case .removed: ("-", theme.error)
         }
+        let text = code ?? [TextSpan(line.text, foreground: status)]
+        return [TextSpan("\(oldNum) \(newNum)  ", foreground: theme.foregroundMuted),
+                TextSpan(marker, foreground: status)] + text
+    }
 
-        return Text(spans: spans)
+    /// A changed row's ground; nil leaves the row on the ground it sits on,
+    /// as it does where the theme has no tint — the terminal's own ground.
+    private func ground(of kind: DiffLine.Kind) -> Color? {
+        let tint: Color? = switch kind {
+        case .unchanged: nil
+        case .added: theme.addedBackground
+        case .removed: theme.removedBackground
+        }
+        return tint == .default ? nil : tint
     }
 
     // MARK: - Side-by-Side Mode
@@ -635,7 +653,20 @@ public struct DiffView: TerminalView {
 extension DiffView {
     /// Add a file path header above the diff.
     public func diffHeader(_ path: String) -> DiffView {
-        DiffView(lines: self.lines, mode: self.mode, header: path, visibleHeight: self.visibleHeight)
+        var view = DiffView(lines: self.lines, mode: self.mode, header: path, visibleHeight: self.visibleHeight)
+        view.language = language
+        return view
+    }
+
+    /// Highlight the diff's code as `language`, with the lexer registered
+    /// for it in the environment (see ``TerminalView/syntaxHighlighter(_:for:)``).
+    /// A changed row's ground then carries its status, so its code keeps
+    /// the syntax colours. Unified mode only; `nil` or an unregistered name
+    /// leaves the code in the status colours.
+    public func diffLanguage(_ language: String?) -> DiffView {
+        var view = self
+        view.language = language
+        return view
     }
 
     /// Test-only window-size probe. Builds the side-by-side pair list

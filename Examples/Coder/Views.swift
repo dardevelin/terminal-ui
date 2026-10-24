@@ -225,6 +225,7 @@ struct ToolCard: TerminalView {
             ])
             if let diff = call.diff {
                 DiffView(lines: diff, visibleHeight: diff.count)
+                    .diffLanguage(call.language)
             } else if let excerpt = call.excerpt {
                 ToolExcerpt(excerpt: excerpt, isExpanded: isExpanded, theme: theme)
             } else if let output = call.output {

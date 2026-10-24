@@ -27,6 +27,10 @@ struct ToolCall: Identifiable, Sendable, Equatable {
     let output: String?
     /// The change an editing tool made, shown in place of `output`.
     var diff: [DiffLine]? = nil
+    /// The edited file's language, from the path `summary` starts with.
+    var language: String? {
+        FileExcerpt.language(ofPath: String(summary.prefix { $0 != " " }))
+    }
     /// The file text a reading tool returned, shown in place of `output`.
     var excerpt: FileExcerpt? = nil
 }
@@ -38,9 +42,12 @@ struct FileExcerpt: Sendable, Equatable {
     let firstLine: Int
     let code: String
 
-    /// The extension, which is the name lexers are registered under.
-    var language: String? {
-        path.split(separator: ".").last.map { String($0).lowercased() }
+    var language: String? { Self.language(ofPath: path) }
+
+    /// A path's extension, which is the name lexers are registered under.
+    static func language(ofPath path: String) -> String? {
+        guard path.contains(".") else { return nil }
+        return path.split(separator: ".").last.map { String($0).lowercased() }
     }
 }
 
