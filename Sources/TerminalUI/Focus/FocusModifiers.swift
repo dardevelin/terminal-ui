@@ -78,6 +78,25 @@ public struct OnPasteModifier: ViewModifier {
     public let handler: (_ payload: String) -> Void
 }
 
+/// A view that scrolls itself — a `List`, a `DiffView` — taking the wheel.
+/// Framework-internal: an app's own scrolling content goes in a
+/// `ScrollView`, which takes the wheel without asking.
+struct OnScrollWheelModifier: ViewModifier {
+    typealias ModifierType = Bool
+    /// One step toward `.up`, `.down`, `.left` or `.right`; returns whether
+    /// anything moved, so a view at its end passes the wheel outward.
+    let handler: (Key) -> Bool
+}
+
+extension TerminalView {
+    /// Take the wheel over this view: see `OnScrollWheelModifier`. Never
+    /// delivered as a key, so `.onKeyPress` handlers — this view's and its
+    /// ancestors' — cannot mistake it for one.
+    func onScrollWheel(_ handler: @escaping (Key) -> Bool) -> ModifiedView<Self, OnScrollWheelModifier> {
+        ModifiedView(content: self, modifier: OnScrollWheelModifier(handler: handler))
+    }
+}
+
 // MARK: - View Extensions
 
 extension TerminalView {

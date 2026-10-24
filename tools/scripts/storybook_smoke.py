@@ -1278,6 +1278,22 @@ def storybook_onhover_callback_fires_on_enter_leave(app: Client) -> None:
     )
 
 
+def storybook_hover_follows_content_scrolled_under_the_pointer(app: Client) -> None:
+    """`.onHover` page: with the pointer still over a scrolling column, the
+    wheel brings another row under it, and that row is the one hovered —
+    without the pointer moving. Hover was worked out only on a move, so
+    the row scrolled away stayed hovered."""
+    app.goto_page(".onHover")
+    rows = app.text().split("\n")
+    y = next(i for i, row in enumerate(rows) if "scrolling row 0" in row)
+    x = rows[y].index("scrolling row 0") + 2
+    app.mouse_move(x, y)
+    assert_true("under the pointer: row 0" in app.preview_text(), "expected row 0 hovered")
+    app.mouse_wheel("down", x, y)
+    assert_true(app.wait_until(lambda client: "under the pointer: row 3" in client.preview_text()),
+                f"the row scrolled under the pointer should be hovered; preview:\n{app.preview_text()}")
+
+
 def storybook_mousefocuspolicy_renders_subtrees(app: Client) -> None:
     """`.mouseFocusPolicy` page (35): the preview shows two labels — outer
     (default policy) + inner (subtree override to .disabled). Smoke proof
@@ -2160,6 +2176,48 @@ def coder_outside_a_repository_the_review_says_so(app: Client) -> None:
     _coder_open_review_on(app, "Not a git repository.")
 
 
+def _sgr(button: int, x: int, y: int, release: bool = False) -> bytes:
+    """An SGR 1006 mouse report as a terminal writes it: 1-based cells."""
+    return f"\x1b[<{button};{x + 1};{y + 1}{'m' if release else 'M'}".encode()
+
+
+def coder_a_raw_click_reaches_what_is_drawn_there(app: Client) -> None:
+    """A press and release as a terminal sends them, through the parser,
+    land on the cell they name: the click on a Modified Files row opens
+    its diff. The other cases' clicks skip the bytes."""
+    x, y = _coder_find(app, "Core/FrameStats.swift")
+    app.write_raw(_sgr(0, x + 1, y) + _sgr(0, x + 1, y, release=True))
+    text = app.text()
+    assert_true("This session" in text and CODER_REVIEW_SESSION_CHANGE in text,
+                f"the raw click should open FrameStats.swift's diff; screen:\n{text}")
+
+
+def coder_a_raw_wheel_scrolls_down_and_back(app: Client) -> None:
+    """Wheel reports (codes 65, 64) over the transcript scroll it down and
+    the same number back up to where it was."""
+    x, y = CODER_TRANSCRIPT_POINT
+    start = app.text()
+    app.write_raw(_sgr(64, x, y) * 6)
+    scrolled = app.text()
+    assert_true(scrolled != start, "six notches up should move the transcript")
+    app.write_raw(_sgr(65, x, y) * 6)
+    assert_true(app.text() == start, "as many notches down should bring it back")
+
+
+def coder_clicking_the_summary_folds_the_files(app: Client) -> None:
+    """A click on the review's summary folds its file list, giving the
+    diff the rows; another unfolds it."""
+    _coder_change_the_project(app)
+    _coder_open_review_on(app, "2 files changed")
+    x, y = _coder_find(app, "2 files changed")
+    app.mouse_click(x, y)
+    text = app.text()
+    assert_true("▸ 2 files changed" in text and "notes.md" not in text,
+                f"the click should fold the list; screen:\n{text}")
+    app.mouse_click(x, y)
+    assert_true("notes.md" in app.text(), "a second click should unfold it")
+
+
 def coder_wheel_burst_keeps_running(app: Client) -> None:
     """A burst of real wheel reports — raw SGR 1006 bytes through the PTY,
     as a trackpad sends them — leaves the app running. Regression: debug
@@ -2642,6 +2700,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.heatmap_renders_grid", "Storybook", storybook_heatmap_renders_grid),
     SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
+    SmokeCase("storybook.hover_follows_content_scrolled_under_the_pointer", "Storybook",
+              storybook_hover_follows_content_scrolled_under_the_pointer),
     SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
               storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
@@ -2728,6 +2788,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.full_screen_review_is_a_setting", "Coder", coder_full_screen_review_is_a_setting,
               project_files=CODER_REVIEW_PROJECT, git_repo=True),
     SmokeCase("coder.clicking_a_modified_file_opens_its_diff", "Coder", coder_clicking_a_modified_file_opens_its_diff),
+    SmokeCase("coder.a_raw_click_reaches_what_is_drawn_there", "Coder", coder_a_raw_click_reaches_what_is_drawn_there),
+    SmokeCase("coder.a_raw_wheel_scrolls_down_and_back", "Coder", coder_a_raw_wheel_scrolls_down_and_back),
+    SmokeCase("coder.clicking_the_summary_folds_the_files", "Coder", coder_clicking_the_summary_folds_the_files,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
     SmokeCase("coder.outside_a_repository_the_review_says_so", "Coder",
               coder_outside_a_repository_the_review_says_so, project_files=CODER_REVIEW_PROJECT),
     SmokeCase("coder.scrolling_keeps_the_selection_in_sight", "Coder",

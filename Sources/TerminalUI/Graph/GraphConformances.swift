@@ -183,7 +183,9 @@ extension ModifiedView: _GraphModified {
         case is FocusableModifier: .focusable
         case let scope as FocusScopeModifier: .focusScope(scope.id)
         case let preference as PrefersDefaultFocusModifier: .prefersDefaultFocus(preference.prefers)
-        case is OnKeyPressModifier: .onKeyPress
+        // Dispatch only, as a key handler is: no effect of its own on
+        // layout or drawing.
+        case is OnKeyPressModifier, is OnScrollWheelModifier: .onKeyPress
         case is OnAppearModifier: .onAppear
         case is any _OnChangeModifierProtocol: .onChange
         case is OnDisappearModifier: .onDisappear

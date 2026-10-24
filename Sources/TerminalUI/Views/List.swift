@@ -75,12 +75,17 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     /// window stays where it was between frames instead of being worked out
     /// from the top each time.
     @TerminalState private var ownScroll = 0
+    /// The selected index the window last moved to show. The window follows
+    /// the selection only when it changes, so the wheel can scroll the list
+    /// without the next frame pulling it back to where the selection is.
+    @TerminalState private var followedSelection: Int? = nil
 
     @_documentation(visibility: internal)
     public var body: some TerminalView {
         // Projected here, in `body`: inside the GeometryReader's closure it
         // would capture the reader's node rather than this one.
         let scroll = self.scroll ?? $ownScroll
+        let followed = $followedSelection
         // An explicit `visibleCount` is a declared size: the list is exactly
         // that many rows and measures as such. Only a size-driven list needs
         // the GeometryReader — which also makes it greedy in stack layout,
@@ -93,20 +98,20 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             if data.isEmpty {
                 _EmptyPlaceholder().focusable()
             } else {
-                renderList(visibleCount: declaredCount, scroll: scroll)
+                renderList(visibleCount: declaredCount, scroll: scroll, followed: followed)
             }
         } else {
             GeometryReader { size in
                 if self.data.isEmpty {
                     _EmptyPlaceholder().focusable()
                 } else {
-                    self.renderList(visibleCount: max(1, size.height), scroll: scroll)
+                    self.renderList(visibleCount: max(1, size.height), scroll: scroll, followed: followed)
                 }
             }
         }
     }
 
-    private func renderList(visibleCount: Int, scroll: Binding<Int>) -> some TerminalView {
+    private func renderList(visibleCount: Int, scroll: Binding<Int>, followed: Binding<Int?>) -> some TerminalView {
         // Materialize ONLY the visible window. `data` is a
         // RandomAccessCollection, so .count and integer-offset indexing
         // are O(1); we never need to walk every element. The selected-
@@ -124,12 +129,18 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             return 0
         }()
 
-        // Get stored scroll offset or compute from scratch
-        var scrollOffset = scroll.get()
-
-        // Adjust scroll offset only if selection is outside visible window
-        let adjusted = adjustScrollOffset(scrollOffset: scrollOffset, selectedIndex: selectedIndex, total: total, visibleCount: visibleCount)
-        scrollOffset = adjusted
+        // The offset that shows the last item at the bottom: the farthest
+        // the wheel may take the window.
+        let maxOffset = adjustScrollOffset(scrollOffset: 0, selectedIndex: total - 1,
+                                           total: total, visibleCount: visibleCount)
+        var scrollOffset = min(max(0, scroll.get()), maxOffset)
+        // A selection that moved brings the window to it; one that did not
+        // leaves the window wherever the wheel put it.
+        if followed.get() != selectedIndex {
+            scrollOffset = adjustScrollOffset(scrollOffset: scrollOffset, selectedIndex: selectedIndex,
+                                              total: total, visibleCount: visibleCount)
+            followed.set(selectedIndex)
+        }
 
         // Written back only when it moved: this runs in `body`, and a write
         // notifies its observers whether or not the value changed — an
@@ -180,6 +191,20 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             }
         }
         .focusable()
+        // The wheel scrolls the window and leaves the selection alone, as a
+        // list under a trackpad does; the arrows move the selection.
+        .onScrollWheel { key in
+            let current = scroll.get()
+            let next: Int
+            switch key {
+            case .up: next = max(0, current - 1)
+            case .down: next = min(maxOffset, current + 1)
+            default: return false
+            }
+            guard next != current else { return false }
+            scroll.set(next)
+            return true
+        }
         .onClick { [selection] _, relY in
             guard let sel = selection else { return }
             let total = data.count
