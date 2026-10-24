@@ -219,6 +219,9 @@ class Client:
         # the app on purpose names the signal here, and the runner then
         # requires that death instead of a clean exit.
         self.expected_exit_signal: Optional[int] = None
+        # Set by a smoke case that runs the app from a directory of its own:
+        # that directory, so the case can change what the app is watching.
+        self.project_dir: Optional[str] = None
         # Set by the runner: waits up to the given seconds for the app to
         # exit and returns its status, or None if it is still running.
         self.wait_for_exit: Callable[[float], Optional[int]] = lambda _timeout: None

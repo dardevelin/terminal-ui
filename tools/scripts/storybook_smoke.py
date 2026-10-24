@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -72,6 +73,10 @@ class SmokeCase:
     # with any, the case runs from a fresh directory holding only these,
     # such as a `.terminalui/terminalui.toml`; with none, from the checkout.
     project_files: tuple[tuple[str, str], ...] = ()
+    # The project is a git repository with its files as the first commit;
+    # what the case writes into `client.project_dir` afterwards is
+    # uncommitted.
+    git_repo: bool = False
     # Variables added to the app's environment.
     env: tuple[tuple[str, str], ...] = ()
     # False for an app that should open no socket: the case gets its client
@@ -83,13 +88,17 @@ class SmokeCase:
                 tempfile.TemporaryDirectory(prefix="terminalui-project-") as project:
             _write_files(config_home, self.config_files)
             _write_files(project, self.project_files)
-            return self._run(config_home, project if self.project_files else None, build_dir)
+            if self.git_repo:
+                _commit_everything(project)
+            uses_project = bool(self.project_files) or self.git_repo
+            return self._run(config_home, project if uses_project else None, build_dir)
 
     def _run(self, config_home: str, cwd: Optional[str], build_dir: Optional[str]) -> CaseResult:
         try:
             with spawn_and_connect(self.app, build_dir=build_dir, cwd=cwd,
                                    env={**dict(self.env), "XDG_CONFIG_HOME": config_home},
                                    connect=self.connects) as (_, client):
+                client.project_dir = cwd
                 self.run(client)
             if self.expected_objections:
                 return CaseResult(self.name, False, "the runner accepted how the app ended")
@@ -112,6 +121,19 @@ def _write_files(root: str, files: tuple[tuple[str, str], ...]) -> None:
         path = Path(root) / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents)
+
+
+def _commit_everything(root: str) -> None:
+    """Makes `root` a repository whose first commit holds what is in it. The
+    identity and the date are fixed, and the developer's git configuration is
+    not read, so the commit is the same on every machine."""
+    env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "Smoke", "GIT_AUTHOR_EMAIL": "smoke@example.invalid",
+           "GIT_COMMITTER_NAME": "Smoke", "GIT_COMMITTER_EMAIL": "smoke@example.invalid",
+           "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z", "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z"}
+    for command in (["init", "--quiet", "--initial-branch=main"], ["add", "--all"],
+                    ["commit", "--quiet", "--message", "First"]):
+        subprocess.run(["git", *command], cwd=root, env=env, check=True)
 
 
 def assert_contains(snap: CellSlice, needle: str, context: str = "") -> None:
@@ -1091,6 +1113,19 @@ def storybook_braillecanvas_renders_curve(app: Client) -> None:
     assert_true(has_braille, "BrailleCanvas didn't render any braille glyphs (U+2800–U+28FF)")
 
 
+def storybook_disclosure_group_folds_its_content(app: Client) -> None:
+    """`DisclosureGroup` page: Enter on the label folds the files away and
+    the line below moves up; Right unfolds them."""
+    app.goto_page("DisclosureGroup")
+    app.send_key("tab")
+    assert_true("+2 −0" in app.text(), "expected the group open")
+    app.send_key("enter")
+    text = app.text()
+    assert_true("+2 −0" not in text and "▸ 2 files changed" in text, "Enter should fold the group")
+    app.send_key("right")
+    assert_true("+2 −0" in app.text(), "Right should unfold it")
+
+
 def storybook_inspector_opens_beside_the_content_and_closes(app: Client) -> None:
     """`.inspector` page: Enter on the trigger opens a panel along the
     trailing edge with the page still beside it; Escape, bound in the
@@ -1099,10 +1134,10 @@ def storybook_inspector_opens_beside_the_content_and_closes(app: Client) -> None
     app.send_key("tab")
     app.send_key("enter")
     text = app.text()
-    assert_true("A panel along the trailing edge." in text, "expected the inspector panel")
+    assert_true("Beside the content." in text, "expected the inspector panel")
     assert_true("open inspector" in text, "the content stays in view beside the panel")
     app.send_key("escape")
-    assert_true("A panel along the trailing edge." not in app.text(), "Escape should close the panel")
+    assert_true("Beside the content." not in app.text(), "Escape should close the panel")
 
 
 def storybook_dotmatrixtext_renders_HELLO(app: Client) -> None:
@@ -1999,15 +2034,19 @@ def coder_scrolling_keeps_the_selection_in_sight(app: Client) -> None:
 
 
 # ---- Coder: diff review ------------------------------------------------
-# Claude Code's /diff, in Coder: the uncommitted changes listed with their
-# counts, Enter into one file's diff — tinted rows, highlighted code — and
-# Escape back out; ←/→ to the session's changes or the last commit's.
+# Claude Code's /diff, in Coder: in the sidebar's place, the uncommitted
+# changes read from git — refreshed while the panel is open — their files
+# folding under a summary, and the chosen file's diff stacked below. ←/→ move
+# to the session's changes or the last commit's.
 
-CODER_REVIEW_SUMMARY = "4 files changed"
-CODER_REVIEW_SOURCE = "Uncommitted changes"
-CODER_REVIEW_FIRST_CHANGE = "private var skippedFrame = false"
-CODER_REVIEW_SECOND_CHANGE = "var skipped = 0"
-CODER_REVIEW_ASKED = "About Rendering/Compositor.swift:"
+CODER_REVIEW_PROJECT = (
+    ("Sources/App.swift", "let greeting = \"hello\"\nprint(greeting)\n"),
+    ("README.md", "# App\n"),
+)
+CODER_REVIEW_ADDED_LINE = "print(greeting.uppercased())"
+CODER_REVIEW_NOTE = "Remember the release notes."
+CODER_REVIEW_SOURCE = "Uncommitted"
+CODER_REVIEW_SESSION_CHANGE = "var skipped = 0"
 
 
 def _coder_find(app: Client, needle: str) -> tuple[int, int]:
@@ -2018,35 +2057,56 @@ def _coder_find(app: Client, needle: str) -> tuple[int, int]:
     raise CaseFailed(f"{needle!r} is not on screen")
 
 
+def _coder_change_the_project(app: Client) -> None:
+    """Edits a committed file and adds one git does not track: two
+    uncommitted changes, listed by path — Sources/App.swift, then notes.md."""
+    project = Path(app.project_dir)
+    app_file = project / "Sources/App.swift"
+    app_file.write_text(app_file.read_text() + CODER_REVIEW_ADDED_LINE + "\n")
+    (project / "notes.md").write_text(CODER_REVIEW_NOTE + "\n")
+
+
+def _coder_open_review_on(app: Client, summary: str) -> str:
+    app.send_key("r", "ctrl")
+    # git is read on a thread of its own once the panel opens.
+    assert_true(app.wait_until(lambda client: summary in client.text()),
+                f"expected {summary!r} in the review; screen:\n{app.text()}")
+    return app.text()
+
+
 def coder_ctrl_r_opens_the_uncommitted_changes(app: Client) -> None:
-    """Ctrl+R opens the review on what is uncommitted, as a panel over the
-    sidebar's side of the window, the transcript still in view beside it."""
-    app.send_key("r", "ctrl")
-    text = app.text()
-    assert_true(CODER_REVIEW_SUMMARY in text and CODER_REVIEW_SOURCE in text,
-                "expected the uncommitted changes' summary")
-    assert_true("README.md" in text, "a change made by hand is uncommitted too")
-    assert_true("Modified Files" not in text, "the panel covers the sidebar")
-    assert_true(CODER_LATEST_ENTRY in text, "the transcript stays in view beside the panel")
+    """Ctrl+R opens the review on what git holds uncommitted, in the
+    sidebar's place, the transcript beside it."""
+    _coder_change_the_project(app)
+    text = _coder_open_review_on(app, "2 files changed")
+    assert_true(CODER_REVIEW_SOURCE in text, "expected the source named")
+    assert_true("Sources/App.swift" in text and "notes.md" in text, "expected both files listed")
+    assert_true(CODER_REVIEW_ADDED_LINE in text, "the first file's diff should show under the list")
+    assert_true("Modified Files" not in text, "the review takes the sidebar's place")
+    assert_true(CODER_LATEST_ENTRY in text, "the transcript stays beside the review")
 
 
-def coder_enter_opens_a_file_and_escape_steps_back(app: Client) -> None:
-    """Down chooses the second file, Enter shows its diff, Escape returns to
-    the list and Escape again closes the review."""
-    app.send_key("r", "ctrl")
+def coder_the_review_follows_the_working_tree(app: Client) -> None:
+    """A file written while the review is open appears in it, as an agent's
+    edits appear in Claude Code's panel."""
+    _coder_open_review_on(app, "No changes.")
+    (Path(app.project_dir) / "notes.md").write_text(CODER_REVIEW_NOTE + "\n")
+    assert_true(app.wait_until(lambda client: "1 file changed" in client.text(), timeout=5.0),
+                f"the new file should appear without reopening; screen:\n{app.text()}")
+    assert_true(CODER_REVIEW_NOTE in app.text(), "its content should show as additions")
+
+
+def coder_down_shows_the_next_files_diff(app: Client) -> None:
+    _coder_change_the_project(app)
+    _coder_open_review_on(app, "2 files changed")
     app.send_key("down")
-    app.send_key("enter")
-    assert_true(CODER_REVIEW_SECOND_CHANGE in app.text(), "Enter should show the chosen file's diff")
-    app.send_key("escape")
-    assert_true(CODER_REVIEW_SUMMARY in app.text(), "Escape should step back to the list")
-    app.send_key("escape")
     text = app.text()
-    assert_true(CODER_REVIEW_SUMMARY not in text and CODER_LATEST_ENTRY in text,
-                "a second Escape should close the review")
+    assert_true(CODER_REVIEW_NOTE in text and CODER_REVIEW_ADDED_LINE not in text,
+                "Down should show the second file's diff in place of the first's")
 
 
 def coder_arrows_switch_the_review_source(app: Client) -> None:
-    app.send_key("r", "ctrl")
+    _coder_open_review_on(app, "No changes.")
     app.send_key("right")
     text = app.text()
     assert_true("This session" in text and "3 files changed" in text,
@@ -2054,14 +2114,22 @@ def coder_arrows_switch_the_review_source(app: Client) -> None:
 
 
 def coder_ask_puts_the_file_in_the_composer(app: Client) -> None:
-    """[ ask ] on a file's diff closes the review with a question drafted."""
-    app.send_key("r", "ctrl")
-    app.send_key("enter")
+    """[ ask ] closes the review with a question about the file drafted."""
+    _coder_change_the_project(app)
+    _coder_open_review_on(app, "2 files changed")
     x, y = _coder_find(app, "[ ask ]")
     app.mouse_click(x + 2, y)
     text = app.text()
-    assert_true(CODER_REVIEW_ASKED in text, "expected the question in the composer")
-    assert_true("back to files" not in text, "asking should close the review")
+    assert_true("About Sources/App.swift:" in text, "expected the question in the composer")
+    assert_true(CODER_REVIEW_SOURCE not in text, "asking should close the review")
+
+
+def coder_escape_closes_the_review(app: Client) -> None:
+    _coder_open_review_on(app, "No changes.")
+    app.send_key("escape")
+    text = app.text()
+    assert_true("No changes." not in text and "Modified Files" in text,
+                "Escape should close the review and bring the sidebar back")
 
 
 def coder_full_screen_review_is_a_setting(app: Client) -> None:
@@ -2072,22 +2140,24 @@ def coder_full_screen_review_is_a_setting(app: Client) -> None:
     app.send_key(" ")
     app.send_key("escape")
     assert_true("Full-screen diff review" not in app.text(), "Escape should close the settings")
-    app.send_key("r", "ctrl")
-    text = app.text()
-    assert_true(CODER_REVIEW_SUMMARY in text and CODER_LATEST_ENTRY not in text,
-                "a full-screen review covers the transcript too")
+    text = _coder_open_review_on(app, "No changes.")
+    assert_true(CODER_LATEST_ENTRY not in text, "a full-screen review covers the transcript too")
+    app.send_key("o", "ctrl")
+    assert_true("Full-screen diff review" in app.text(), "Ctrl+O should open the settings over the review")
 
 
 def coder_clicking_a_modified_file_opens_its_diff(app: Client) -> None:
-    """A file under Modified Files opens straight to its diff."""
+    """A file under Modified Files opens the review on the session's change
+    to it."""
     x, y = _coder_find(app, "Core/FrameStats.swift")
     app.mouse_click(x + 1, y)
-    assert_true(CODER_REVIEW_SECOND_CHANGE in app.text(), "expected FrameStats.swift's diff")
-    app.send_key("r", "ctrl")
-    app.send_key("r", "ctrl")
-    assert_true(CODER_REVIEW_SOURCE in app.text(), "Ctrl+R should reopen on the uncommitted changes' list")
-    app.send_key("o", "ctrl")
-    assert_true("Full-screen diff review" in app.text(), "Ctrl+O should open the settings over the review")
+    text = app.text()
+    assert_true("This session" in text and CODER_REVIEW_SESSION_CHANGE in text,
+                "expected FrameStats.swift's diff")
+
+
+def coder_outside_a_repository_the_review_says_so(app: Client) -> None:
+    _coder_open_review_on(app, "Not a git repository.")
 
 
 def coder_wheel_burst_keeps_running(app: Client) -> None:
@@ -2572,6 +2642,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.heatmap_renders_grid", "Storybook", storybook_heatmap_renders_grid),
     SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
+    SmokeCase("storybook.disclosure_group_folds_its_content", "Storybook",
+              storybook_disclosure_group_folds_its_content),
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
               storybook_inspector_opens_beside_the_content_and_closes),
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
@@ -2641,13 +2713,23 @@ CASES: list[SmokeCase] = [
     SmokeCase("coder.shift_arrows_step_the_selection", "Coder", coder_shift_arrows_step_the_selection),
     SmokeCase("coder.space_expands_a_capped_result", "Coder", coder_space_expands_a_capped_result),
     SmokeCase("coder.click_expands_a_capped_result", "Coder", coder_click_expands_a_capped_result),
-    SmokeCase("coder.ctrl_r_opens_the_uncommitted_changes", "Coder", coder_ctrl_r_opens_the_uncommitted_changes),
-    SmokeCase("coder.enter_opens_a_file_and_escape_steps_back", "Coder",
-              coder_enter_opens_a_file_and_escape_steps_back),
-    SmokeCase("coder.arrows_switch_the_review_source", "Coder", coder_arrows_switch_the_review_source),
-    SmokeCase("coder.ask_puts_the_file_in_the_composer", "Coder", coder_ask_puts_the_file_in_the_composer),
-    SmokeCase("coder.full_screen_review_is_a_setting", "Coder", coder_full_screen_review_is_a_setting),
+    SmokeCase("coder.ctrl_r_opens_the_uncommitted_changes", "Coder", coder_ctrl_r_opens_the_uncommitted_changes,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.the_review_follows_the_working_tree", "Coder", coder_the_review_follows_the_working_tree,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.down_shows_the_next_files_diff", "Coder", coder_down_shows_the_next_files_diff,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.arrows_switch_the_review_source", "Coder", coder_arrows_switch_the_review_source,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.ask_puts_the_file_in_the_composer", "Coder", coder_ask_puts_the_file_in_the_composer,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.escape_closes_the_review", "Coder", coder_escape_closes_the_review,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
+    SmokeCase("coder.full_screen_review_is_a_setting", "Coder", coder_full_screen_review_is_a_setting,
+              project_files=CODER_REVIEW_PROJECT, git_repo=True),
     SmokeCase("coder.clicking_a_modified_file_opens_its_diff", "Coder", coder_clicking_a_modified_file_opens_its_diff),
+    SmokeCase("coder.outside_a_repository_the_review_says_so", "Coder",
+              coder_outside_a_repository_the_review_says_so, project_files=CODER_REVIEW_PROJECT),
     SmokeCase("coder.scrolling_keeps_the_selection_in_sight", "Coder",
               coder_scrolling_keeps_the_selection_in_sight),
     SmokeCase("coder.wheel_burst_keeps_running", "Coder", coder_wheel_burst_keeps_running),

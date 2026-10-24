@@ -400,20 +400,17 @@ struct CoderApp: TerminalView {
     /// The help line's rows, beneath the margin.
     static let helpHeight = 1
 
-    /// The side panel's width: two thirds of the window, room for the file
-    /// list and a readable diff, and never narrower than the sidebar it covers.
+    /// The review's width beside the transcript: a third of the window, as
+    /// Claude Code's `/diff` panel takes, and never narrower than the
+    /// sidebar whose place it takes.
     private var reviewPanelWidth: Int {
-        max(Sidebar.width, (terminalSize.cols - 2 * Self.margin) * 2 / 3)
+        max(Sidebar.width + 2 * Self.margin, terminalSize.cols / 3)
     }
 
     private var helpHints: [(key: String, action: String)] {
-        [("enter", "send"), ("tab", "focus chat"), ("^r", "review"), ("^o", "settings"), ("^c", "quit")]
-    }
-
-    private var reviewHints: [(key: String, action: String)] {
-        state.reviewShowsDiff
-            ? [("↑↓", "scroll"), ("esc", "back to files"), ("^o", "settings"), ("^c", "quit")]
-            : [("↑↓", "file"), ("enter", "open"), ("←→", "source"), ("esc", "close"), ("^c", "quit")]
+        state.showsReview
+            ? [("↑↓", "file"), ("←→", "source"), ("tab", "diff"), ("esc", "close"), ("^o", "settings"), ("^c", "quit")]
+            : [("enter", "send"), ("tab", "focus chat"), ("^r", "review"), ("^o", "settings"), ("^c", "quit")]
     }
 
     var body: some TerminalView {
@@ -427,30 +424,31 @@ struct CoderApp: TerminalView {
                     Prompt(state: state)
                 }
                 .flexible(.horizontal)
-                Sidebar(state: state, height: sidebarHeight, theme: theme)
-                    .frame(width: Sidebar.width)
+                // The review takes the sidebar's place while it is up.
+                if !state.showsReview {
+                    Sidebar(state: state, height: sidebarHeight, theme: theme)
+                        .frame(width: Sidebar.width)
+                }
             }
             .flexible(.vertical)
             .padding(Self.margin)
-            Text(spans: [TextSpan(" ")] + HelpLine.spans(helpHints, theme: theme))
-        }
-        // Declared beneath the review, so it comes later in drawing order and
-        // is drawn over the review when opened from it.
-        .modal(isPresented: state.showsSettings) {
-            SettingsDialog(state: state, theme: theme)
-        }
-        // A panel over the sidebar's side of the window, the transcript in
-        // view beside it — or the whole window, with the setting on.
-        .inspector(isPresented: Binding(get: { state.showsReview }, set: { coderState.showsReview = $0 })) {
-            VStack(spacing: 0) {
+            // Beside the transcript, which narrows for it — or the whole
+            // window, with the setting on. The help line beneath stays.
+            .inspector(isPresented: Binding(get: { state.showsReview }, set: { coderState.showsReview = $0 })) {
                 DiffReview(state: state, height: sidebarHeight, theme: theme)
-                    .flexible(.vertical)
                     .padding(Self.margin)
-                Text(spans: [TextSpan(" ")] + HelpLine.spans(reviewHints, theme: theme))
+                    .frame(width: state.fullScreenReview ? terminalSize.cols : reviewPanelWidth)
+                    .border(.halfBlock, color: theme.borderActive,
+                            edges: state.fullScreenReview ? [] : .leading)
+                    .background(theme.background)
             }
-            .frame(width: state.fullScreenReview ? terminalSize.cols : reviewPanelWidth)
-            .border(.halfBlock, color: theme.borderActive, edges: state.fullScreenReview ? [] : .leading)
-            .background(theme.background)
+            Text(spans: [TextSpan(" ")] + HelpLine.spans(helpHints, theme: theme))
+                // Presentations at one level are drawn in tree order: declared
+                // after the review, the settings are drawn over it when
+                // opened from it.
+                .modal(isPresented: state.showsSettings) {
+                    SettingsDialog(state: state, theme: theme)
+                }
         }
         .background(theme.background)
         // Published so the framework's own components resolve the same
