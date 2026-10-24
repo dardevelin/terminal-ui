@@ -113,6 +113,11 @@ teaches it. One change in behaviour: the wheel no longer reaches
   in a `VStack` stretches only down it, and does not make it wide.
 - **A wrapped line in a numbered `TextArea` continues under its start.**
   Continuation rows were indented one cell less than the first.
+- **What a `ForEach` row reads redraws it.** A row closure runs after the
+  body holding the `ForEach` has returned, so what it read from an
+  `@Observable` model was tracked by no body: a list whose rows read the
+  selection kept its old marks when only the selection changed. It was
+  hidden while a `SplitView` rebuilt its panes on every update.
 - **A `SplitView`'s panes keep their state.** It rebuilt them from nothing
   on every update, so a pane's `@TerminalState` reset whenever anything
   above the split drew again, and on every resize. Panes are reconciled by

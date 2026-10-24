@@ -78,9 +78,15 @@ public final class AttributeGraph: @unchecked Sendable {
 
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {
-        for (key, node) in invalidations.take() {
+        for (_, posted) in invalidations.take() {
+            // A ForEach posts itself for what its row closure read (see
+            // `trackingRow`); the body holding it is what runs again.
+            var node = posted
+            while node.bodyReplay == nil, let parent = node.parent {
+                node = parent
+            }
             node.markDirty()
-            dirtyQueue[key] = node
+            dirtyQueue[ObjectIdentifier(node)] = node
         }
     }
 
@@ -282,6 +288,24 @@ public final class AttributeGraph: @unchecked Sendable {
             graph.evaluateBody(node: target, view: stored)
         }
         return body
+    }
+
+    /// Builds one of a ForEach's rows from its closure, tracking what the
+    /// closure reads. The closure runs while the graph reconciles, after the
+    /// body holding the ForEach returned, so its reads belonged to no body's
+    /// tracking: a row that read the selection kept its old mark when only
+    /// the selection changed. A change posts `node`, the ForEach, and
+    /// `applyInvalidations` runs the body holding it. Only the closure is
+    /// tracked here, not the bodies of the row views it returns, which
+    /// track their own.
+    func trackingRow<Row>(of node: AttributeNode, _ build: () -> Row) -> Row {
+        weak let weakNode: AttributeNode? = node
+        weak let inbox: InvalidationInbox? = invalidations
+        return withObservationTracking(build) {
+            if let node = weakNode {
+                inbox?.post(node)
+            }
+        }
     }
 
     /// Re-evaluates a composite's body and reconciles its child against it.
