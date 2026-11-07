@@ -1564,39 +1564,10 @@ public enum GraphRenderer {
             renderNode(child, into: &buffer, context: ctx)
 
         case .overlay(let alignment):
-            // Base first, then the overlay over it, offered the base's frame
-            // and placed at the size it claims there, as SwiftUI's is — the
-            // rule a ZStack places its children by. Handed the whole frame
-            // under `.topLeading`, a mark in the corner held the pointer
-            // across the base, and its padded row blanked the base beside it.
-            renderNode(child, into: &buffer, context: ctx)
-            if node.children.count > 1 {
-                let overlay = node.children[1]
-                var overlayCtx = ctx
-                var base = ctx.rect
-                if alignment != .topLeading {
-                    // Aligned within the *base view's* frame, not the rect the
-                    // parent happened to hand down. A stack gives its children
-                    // the full cross axis, so aligning against that would pin a
-                    // badge to the screen edge rather than to the thing it
-                    // belongs to.
-                    let baseWidth = min(ctx.rect.width, measureWidth(child))
-                    let baseHeight = min(ctx.rect.height,
-                                         measureHeight(child, proposedWidth: max(1, baseWidth)))
-                    base = Rect(x: ctx.rect.x, y: ctx.rect.y,
-                                width: max(1, baseWidth), height: max(1, baseHeight))
-                }
-                overlayCtx.rect = Layout.stacked(overlay, in: base, alignment: alignment)
-                Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
-                renderNode(overlay, into: &buffer, context: overlayCtx)
-            }
+            renderLayered(node, base: child, alignment: alignment, into: &buffer, context: ctx)
 
-        case .backgroundView:
-            // Render background first, then base on top
-            if node.children.count > 1 {
-                renderNode(node.children[1], into: &buffer, context: ctx)
-            }
-            renderNode(child, into: &buffer, context: ctx)
+        case .backgroundView(let alignment):
+            renderLayered(node, base: child, alignment: alignment, into: &buffer, context: ctx)
 
         case .focusable:
             // isFocusable is set during graph construction; the focus ring is
@@ -1740,6 +1711,30 @@ public enum GraphRenderer {
         offsetRects(of: modalNode, dx: mx, dy: my)
 
         Compositor.composite(layers: [dimLayer, modalLayer], into: &buffer)
+    }
+
+    /// A view and the content layered on it, an `.overlay`'s over it or a
+    /// background's under it, both in the view's frame. The content is
+    /// offered the base's frame and placed at the size it claims there, as
+    /// SwiftUI's is — the rule a ZStack places its children by. Handed the
+    /// whole frame, a mark in the corner held the pointer across the base,
+    /// and its padded row blanked the base beside it. The two are drawn in
+    /// `childrenInDrawOrder`, the order the pointer searches in reverse.
+    private static func renderLayered(_ node: AttributeNode, base: AttributeNode,
+                                      alignment: Alignment,
+                                      into buffer: inout CellBuffer, context: RenderContext) {
+        guard node.children.count > 1 else {
+            renderNode(base, into: &buffer, context: context)
+            return
+        }
+        let decoration = node.children[1]
+        var decorationContext = context
+        decorationContext.rect = Layout.layered(decoration, over: base, in: context.rect,
+                                                alignment: alignment)
+        Layout.measureAndPlace(graph: decoration, in: decorationContext.rect)
+        for layer in node.childrenInDrawOrder {
+            renderNode(layer, into: &buffer, context: layer === decoration ? decorationContext : context)
+        }
     }
 
     /// A menu: at its content's size, with its top-left corner on the cell

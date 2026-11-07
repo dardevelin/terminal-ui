@@ -20,6 +20,8 @@
 ///   - Modifier rect transforms — padding (inset by amount), border
 ///     (inset by 1), frame (clamp dimensions).
 ///   - ZStack — each child at the size it claims, aligned in the stack.
+///   - Overlay / background-view — the content placed over or under the
+///     base by the ZStack's rule.
 ///
 /// Layer 3 (still on `GraphRenderer.renderLayout` until extracted)
 /// owns flex distribution:
@@ -27,8 +29,7 @@
 ///   - VStack / HStack — flex weighting + per-child rect along the
 ///     stack axis.
 ///   - ScrollView — content-buffer sizing + scroll-offset blit.
-///   - Modal / overlay / background-view — content centering and
-///     z-order rect computation.
+///   - Modal — content centering.
 ///
 /// The split lines up with risk: Layer 2 is pure rect arithmetic
 /// (easy to verify per-primitive at the layout level). Layer 3 needs
@@ -141,8 +142,9 @@ public enum Layout {
     /// a label on top held the pointer everywhere in the stack, nothing under
     /// it could be hovered or clicked, and its padded rows blanked the layers
     /// beside it. Measured on an axis it claims, a GeometryReader saw one row
-    /// and a Divider shrank to a single dash. An `.overlay` is placed over
-    /// its base by the same rule.
+    /// and a Divider shrank to a single dash. An `.overlay` or
+    /// `.backgroundView` is placed against its base by the same rule, in
+    /// `layered`.
     static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
             ?? (GraphRenderer.claimsOffered(child, horizontal: true)
@@ -155,6 +157,28 @@ public enum Layout {
             y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
             width: max(1, width), height: max(1, height)
         )
+    }
+
+    /// Where an `.overlay`'s or `.backgroundView`'s content sits against its
+    /// `base`, which was placed in `rect`: offered the base's frame and
+    /// placed in it by `stacked`.
+    /// The frame is the base view's own, not the rect the parent happened to
+    /// hand down: a stack gives its children the full cross axis, so aligning
+    /// against that would pin a badge to the screen edge rather than to the
+    /// thing it belongs to. Under `.topLeading` the frame is `rect` itself,
+    /// as it was before any other alignment placed: the base is not
+    /// measured, and content that claims what it is offered takes `rect`.
+    static func layered(_ content: AttributeNode, over base: AttributeNode,
+                        in rect: Rect, alignment: Alignment) -> Rect {
+        var frame = rect
+        if alignment != .topLeading {
+            let baseWidth = min(rect.width, GraphMeasurer.measureWidth(base))
+            let baseHeight = min(rect.height,
+                                 GraphMeasurer.measureHeight(base, proposedWidth: max(1, baseWidth)))
+            frame = Rect(x: rect.x, y: rect.y,
+                         width: max(1, baseWidth), height: max(1, baseHeight))
+        }
+        return stacked(content, in: frame, alignment: alignment)
     }
 
     /// Give every structural node among `nodes`, and those nested in them,
@@ -302,12 +326,12 @@ public enum Layout {
     /// **Layer 2** (here): padding (inset by amount), border (inset
     /// by 1), frame (clamp dimensions). These are pure rect arithmetic;
     /// they don't depend on env, sibling sizes, or content
-    /// measurement.
+    /// measurement. An overlay's or background's content is placed
+    /// against its base by `layered`, which render reads too.
     ///
-    /// **Layer 3** (still in `GraphRenderer.renderModifier`): overlay,
-    /// backgroundView, modal — all of which compute z-order rect
-    /// math that depends on content measurement (modal centering)
-    /// or sibling rects. Move with the rest of Layer 3.
+    /// **Layer 3** (still in `GraphRenderer.renderModifier`): modal,
+    /// whose centering depends on content measurement. Move with the
+    /// rest of Layer 3.
     ///
     /// **Pass-through modifiers** (no rect transform): foreground,
     /// background, bold, italic, underline, flexible, explicitID,
@@ -322,12 +346,19 @@ public enum Layout {
         measureAndPlace(graph: child, in: childRect)
 
         // Overlay / backgroundView / modal carry a SECOND child
-        // (`children[1]`). Layer 3 owns their layout (modal centering,
-        // overlay z-stacking). Layer 2 places it in the parent rect
-        // as a safe pre-stamp; render's existing rect math still wins
-        // for those cases until Layer 3 lands.
+        // (`children[1]`). An overlay's or background's is placed where
+        // render draws it, by the one rule both read. A modal's is stamped
+        // with the parent rect as a safe pre-stamp: it is composited over
+        // the screen once the tree is drawn, and placed again there.
         if node.children.count > 1 {
-            measureAndPlace(graph: node.children[1], in: rect)
+            let second = node.children[1]
+            switch effect {
+            case .overlay(let alignment), .backgroundView(let alignment):
+                measureAndPlace(graph: second,
+                                in: layered(second, over: child, in: rect, alignment: alignment))
+            default:
+                measureAndPlace(graph: second, in: rect)
+            }
         }
     }
 
@@ -427,9 +458,9 @@ public enum Layout {
              .onClick, .onHover, .onPaste,
              .actions, .environment, .task,
              .overlay, .backgroundView, .modal:
-            // Pass-through and Layer-3 modifiers: child gets the
-            // parent rect unchanged. Layer 3 will replace .overlay /
-            // .backgroundView / .modal with their own rect math.
+            // Pass-through modifiers, and those whose base takes the
+            // whole rect: the second child an overlay, background or
+            // modal carries is placed apart from it.
             return rect
         }
     }

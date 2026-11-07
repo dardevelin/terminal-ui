@@ -36,6 +36,14 @@ All notable changes to TerminalUI are documented here. Format based on
   row; under the other alignments a `Divider` or `GeometryReader` overlay
   was measured to a dash or a row, and now spans the base. Overlay content
   that should cover the base asks the same way.
+- **A `.backgroundView` sits at its own size, where its alignment puts it.**
+  Its alignment was ignored and the background drawn over the view's whole
+  rect, so a mark meant for a corner sat at the top-leading one and padded
+  its row to the view's width. It is now offered the view's frame and
+  placed at what it claims, by the rule a `ZStack` and `.overlay` share. A
+  background that should fill the view still does, by claiming both axes
+  with `.frame(maxWidth: .infinity, maxHeight: .infinity)`. A handler in a
+  background no longer takes the pointer from the view drawn over it.
 - **PageUp/PageDown in a `List` or `TreeView` move the selection by the rows
   last drawn**, not by `visibleCount`: with rows taller than a line, a page
   of lines skipped rows that were never shown. With one-line rows a page is

@@ -52,6 +52,14 @@ extension TerminalView {
     }
 
     /// Render additional content behind this view's frame.
+    ///
+    /// The content is offered the frame's size and sits at the size it
+    /// claims, placed by `alignment`, as a ``ZStack`` child does. This view
+    /// is drawn over it, so it shows only in the cells this view leaves
+    /// unwritten. Content that should fill the whole frame says so with
+    /// `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
+    ///
+    /// SwiftUI's counterpart is `background(alignment:content:)`.
     public func backgroundView<V: TerminalView>(
         alignment: Alignment = .topLeading,
         @TerminalViewBuilder content: () -> V

@@ -154,6 +154,39 @@ struct ZStackSizingTests {
         #expect(screen.rows[1] == "──────      ")
     }
 
+    // MARK: - A background, placed by the same rule
+
+    @Test func aBackgroundSitsWhereItsAlignmentPutsIt() {
+        let screen = Screen(width: 12, height: 5, Text("ab").frame(width: 6, height: 3)
+            .backgroundView(alignment: .bottomTrailing) { Text("●") })
+        #expect(screen.root.children[1].rect == Rect(x: 5, y: 2, width: 1, height: 1))
+        #expect(screen.rows[2] == "     ●      ")
+    }
+
+    @Test func aBackgroundDividerSpansTheBase() {
+        let screen = Screen(width: 12, height: 5, Text("abcdef\nabcdef")
+            .backgroundView(alignment: .bottom) { Divider() })
+        #expect(screen.root.children[1].rect == Rect(x: 0, y: 1, width: 6, height: 1))
+    }
+
+    // Handed the whole frame, the background padded its row to the frame's
+    // width and blanked what the stack drew under it.
+    @Test func anUnsizedBackgroundLeavesTheRestOfItsRowDrawn() {
+        let screen = Screen(width: 8, height: 3, ZStack {
+            Text("◼◼◼◼◼◼\n◼◼◼◼◼◼\n◼◼◼◼◼◼")
+            EmptyView().frame(width: 6, height: 3).backgroundView { Text("░░") }
+        })
+        #expect(screen.rows[0] == "░░◼◼◼◼  ")
+    }
+
+    @Test func aBackgroundThatClaimsBothAxesStillFillsItsView() {
+        let screen = Screen(width: 12, height: 5, Text("ab").padding(1).backgroundView {
+            Text(String(repeating: "░", count: 12)).frame(maxWidth: .infinity, maxHeight: .infinity)
+        })
+        #expect(screen.root.children[1].rect == Rect(x: 0, y: 0, width: 12, height: 5))
+        #expect(screen.rows[0] == String(repeating: "░", count: 12))
+    }
+
     // MARK: - Rows a ForEach hands the stack
 
     // A ForEach is no view of its own in a stack: its rows are the stack's

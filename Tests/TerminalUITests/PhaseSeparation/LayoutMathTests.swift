@@ -124,6 +124,21 @@ struct LayoutMathTests {
                 "a frame reaching for .infinity claims the whole stack")
     }
 
+    // MARK: - Overlay
+
+    @Test("overlay: its content sits at its own size over the base, before render")
+    func overlayContentSitsAtItsOwnSizeBeforeRender() {
+        let graph = AttributeGraph()
+        graph.update(from: Text("abcdef\nabcdef").overlay(alignment: .bottom) { Divider() })
+        guard let root = graph.root else {
+            Issue.record("no root after build")
+            return
+        }
+        Layout.measureAndPlace(graph: root, in: Rect(x: 0, y: 0, width: 12, height: 5))
+        #expect(root.children[1].rect == Rect(x: 0, y: 1, width: 6, height: 1),
+                "a Divider overlay spans the base's bottom row; got \(root.children[1].rect)")
+    }
+
     // MARK: - Composed: padding inside border inside ZStack
 
     @Test("composed modifiers: padding inside border inside ZStack — rects compose left-to-right")

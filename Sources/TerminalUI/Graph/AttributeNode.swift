@@ -364,6 +364,18 @@ public class AttributeNode: @unchecked Sendable {
         return chain
     }
 
+    /// The children in the order they are drawn, the last on top. That is
+    /// `children`, but for a background: its content is the second child
+    /// and drawn first, under the base. A pointer walk that took the last
+    /// child as topmost gave a background's handlers the cells its view
+    /// covers.
+    var childrenInDrawOrder: [AttributeNode] {
+        if case .modifier(.backgroundView) = kind, children.count == 2 {
+            return [children[1], children[0]]
+        }
+        return children
+    }
+
     /// The parent, unless this node is what a modal presents. A presentation
     /// owns the keyboard as it owns the screen, so a key — or an action's
     /// binding — that its content does not take must not climb out into the
@@ -688,9 +700,10 @@ public enum ModifierEffect {
     /// Renders the base, then the second child on top of it, placed by
     /// `alignment` within the base view's own frame.
     case overlay(alignment: Alignment)     // child[0] = base, child[1] = overlay content
-    /// Renders the background child first, then the base over it, so the
-    /// base's cells win wherever both draw.
-    case backgroundView(alignment: Alignment)  // child[0] = background content, child[1] = base (render bg first)
+    /// Renders the background child first, placed by `alignment` within
+    /// the base view's own frame, then the base over it, so the base's
+    /// cells win wherever both draw.
+    case backgroundView(alignment: Alignment)  // child[0] = base, child[1] = background content (render bg first)
     /// Renders the base always; while presented, defers the panel child to
     /// composite over the full screen after the main walk, trapping focus
     /// inside it (containment).

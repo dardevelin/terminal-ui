@@ -742,7 +742,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// scroll view's content only through its viewport.
     private func deepest<T>(x: Int, y: Int, in node: AttributeNode,
                             _ match: (AttributeNode) -> T?) -> T? {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+        for child in node.childrenInDrawOrder.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = deepest(x: x, y: y, in: child, match) { return hit }
         }
         return match(node)
@@ -1242,7 +1242,7 @@ public final class FocusEngine: @unchecked Sendable {
         let containsHere = node.rect.contains(x: x, y: y)
         // Children walked deepest-first so a leaf's rect wins over an
         // ancestor's larger rect.
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+        for child in node.childrenInDrawOrder.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findDeepestRectContaining(x: x, y: y, in: child) {
                 return hit
             }
@@ -1263,7 +1263,7 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Find the deepest focusable node whose rect contains the point.
     func findFocusableAt(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+        for child in node.childrenInDrawOrder.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let found = findFocusableAt(x: x, y: y, in: child) {
                 return found
             }
@@ -1302,10 +1302,10 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// The innermost node that still wraps the whole window: down from the
     /// root, stopping at the first node that lays out more than one child.
-    /// A modifier's second child is an overlay or background drawn over its
-    /// content, not a part of it, so a modifier is followed into its content.
-    /// Walking up from here meets every modifier applied to the app as a
-    /// whole, and none that belongs to one part of it.
+    /// A modifier's second child is an overlay or background drawn over or
+    /// under its content, not a part of it, so a modifier is followed into
+    /// its content. Walking up from here meets every modifier applied to the
+    /// app as a whole, and none that belongs to one part of it.
     static func windowContent(in root: AttributeNode) -> AttributeNode {
         var node = root
         while true {
@@ -1341,7 +1341,7 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     private func findScrollNode(x: Int, y: Int, in node: AttributeNode) -> AttributeNode? {
-        for child in node.children.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
+        for child in node.childrenInDrawOrder.reversed() where Self.pointerReachesContent(of: node, x: x, y: y) {
             if let hit = findScrollNode(x: x, y: y, in: child) {
                 return hit
             }

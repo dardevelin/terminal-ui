@@ -1,9 +1,9 @@
 /// Hit testing — map (x,y) screen coordinates to graph nodes.
 ///
 /// After rendering, every node has a resolved rect (set by GraphRenderer).
-/// Hit test walks the graph depth-first, children in reverse order
-/// (last child = highest z-order, matching render order where last
-/// child paints on top). Returns the deepest node containing the point.
+/// Hit test walks the graph depth-first, children in reverse draw order
+/// (`childrenInDrawOrder`, the last painted on top — a background's base
+/// over its content). Returns the deepest node containing the point.
 ///
 /// Modal occlusion: while a presentation is up, the one drawn on top owns
 /// the screen, wherever in the tree it was declared. A point inside its
@@ -30,8 +30,7 @@ public enum HitTest {
 
         path.append(node)
 
-        // Search children in reverse order (last child = highest z-order)
-        for child in node.children.reversed() {
+        for child in node.childrenInDrawOrder.reversed() {
             if let found = search(x: x, y: y, node: child, path: &path) {
                 return found
             }
