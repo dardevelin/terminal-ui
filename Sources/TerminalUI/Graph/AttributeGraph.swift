@@ -399,9 +399,17 @@ public final class AttributeGraph: @unchecked Sendable {
                 // descendant body re-evaluations during update see the
                 // ancestor's environment value, not the default.
                 withEnvironmentApplied(of: node) {
-                    // Update base child
+                    // A base child minted under another slot is another
+                    // view: `.id` with a new value names a new one.
                     if let child = node.children.first {
-                        modified.updateChild(child, graph: self)
+                        let slot = Self.baseChildComponent(of: newEffect)
+                        if child.id.path.last == slot {
+                            modified.updateChild(child, graph: self)
+                        } else {
+                            replaceChild(at: 0, of: node) {
+                                modified.constructChildNode(id: node.id.appending(slot), graph: self)
+                            }
+                        }
                     }
 
                     // Handle extra child (overlay/background/modal)
@@ -1523,6 +1531,17 @@ public final class AttributeGraph: @unchecked Sendable {
         return node
     }
 
+    /// The path step a modifier's base view (child 0) is minted under.
+    ///
+    /// `.id` puts its value in the path, so the view's identity — its
+    /// `@TerminalState`, focus, hover, lifecycle — follows the value: a new
+    /// value is a new view. The `.id` node itself keeps its structural place,
+    /// where scroll targeting looks for it.
+    static func baseChildComponent(of effect: ModifierEffect) -> PathComponent {
+        if case .explicitID(let id) = effect { return .explicit(id) }
+        return .index(0)
+    }
+
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
         let graphModifier = modified.graphEffect()
         let effect = graphModifier.effect
@@ -1542,8 +1561,7 @@ public final class AttributeGraph: @unchecked Sendable {
         // Push the mutation, build, then restore — descendants of any
         // sibling subtree are unaffected.
         let previousEnvironment = withEnvironmentApplied(of: node) {
-            // Base view child (child[0])
-            let childID = id.appending(.index(0))
+            let childID = id.appending(Self.baseChildComponent(of: effect))
             let childNode = modified.constructChildNode(id: childID, graph: self)
             childNode.parent = node
             node.children.append(childNode)
