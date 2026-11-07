@@ -237,4 +237,31 @@ struct OverflowOKAncestorTests {
     }
 }
 
+private struct TallRow: Identifiable {
+    let id: Int
+}
+
+// A list draws the row at the top of its window from that row's top and cuts
+// it at the window's foot when the row is taller than the window. Those are
+// cells it clips on purpose, so neither the row's parts placed below the cut
+// nor anything around them may report them.
+@Suite("Overflow detection — the row a List cuts at its foot", .serialized)
+@MainActor
+struct CutListRowOverflowTests {
+
+    @Test func aCompositeRowCutAtTheWindowsFootWarnsNowhere() {
+        let rows = (0..<3).map(TallRow.init)
+        let result = renderReporting(rows: 6) {
+            List(rows, visibleCount: 3) { row in
+                VStack {
+                    Text("label \(row.id)\nsecond\nthird")
+                    Button("x") {}
+                }
+            }
+        }
+        #expect(result.reports.isEmpty, "\(result.reports)")
+        #expect(result.counted == 0, "the cut row's cells still counted on the buffer")
+    }
+}
+
 #endif

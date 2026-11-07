@@ -62,7 +62,8 @@ All notable changes to TerminalUI are documented here. Format based on
   frame. The rows are now measured at the width the list is laid out at,
   and placed whole until its lines run out, a line held for `▼` while rows
   remain below; a row taller than the whole list is drawn from its top and
-  cut off. `visibleCount` counts lines, the `▲`/`▼` indicators included, as
+  cut off, and no view reports `componentOverflow` for the lines the cut
+  hides. `visibleCount` counts lines, the `▲`/`▼` indicators included, as
   its documentation said; with one-line rows nothing changes. Selecting a
   row below the window brings it in whole at the bottom, the wheel stops
   where the last row is drawn, `▲`/`▼` count rows, and a click on any line

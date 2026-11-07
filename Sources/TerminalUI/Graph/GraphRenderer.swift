@@ -50,6 +50,23 @@ public enum GraphRenderer {
             node.rect = Rect(x: context.rect.x, y: context.rect.y, width: 0, height: 0)
             return
         }
+        #if DEBUG
+        // A row taller than its list's window — the one row a list cuts, the
+        // held-out row having returned above — is drawn from its top and
+        // cut at the window's foot. That clip is the list's choice, not the
+        // row's layout bug, so what falls below the cut is excused as under
+        // `.overflowOK()`; the second pass finds the flag set and draws.
+        if node._rowWindowLines != nil, GraphContext.currentEnvironment?.overflowAllowed != true {
+            var excused = GraphContext.currentEnvironment ?? EnvironmentValues()
+            excused.overflowAllowed = true
+            withUnsafeMutablePointer(to: &buffer) { bufPtr in
+                GraphContext.$currentEnvironment.withValue(excused) {
+                    renderNode(node, into: &bufPtr.pointee, context: context)
+                }
+            }
+            return
+        }
+        #endif
         // Record resolved rect on every node — used for hit testing
         node.rect = context.rect
 
