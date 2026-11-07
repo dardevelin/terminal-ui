@@ -118,16 +118,11 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             declaredLines: visibleCount,
             rowCount: total,
             choose: { lines, height in
-                let maxOffset = adjustScrollOffset(scrollOffset: 0, selectedIndex: total - 1,
-                                                   total: total, visibleCount: lines)
-                var offset = min(max(0, scroll.get()), maxOffset)
                 // A selection that moved brings the window to it; one that
                 // did not leaves the window wherever the wheel put it.
-                if followed.get() != selectedIndex {
-                    offset = adjustScrollOffset(scrollOffset: offset, selectedIndex: selectedIndex,
-                                                total: total, visibleCount: lines)
-                }
-                return RowWindowing.fit(from: offset, total: total, lines: lines, height: height)
+                RowWindowing.window(total: total, lines: lines, offset: scroll.get(),
+                                    following: followed.get() != selectedIndex ? selectedIndex : nil,
+                                    height: height)
             },
             draw: { window, rows in
                 renderList(window, rows: rows, selectedID: selectedID, scroll: scroll, theme: theme)
@@ -231,12 +226,14 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                 sel.set(element(at: min(total - 1, currentIdx + 1)).id)
                 return .handled
 
+            // A page is the rows the window drew, however many lines each
+            // took — a line count would skip rows taller than one unseen.
             case .pageUp:
-                sel.set(element(at: max(0, currentIdx - window.lines)).id)
+                sel.set(element(at: max(0, currentIdx - max(1, window.shown))).id)
                 return .handled
 
             case .pageDown:
-                sel.set(element(at: min(total - 1, currentIdx + window.lines)).id)
+                sel.set(element(at: min(total - 1, currentIdx + max(1, window.shown))).id)
                 return .handled
 
             case .home:
@@ -251,50 +248,6 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
                 return .ignored
             }
         }
-    }
-
-    /// Adjust scroll offset so the selected item is visible.
-    /// Only moves the window when selection goes outside it — does not jump.
-    func adjustScrollOffset(scrollOffset: Int, selectedIndex: Int, total: Int, visibleCount: Int) -> Int {
-        guard total > visibleCount else { return 0 }
-
-        var offset = scrollOffset
-
-        // Compute visible item range for current offset
-        let hasUp = offset > 0
-        let hasDown = (offset + visibleCount) < total
-        let topIndicator = hasUp ? 1 : 0
-        let bottomIndicator = hasDown ? 1 : 0
-        let itemLines = visibleCount - topIndicator - bottomIndicator
-
-        let firstVisible = offset
-        let lastVisible = offset + itemLines - 1
-
-        // Selection below viewport — scroll down
-        if selectedIndex > lastVisible {
-            // Put selection at the bottom of the visible items
-            // Account for indicators: we'll have ▲ (scrolled) and maybe ▼
-            let needsDown = (selectedIndex < total - 1)
-            let downRes = needsDown ? 1 : 0
-            let upRes = 1  // we're scrolled, so always ▲
-            let items = visibleCount - upRes - downRes
-            offset = selectedIndex - items + 1
-        }
-
-        // Selection above viewport — scroll up
-        if selectedIndex < firstVisible {
-            // Put selection at the top of the visible items
-            if selectedIndex == 0 {
-                offset = 0  // No ▲ indicator needed
-            } else {
-                offset = selectedIndex  // ▲ will show, selection is first item
-            }
-        }
-
-        // Clamp
-        let maxOffset = total - (visibleCount - 1)  // at least 1 indicator or items
-        offset = max(0, min(maxOffset, offset))
-        return offset
     }
 }
 

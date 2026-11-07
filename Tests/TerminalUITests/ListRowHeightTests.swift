@@ -183,3 +183,51 @@ struct ListRowHeightTests {
         #expect(stops.count == 2, "the list and the drawn row's button, not the button past the window: \(stops)")
     }
 }
+
+@Suite("A list's selection, wheel, indicators and paging follow its row heights")
+@MainActor
+struct ListTallRowNavigationTests {
+
+    private func tallList(_ selecting: Selecting) -> Harness<some TerminalView> {
+        Harness {
+            List(rows, selection: Binding(get: { selecting.selected }, set: { selecting.selected = $0 }),
+                 visibleCount: 8) { row in Text(row.label) }
+        }
+    }
+
+    @Test func selectingTheLastTallRowDrawsItWhole() {
+        let selecting = Selecting()
+        let harness = tallList(selecting)
+        harness.frame()
+        selecting.selected = 9
+        let screen = harness.frame()
+        #expect(screen[0].contains("▲ 8 more"), "rows 8 and 9 under ▲: \(screen)")
+        #expect(screen.contains { $0.hasSuffix("▸ row 9") }, "\(screen)")
+        #expect(screen.contains { $0.hasSuffix("third 9") }, "the last row whole: \(screen)")
+        #expect(!screen.joined().contains("▼"), "\(screen)")
+    }
+
+    @Test func theIndicatorsCountTheRowsOutOfView() {
+        let selecting = Selecting()
+        let harness = tallList(selecting)
+        let top = harness.frame()
+        #expect(top[6].contains("▼ 8 more"), "two rows of three lines, then ▼: \(top)")
+        selecting.selected = 4
+        let screen = harness.frame()
+        #expect(screen[0].contains("▲ 3 more"), "\(screen)")
+        #expect(screen.contains { $0.hasSuffix("▸ row 4") }, "the selection at the window's foot: \(screen)")
+        #expect(screen[7].contains("▼ 5 more"), "\(screen)")
+    }
+
+    @Test func pageDownMovesByTheRowsShown() {
+        let selecting = Selecting()
+        let harness = tallList(selecting)
+        harness.frame()
+        harness.engine.focusNext()
+        #expect(harness.engine.routeKeyEvent(KeyEvent(key: .pageDown), root: harness.root))
+        #expect(selecting.selected == 2, "two rows were shown, so a page is two rows")
+        harness.frame()
+        #expect(harness.engine.routeKeyEvent(KeyEvent(key: .pageUp), root: harness.root))
+        #expect(selecting.selected == 0)
+    }
+}

@@ -198,8 +198,9 @@ struct TableSelectionTests {
         screen.press(.up)
         #expect(selecting.selected == 10)
         screen.frame()
+        // A page is the rows drawn: three under the header, above `▼`.
         screen.press(.pageDown)
-        #expect(selecting.selected == 14)
+        #expect(selecting.selected == 13)
         screen.frame()
         screen.press(.end)
         #expect(selecting.selected == 19)
