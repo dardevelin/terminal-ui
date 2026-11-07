@@ -93,7 +93,9 @@ public struct TreeViewStyle: Sendable {
 /// exactly that many lines (indicator lines included); `nil` fits to the
 /// container, which makes the tree greedy in stack layout. A row's label may
 /// be any number of lines tall; rows are drawn whole while they fit, and a
-/// click on any line of a row selects it. Reach for ``List`` when data is
+/// click on any line of a row selects it. A row scrolled out of view leaves,
+/// as a ``List`` row does: its `onDisappear` runs and its `.task` is
+/// cancelled. Reach for ``List`` when data is
 /// flat, ``Table`` when it's flat *and* columnar.
 ///
 /// ```swift

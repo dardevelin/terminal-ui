@@ -71,8 +71,11 @@ extension TerminalView {
     }
 
     /// Call `action` when the view leaves the graph — its branch switched
-    /// away, its `ForEach` row vanished, or its `.id` changed. Not called on
-    /// app quit; teardown that must run at exit belongs in `onEvent(_:)`.
+    /// away, its `ForEach` row vanished, its `.id` changed, or it is in a
+    /// `List` or `TreeView` row scrolled out of view; the row just past the
+    /// window's edge, kept to be measured, still counts as shown. Views
+    /// leaving together disappear innermost first. Not called on app quit;
+    /// teardown that must run at exit belongs in `onEvent(_:)`.
     public func onDisappear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnDisappearModifier> {
         ModifiedView(content: self, modifier: OnDisappearModifier(action: action))
     }
@@ -147,8 +150,9 @@ extension TerminalView {
     }
 
     /// Run async work tied to `id`: cancelled and restarted whenever `id`
-    /// changes, cancelled for good when the view disappears. The shape for
-    /// "load the thing this view is currently showing".
+    /// changes, cancelled for good when the view disappears — as it does in
+    /// a row its `ForEach` drops, or a `List` or `TreeView` row scrolled out
+    /// of view. The shape for "load the thing this view is currently showing".
     public func task<ID: Hashable>(
         id: ID,
         priority: TaskPriority = .userInitiated,

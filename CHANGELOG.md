@@ -72,6 +72,18 @@ All notable changes to TerminalUI are documented here. Format based on
   siblings.** A list in a stack is laid out twice in a frame, first at the
   stack's size and then at its own, and it followed the selection at the
   first: moving the selection down could leave it below the window.
+- **A row a `ForEach` drops runs its `onDisappear` and stops its `.task`.**
+  When an update removed elements, their rows left without `onDisappear`
+  running for them or for any view inside them, and a `.task` started in
+  one was never cancelled: it kept running, and kept waking the render
+  loop, for as long as the app did. A removed row now leaves as an `if`
+  branch that switches away does: `onDisappear` runs for every view in it,
+  innermost first, before any row the same update adds appears, and its
+  `.task` is cancelled. A reorder removes nothing and runs none. A `List` or
+  `TreeView` row scrolled out of its window leaves the same way, as in
+  SwiftUI; the row just past the window's edge, kept to be measured, still
+  counts as shown. A view that has left no longer runs again when state it
+  read changes.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
