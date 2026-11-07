@@ -45,6 +45,11 @@ public enum GraphRenderer {
     }
 
     static func renderNode(_ node: AttributeNode, into buffer: inout CellBuffer, context: RenderContext) {
+        // An empty rect keeps the pointer out of a row its list does not draw.
+        if node.isHeldOutOfWindow {
+            node.rect = Rect(x: context.rect.x, y: context.rect.y, width: 0, height: 0)
+            return
+        }
         // Record resolved rect on every node — used for hit testing
         node.rect = context.rect
 
@@ -118,6 +123,10 @@ public enum GraphRenderer {
                                 rebuild(size, node)
                                 node._lastLaidOutSize = size
                             }
+                        } else if let rebuild = node.rowWindowRebuilder,
+                                  node._lastLaidOutSize?.width != context.rect.width {
+                            rebuild(context.rect.width)
+                            node._lastLaidOutSize = Size(width: context.rect.width, height: context.rect.height)
                         }
                         for child in node.children {
                             renderNode(child, into: &buffer, context: context)

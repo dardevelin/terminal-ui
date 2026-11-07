@@ -90,9 +90,11 @@ public struct TreeViewStyle: Sendable {
 /// the current row's ID to the app.
 ///
 /// Sizing follows ``List``: an explicit `visibleCount` pins the height to
-/// exactly that many rows (indicator lines included); `nil` fits to the
-/// container, which makes the tree greedy in stack layout. Reach for
-/// ``List`` when data is flat, ``Table`` when it's flat *and* columnar.
+/// exactly that many lines (indicator lines included); `nil` fits to the
+/// container, which makes the tree greedy in stack layout. A row's label may
+/// be any number of lines tall; rows are drawn whole while they fit, and a
+/// click on any line of a row selects it. Reach for ``List`` when data is
+/// flat, ``Table`` when it's flat *and* columnar.
 ///
 /// ```swift
 /// // A file browser pane, as the GitClient example wires it:
@@ -115,7 +117,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     /// Two-way selected-node ID. The tree also tracks its own row cursor;
     /// this binding mirrors it outward so the app can react to selection.
     public let selection: Binding<Data.Element.ID?>?
-    /// Cap on visible rows. `nil` (default) fits to container height.
+    /// Height budget in lines, the `▲`/`▼` indicator lines included.
+    /// `nil` (default) fits to container height.
     public let visibleCount: Int?
     /// Colors and marker glyphs; see ``TreeViewStyle``.
     public let style: TreeViewStyle
@@ -139,10 +142,11 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     ///   - data: Root items.
     ///   - children: Key path to an element's children (`nil` = leaf).
     ///   - selection: Selected-node ID binding; `nil` keeps selection internal.
-    ///   - visibleCount: Height budget in rows including `▲`/`▼` indicator
+    ///   - visibleCount: Height budget in lines including `▲`/`▼` indicator
     ///     lines; `nil` fits to the container.
     ///   - style: Colors and marker glyphs (default `TreeViewStyle.default`).
-    ///   - content: Row label builder, called only for visible nodes.
+    ///   - content: Row label builder, called only for the nodes in and
+    ///     beside the visible window.
     public init(
         _ data: Data,
         children: KeyPath<Data.Element, Data?>,
@@ -163,159 +167,141 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     public var body: some TerminalView {
         // Capture bindings here — `body` is evaluated with this view's
         // node set as `GraphContext.currentNode`, so `$expandedIDs` etc.
-        // resolve to slots on the TreeView's own node. If we projected
-        // them inside the `GeometryReader { … }` closure (which runs at
-        // GR-rebuild time with a different `currentNode`), the slots
-        // would be created on whatever node happened to be current
-        // during the rebuild and state would not persist across frames.
+        // resolve to slots on the TreeView's own node. Projected inside the
+        // window's closures, which run in the layout pass with a different
+        // `currentNode`, the slots would be created on whatever node happened
+        // to be current and state would not persist across frames.
         let expandedBinding = $expandedIDs
         let selectedIdxBinding = $selectedIndex
         let scrollBinding = $scrollOffset
         let initBinding = $initialized
         let followedBinding = $followedIndex
         let theme = theme
-        // An explicit `visibleCount` is a declared size — no GeometryReader,
-        // so the tree measures fixed instead of greedily filling its stack.
-        if let declaredCount = visibleCount {
-            renderTree(
-                visibleCount: declaredCount,
-                theme: theme,
-                expandedBinding: expandedBinding,
-                selectedIdxBinding: selectedIdxBinding,
-                scrollBinding: scrollBinding,
-                initBinding: initBinding,
-                followedBinding: followedBinding
-            )
-        } else {
-            GeometryReader { size in
-                self.renderTree(
-                    visibleCount: max(1, size.height),
-                    theme: theme,
-                    expandedBinding: expandedBinding,
-                    selectedIdxBinding: selectedIdxBinding,
-                    scrollBinding: scrollBinding,
-                    initBinding: initBinding,
-                    followedBinding: followedBinding
-                )
-            }
-        }
-    }
 
-    private func renderTree(
-        visibleCount: Int,
-        theme: any Theme,
-        expandedBinding: Binding<Set<AnyHashableID>>,
-        selectedIdxBinding: Binding<Int>,
-        scrollBinding: Binding<Int>,
-        initBinding: Binding<Bool>,
-        followedBinding: Binding<Int?>
-    ) -> some TerminalView {
         // Auto-expand root items on first render
-        let _ = {
-            if !initBinding.get() {
-                initBinding.set(true)
-                var initial = expandedBinding.get()
-                for item in data {
-                    initial.insert(AnyHashableID(item.id))
-                }
-                expandedBinding.set(initial)
+        if !initBinding.get() {
+            initBinding.set(true)
+            var initial = expandedBinding.get()
+            for item in data {
+                initial.insert(AnyHashableID(item.id))
             }
-        }()
+            expandedBinding.set(initial)
+        }
 
         // Flatten visible tree
         let expanded = expandedBinding.get()
         let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
         let total = rows.count
-        // The offset that shows the last row at the bottom: the farthest the
-        // wheel may take the window.
-        let maxOffset = TreeViewHelpers.adjustScroll(scrollOffset: 0, selectedIndex: max(0, total - 1),
-                                                     total: total, visibleCount: visibleCount)
 
-        // Sync selectedIndex bounds and scroll (side effects, not views)
+        // Sync selectedIndex bounds and the selection binding (side effects,
+        // not views). Written only when they differ: a write notifies its
+        // observers whether or not the value changed.
         let currentIndex = min(max(selectedIdxBinding.get(), 0), max(total - 1, 0))
-        let adjustedOffset: Int = {
-            if currentIndex != selectedIdxBinding.get() {
-                selectedIdxBinding.set(currentIndex)
-            }
-            if let sel = selection, total > 0 {
-                sel.set(rows[currentIndex].item.id)
-            }
-            var offset = min(max(0, scrollBinding.get()), maxOffset)
-            if followedBinding.get() != currentIndex {
-                offset = TreeViewHelpers.adjustScroll(
-                    scrollOffset: offset,
-                    selectedIndex: currentIndex,
-                    total: total,
-                    visibleCount: visibleCount
-                )
-                followedBinding.set(currentIndex)
-            }
-            if offset != scrollBinding.get() {
-                scrollBinding.set(offset)
-            }
-            return offset
-        }()
+        if currentIndex != selectedIdxBinding.get() {
+            selectedIdxBinding.set(currentIndex)
+        }
+        if let sel = selection, total > 0, sel.get() != rows[currentIndex].item.id {
+            sel.set(rows[currentIndex].item.id)
+        }
 
-        // Compute visible slice
-        let hasUpIndicator = adjustedOffset > 0
-        let hasDownIndicator = (adjustedOffset + visibleCount) < total
-        let indicatorLines = (hasUpIndicator ? 1 : 0) + (hasDownIndicator ? 1 : 0)
-        let itemLines = max(1, visibleCount - indicatorLines)
-        let slice = rows.dropFirst(adjustedOffset).prefix(itemLines)
+        // An explicit `visibleCount` is a declared size, so the tree measures
+        // fixed instead of greedily filling its stack; without one it is
+        // told its container's height.
+        return _ListWindow(
+            declaredLines: visibleCount,
+            rowCount: total,
+            choose: { lines, height in
+                // The window follows the selection only when it moved, so the
+                // wheel can scroll the tree without the next frame pulling it
+                // back.
+                RowWindowing.window(total: total, lines: lines, offset: scrollBinding.get(),
+                                    following: followedBinding.get() != currentIndex ? currentIndex : nil,
+                                    height: height)
+            },
+            draw: { window, shown in
+                renderTree(window, rows: shown.map { rows[$0] }, currentIndex: currentIndex,
+                           expandedIDs: expanded, theme: theme,
+                           expandedBinding: expandedBinding, selectedIdxBinding: selectedIdxBinding,
+                           scrollBinding: scrollBinding)
+            },
+            settle: { window in
+                let readOffset = scrollBinding.get()
+                let readFollowed = followedBinding.get()
+                let offsetMoved = readOffset != window.offset
+                let followMoved = readFollowed != currentIndex
+                guard offsetMoved || followMoved else { return nil }
+                return {
+                    if offsetMoved, scrollBinding.get() == readOffset { scrollBinding.set(window.offset) }
+                    if followMoved, followedBinding.get() == readFollowed { followedBinding.set(currentIndex) }
+                }
+            })
+    }
+
+    private func renderTree(
+        _ window: RowWindow,
+        rows shown: [FlatRow<Data.Element>],
+        currentIndex: Int,
+        expandedIDs expanded: Set<AnyHashableID>,
+        theme: any Theme,
+        expandedBinding: Binding<Set<AnyHashableID>>,
+        selectedIdxBinding: Binding<Int>,
+        scrollBinding: Binding<Int>
+    ) -> any TerminalView {
+        // Until the window's offset is written back, the binding holds what
+        // it was worked out from, and the wheel starts from where the rows
+        // are drawn instead.
+        let drawnFrom = scrollBinding.get()
+        let wheel = WheelStart()
 
         return VStack {
-            if hasUpIndicator {
-                Text("  \u{25B2} \(adjustedOffset) more")
+            if window.showsUp {
+                Text("  \u{25B2} \(window.hiddenAbove) more")
                     .foreground(theme.foregroundMuted)
             }
 
-            ForEach(Array(slice)) { row in
+            ForEach(shown) { row in
                 treeRow(row, isSelected: row.flatIndex == currentIndex, expandedIDs: expanded, theme: theme)
+                    // Each row takes its own clicks: a row may be several
+                    // lines tall, so counting lines from the top found the
+                    // wrong one.
+                    .onClick { [selection, childrenKeyPath] _, _ in
+                        selectedIdxBinding.set(row.flatIndex)
+                        selection?.set(row.item.id)
+                        TreeViewHelpers.toggleExpand(row.item, childrenKeyPath: childrenKeyPath,
+                                                     expandedBinding: expandedBinding)
+                    }
             }
 
-            if hasDownIndicator {
-                let remaining = total - adjustedOffset - itemLines
-                Text("  \u{25BC} \(remaining) more")
+            if window.showsDown {
+                Text("  \u{25BC} \(window.hiddenBelow) more")
                     .foreground(theme.foregroundMuted)
             }
         }
-        .frame(minHeight: FrameDimension(visibleCount))
+        .frame(minHeight: FrameDimension(window.lines))
         .focusable()
         // The wheel scrolls the window and leaves the selection alone.
         .onScrollWheel { key in
-            let current = scrollBinding.get()
+            let current = !wheel.moved && scrollBinding.get() == drawnFrom ? window.offset : scrollBinding.get()
             let next: Int
             switch key {
             case .up: next = max(0, current - 1)
-            case .down: next = min(maxOffset, current + 1)
+            case .down: next = max(current, min(window.wheelLimit, current + 1))
             default: return false
             }
             guard next != current else { return false }
+            wheel.moved = true
             scrollBinding.set(next)
             return true
         }
-        .onClick { [selection, expandedBinding, selectedIdxBinding, scrollBinding] _, relY in
-            let expanded = expandedBinding.get()
-            let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
-            let total = rows.count
-            guard total > 0 else { return }
-            let offset = scrollBinding.get()
-            let hasUpInd = offset > 0
-            let rowOffset = hasUpInd ? relY - 1 : relY
-            let itemIndex = offset + rowOffset
-            guard itemIndex >= 0 && itemIndex < total else { return }
-
-            selectedIdxBinding.set(itemIndex)
-            selection?.set(rows[itemIndex].item.id)
-            TreeViewHelpers.toggleExpand(rows[itemIndex].item, childrenKeyPath: childrenKeyPath, expandedBinding: expandedBinding)
-        }
-        .onKeyPress { [selection, expandedBinding, selectedIdxBinding] event in
+        .onKeyPress { [selection, data, childrenKeyPath] event in
             let expanded = expandedBinding.get()
             let rows = TreeViewHelpers.flattenedRows(data: data, childrenKeyPath: childrenKeyPath, expandedIDs: expanded)
             let total = rows.count
             guard total > 0, !event.isModifiedNavigation else { return .ignored }
 
             let idx = selectedIdxBinding.get()
+            // A page is the rows the window drew, however many lines each took.
+            let page = max(1, window.shown)
 
             switch event.key {
             case .up:
@@ -365,13 +351,13 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                 return .handled
 
             case .pageUp:
-                let newIdx = max(0, idx - visibleCount)
+                let newIdx = max(0, idx - page)
                 selectedIdxBinding.set(newIdx)
                 TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
                 return .handled
 
             case .pageDown:
-                let newIdx = min(total - 1, idx + visibleCount)
+                let newIdx = min(total - 1, idx + page)
                 selectedIdxBinding.set(newIdx)
                 TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: newIdx)
                 return .handled
@@ -592,45 +578,6 @@ enum TreeViewHelpers {
     ) {
         guard let sel = selection, index >= 0 && index < rows.count else { return }
         sel.set(rows[index].item.id)
-    }
-
-    // MARK: - Scroll
-
-    static func adjustScroll(scrollOffset: Int, selectedIndex: Int, total: Int, visibleCount: Int) -> Int {
-        guard total > visibleCount else { return 0 }
-
-        var offset = scrollOffset
-
-        let hasUp = offset > 0
-        let hasDown = (offset + visibleCount) < total
-        let topIndicator = hasUp ? 1 : 0
-        let bottomIndicator = hasDown ? 1 : 0
-        let itemLines = visibleCount - topIndicator - bottomIndicator
-
-        let firstVisible = offset
-        let lastVisible = offset + itemLines - 1
-
-        // Selection below viewport
-        if selectedIndex > lastVisible {
-            let needsDown = (selectedIndex < total - 1)
-            let downRes = needsDown ? 1 : 0
-            let upRes = 1
-            let items = visibleCount - upRes - downRes
-            offset = selectedIndex - items + 1
-        }
-
-        // Selection above viewport
-        if selectedIndex < firstVisible {
-            if selectedIndex == 0 {
-                offset = 0
-            } else {
-                offset = selectedIndex
-            }
-        }
-
-        let maxOffset = total - (visibleCount - 1)
-        offset = max(0, min(maxOffset, offset))
-        return offset
     }
 }
 

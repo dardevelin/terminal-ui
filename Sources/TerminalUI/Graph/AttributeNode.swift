@@ -317,6 +317,29 @@ public class AttributeNode: @unchecked Sendable {
     /// the memo `WidthReader` rebuilds consult.
     var _readerBuild: (width: Int, generation: Int)?
 
+    /// A list given a `visibleCount`: rebuilds its rows for the width a pass
+    /// lays it out or measures it at. Apart from ``geometryRebuilder`` so the
+    /// list is not flexible — it states its height, and is as wide as its
+    /// rows — while still measuring its rows at the width it is given.
+    var rowWindowRebuilder: ((Int) -> Void)?
+
+    /// The window a list last drew, and the rows its `ForEach` holds for it —
+    /// what the next pass measures first.
+    var _rowWindowBuild: (window: RowWindow, rows: [Int])?
+
+    /// Set by the list holding this row: nil for a row drawn whole, the
+    /// lines a row cut off at the window's foot is drawn in, or 0 for a row
+    /// kept but not drawn — the one past the window that stopped its walk.
+    ///
+    /// That row stays in the tree because the next frame's walk asks about
+    /// it again: rebuilt and dropped every frame, it would appear and
+    /// disappear every frame. Taking no lines, drawing nothing and holding no
+    /// focus, it is as absent as a row that was never built.
+    var _rowWindowLines: Int?
+
+    /// Whether this node is a row its list keeps but does not draw.
+    var isHeldOutOfWindow: Bool { _rowWindowLines == 0 }
+
     /// Creates a node, dirty by default so the first update evaluates it,
     /// and snapshots the focus granularity in force at the construction
     /// site — see ``focusGranularity`` for why render-time reads are too late.

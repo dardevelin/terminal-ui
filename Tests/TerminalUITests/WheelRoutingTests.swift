@@ -103,6 +103,26 @@ struct WheelRoutingTests {
         #expect(screen.scrollNodes().first?.scrollOffset == 1)
     }
 
+    /// Three-line rows in eight lines: from row 8 the last two rows fit under
+    /// `▲`, and from row 7 they do not. The wheel stops there — counting a
+    /// line a row, it scrolled to row 3 and stopped with six rows unseen.
+    @Test func aListOfTallRowsStopsTheWheelWhereItsLastRowIsDrawn() {
+        let box = Box()
+        let screen = Screen(height: 10, List((0..<10).map(Row.init),
+                                             selection: Binding(get: { box.selection }, set: { box.selection = $0 }),
+                                             visibleCount: 8) { row in Text("item \(row.id)\n  more\n  more") })
+        for _ in 0..<12 {
+            screen.wheel(.down, at: 3, 1)
+            screen.draw()
+        }
+        let rows = screen.draw()
+        #expect(rows[0].contains("▲ 8 more"), "\(rows)")
+        #expect(rows.contains { $0.contains("item 9") }, "\(rows)")
+        #expect(!screen.wheel(.down, at: 3, 1), "a list at its end should pass the wheel on")
+        #expect(screen.wheel(.up, at: 3, 1))
+        #expect(screen.draw()[0].contains("▲ 7 more"))
+    }
+
     @Test func aVerticalWheelOverAHorizontalScrollerReachesTheVerticalOneAroundIt() {
         let screen = Screen(height: 6, ScrollView(.vertical) {
             VStack(spacing: 0) {

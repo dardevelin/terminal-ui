@@ -15,6 +15,8 @@ public enum GraphMeasurer {
     /// the viewBody's changes never invalidate: Storybook's detail column
     /// kept the width of a page it had already left.
     public static func measureWidth(_ node: AttributeNode) -> Int {
+        // A row its list keeps past the window takes no room at all.
+        if node.isHeldOutOfWindow { return 0 }
         let skipCache: Bool
         switch node.kind {
         case .viewBody: skipCache = true
@@ -36,6 +38,15 @@ public enum GraphMeasurer {
     /// hasn't — the cache key would need to include the observed state
     /// fingerprint, which we don't have here.
     public static func measureHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
+        // A list row is as tall as its window draws it: cut off at the
+        // window's foot, or not at all past it.
+        if let rowLines = node._rowWindowLines { return rowLines }
+        return naturalHeight(node, proposedWidth: proposedWidth)
+    }
+
+    /// How tall `node` is at `proposedWidth` whatever its list draws of it —
+    /// what a list measures its rows by when it chooses its window.
+    static func naturalHeight(_ node: AttributeNode, proposedWidth: Int) -> Int {
         let skipCache: Bool
         switch node.kind {
         case .viewBody: skipCache = true
@@ -373,6 +384,13 @@ public enum GraphMeasurer {
                 }
                 return node.children.first.map { measureHeight($0, proposedWidth: max(1, width)) } ?? 0
             case nil:
+                // A list with a `visibleCount` chooses its rows by their
+                // heights at this width, so it is built for it before it is
+                // measured — once per width per update, as a `WidthReader`.
+                if let rebuild = node.rowWindowRebuilder {
+                    let width = proposedWidth > 0 ? proposedWidth : (node._readerBuild?.width ?? 0)
+                    if width > 0 { rebuild(width) }
+                }
                 return node.children.first.map { measureHeight($0, proposedWidth: proposedWidth) } ?? 0
             }
         }
