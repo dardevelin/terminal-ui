@@ -83,7 +83,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .alignment: return PageInfo(id: self, category: .layout, name: "Alignment & spacing",
-            summary: "Stacks take alignment: and spacing:, frames and overlays take alignment:. Defaults are .leading/.top rather than SwiftUI's .center — every layout here was written against top-left placement, so centring by default would move all of them. Ask and you get it.",
+            summary: "Stacks take alignment: and spacing:, frames, overlays and backgrounds take alignment:. Defaults are .leading/.top rather than SwiftUI's .center — every layout here was written against top-left placement, so centring by default would move all of them. Ask and you get it.",
             code: """
                 VStack(alignment: .trailing, spacing: 1) {
                     Text("one")
@@ -101,6 +101,10 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
                 Text("....\\n....")
                     .overlay(alignment: .topTrailing) { Text("*") }
+
+                Text("card")
+                    .frame(width: 10, height: 2)
+                    .backgroundView(alignment: .bottomTrailing) { Text("◢") }
                 """)
         case .spacer: return PageInfo(id: self, category: .layout, name: "Spacer",
             summary: "Flexible empty space that consumes available axis room.",

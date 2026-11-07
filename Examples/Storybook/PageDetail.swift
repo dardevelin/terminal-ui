@@ -83,18 +83,28 @@ struct PreviewPane: TerminalView {
                 Text(" OVER ").foreground(.cyan).bold()
             }
         case .alignment:
+            // Side by side: stacked one under another, the examples ran past
+            // the bottom of a 40-row terminal and the last ones never showed.
             VStack(spacing: 1) {
-                VStack(alignment: .trailing, spacing: 1) {
-                    Text("one").foreground(.cyan)
-                    Text("three").foreground(.cyan)
+                HStack(alignment: .top, spacing: 4) {
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text("one").foreground(.cyan)
+                        Text("three").foreground(.cyan)
+                    }
+                    HStack(alignment: .bottom, spacing: 2) {
+                        Text("tall\nrows\nhere").foreground(.gray)
+                        Text("bottom").foreground(.yellow)
+                    }
                 }
-                HStack(alignment: .bottom, spacing: 2) {
-                    Text("tall\nrows\nhere").foreground(.gray)
-                    Text("bottom").foreground(.yellow)
+                HStack(alignment: .top, spacing: 4) {
+                    Text("centred").frame(width: 18, height: 3, alignment: .center).border()
+                    VStack(spacing: 1) {
+                        Text("....\n....").foreground(.gray)
+                            .overlay(alignment: .topTrailing) { Text("*").foreground(.magenta).bold() }
+                        Text("card").frame(width: 10, height: 2)
+                            .backgroundView(alignment: .bottomTrailing) { Text("◢") }
+                    }
                 }
-                Text("centred").frame(width: 18, height: 3, alignment: .center).border()
-                Text("....\n....").foreground(.gray)
-                    .overlay(alignment: .topTrailing) { Text("*").foreground(.magenta).bold() }
             }
         case .spacer:
             HStack {

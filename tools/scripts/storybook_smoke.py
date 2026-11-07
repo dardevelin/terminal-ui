@@ -876,6 +876,26 @@ def storybook_zstack_overlays_label(app: Client) -> None:
                 f"the layer under the label should show beside it; row:\n{row}")
 
 
+def storybook_alignment_places_background(app: Client) -> None:
+    """Alignment page: a `◢` background pinned `.bottomTrailing` to a card's
+    10x2 frame sits in the frame's last cell, on the row under `card`. The
+    background's alignment was ignored, and it was drawn from the frame's
+    top-leading corner, under the card's own text."""
+    app.goto_page("Alignment & spacing")
+    # The whole screen below the heading: the page's last rows fall below the
+    # fixed preview rect, and the bordered example's corners end `boxed_rows`.
+    rows = app.text().splitlines()
+    preview = next((i for i, line in enumerate(rows) if "Preview" in line), len(rows))
+    index = next((i for i, line in enumerate(rows) if i > preview and "card" in line), None)
+    assert_true(index is not None and index + 1 < len(rows),
+                "Alignment preview: no `card` row with a row under it")
+    trailing = rows[index].index("card") + 9
+    below = rows[index + 1]
+    assert_true(len(below) > trailing and below[trailing] == "◢",
+                f"the background should sit in the frame's trailing column {trailing}; "
+                f"rows:\n{rows[index]}\n{below}")
+
+
 def storybook_spacer_pushes_edges(app: Client) -> None:
     """HStack{Text, Spacer, Text} — [left] + [right] appear on the same
     row, separated by ≥5 blank cells. Catches Spacer flex regressions."""
@@ -2993,6 +3013,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.statusbar_sections_render", "Storybook", storybook_statusbar_sections_render),
     SmokeCase("storybook.barchart_renders_bars", "Storybook", storybook_barchart_renders_bars),
     SmokeCase("storybook.zstack_overlays_label", "Storybook", storybook_zstack_overlays_label),
+    SmokeCase("storybook.alignment_places_background", "Storybook", storybook_alignment_places_background),
     SmokeCase("storybook.spacer_pushes_edges", "Storybook", storybook_spacer_pushes_edges),
     SmokeCase("storybook.scrollview_initial_viewport", "Storybook", storybook_scrollview_initial_viewport),
     SmokeCase("storybook.scrollview_shows_thumb_scrollbar", "Storybook", storybook_scrollview_shows_thumb_scrollbar),
