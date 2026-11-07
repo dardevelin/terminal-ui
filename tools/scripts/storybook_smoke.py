@@ -761,7 +761,9 @@ def storybook_hstack_renders_horizontal(app: Client) -> None:
 
 def storybook_divider_renders_rule(app: Client) -> None:
     """Divider preview draws a horizontal rule via `─` glyphs between the
-    'above' and 'below' text. Catches primitive divider render bugs."""
+    'above' and 'below' text, and a vertical `│` rule down its HStack row's
+    two lines. Storybook's own root is an HStack whose Divider rules down
+    the screen between sidebar and page: it drew a lone `─` at the top."""
     app.goto_page("Divider")
     assert_true(app.contains("above"), "Divider preview missing 'above'")
     assert_true(app.contains("below"), "Divider preview missing 'below'")
@@ -769,6 +771,11 @@ def storybook_divider_renders_rule(app: Client) -> None:
         app.count_glyph("─") >= 4,
         "Divider rule not rendered (no '─' chars)",
     )
+    text = app.text()
+    assert_true("left │ right" in text and "side │" in text,
+                "HStack Divider is not a rule down both lines of its row")
+    assert_true(set(app.cells(rect=(28, 0, 1, 20)).text().split()) == {"│"},
+                "Storybook's sidebar and page are not split by a `│` rule")
 
 
 def storybook_table_renders_header_and_rows(app: Client) -> None:
