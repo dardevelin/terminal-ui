@@ -86,6 +86,16 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     public let separator: String
     /// Whether to render the header row and its `─` rule.
     public let showHeader: Bool
+    /// Two-way selected-row ID. `nil` for a display-only table, which
+    /// takes no focus and draws no cursor.
+    public let selection: Binding<Data.Element.ID?>?
+    /// Two-way scroll offset of a selectable table (index of the first
+    /// visible row). `nil` lets the table manage it internally.
+    public let scroll: Binding<Int>?
+    /// Height budget of a selectable table's rows, the `▲`/`▼` indicator
+    /// lines included and the header and rule not. `nil` fits the rows to
+    /// the room the container leaves under the header.
+    public let visibleCount: Int?
 
     /// Creates a table over a row collection.
     ///
@@ -104,12 +114,68 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
         self.columns = columns
         self.separator = separator
         self.showHeader = showHeader
+        self.selection = nil
+        self.scroll = nil
+        self.visibleCount = nil
     }
 
-    /// Precomputed as single multi-line Text — one node, one measurement.
+    /// Creates a table whose rows a reader can select, by keyboard or by
+    /// mouse.
+    ///
+    /// The rows behave as a ``List``'s do — a `▸` cursor on the selected
+    /// row, arrows, PageUp/PageDown and Home/End to move it, a click to
+    /// select a row, the wheel to scroll — under a header that stays put.
+    ///
+    /// - Parameters:
+    ///   - data: Rows, identified by `Element.ID`.
+    ///   - selection: Selected-row ID binding.
+    ///   - scroll: First-visible-row binding; `nil` for internal management.
+    ///   - visibleCount: Height budget in row lines, including the `▲`/`▼`
+    ///     indicator lines but not the header; `nil` fits to the container.
+    ///   - columns: Column definitions applied to every row.
+    ///   - separator: Inter-column string (default `" "`).
+    ///   - showHeader: Render header + rule (default `true`).
+    public init(
+        _ data: Data,
+        selection: Binding<Data.Element.ID?>,
+        scroll: Binding<Int>? = nil,
+        visibleCount: Int? = nil,
+        columns: [TableColumn<Data.Element>],
+        separator: String = " ",
+        showHeader: Bool = true
+    ) {
+        self.data = data
+        self.columns = columns
+        self.separator = separator
+        self.showHeader = showHeader
+        self.selection = selection
+        self.scroll = scroll
+        self.visibleCount = visibleCount
+    }
+
+    /// The columns a ``List`` row's `▸ ` cursor, or the blanks standing in
+    /// for it, takes before the row: the header is pushed past them to stay
+    /// over its cells.
+    private static var listCursorWidth: Int { 2 }
+
+    /// Display-only, precomputed as single multi-line Text — one node, one
+    /// measurement. Selectable, a List of row lines under the header.
     @_documentation(visibility: internal)
     public var body: some TerminalView {
-        if data.isEmpty {
+        if let selection {
+            VStack(spacing: 0) {
+                let header = headerLines(indent: Self.listCursorWidth)
+                if !header.isEmpty {
+                    Text(header.joined(separator: "\n"))
+                }
+                List(data, selection: selection, scroll: scroll, visibleCount: visibleCount) { element in
+                    Text(rowLine(element))
+                }
+            }
+            // A row that wrapped would be two lines tall, and its cells
+            // would slide out from under the header.
+            .wrap(.none)
+        } else if data.isEmpty {
             _EmptyPlaceholder("— no rows —")
         } else {
             Text(renderTable())

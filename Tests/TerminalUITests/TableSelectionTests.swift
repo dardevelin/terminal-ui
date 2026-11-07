@@ -1,10 +1,12 @@
+import Observation
 import Testing
 @testable import TerminalUI
 
 // A display-only table is one Text: a header, a `─` rule and a line per row,
 // each cell padded or cut to its column. These tests pin that output down
 // exactly, so a table that takes a selection is built beside it without
-// moving a cell of it.
+// moving a cell of it. A table given a selection draws its rows through a
+// List, under a header that stays put, lined up after the list's cursor.
 
 private struct Process: Identifiable {
     let id: Int
@@ -36,6 +38,16 @@ private let rows = [
     "zsh      sleep    0.1",
     "launchd   run   100.0",
 ]
+
+/// Enough rows to scroll a window of a few.
+private let many = (0..<10).map { Process(id: $0 + 10, name: "proc\($0)", state: "run", cpu: "\($0)") }
+
+@Observable
+private final class Selecting {
+    var selected: Int?
+    init(_ selected: Int? = nil) { self.selected = selected }
+    var binding: Binding<Int?> { Binding(get: { self.selected }, set: { self.selected = $0 }) }
+}
 
 /// A view drawn frame by frame, as the runtime draws it: rebuilt, laid out,
 /// rendered, and its focus index rebuilt, with the first control focused at
@@ -77,9 +89,13 @@ private final class Screen<Content: TerminalView> {
     }
 
     var tabStops: Int { engine.collectFocusables(root).count }
+
+    func press(_ key: Key) {
+        _ = engine.routeKeyEvent(KeyEvent(key: key), root: root)
+    }
 }
 
-@Suite("A table lists rows in aligned columns")
+@Suite("A table lists rows in aligned columns, and can take a selection")
 @MainActor
 struct TableSelectionTests {
 
@@ -139,5 +155,102 @@ struct TableSelectionTests {
         #expect(screen.tabStops == 0)
         #expect(screen.engine.keyHandlers.isEmpty)
         #expect(screen.engine.clickHandlers.isEmpty)
+    }
+
+    // MARK: - Selection
+
+    @Test func aTableWithASelectionIsOneTabStop() {
+        let selecting = Selecting(1)
+        let screen = Screen(Table(processes, selection: selecting.binding, visibleCount: 4, columns: columns))
+        screen.frame()
+        #expect(screen.tabStops == 1)
+    }
+
+    @Test func theBoundRowWearsTheCursorUnderAHeaderLinedUpWithTheCells() {
+        let selecting = Selecting(2)
+        let screen = Screen(Table(processes, selection: selecting.binding, visibleCount: 4, columns: columns))
+        let drawn = screen.frame()
+        #expect(Array(drawn.prefix(6)) == [
+            "  " + header,
+            "  " + rule,
+            "  " + rows[0],
+            "▸ " + rows[1],
+            "  " + rows[2],
+            "",
+        ], "\(drawn)")
+    }
+
+    @Test func theArrowsAndPagingKeysMoveTheSelection() {
+        let selecting = Selecting(10)
+        let screen = Screen(Table(many, selection: selecting.binding, visibleCount: 4, columns: columns))
+        screen.frame()
+        screen.press(.down)
+        #expect(selecting.selected == 11)
+        screen.frame()
+        screen.press(.up)
+        #expect(selecting.selected == 10)
+        screen.frame()
+        screen.press(.pageDown)
+        #expect(selecting.selected == 14)
+        screen.frame()
+        screen.press(.end)
+        #expect(selecting.selected == 19)
+    }
+
+    @Test func scrolledTheHeaderStaysOnTopWithTheIndicatorUnderIt() {
+        let selecting = Selecting(10)
+        let table = Table(many, selection: selecting.binding, visibleCount: 4, columns: columns)
+        let screen = Screen(table)
+        screen.frame()
+        screen.press(.end)
+        let drawn = screen.frame()
+        #expect(Array(drawn.prefix(6)) == [
+            "  " + header,
+            "  " + rule,
+            "  ▲ 7 more",
+            "  " + table.rowLine(many[7]),
+            "  " + table.rowLine(many[8]),
+            "▸ " + table.rowLine(many[9]),
+        ], "\(drawn)")
+    }
+
+    @Test func withoutAVisibleCountTheRowsFillTheRoomUnderTheHeader() {
+        let selecting = Selecting(10)
+        let table = Table(many, selection: selecting.binding, columns: columns)
+        let screen = Screen(height: 8, table)
+        let drawn = screen.frame()
+        #expect(drawn == [
+            "  " + header,
+            "  " + rule,
+            "▸ " + table.rowLine(many[0]),
+            "  " + table.rowLine(many[1]),
+            "  " + table.rowLine(many[2]),
+            "  " + table.rowLine(many[3]),
+            "  " + table.rowLine(many[4]),
+            "  ▼ 5 more",
+        ], "\(drawn)")
+    }
+
+    @Test func anEmptyTableWithASelectionIsStillATabStop() {
+        let selecting = Selecting()
+        let screen = Screen(Table([Process](), selection: selecting.binding, visibleCount: 3, columns: columns))
+        let drawn = screen.frame()
+        #expect(screen.tabStops == 1)
+        #expect(drawn.first == "  " + header, "\(drawn)")
+    }
+
+    @Test func narrowerThanItsColumnsEachLineIsCutNotWrapped() {
+        let selecting = Selecting(1)
+        let screen = Screen(width: 12, Table(processes, selection: selecting.binding, visibleCount: 3,
+                                             columns: columns))
+        let drawn = screen.frame()
+        #expect(Array(drawn.prefix(6)) == [
+            "  Name     S",
+            "  ──────── ─",
+            "▸ kernel_…",
+            "  zsh      s",
+            "  launchd",
+            "",
+        ], "\(drawn)")
     }
 }
