@@ -399,9 +399,17 @@ public final class AttributeGraph: @unchecked Sendable {
                 // descendant body re-evaluations during update see the
                 // ancestor's environment value, not the default.
                 withEnvironmentApplied(of: node) {
-                    // Update base child
+                    // A base child minted under another slot is another
+                    // view: `.id` with a new value names a new one.
                     if let child = node.children.first {
-                        modified.updateChild(child, graph: self)
+                        let slot = Self.baseChildComponent(of: newEffect)
+                        if child.id.path.last == slot {
+                            modified.updateChild(child, graph: self)
+                        } else {
+                            replaceChild(at: 0, of: node) {
+                                modified.constructChildNode(id: node.id.appending(slot), graph: self)
+                            }
+                        }
                     }
 
                     // Handle extra child (overlay/background/modal)
@@ -622,16 +630,9 @@ public final class AttributeGraph: @unchecked Sendable {
                 if canUpdateInPlace(existing, from: newChild) {
                     updateAnyView(existing, from: newChild)
                 } else {
-                    // Type mismatch — rebuild this child. The outgoing
-                    // subtree leaves the tree, so fire onDisappear before
-                    // we forget about it.
-                    fireDisappear(on: existing)
-                    let childID = node.id.appending(.index(i))
-                    let childNode = constructAnyView(newChild, id: childID)
-                    childNode.parent = node
-                    node.children[i] = childNode
-                    invalidateMeasurementCache(from: node)
-                    changed = true
+                    replaceChild(at: i, of: node) {
+                        constructAnyView(newChild, id: node.id.appending(.index(i)))
+                    }
                 }
             }
         } else {
@@ -956,6 +957,21 @@ public final class AttributeGraph: @unchecked Sendable {
             // on) doesn't double-fire from the stale capture.
             node.onDisappearAction = nil
         }
+    }
+
+    /// Swap `parent.children[index]` for a newly built subtree, tearing the
+    /// old one down first.
+    ///
+    /// `build` is a closure because building is not inert: it runs the new
+    /// subtree's `onAppear` and starts its tasks, and the outgoing subtree's
+    /// `onDisappear` must come first, as when an `if` switches branch.
+    func replaceChild(at index: Int, of parent: AttributeNode, with build: () -> AttributeNode) {
+        fireDisappear(on: parent.children[index])
+        let fresh = build()
+        fresh.parent = parent
+        parent.children[index] = fresh
+        invalidateMeasurementCache(from: parent)
+        changed = true
     }
 
     /// Check if an existing node is structurally compatible with a new view.
@@ -1491,12 +1507,9 @@ public final class AttributeGraph: @unchecked Sendable {
             case .leaf(let view, _) where canUpdateInPlace(existing, from: view):
                 updateAnyView(existing, from: view)
             default:
-                fireDisappear(on: existing)
-                let childNode = constructSplitNode(child, id: existing.id, state: state, path: path + [i])
-                childNode.parent = node
-                node.children[i] = childNode
-                invalidateMeasurementCache(from: node)
-                changed = true
+                replaceChild(at: i, of: node) {
+                    constructSplitNode(child, id: existing.id, state: state, path: path + [i])
+                }
             }
         }
     }
@@ -1518,6 +1531,17 @@ public final class AttributeGraph: @unchecked Sendable {
         return node
     }
 
+    /// The path step a modifier's base view (child 0) is minted under.
+    ///
+    /// `.id` puts its value in the path, so the view's identity — its
+    /// `@TerminalState`, focus, hover, lifecycle — follows the value: a new
+    /// value is a new view. The `.id` node itself keeps its structural place,
+    /// where scroll targeting looks for it.
+    static func baseChildComponent(of effect: ModifierEffect) -> PathComponent {
+        if case .explicitID(let id) = effect { return .explicit(id) }
+        return .index(0)
+    }
+
     func constructModifier(_ modified: any _GraphModified, id: NodeID) -> AttributeNode {
         let graphModifier = modified.graphEffect()
         let effect = graphModifier.effect
@@ -1537,8 +1561,7 @@ public final class AttributeGraph: @unchecked Sendable {
         // Push the mutation, build, then restore — descendants of any
         // sibling subtree are unaffected.
         let previousEnvironment = withEnvironmentApplied(of: node) {
-            // Base view child (child[0])
-            let childID = id.appending(.index(0))
+            let childID = id.appending(Self.baseChildComponent(of: effect))
             let childNode = modified.constructChildNode(id: childID, graph: self)
             childNode.parent = node
             node.children.append(childNode)

@@ -136,8 +136,11 @@ public struct FrameModifier: ViewModifier {
     public var alignment: Alignment = .topLeading
 }
 
-/// Payload of `.id(_:)` — explicit node identity for scroll targeting and
-/// reconciliation.
+/// Payload of `.id(_:)` — explicit identity for the view it wraps.
+///
+/// The graph puts ``id`` in the wrapped view's node path, so a new value
+/// names a new view, built fresh in place of the old one. The `.id` itself
+/// keeps its place, which is where `.scrollPosition(id:)` finds it.
 public struct IDModifier: ViewModifier {
     @_documentation(visibility: internal)
     public typealias ModifierType = AnyHashable
@@ -293,10 +296,30 @@ extension TerminalView {
         ))
     }
 
-    /// Give the view an explicit identity. When the id changes between
-    /// frames the graph treats the subtree as a new view — state resets and
-    /// `onAppear` fires again — instead of updating it in place. Use it to
-    /// force a fresh start, or to make identity explicit in dynamic content.
+    /// Give the view an explicit identity.
+    ///
+    /// A different value from one body run to the next makes this a new
+    /// view, as in SwiftUI. The old one leaves as an `if` branch that
+    /// switches away does: `onDisappear` runs for every view in it, innermost
+    /// first, its tasks are cancelled, and keyboard focus inside it is given
+    /// up. The new one is built from scratch: its `@TerminalState` starts at
+    /// its initial values, its `onAppear` runs, and its `.task` starts.
+    ///
+    /// ```swift
+    /// // Each new document starts its editor over: no leftover scroll
+    /// // offset, selection or draft.
+    /// Editor(document: document)
+    ///     .id(document.url)
+    /// ```
+    ///
+    /// The id applies to the view it is called on. Modifiers written after
+    /// it belong to the view around it, and are kept: in
+    /// `Row().id(key).onAppear { … }` that `onAppear` does not run again.
+    ///
+    /// The same id updates the view in place, so tagging each row with its
+    /// own key, as `.scrollPosition(id:)` needs, costs nothing. An id made
+    /// new on every body run, such as `UUID()`, rebuilds the view on every
+    /// body run.
     public func id<ID: Hashable>(_ id: ID) -> ModifiedView<Self, IDModifier> {
         ModifiedView(content: self, modifier: IDModifier(id: AnyHashable(id)))
     }

@@ -702,8 +702,9 @@ public enum ModifierEffect {
     /// share when multiple flex siblings compete for the remainder.
     case flexible(axes: FrameAxes, grow: Int)
     /// Splices a user-provided identity (`.id(...)`) into the child's node
-    /// path so state and focus follow the value, not the position. No
-    /// visual effect.
+    /// path so state and focus follow the value, not the position: a child
+    /// minted under another value is replaced, not updated. The node itself
+    /// stays put, for scroll targeting. No visual effect.
     case explicitID(AnyHashable)
     /// Renders the base, then the second child on top of it, placed by
     /// `alignment` within the base view's own frame.
