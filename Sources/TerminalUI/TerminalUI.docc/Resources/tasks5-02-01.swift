@@ -125,9 +125,9 @@ struct StatsPane: TerminalView {
         VStack {
             Text("Stats").bold().foreground(.cyan)
             Divider()
-            // Table is display-only — no cursor, no focus — which is what a
-            // stats screen wants. The list keeps the interaction; this tab
-            // shows the same rows as exact, aligned values.
+            // Given no selection, a Table is display-only — no cursor, no
+            // focus — which is what a stats screen wants. The list keeps the
+            // interaction; this tab shows the same rows as exact, aligned values.
             Table(store.tasks, columns: [
                 TableColumn("Task", width: 30) { $0.title },
                 TableColumn("Status", width: 6) { $0.done ? "done" : "open" },
