@@ -317,7 +317,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// The environment's `\.killBuffer` in every frame: one for the app, so
     /// a kill in one input can be yanked into another.
     private let killBuffer = KillBuffer()
-    /// The environment's `\.cursorFlash` in every frame.
+    /// The environment's `\.cursorFlash` in every frame, told of each frame
+    /// drawn: its moment starts once the lit cursor is on screen.
     private let cursorFlash = CursorFlash()
     /// The user's own bindings, laid over every frame's keymap.
     private var userKeymap: UserKeymap
@@ -830,6 +831,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         try? await Task.sleep(for: remaining)
                     }
                 }
+                // A loop with work waiting suspends nowhere above: the wait
+                // returns at once, and a frame longer than its interval
+                // leaves no sleep. Every other job on the main actor — a
+                // `.task`, a cursor flash going out — then waited for the
+                // loop to fall idle, which a busy app or a loaded machine
+                // put off indefinitely. This gives them a turn each pass.
+                await Task.yield()
             }
         }
 
@@ -1110,6 +1118,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 )
             }
         }
+        cursorFlash.frameDrawn()
     }
 
     private func renderDiffFrameBody(buildStart: UInt64, structuralRebuild: Bool, needsWork: Bool) {
