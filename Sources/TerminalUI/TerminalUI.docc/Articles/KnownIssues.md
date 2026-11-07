@@ -15,6 +15,26 @@ Terminal emulators, multiplexers and window managers also keep some
 combinations for themselves — Ctrl+Tab, Cmd+anything on macOS, tmux's prefix
 — and those never reach the app.
 
+## State changed on another thread
+
+Change the `@Observable` state your views read on the main actor. A change
+made on another thread is memory-safe — it never races the graph — but it
+can be missed. Observation starts watching what a `body` read only once
+that `body` returns, and it reports a change before the new value is
+stored. So a change that lands while a `body` reading it runs, or between
+Observation's notice and its store, is not shown until something else
+redraws that view.
+
+Most code already runs on the main actor: `.task` closures, the
+``TerminalTimer`` ticks `onEvent(_:)` receives, `onEvent(_:)` itself and
+every view's event handlers. Work that runs elsewhere — a detached task, a
+callback from another library — hands its result back:
+
+```swift
+let result = await compute()
+await MainActor.run { model.result = result }
+```
+
 ## The mouse the terminal keeps
 
 Most terminals select text on Shift+click and Shift+drag, and some on

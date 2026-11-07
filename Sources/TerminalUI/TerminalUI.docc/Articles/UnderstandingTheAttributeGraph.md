@@ -60,6 +60,15 @@ The first `Text` in a `VStack` is always node \#1. No ambiguity. No diffing need
 3. Only those bodies are re-invoked
 4. Result is compared against previous result for that specific view — not the whole tree
 
+TerminalUI tracks each body with `withObservationTracking`, which collects
+what the body reads while it runs and installs its observers only when it
+returns, and which reports a change before the new value is stored. On the
+main actor neither gap can open: the body and the change cannot interleave.
+A change made on another thread can land inside one — while a body reading
+it runs, or between the notice and the store — and is then not shown until
+something else redraws that view. Hence the rule that observed state
+changes on the main actor (<doc:KnownIssues>).
+
 ## The Layout Protocol (Public Since iOS 16)
 
 ```swift

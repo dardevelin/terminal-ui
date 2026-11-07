@@ -28,7 +28,9 @@ public protocol TerminalView {
     /// The view's content. Must be a pure function of the view's stored
     /// properties and observable state — the runtime re-evaluates it whenever
     /// that state changes, and reads through `@Observable` models are what
-    /// register the dependency.
+    /// register the dependency. Change that state on the main actor: a change
+    /// made on another thread while the body runs is not seen (see
+    /// <doc:KnownIssues>).
     @TerminalViewBuilder var body: Body { get }
 }
 
