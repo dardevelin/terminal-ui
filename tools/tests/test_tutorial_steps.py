@@ -25,9 +25,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import check_tutorial_steps as checker  # noqa: E402
+import tempfile  # noqa: E402
 import record_media  # noqa: E402
 from terminalui.cases import run_cases  # noqa: E402
-from terminalui.tutorial import STEPS, Click, Press, Stage, Step, Type, step_files  # noqa: E402
+from terminalui.tutorial import (  # noqa: E402
+    STEPS, Click, Press, Stage, Step, Type, package_identity, step_files, write_package,
+)
 
 
 def every_step_file_is_listed_once() -> None:
@@ -86,6 +89,15 @@ def a_click_lands_where_its_text_is_drawn() -> None:
     assert checker.locate("Tasks\n  ☐ Ship it\n", "Ship it") == (4, 1)
 
 
+def the_steps_name_the_checkout_as_swiftpm_does() -> None:
+    assert package_identity(Path("/work/.claude/worktrees/Agent-1")) == "agent-1"
+    with tempfile.TemporaryDirectory() as scratch:
+        write_package(Path(scratch))
+        manifest = (Path(scratch) / "Package.swift").read_text()
+    root = Path(__file__).resolve().parents[2]
+    assert f'package: "{package_identity(root)}"' in manifest, manifest
+
+
 CASES: list[tuple[str, Callable[[], None]]] = [
     ("every step file is listed once", every_step_file_is_listed_once),
     ("every preview can be recorded", every_preview_can_be_recorded),
@@ -96,6 +108,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("a preview is driven by the keys up to its stage", a_preview_is_driven_by_the_keys_up_to_its_stage),
     ("a relaunch starts a new run", a_relaunch_starts_a_new_run),
     ("a click lands where its text is drawn", a_click_lands_where_its_text_is_drawn),
+    ("the steps name the checkout as SwiftPM does", the_steps_name_the_checkout_as_swiftpm_does),
 ]
 
 
