@@ -533,8 +533,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     .gradient(from: .rgb(124, 92, 255), to: .rgb(61, 219, 217))
                 """)
         case .morseTicker: return PageInfo(id: self, category: .charts, name: "MorseTicker",
-            summary: "Animated Morse code signal visualizer.",
-            code: "MorseTicker(\"SOS\", scrollOffset: $offset, width: 40)")
+            summary: "Animated Morse code signal visualizer. It moves when its offset does: here the page's own .task advances it.",
+            code: """
+                MorseTicker("SOS", scrollOffset: $offset, width: 40)
+                    .task {
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .milliseconds(80))
+                            offset += 1
+                        }
+                    }
+                """)
 
         // ───── Modifiers ─────
         case .foreground: return PageInfo(id: self, category: .modifiers, name: ".foreground",

@@ -1213,6 +1213,35 @@ def storybook_morseticker_renders_sos(app: Client) -> None:
     assert_true(has_braille, "MorseTicker didn't render any braille ticker glyphs")
 
 
+def storybook_morseticker_scrolls_on_its_own(app: Client) -> None:
+    """The page calls the ticker animated, and the ticker moves only when
+    its app advances the offset: the page's own work has to, with no key
+    pressed."""
+    app.goto_page("MorseTicker")
+    first = app.preview_text()
+    assert_true(app.wait_until(lambda client: client.preview_text() != first),
+                f"the MorseTicker preview did not move on its own: {first!r}")
+
+
+# The README's recording: assets/demo.tape's 1020x700 window at font size 15,
+# less its padding, holds 97 columns and 37 rows.
+RECORDING_COLUMNS, RECORDING_ROWS = 97, 37
+
+
+def storybook_every_page_fits_the_recording_window(app: Client) -> None:
+    """Each page's Preview box closes on screen in the window the README
+    records, so no page the walk shows has its preview cut off by the
+    window's foot."""
+    app.resize_terminal(RECORDING_COLUMNS, RECORDING_ROWS)
+    cut: list[str] = []
+    for title in app.storybook_pages():
+        app.goto_page(title)
+        left, top, _, height = app.preview_rect()
+        if app.text(rect=(left, top + height - 1, 1, 1)) != "╰":
+            cut.append(title)
+    assert_true(not cut, f"pages whose preview runs past row {RECORDING_ROWS}: {cut}")
+
+
 def storybook_foreground_renders_colored_words(app: Client) -> None:
     """`.foreground` modifier page: red/green/blue side by side. Glyph
     text is what we assert; colour-byte verification is out of scope
@@ -3061,6 +3090,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.inspector_opens_beside_the_content_and_closes", "Storybook",
               storybook_inspector_opens_beside_the_content_and_closes),
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
+    SmokeCase("storybook.morseticker_scrolls_on_its_own", "Storybook", storybook_morseticker_scrolls_on_its_own),
+    SmokeCase("storybook.every_page_fits_the_recording_window", "Storybook",
+              storybook_every_page_fits_the_recording_window),
     SmokeCase("storybook.foreground_renders_colored_words", "Storybook", storybook_foreground_renders_colored_words),
     SmokeCase("storybook.bold_distinguishes_styles", "Storybook", storybook_bold_distinguishes_styles),
     SmokeCase("storybook.border_wraps_text", "Storybook", storybook_border_wraps_text),
