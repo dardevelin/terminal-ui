@@ -543,18 +543,35 @@ class Client:
         ``"OK clicked" in app.cells().text()``."""
         return self.cells(rect=rect).text()
 
-    # Preview-pane geometry in Storybook: 28-col sidebar + 1-col divider,
-    # so preview starts around col 30. Y-range after header + Code block
-    # lands roughly at rows 22–36. Centralising the magic numbers means
-    # smoke cases stop caring about layout drift.
-    PREVIEW_RECT: Sequence[int] = (28, 20, 80, 18)
+    # Where a Storybook page's detail starts: the 28-column sidebar, its
+    # divider, and the detail's one-cell padding.
+    _STORYBOOK_DETAIL_COLUMN = 30
+
+    def preview_rect(self) -> tuple[int, int, int, int]:
+        """The Storybook preview box, its border included, found by its own
+        corners under the page's ``Preview`` label: the page gives the
+        preview the height it needs and the code pane the rest, so where
+        the box sits follows from the page. A box the window cuts off runs
+        to the window's foot."""
+        lines = self.text().splitlines()
+        column = self._STORYBOOK_DETAIL_COLUMN
+        label = next((row for row, line in enumerate(lines) if line[column:].strip() == "Preview"), None)
+        if label is None or label + 1 >= len(lines) or "╭" not in lines[label + 1]:
+            raise RuntimeError(f"no Preview box on page {self.storybook_page_title()!r}")
+        top = label + 1
+        left = lines[top].index("╭")
+        right = lines[top].index("╮", left)
+        # By column, since a preview may draw boxes of its own.
+        bottom = next((row for row in range(top + 1, len(lines)) if lines[row][left:left + 1] == "╰"),
+                      len(lines) - 1)
+        return left, top, right - left + 1, bottom - top + 1
 
     def preview_cells(self) -> CellSlice:
-        """Snapshot the preview-pane region the Storybook layout hands
-        each page. Keeps assertions scoped to the page's rendered output
-        and avoids matching substrings in the Code block or sidebar.
-        Storybook-specific by convention; other apps call ``cells()``."""
-        return self.cells(rect=self.PREVIEW_RECT)
+        """Snapshot the Storybook page's preview box. Keeps assertions
+        scoped to the page's rendered output and avoids matching
+        substrings in the Code block or sidebar. Storybook-specific by
+        convention; other apps call ``cells()``."""
+        return self.cells(rect=self.preview_rect())
 
     def preview_text(self) -> str:
         return self.preview_cells().text()
@@ -564,12 +581,11 @@ class Client:
         containing ``after``, and the screen row its first content row
         sits on.
 
-        ``PREVIEW_RECT`` above is a constant, so it holds only while every
-        page's summary and code block stay the length they were when it
-        was written; a page that grows either one slides its preview out
-        of that rect and the assertions silently read the wrong region.
-        Finding the box by its own corners costs one extra scan and
-        survives that drift."""
+        A fixed rect holds only while every page's summary and code
+        block stay the length they were when it was written; a page that
+        grows either one slides its box out of that rect and the
+        assertions silently read the wrong region. Finding the box by its
+        own corners costs one extra scan and survives that drift."""
         lines = self.text().splitlines()
         start = next((i for i, line in enumerate(lines) if after in line), None)
         if start is None:
