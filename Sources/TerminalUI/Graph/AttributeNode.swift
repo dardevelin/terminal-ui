@@ -121,6 +121,13 @@ public class AttributeNode: @unchecked Sendable {
     /// carries no identity and so runs once for the node's lifetime.
     public var lifecycleTaskID: AnyHashable?
 
+    /// Set when the node leaves the tree, by the walk that runs its
+    /// `onDisappear`. Its `parent` is weak and outlives the removal while the
+    /// old parent stays in the tree, so it cannot tell a dropped node from an
+    /// attached one: an invalidation still pending would run the body again
+    /// and restart its task.
+    var isRetired = false
+
     /// Last `EquatableTerminalView` value cached for the user-Equatable
     /// fast path in `updateNode`. Stored as `Any` so the type-erased
     /// reconciler can compare new vs cached without naming the generic

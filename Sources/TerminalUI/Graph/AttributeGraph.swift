@@ -94,7 +94,7 @@ public final class AttributeGraph: @unchecked Sendable {
 
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {
-        for (_, posted) in invalidations.take() {
+        for (_, posted) in invalidations.take() where !posted.isRetired {
             // A ForEach posts itself for what its row closure read (see
             // `trackingRow`); the body holding it is what runs again.
             var node = posted
@@ -109,7 +109,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// A node a reconciliation replaced no longer belongs to the tree, and
     /// re-evaluating it would only feed a subtree nothing renders.
     private func isAttached(_ node: AttributeNode) -> Bool {
-        node.parent != nil || node === root
+        !node.isRetired && (node.parent != nil || node === root)
     }
 
     /// Re-evaluate every node that became dirty since the last drain.
@@ -941,6 +941,7 @@ public final class AttributeGraph: @unchecked Sendable {
         for child in node.children {
             fireDisappear(on: child)
         }
+        node.isRetired = true
         // Work a view started belongs to that view: when it leaves the tree
         // the task goes with it, or a screen the user navigated away from
         // keeps polling and keeps waking the render loop.

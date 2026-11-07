@@ -1,3 +1,4 @@
+import Observation
 import Testing
 @testable import TerminalUI
 
@@ -142,6 +143,29 @@ private struct Counters: TerminalView {
     }
 }
 
+@Observable
+private final class Feed {
+    var tick = 0
+}
+
+private struct TickRow: TerminalView {
+    let id: Int
+    let feed: Feed
+    var body: some TerminalView {
+        Text("\(id): \(feed.tick)").task { await waitForCancellation() }
+    }
+}
+
+private struct Ticks: TerminalView {
+    let ids: [Int]
+    let feed: Feed
+    var body: some TerminalView {
+        VStack {
+            ForEach(ids.map(Item.init)) { item in TickRow(id: item.id, feed: feed) }
+        }
+    }
+}
+
 @Suite("A row a ForEach drops runs its onDisappear and stops its task")
 @MainActor
 struct ForEachLifecycleTests {
@@ -244,5 +268,28 @@ struct ForEachLifecycleTests {
         graph.update(from: Logged(ids: [2], log: log))
 
         #expect(log.entries == ["disappear 1", "appear 2"])
+    }
+
+    /// The row still had its parent, held weakly by a ForEach that is still
+    /// in the tree, so it passed for attached: the drain after the update
+    /// that removed it ran its body for what it read, and started its task
+    /// again.
+    @Test func aRemovedRowDoesNotRunAgainForWhatItRead() {
+        let feed = Feed()
+        let graph = AttributeGraph()
+        graph.update(from: Ticks(ids: [1, 2, 3], feed: feed))
+        guard let removed = taskNodes(in: rows(of: graph)[1]).first else {
+            Issue.record("the row starts no task")
+            return
+        }
+
+        feed.tick += 1
+        graph.update(from: Ticks(ids: [1, 3], feed: feed))
+        #expect(removed.lifecycleTask == nil)
+        let evaluated = graph.bodyEvaluationCount
+        graph.drain()
+
+        #expect(graph.bodyEvaluationCount == evaluated, "a row that left ran its body again")
+        #expect(removed.lifecycleTask == nil, "a row that left started its task again")
     }
 }
