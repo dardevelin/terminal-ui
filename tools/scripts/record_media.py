@@ -29,6 +29,7 @@ Needs vhs (with ttyd and ffmpeg) and ImageMagick.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -110,16 +111,41 @@ CARD_STEP = {
 }
 
 
-def run(command: list[str], cwd: Path = REPO_ROOT) -> None:
+# What a terminal tells the programs it runs about itself. vhs's shell
+# inherits them from the terminal this script was started in, and an app
+# would then detect that terminal's features rather than xterm.js's.
+HOST_TERMINAL_VARIABLES = {
+    "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "TERMINFO",
+    "LC_TERMINAL", "LC_TERMINAL_VERSION", "VTE_VERSION", "WT_SESSION", "WT_PROFILE_ID",
+    "TMUX", "TMUX_PANE", "STY", "COLORFGBG",
+}
+HOST_TERMINAL_PREFIXES = ("ITERM_", "KITTY_", "WEZTERM_", "GHOSTTY_", "ALACRITTY_", "KONSOLE_")
+
+
+def recording_environment(host: dict[str, str]) -> dict[str, str]:
+    """The environment vhs runs with: the host's, less what describes the
+    host's terminal. ttyd sets ``TERM`` itself; ``COLORTERM`` says what
+    xterm.js draws, 24-bit colour, whatever the host's says."""
+    environment = {key: value for key, value in host.items()
+                   if key not in HOST_TERMINAL_VARIABLES and not key.startswith(HOST_TERMINAL_PREFIXES)}
+    environment["COLORTERM"] = "truecolor"
+    return environment
+
+
+def run(command: list[str], cwd: Path = REPO_ROOT, env: dict[str, str] | None = None) -> None:
     print("$", " ".join(command), flush=True)
-    subprocess.run(command, cwd=cwd, check=True)
+    subprocess.run(command, cwd=cwd, check=True, env=env)
+
+
+def run_vhs(tape: Path | str) -> None:
+    run(["vhs", str(tape)], env=recording_environment(dict(os.environ)))
 
 
 def vhs(tape: str, name: str) -> None:
     path = WORK / "tapes" / f"{name}.tape"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(tape)
-    run(["vhs", str(path)])
+    run_vhs(path)
 
 
 def shrink(png: Path) -> None:
@@ -149,7 +175,7 @@ def record_preview(step: Step) -> None:
 
 
 def record_gif(chapter: int) -> None:
-    run(["vhs", str(RECORDINGS / f"demo-ch{chapter}.tape")])
+    run_vhs(RECORDINGS / f"demo-ch{chapter}.tape")
 
 
 def make_card(chapter: int) -> None:
@@ -202,8 +228,8 @@ def main() -> int:
         # Apart from .build, whose lock a developer's own `swift run` holds.
         run(["swift", "build", "-c", "release", "--scratch-path", str(WORK / "app")])
         run(["swift", "build", "--scratch-path", str(WORK / "app")])
-        run(["vhs", "assets/demo.tape"])
-        run(["vhs", "assets/debug.tape"])
+        run_vhs("assets/demo.tape")
+        run_vhs("assets/debug.tape")
     return 0
 
 
