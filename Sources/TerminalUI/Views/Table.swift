@@ -168,18 +168,13 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
         self.visibleCount = visibleCount
     }
 
-    /// The columns a ``List`` row's `▸ ` cursor, or the blanks standing in
-    /// for it, takes before the row: the header is pushed past them to stay
-    /// over its cells.
-    private static var listCursorWidth: Int { 2 }
-
     /// Display-only, precomputed as single multi-line Text — one node, one
     /// measurement. Selectable, a List of row lines under the header.
     @_documentation(visibility: internal)
     public var body: some TerminalView {
         if let selection {
             VStack(spacing: 0) {
-                let header = headerLines(indent: Self.listCursorWidth)
+                let header = headerLines(indent: ListRowMarker.width)
                 if !header.isEmpty {
                     Text(header.joined(separator: "\n"))
                 }
