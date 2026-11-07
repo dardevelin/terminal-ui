@@ -26,26 +26,13 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
 from terminalui.cases import run_cases  # noqa: E402
+from terminalui.storybook import page_order, pages  # noqa: E402
 
 DEMO_TAPE = REPO_ROOT / "assets" / "demo.tape"
-STORYBOOK_PAGES = REPO_ROOT / "Examples" / "Storybook" / "StorybookPage.swift"
 
 # vhs: `Down`, `Down 8`, `Down@250ms 8` — the count defaults to one.
 MOVE = re.compile(r"^(Up|Down)(?:@\S+)?(?:\s+(\d+))?\s*$")
 LANDING = re.compile(r"^#\s*page:\s*(\w+)\s*$")
-
-
-def page_order(swift: str) -> list[str]:
-    """The cases of ``PageID``, in declaration order."""
-    body = swift.split("enum PageID", 1)[1]
-    cases: list[str] = []
-    for line in body.splitlines()[1:]:
-        stripped = line.strip()
-        if stripped.startswith("var ") or stripped.startswith("static "):
-            break
-        if stripped.startswith("case "):
-            cases += [name.strip() for name in stripped.removeprefix("case ").split(",")]
-    return cases
 
 
 def walk_problems(tape: str, pages: list[str]) -> list[str]:
@@ -77,8 +64,7 @@ def walk_problems(tape: str, pages: list[str]) -> list[str]:
 
 
 def the_demo_lands_on_the_pages_it_names() -> None:
-    pages = page_order(STORYBOOK_PAGES.read_text())
-    problems = walk_problems(DEMO_TAPE.read_text(), pages)
+    problems = walk_problems(DEMO_TAPE.read_text(), pages())
     assert not problems, "\n".join(problems)
 
 

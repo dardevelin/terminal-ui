@@ -83,6 +83,9 @@ python3 tools/scripts/check_api_compat.py  # public API vs the last release (own
 python3 tools/scripts/check_doc_pages.py   # every published doc page says something (.build-docs/)
 python3 tools/scripts/check_tutorial_steps.py  # every tutorial step builds, warning-free, and does
                                                # what its captions say (.build-tutorial/)
+python3 tools/scripts/check_vhs_compat.py [build_dir]  # local only, needs vhs: every Storybook page
+                                               # vhs shows is a frame the framework drew; record_media
+                                               # runs it before recording the README
 
 # The whole local gate in one command: tooling tests and repository checks →
 # build (tests included, warnings as errors) → public API → test → walk →
