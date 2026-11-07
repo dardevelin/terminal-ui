@@ -18,6 +18,34 @@ All notable changes to TerminalUI are documented here. Format based on
   the room under the header. Empty, it is still a Tab stop. A table built
   without a selection draws exactly as before.
 
+### Fixed
+
+- **A `List` or `TreeView` takes rows of any height**, as SwiftUI's `List`
+  does. It counted one line a row when it chose which rows to draw, so a row
+  of several lines — wrapped text, a `VStack` of a title and a detail —
+  overflowed the height it measured, and a size-driven list overflowed its
+  frame. The rows are now measured at the width the list is laid out at,
+  and placed whole until its lines run out, a line held for `▼` while rows
+  remain below; a row taller than the whole list is drawn from its top and
+  cut off. `visibleCount` counts lines, the `▲`/`▼` indicators included, as
+  its documentation said; with one-line rows nothing changes. Selecting a
+  row below the window brings it in whole at the bottom, the wheel stops
+  where the last row is drawn, `▲`/`▼` count rows, and a click on any line
+  of a tall `TreeView` row selects that row. Only the rows around the window
+  are built, so a list of any length still costs what its window does.
+- **A size-driven `List` keeps the selected row in view under its
+  siblings.** A list in a stack is laid out twice in a frame, first at the
+  stack's size and then at its own, and it followed the selection at the
+  first: moving the selection down could leave it below the window.
+
+### Changed
+
+- **PageUp/PageDown in a `List` or `TreeView` move the selection by the rows
+  last drawn**, not by `visibleCount`: with rows taller than a line, a page
+  of lines skipped rows that were never shown. With one-line rows a page is
+  now the rows between the `▲`/`▼` lines — two fewer than before when both
+  show.
+
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
 A minor release: an app written for 2.0 compiles unchanged. The mouse does

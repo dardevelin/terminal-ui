@@ -4,13 +4,18 @@ import Observation
 ///
 /// Renders one row per element with a `▸` cursor on the selected row, plus
 /// gray `▲ N more` / `▼ N more` indicator lines when content extends past
-/// the viewport. Rendering is virtualized — only the visible window is
-/// materialized, so a 100k-row list costs the same as a 20-row one. Arrows,
-/// PageUp/PageDown, Home/End move the selection; clicking a row selects it.
+/// the viewport. A row may be any number of lines tall — wrapped text, a
+/// title over a detail — and is measured at the width the list is laid out
+/// at. Rows are drawn whole while they fit; one taller than the whole list
+/// is drawn from its top and cut off. Rendering is virtualized — only the
+/// rows around the visible window are materialized, so a 100k-row list
+/// costs the same as a 20-row one. Arrows, PageUp/PageDown (by the rows
+/// drawn), Home/End move the selection; clicking any line of a row selects
+/// it.
 ///
-/// Sizing: with an explicit `visibleCount` the list measures exactly that
-/// many rows (the budget includes the indicator lines) and composes cheaply
-/// in nested layouts. Without it, the list sizes to whatever height its
+/// Sizing: with an explicit `visibleCount` the list takes at most that many
+/// lines (the budget includes the indicator lines) and composes cheaply in
+/// nested layouts. Without it, the list sizes to whatever height its
 /// container gives it — which also makes it greedy in stack layout, the way
 /// any size-reading view has to be.
 ///
@@ -41,8 +46,9 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     /// binding to persist scroll position across parent rebuilds or to
     /// drive it programmatically; `nil` lets the list manage it internally.
     public let scroll: Binding<Int>?
-    /// Explicit visible-item cap. `nil` (default) fits to container height;
-    /// set to pin the height cheaply for nested layouts.
+    /// Height budget in lines, the `▲`/`▼` indicator lines included.
+    /// `nil` (default) fits to container height; set to pin the height
+    /// cheaply for nested layouts.
     public let visibleCount: Int?
     /// Builds the row view for one element.
     public let content: (Data.Element) -> Content
@@ -53,9 +59,10 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
     ///   - data: Rows, identified by `Element.ID`.
     ///   - selection: Selected-element ID binding; `nil` for a display-only list.
     ///   - scroll: First-visible-row binding; `nil` for internal management.
-    ///   - visibleCount: Total height budget in rows, including the
+    ///   - visibleCount: Total height budget in lines, including the
     ///     `▲`/`▼` indicator lines; `nil` fits to the container.
-    ///   - content: Row builder, called only for visible elements.
+    ///   - content: Row builder, called only for the rows in and beside the
+    ///     visible window.
     public init(
         _ data: Data,
         selection: Binding<Data.Element.ID?>? = nil,

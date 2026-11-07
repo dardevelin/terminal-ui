@@ -90,9 +90,11 @@ public struct TreeViewStyle: Sendable {
 /// the current row's ID to the app.
 ///
 /// Sizing follows ``List``: an explicit `visibleCount` pins the height to
-/// exactly that many rows (indicator lines included); `nil` fits to the
-/// container, which makes the tree greedy in stack layout. Reach for
-/// ``List`` when data is flat, ``Table`` when it's flat *and* columnar.
+/// exactly that many lines (indicator lines included); `nil` fits to the
+/// container, which makes the tree greedy in stack layout. A row's label may
+/// be any number of lines tall; rows are drawn whole while they fit, and a
+/// click on any line of a row selects it. Reach for ``List`` when data is
+/// flat, ``Table`` when it's flat *and* columnar.
 ///
 /// ```swift
 /// // A file browser pane, as the GitClient example wires it:
@@ -115,7 +117,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     /// Two-way selected-node ID. The tree also tracks its own row cursor;
     /// this binding mirrors it outward so the app can react to selection.
     public let selection: Binding<Data.Element.ID?>?
-    /// Cap on visible rows. `nil` (default) fits to container height.
+    /// Height budget in lines, the `▲`/`▼` indicator lines included.
+    /// `nil` (default) fits to container height.
     public let visibleCount: Int?
     /// Colors and marker glyphs; see ``TreeViewStyle``.
     public let style: TreeViewStyle
@@ -139,10 +142,11 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     ///   - data: Root items.
     ///   - children: Key path to an element's children (`nil` = leaf).
     ///   - selection: Selected-node ID binding; `nil` keeps selection internal.
-    ///   - visibleCount: Height budget in rows including `▲`/`▼` indicator
+    ///   - visibleCount: Height budget in lines including `▲`/`▼` indicator
     ///     lines; `nil` fits to the container.
     ///   - style: Colors and marker glyphs (default `TreeViewStyle.default`).
-    ///   - content: Row label builder, called only for visible nodes.
+    ///   - content: Row label builder, called only for the nodes in and
+    ///     beside the visible window.
     public init(
         _ data: Data,
         children: KeyPath<Data.Element, Data?>,
