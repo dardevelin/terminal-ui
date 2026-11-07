@@ -210,6 +210,9 @@ public final class FocusEngine: @unchecked Sendable {
     }
 
     private func buildIndexRecursive(_ node: AttributeNode, prefersDefaultFocus: Bool = false) {
+        // A row its list keeps past the window is not on screen, so nothing
+        // in it is a Tab stop or takes a key — as if it had not been built.
+        guard !node.isHeldOutOfWindow else { return }
         nodeIndex[node.id] = node
         // Re-register handlers a cached update did not touch. The live loop
         // clears the handler tables each frame and relies on the graph update

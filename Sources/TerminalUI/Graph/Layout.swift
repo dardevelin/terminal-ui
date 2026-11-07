@@ -50,6 +50,10 @@ public enum Layout {
     /// This is the runtime path; tests use it directly via the same
     /// public surface to pin the phase contract.
     public static func measureAndPlace(graph node: AttributeNode, in rect: Rect) {
+        if node.isHeldOutOfWindow {
+            node.rect = Rect(x: rect.x, y: rect.y, width: 0, height: 0)
+            return
+        }
         node.rect = rect
 
         switch node.kind {
@@ -73,6 +77,9 @@ public enum Layout {
                 let size = Size(width: rect.width, height: rect.height)
                 rebuild(size, node)
                 node._lastLaidOutSize = size
+            } else if let rebuild = node.rowWindowRebuilder {
+                rebuild(rect.width)
+                node._lastLaidOutSize = Size(width: rect.width, height: rect.height)
             }
             for child in node.children {
                 measureAndPlace(graph: child, in: rect)

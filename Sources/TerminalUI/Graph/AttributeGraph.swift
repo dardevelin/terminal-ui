@@ -27,7 +27,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// doing any frame work — false means the frame is skipped entirely,
     /// which is what makes idle cost zero.
     public var hasDirtyNodes: Bool {
-        invalidations.hasPending || !dirtyQueue.isEmpty
+        invalidations.hasPending || !dirtyQueue.isEmpty || !windowCommits.isEmpty
     }
 
     /// Creates an empty graph; the first ``update(from:)`` builds the tree.
@@ -67,6 +67,17 @@ public final class AttributeGraph: @unchecked Sendable {
     /// applied to the bound environment, and applying the chain again on top
     /// would run a `transformEnvironment` edit twice.
     private(set) var baseEnvironment = EnvironmentValues()
+    /// What each list's window changes in its own state — its offset, the
+    /// selection it last followed — kept until the frame is drawn.
+    ///
+    /// A list is laid out more than once in a frame: the layout pass hands a
+    /// stack's children the whole stack before render gives each its own
+    /// slot. Written as each pass ran, the first pass's offset was what the
+    /// last read, and the window followed the selection for a height it was
+    /// never drawn at. Kept here, every pass reads the same state, the last —
+    /// the one drawn — is what is kept, and the next update writes it.
+    private var windowCommits: [ObjectIdentifier: () -> Void] = [:]
+
     /// Re-entrancy guard: a `drain()` reached from inside a drain's body
     /// evaluation returns at once and leaves the work to the outer one.
     private var draining: Bool = false
@@ -101,6 +112,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// outside the dirty nodes themselves — that's the parity claim.
     @discardableResult
     public func drain() -> Bool {
+        commitWindows()
         applyInvalidations()
         guard !dirtyQueue.isEmpty else { return false }
         guard !draining else {
@@ -194,6 +206,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Returns true if any node values actually changed.
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
+        commitWindows()
         applyInvalidations()
         updateGeneration += 1
         baseEnvironment = GraphContext.currentEnvironment ?? EnvironmentValues()
@@ -236,6 +249,7 @@ public final class AttributeGraph: @unchecked Sendable {
     private func stampSubtree(_ node: AttributeNode) -> (containsViewBody: Bool, readsEnvironment: Bool) {
         var containsViewBody = false
         var readsEnvironment = !node.environmentReads.isEmpty || node.geometryRebuilder != nil
+            || node.rowWindowRebuilder != nil
         if case .viewBody = node.kind {
             containsViewBody = true
         }
@@ -459,6 +473,14 @@ public final class AttributeGraph: @unchecked Sendable {
         if let geom = view as? any _GraphGeometryReader {
             node.readerSizing = geom.sizing
             node.geometryRebuilder = makeGeometryRebuilder(geom, childID: node.id.appending(.index(0)))
+            node.isDirty = false
+            return
+        }
+
+        // A list's window — like a reader, its rows are built by the pass
+        // that knows the width; here it only takes the fresh closures.
+        if let rowWindow = view as? any _GraphRowWindow {
+            installRowWindow(rowWindow, on: node)
             node.isDirty = false
             return
         }
@@ -955,6 +977,9 @@ public final class AttributeGraph: @unchecked Sendable {
         if let geom = view as? any _GraphGeometryReader {
             return constructGeometryReader(geom, id: id)
         }
+        if let rowWindow = view as? any _GraphRowWindow {
+            return constructRowWindow(rowWindow, id: id)
+        }
         return constructComposite(view, id: id)
     }
 
@@ -1028,6 +1053,174 @@ public final class AttributeGraph: @unchecked Sendable {
             }
             parent._readerBuild = (width: size.width, generation: graph.updateGeneration)
         }
+    }
+
+    /// A list's window is a bare `viewBody` node, as a reader is, whose
+    /// rows are built by whichever pass knows the width: the list counts its
+    /// rows in lines, and a row's lines depend on how wide it is. Seeded at
+    /// the proposed size, so a measurement before any layout has rows to ask.
+    func constructRowWindow(_ window: any _GraphRowWindow, id: NodeID) -> AttributeNode {
+        let node = AttributeNode(id: id, kind: .viewBody(ViewBodyInfo(viewTypeName: "List")))
+        installRowWindow(window, on: node)
+        let termSize = GraphContext.currentEnvironment?.terminalSize ?? .default
+        let seedSize = GraphContext.currentProposedSize
+            ?? Size(width: termSize.cols, height: termSize.rows)
+        buildRowWindow(window, in: node, width: seedSize.width,
+                       lines: window.declaredLines ?? seedSize.height)
+        node._readerBuild = (width: seedSize.width, generation: updateGeneration)
+        return node
+    }
+
+    /// Gives a window node the rebuilder for its kind of list.
+    ///
+    /// A size-driven list is a `GeometryReader` in all but its rows: told its
+    /// size on both axes, flexible in a stack, claiming nothing when
+    /// measured. A list with a `visibleCount` states its height and is as
+    /// wide as its rows, so it takes no flexibility — its rebuilder is one
+    /// the flex rules do not see — and is built for each width a pass asks
+    /// about, once per width per update, as a `WidthReader` is.
+    func installRowWindow(_ window: any _GraphRowWindow, on node: AttributeNode) {
+        weak let weakSelf: AttributeGraph? = self
+        guard let declared = window.declaredLines else {
+            node.readerSizing = .proposal
+            node.rowWindowRebuilder = nil
+            node.geometryRebuilder = { size, parent in
+                guard let graph = weakSelf else { return }
+                GraphContext.$currentEnvironment.withValue(graph.environment(at: parent)) {
+                    graph.buildRowWindow(window, in: parent, width: size.width, lines: size.height)
+                }
+            }
+            return
+        }
+        node.readerSizing = nil
+        node.geometryRebuilder = nil
+        weak let weakNode: AttributeNode? = node
+        node.rowWindowRebuilder = { width in
+            guard let graph = weakSelf, let node = weakNode else { return }
+            if let built = node._readerBuild, built.width == width,
+               built.generation == graph.updateGeneration {
+                return
+            }
+            GraphContext.$currentEnvironment.withValue(graph.environment(at: node)) {
+                graph.buildRowWindow(window, in: node, width: width, lines: declared)
+            }
+            node._readerBuild = (width: width, generation: graph.updateGeneration)
+        }
+    }
+
+    /// Builds a list's rows for `width`, choosing which by their heights
+    /// there.
+    ///
+    /// The rows are measured as the nodes the list draws, built in the
+    /// list's own shape, so each keeps its identity by element id whether it
+    /// was put in to be measured or to be drawn. The rows the window drew
+    /// last go in first and are measured; the walk then asks for heights,
+    /// and any row it asks about that is not there yet is added and measured
+    /// before it walks again. A list scrolled or followed by one row adds
+    /// one; an unchanged one adds none and is built once, as a reader is.
+    /// The walk only ever asks about the rows around the window, so a list
+    /// of any length measures O(lines) rows.
+    ///
+    /// The rows kept are the window's, and the row on either side of it the
+    /// walk asked about — the one that did not fit below it, and at the end
+    /// of the list the one above it. The next frame's walk asks about those
+    /// again; kept, they are not rebuilt and dropped every frame.
+    func buildRowWindow(_ window: any _GraphRowWindow, in node: AttributeNode, width: Int, lines: Int) {
+        let width = max(1, width)
+        let lines = max(1, lines)
+        let total = window.rowCount
+        var heights: [Int: Int] = [:]
+        var placed: (window: RowWindow, rows: [Int])?
+
+        func place(_ shape: RowWindow, rows: [Int]) {
+            let view = window.content(for: shape, rows: rows)
+            if let existing = node.children.first {
+                updateAnyView(existing, from: view)
+            } else {
+                let fresh = constructAnyTerminalView(view, id: node.id.appending(.index(0)))
+                fresh.parent = node
+                node.children = [fresh]
+            }
+            placed = (shape, rows)
+            let rowNodes = Self.rowNodes(in: node)
+            for (index, row) in rows.enumerated() where heights[row] == nil {
+                // A list whose shape is not the one this reads would leave the
+                // walk asking for the same row forever; a line apiece ends it.
+                heights[row] = index < rowNodes.count
+                    ? GraphMeasurer.naturalHeight(rowNodes[index], proposedWidth: width)
+                    : 1
+            }
+        }
+
+        if let last = node._rowWindowBuild {
+            let rows = last.rows.filter { $0 < total }
+            if !rows.isEmpty { place(last.window, rows: rows) }
+        }
+        var chosen: RowWindow
+        var asked: [Int] = []
+        while true {
+            var missing: [Int] = []
+            asked.removeAll(keepingCapacity: true)
+            // A row not measured yet is guessed as tall as the tallest that
+            // is — or as the whole window before any is — so the walk asks
+            // for no more rows than it will need: every row it asks about is
+            // built, and one built only to be dropped has appeared for nothing.
+            let guess = heights.values.max() ?? lines
+            chosen = window.window(lines: lines) { row in
+                asked.append(row)
+                if let height = heights[row] { return height }
+                missing.append(row)
+                return guess
+            }
+            guard !missing.isEmpty else { break }
+            place(chosen, rows: Set(placed?.rows ?? []).union(missing).sorted())
+        }
+
+        let drawn = chosen.offset..<(chosen.offset + chosen.shown)
+        let kept = Set(asked).filter { $0 >= chosen.offset - 1 && $0 <= drawn.upperBound }
+            .union(drawn).sorted()
+        if placed?.window != chosen || placed?.rows != kept {
+            place(chosen, rows: kept)
+        }
+        let rowNodes = Self.rowNodes(in: node)
+        for (index, row) in kept.enumerated() where index < rowNodes.count {
+            let rowNode = rowNodes[index]
+            let rowLines: Int? = drawn.contains(row) ? (row == chosen.offset ? chosen.cut : nil) : 0
+            if rowNode._rowWindowLines != rowLines {
+                rowNode._rowWindowLines = rowLines
+                invalidateMeasurementCache(from: rowNode)
+            }
+        }
+        node._rowWindowBuild = (chosen, kept)
+        windowCommits[ObjectIdentifier(node)] = window.commit(for: chosen)
+    }
+
+    /// The row nodes of a list's window, in the order its `ForEach` holds
+    /// them: below the modifiers the list puts on its stack, the stack's one
+    /// structural child.
+    static func rowNodes(in window: AttributeNode) -> [AttributeNode] {
+        var node = window.children.first
+        while let current = node {
+            switch current.kind {
+            case .modifier:
+                node = current.children.first
+            case .layout(let info) where info.kind == .vstack && !info.isStructural:
+                return current.children.first(where: GraphRenderer.isStructuralLayout)?.children ?? []
+            default:
+                return []
+            }
+        }
+        return []
+    }
+
+    /// Applies what the windows drawn last frame changed in their lists'
+    /// state. Each write checks the value is still the one its window read,
+    /// so a wheel or a key that moved the list since is not undone.
+    private func commitWindows() {
+        guard !windowCommits.isEmpty else { return }
+        let commits = windowCommits
+        windowCommits.removeAll(keepingCapacity: true)
+        for (_, commit) in commits { commit() }
     }
 
     func constructPrimitive<V: TerminalView>(for view: V, id: NodeID) -> AttributeNode? {
@@ -1502,6 +1695,26 @@ protocol _GraphGeometryReader {
     func rebuild(with size: Size) -> any TerminalView
     /// Which dimensions the content is built from.
     var sizing: ReaderSizing { get }
+}
+
+/// A list's window of rows, which the graph builds in the pass that knows
+/// the list's width — see `AttributeGraph.buildRowWindow`.
+///
+/// `content(for:rows:)` must draw `VStack { ▲?; ForEach(rows); ▼? }` under
+/// any modifiers: the graph finds the rows it measures as that `ForEach`'s.
+protocol _GraphRowWindow {
+    /// The lines a list given a `visibleCount` takes; nil for one sized by
+    /// its container.
+    var declaredLines: Int? { get }
+    /// Rows in the list.
+    var rowCount: Int { get }
+    /// The window over rows `height` measures, for this frame's state.
+    func window(lines: Int, height: (Int) -> Int) -> RowWindow
+    /// The list drawn for `window`, its `ForEach` holding `rows` in order.
+    func content(for window: RowWindow, rows: [Int]) -> any TerminalView
+    /// What drawing `window` changes in the list's state, or nil for
+    /// nothing; applied before the next update.
+    func commit(for window: RowWindow) -> (() -> Void)?
 }
 
 /// How a reader is sized — the contract that keeps every pass building the
