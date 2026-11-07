@@ -10,8 +10,10 @@ import TerminalUIConfig
 /// Capture configuration for ``DevTracer``.
 ///
 /// Apps rarely build one by hand: the runtime derives it from the
-/// `.terminalui/terminalui.toml` file (via `DiagConfig`) at startup and
-/// passes it to ``DevTracer/configure(_:)``. Build one directly only when a
+/// `[trace]` section of `.terminalui/terminalui.toml` (via `DiagConfig`) at
+/// startup and passes it to ``DevTracer/configure(_:)``. An app that states
+/// one as ``TerminalAppProtocol/devTrace`` replaces that section with it,
+/// keeping only the file's output directories. Build one directly only when a
 /// test or harness wants tracing without a config file — set ``enabled``,
 /// point ``screenshotDir``/``traceDir`` at a scratch location, and cap the
 /// run with ``frameLimit`` so the capture doesn't grow unbounded.
@@ -58,6 +60,32 @@ public struct DevTraceConfig: Sendable {
         #endif
     }()
 }
+
+#if DEBUG
+extension DevTraceConfig {
+    /// What a run traces: the configuration an app states, whole, when it
+    /// states one — only where the files go comes from `file` — and
+    /// otherwise `file`'s `[trace]` section.
+    static func resolved(stated: DevTraceConfig?, file: DiagConfig) -> DevTraceConfig {
+        let screenshotDir = DiagPaths.screenshotsDir(useTmp: file.useTmp)
+        let traceDir = DiagPaths.tracesDir(useTmp: file.useTmp)
+        guard var config = stated else {
+            return DevTraceConfig(
+                enabled: file.traceEnabled,
+                screenshotDir: screenshotDir,
+                traceDir: traceDir,
+                captureScreenshots: file.captureScreenshots,
+                captureTrace: file.traceEnabled,
+                captureEvents: file.captureEvents,
+                frameLimit: file.frameLimit
+            )
+        }
+        config.screenshotDir = screenshotDir
+        config.traceDir = traceDir
+        return config
+    }
+}
+#endif
 
 // MARK: - Trace entry types
 
@@ -153,10 +181,7 @@ public final class DevTracer: Sendable {
     /// Configure from programmatic DevTraceConfig with DiagConfig for path resolution.
     /// Programmatic values win, DiagConfig provides output directory paths.
     public func configure(_ programmatic: DevTraceConfig, diagConfig: DiagConfig) {
-        var merged = programmatic
-        merged.screenshotDir = DiagPaths.screenshotsDir(useTmp: diagConfig.useTmp)
-        merged.traceDir = DiagPaths.tracesDir(useTmp: diagConfig.useTmp)
-        configure(merged)
+        configure(.resolved(stated: programmatic, file: diagConfig))
     }
 
     /// Whether capture is currently on — mirrors the configured `enabled` flag.

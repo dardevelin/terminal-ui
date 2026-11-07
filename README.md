@@ -292,7 +292,9 @@ tests keeps working release after release.
 Diagnostics are configured per-project in `.terminalui/terminalui.toml`
 (`swift run swtui init`), and every running app writes to its own
 PID-isolated output directory, readable by you alone, so concurrent sessions
-never collide.
+never collide. Per-frame tracing — a screenshot and a trace log for every
+frame — is off until you turn it on: `swift run swtui enable trace`, capped
+with `swift run swtui set frame_limit 200`.
 
 ## How rendering works
 

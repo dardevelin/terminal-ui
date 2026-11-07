@@ -423,7 +423,6 @@ public final class TerminalRuntime<RootView: TerminalView> {
         self.size = Terminal.size()
 
         #if DEBUG
-        // Load .terminalui/terminalui.toml and merge with programmatic overrides
         let fileConfig = DiagPaths.loadConfig()
         diagnosticsAreWritable = DiagPaths.prepareDataDirectories(config: fileConfig)
         if !diagnosticsAreWritable {
@@ -432,23 +431,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 + "by others — so this run writes no diagnostics and opens no control socket")
         }
 
-        if !diagnosticsAreWritable {
-            tracer.configure(.default)
-        } else if let devTrace {
-            tracer.configure(devTrace, diagConfig: fileConfig)
-        } else {
-            tracer.configure(
-                DevTraceConfig(
-                    enabled: fileConfig.traceEnabled,
-                    screenshotDir: DiagPaths.screenshotsDir(useTmp: fileConfig.useTmp),
-                    traceDir: DiagPaths.tracesDir(useTmp: fileConfig.useTmp),
-                    captureScreenshots: fileConfig.captureScreenshots,
-                    captureTrace: fileConfig.traceEnabled,
-                    captureEvents: fileConfig.captureEvents,
-                    frameLimit: fileConfig.frameLimit
-                )
-            )
-        }
+        tracer.configure(diagnosticsAreWritable
+                         ? .resolved(stated: devTrace, file: fileConfig)
+                         : .default)
         #else
         if let devTrace {
             tracer.configure(devTrace)
@@ -1526,9 +1511,12 @@ public protocol TerminalAppProtocol {
     /// Named repeating timers, delivered as `.timer(name)` events. Defaults
     /// to none.
     static var timers: [TerminalTimer] { get }
-    /// Diagnostic trace configuration. `nil` defers to the `.terminalui/`
-    /// file config; the default provides a trace-enabled config in DEBUG and
-    /// `nil` in release.
+    /// Diagnostic trace configuration for a debug build. `nil`, the
+    /// default, follows the `[trace]` section of `.terminalui/terminalui.toml`
+    /// — what `swtui enable trace` and `swtui set frame_limit` change — and
+    /// traces nothing when there is no file. A configuration stated here
+    /// replaces that section whole; only where the files go still comes
+    /// from the file. Release builds trace nothing either way.
     static var devTrace: DevTraceConfig? { get }
     /// App-level event hook, called before view-level handlers for every
     /// ``TerminalEvent``. Return `false` to quit the app. The default quits
@@ -1574,18 +1562,8 @@ extension TerminalAppProtocol {
     public static var renderMode: RenderMode { .fps60 }
     /// Default: no timers.
     public static var timers: [TerminalTimer] { [] }
-    /// Default: in DEBUG, tracing enabled with a 100-frame limit; in
-    /// release, `nil` (no diagnostic machinery exists in release builds).
-    public static var devTrace: DevTraceConfig? {
-        #if DEBUG
-        var config = DevTraceConfig.default
-        config.enabled = true
-        config.frameLimit = 100
-        return config
-        #else
-        return nil
-        #endif
-    }
+    /// Default: `nil`, the `.terminalui/` file's `[trace]` settings.
+    public static var devTrace: DevTraceConfig? { nil }
 
     /// Default: quit on `q` or Escape, pass everything else through. Apps
     /// with text input almost always override this — a typed `q` would
