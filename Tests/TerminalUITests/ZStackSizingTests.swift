@@ -83,6 +83,20 @@ struct ZStackSizingTests {
         #expect(screen.rows[1] == String(repeating: "─", count: 12))
     }
 
+    // A Divider in a row rules down it, taking the row's height: it claims
+    // neither axis, so the row stays the size of the rest of its content.
+    @Test func aRowHoldingADividerTakesOnlyItsContent() {
+        let screen = Screen(width: 12, height: 5, ZStack {
+            HStack {
+                Text("ab")
+                Divider()
+                Text("cd")
+            }
+        })
+        #expect(screen.child == Rect(x: 0, y: 0, width: 5, height: 1))
+        #expect(screen.rows[0] == "ab│cd       ")
+    }
+
     @Test func aRowHoldingASpacerStillTakesTheWidth() {
         let screen = Screen(width: 12, height: 5, ZStack {
             HStack {

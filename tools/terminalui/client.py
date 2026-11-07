@@ -544,10 +544,12 @@ class Client:
         return self.cells(rect=rect).text()
 
     # Preview-pane geometry in Storybook: 28-col sidebar + 1-col divider,
-    # so preview starts around col 30. Y-range after header + Code block
-    # lands roughly at rows 22–36. Centralising the magic numbers means
-    # smoke cases stop caring about layout drift.
-    PREVIEW_RECT: Sequence[int] = (28, 20, 80, 18)
+    # so the pane starts at col 29 — after the `│` rule, which would
+    # otherwise open every row — and its padded content around col 30.
+    # Y-range after header + Code block lands roughly at rows 22–36.
+    # Centralising the magic numbers means smoke cases stop caring about
+    # layout drift.
+    PREVIEW_RECT: Sequence[int] = (29, 20, 79, 18)
 
     def preview_cells(self) -> CellSlice:
         """Snapshot the preview-pane region the Storybook layout hands
@@ -612,13 +614,13 @@ class Client:
             time.sleep(interval)
         return predicate(self)
 
-    # Storybook page-title rect. PageDetail.body renders:
-    #   row 0: divider line from Sidebar/PageDetail HStack
+    # Storybook page-title rect. PageDetail.body, right of the `│` rule
+    # the Sidebar/PageDetail HStack draws down col 28, renders:
+    #   row 0: the top of its padding
     #   row 1: bold cyan page name (e.g. "VStack")
     #   row 2: gray summary
-    # Tests inspecting the title use row 1 specifically; row 0 reads
-    # as `─` and would mask the actual title if a wider rect is taken.
-    _STORYBOOK_TITLE_RECT: Sequence[int] = (28, 1, 50, 1)
+    # Tests inspecting the title use row 1 specifically.
+    _STORYBOOK_TITLE_RECT: Sequence[int] = (29, 1, 49, 1)
     _STORYBOOK_SIDEBAR_RECT: Sequence[int] = (0, 3, 28, 40)
 
     def storybook_page_title(self) -> str:

@@ -284,9 +284,14 @@ public enum GraphRenderer {
             break
 
         case .divider:
-            let y = context.rect.y
-            for x in context.rect.x..<(context.rect.x + context.rect.width) {
-                buffer[x, y] = Cell(character: "─", style: context.style)
+            let rect = context.rect
+            let orientation = GraphContext.currentEnvironment?.dividerOrientation ?? .horizontal
+            let cell = Cell(character: orientation.glyph, style: context.style)
+            switch orientation {
+            case .horizontal:
+                for x in rect.x..<(rect.x + rect.width) { buffer[x, rect.y] = cell }
+            case .vertical:
+                for y in rect.y..<(rect.y + rect.height) { buffer[rect.x, y] = cell }
             }
 
         case .progressBar(let value, let label, let filled, let empty):
@@ -359,15 +364,35 @@ public enum GraphRenderer {
 
         switch info.kind {
         case .vstack:
-            renderVStack(children, info: info, into: &buffer, context: context)
+            withDividers(.horizontal, in: &buffer) {
+                renderVStack(children, info: info, into: &$0, context: context)
+            }
         case .hstack:
-            renderHStack(children, info: info, into: &buffer, context: context)
+            withDividers(.vertical, in: &buffer) {
+                renderHStack(children, info: info, into: &$0, context: context)
+            }
         case .zstack:
-            renderZStack(children, into: &buffer, context: context)
+            withDividers(.horizontal, in: &buffer) {
+                renderZStack(children, into: &$0, context: context)
+            }
         case .scroll(let axis):
             renderScroll(node, axis: axis, children: children, into: &buffer, context: context)
         case .split(let axis):
             renderSplit(axis: axis, children: children, into: &buffer, context: context)
+        }
+    }
+
+    /// Run `body`, which draws a stack's children, with every `Divider` under
+    /// them ruled `orientation` until a nearer stack says otherwise. Free
+    /// when the stack around this one already set the same.
+    private static func withDividers(_ orientation: DividerOrientation, in buffer: inout CellBuffer,
+                                     _ body: (inout CellBuffer) -> Void) {
+        let current = GraphContext.currentEnvironment
+        guard (current?.dividerOrientation ?? .horizontal) != orientation else { return body(&buffer) }
+        var environment = current ?? EnvironmentValues()
+        environment.dividerOrientation = orientation
+        withUnsafeMutablePointer(to: &buffer) { bufPtr in
+            GraphContext.$currentEnvironment.withValue(environment) { body(&bufPtr.pointee) }
         }
     }
 
@@ -591,8 +616,17 @@ public enum GraphRenderer {
     /// mid-stack; `.frame(maxWidth: .infinity)` is a request for all of it and
     /// cannot mean "centre me at my natural size".
     private static func fillsHorizontally(_ node: AttributeNode) -> Bool {
+        isDivider(node) || isFlexChild(node)
+    }
+
+    /// Whether `node` is a `Divider`, seen through what imposes no size on
+    /// it — a colour, padding, a condition, a view whose `body` it is. The
+    /// stack it sits in hands it the stack's whole cross axis, which is the
+    /// length of its rule: a styled divider measured to one cell and drew a
+    /// dash.
+    private static func isDivider(_ node: AttributeNode) -> Bool {
         if case .primitive(.divider) = node.kind { return true }
-        return isFlexChild(node)
+        return flexBearingChild(of: node).map(isDivider) ?? false
     }
 
     /// The vertical twin of `fillsHorizontally`.
@@ -624,6 +658,9 @@ public enum GraphRenderer {
             }
             return effectiveChildren(of: node).contains { child in
                 if case .primitive(.spacer) = child.kind { return spacerAxis ?? true }
+                // A rule down a row is as long as the row's other children
+                // make it, so it claims neither axis for the row.
+                if info.kind == .hstack, isDivider(child) { return false }
                 return claimsOffered(child, horizontal: horizontal)
             }
         case .modifier(.frame(let width, let height, let minW, let maxW, let minH, let maxH, _)):
@@ -862,7 +899,9 @@ public enum GraphRenderer {
                                           proposedWidth: Int,
                                           alignment: VerticalAlignment) -> Int {
         if let declared = declaredHeight(of: child) { return max(1, min(available, declared)) }
-        if fillsVertically(child) { return available }
+        // Not `fillsVertically`: that also answers a ZStack, where a divider
+        // rules across and claims no height.
+        if fillsVertically(child) || isDivider(child) { return available }
         guard alignment != .top else { return available }
         return max(1, min(available, measureHeight(child, proposedWidth: proposedWidth)))
     }

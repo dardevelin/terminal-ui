@@ -61,6 +61,19 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ### Fixed
 
+- **A `Divider` in an `HStack` is a vertical rule.** Its documentation
+  promised a rule down an `HStack`, but it always drew `─` along its top
+  row, so a divider between two columns was a single dash at the top of
+  the gap — Storybook's own between its sidebar and page. It now draws `│`
+  one cell wide down the height the stack's other children give it, and
+  never makes the stack taller; nor does it make a row in a `ZStack` or an
+  overlay take the whole width any more. The nearest enclosing stack
+  decides, wherever the divider is written in it — a `ForEach`, a
+  condition, a view's `body` — and a `VStack` or `ZStack` inside the
+  `HStack` rules its own dividers across, as before. A divider behind a
+  colour, padding or other modifier that sets no size now spans a stack
+  under every alignment too, where under `.center` or `.trailing` it was
+  one cell.
 - **A busy app runs its `.task` work.** While frames kept coming — an
   animation, a stream of input, a frame longer than its interval — the
   frame loop never suspended, so nothing else on the main actor ran until
