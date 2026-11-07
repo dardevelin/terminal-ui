@@ -98,6 +98,21 @@ def the_steps_name_the_checkout_as_swiftpm_does() -> None:
     assert f'package: "{package_identity(root)}"' in manifest, manifest
 
 
+def a_step_knows_its_chapter() -> None:
+    assert Step("tasks-03-02", []).chapter == 1
+    assert Step("tasks5-03-01", []).chapter == 5
+    assert {step.chapter for step in STEPS} == set(record_media.CARD_STEP)
+
+
+def only_picks_a_step_or_its_chapter() -> None:
+    step = Step("tasks4-02-01", [])
+    assert record_media.wanted(step, None)
+    assert record_media.wanted(step, "tasks4-02-01")
+    assert record_media.wanted(step, "4")
+    assert not record_media.wanted(step, "5")
+    assert not record_media.wanted(step, "tasks4-03-01")
+
+
 CASES: list[tuple[str, Callable[[], None]]] = [
     ("every step file is listed once", every_step_file_is_listed_once),
     ("every preview can be recorded", every_preview_can_be_recorded),
@@ -109,6 +124,8 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("a relaunch starts a new run", a_relaunch_starts_a_new_run),
     ("a click lands where its text is drawn", a_click_lands_where_its_text_is_drawn),
     ("the steps name the checkout as SwiftPM does", the_steps_name_the_checkout_as_swiftpm_does),
+    ("a step knows its chapter", a_step_knows_its_chapter),
+    ("--only picks a step or its chapter", only_picks_a_step_or_its_chapter),
 ]
 
 

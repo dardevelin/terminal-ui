@@ -73,6 +73,13 @@ class Step:
     # The stage whose screen the step's preview captures.
     preview: int = 0
 
+    @property
+    def chapter(self) -> int:
+        # Chapter 1's steps were named before there was a second chapter, so
+        # its files carry no number: tasks-SS-NN, then tasks<N>-SS-NN.
+        number = self.name.split("-")[0].removeprefix("tasks")
+        return int(number) if number else 1
+
     def preview_keys(self) -> list[Action]:
         return [key for stage in self.stages[:self.preview + 1] for key in stage.keys]
 
