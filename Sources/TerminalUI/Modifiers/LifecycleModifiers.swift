@@ -62,20 +62,21 @@ extension TerminalView {
         ModifiedView(content: self, modifier: OnChangeModifier(value: value, action: action))
     }
 
-    /// Call `action` once when the view enters the graph — first render, or
-    /// re-insertion after an `if` branch switch or `.id` change. The place
-    /// for one-shot setup; for async work that should also cancel on
-    /// disappear, prefer `.task { }`.
+    /// Call `action` once when the view enters the graph — first render,
+    /// re-insertion after an `if` branch switch, or as a view inside an `.id`
+    /// whose value changed. The place for one-shot setup; for async work
+    /// that should also cancel on disappear, prefer `.task { }`.
     public func onAppear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnAppearModifier> {
         ModifiedView(content: self, modifier: OnAppearModifier(action: action))
     }
 
     /// Call `action` when the view leaves the graph — its branch switched
-    /// away, its `ForEach` row vanished, its `.id` changed, or it is in a
-    /// `List` or `TreeView` row scrolled out of view; the row just past the
-    /// window's edge, kept to be measured, still counts as shown. Views
-    /// leaving together disappear innermost first. Not called on app quit;
-    /// teardown that must run at exit belongs in `onEvent(_:)`.
+    /// away, its `ForEach` row vanished, it is a view inside an `.id` whose
+    /// value changed, or it is in a `List` or `TreeView` row scrolled out of
+    /// view; the row just past the window's edge, kept to be measured, still
+    /// counts as shown. Views leaving together disappear innermost first.
+    /// Not called on app quit; teardown that must run at exit belongs in
+    /// `onEvent(_:)`.
     public func onDisappear(perform action: @escaping () -> Void) -> ModifiedView<Self, OnDisappearModifier> {
         ModifiedView(content: self, modifier: OnDisappearModifier(action: action))
     }
@@ -133,7 +134,9 @@ public struct TaskModifier<ID: Hashable>: ViewModifier, _TaskModifierProtocol {
 
 extension TerminalView {
     /// Run async work for as long as this view is on screen. The task is
-    /// started when the view appears and cancelled when it disappears.
+    /// started when the view appears and cancelled when it disappears. A
+    /// new value for an `.id` around it makes a new view, so the task is
+    /// cancelled and started again.
     ///
     /// ```swift
     /// Text(model.status)

@@ -111,6 +111,18 @@ All notable changes to TerminalUI are documented here. Format based on
   SwiftUI; the row just past the window's edge, kept to be measured, still
   counts as shown. A view that has left no longer runs again when state it
   read changes.
+- **A view given a new `.id` is a new view.** `.id(_:)` with a different
+  value updated the view in place, so the docs' promise did not hold: its
+  `@TerminalState` kept its values, `onAppear` and `onDisappear` did not
+  run, and a `.task` in it kept running. Now, as in SwiftUI, the view it is
+  applied to leaves as an `if` branch that switches away does —
+  `onDisappear` runs for every view in it, innermost first, and its tasks
+  are cancelled — and the new one is built, with fresh state, its
+  `onAppear`, and its `.task` started. Modifiers written after `.id` belong
+  to the view around it and are kept. The same id still updates in place,
+  so a row tagged with its own key, as `.scrollPosition(id:)` targets are,
+  is unaffected. An id made new each time a body runs, such as `UUID()`,
+  rebuilds the view each time.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
