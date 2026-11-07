@@ -176,7 +176,7 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
 
             ForEach(items) { item in
                 HStack {
-                    Text(item.isSelected ? "▸ " : "  ")
+                    Text(item.isSelected ? ListRowMarker.selected : ListRowMarker.unselected)
                         .foreground(item.isSelected ? theme.accent : theme.foregroundMuted)
                     content(item.element)
                 }
@@ -269,4 +269,13 @@ struct ListItem<Element: Identifiable>: Identifiable {
     let element: Element
     let isSelected: Bool
     var id: Element.ID { element.id }
+}
+
+/// What a ``List`` draws before each row: the cursor on the selected row,
+/// blanks as wide on the others. A view that lines up with a list's rows —
+/// a ``Table``'s header over them — is pushed past ``width``.
+enum ListRowMarker {
+    static let selected = "▸ "
+    static let unselected = String(repeating: " ", count: width)
+    static var width: Int { selected.displayWidth }
 }

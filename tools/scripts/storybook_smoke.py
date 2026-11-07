@@ -1361,7 +1361,10 @@ def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
     rows = app.text().split("\n")
     y = next(i for i, row in enumerate(rows) if "▸ gamma" in row)
     app.mouse_wheel("down", rows[y].index("gamma"), y)
-    assert_true("more" in app.preview_text() and "epsilon" in app.preview_text(),
+    # "more" alone is no evidence: the tall-row list below always shows
+    # its ▼. The first list scrolled is the one that loses alpha and shows ▲.
+    assert_true("▲" in app.preview_text() and "alpha" not in app.preview_text()
+                and "epsilon" in app.preview_text(),
                 f"the wheel should scroll the list:\n{app.preview_text()}")
     click_on("epsilon")
     assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
