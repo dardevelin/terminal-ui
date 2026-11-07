@@ -7,7 +7,7 @@
 /// blank column between children. A ``Spacer`` between two children is
 /// the idiom for a full-width bar with content pushed to both edges —
 /// status bars, headers, key-hint rows. Use ``VStack`` for a column,
-/// ``ZStack`` to layer views in the same rect, and ``SplitView`` when
+/// ``ZStack`` to layer views over one region, and ``SplitView`` when
 /// panes should divide the width by ratio rather than by content size.
 ///
 /// ```swift

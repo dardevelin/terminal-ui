@@ -5,7 +5,8 @@
 
 SwiftUI has no numeric z-index. Layering is structural:
 
-- **ZStack** — children overlap. Code order = render order. Last child on top.
+- **ZStack** — children overlap, each offered the stack's size and placed at
+  the size it claims. Code order = render order. Last child on top.
 - **`.overlay { }`** — attached view renders on top of parent's frame.
 - **`.background { }`** — attached view renders behind parent in same frame.
 - **`.sheet { }`** — floating modal over everything, own coordinate space.
@@ -19,8 +20,13 @@ Layering is always predictable from reading the code.
 Children divide parent space. No overlap.
 
 ### Stacked (current: ZStack)
-Children overlap in same rect. Code order = render order.
-Needs: proper background handling so later children obscure earlier ones.
+Children overlap within the stack's rect, each at its own size, placed by the
+stack's alignment: all of an axis a child claims — a `GeometryReader`, a scroll
+view, a `Divider` across, `.frame(maxWidth: .infinity)` — and its measured size
+on one it does not. Code order = render order. A later child covers only the
+cells it writes, character and style both, so a label on top leaves the layers
+beside it drawn and the pointer reaches them there. A child that should cover
+the whole stack says so with `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
 
 ### Overlay/Background (planned)
 ```swift
@@ -52,11 +58,12 @@ Modals:
 
 The [[05_i3wm_layout_model|i3 model]] has tiling + floating. We follow the same split:
 - Tiled = VStack/HStack (divide space)
-- Stacked = ZStack (overlap)
+- Stacked = ZStack (overlap, each child at its own size)
 - Floating = modal/sheet (above everything, own coordinate space)
 
 ## Implementation Priority
 
-1. Fix ZStack to properly handle background/transparency
+1. ZStack places each child at its own size, and a later child covers only
+   the cells it writes (done)
 2. Add `.overlay { }` and `.background { }` modifiers
 3. Add `.modal(isPresented:)` for floating panels

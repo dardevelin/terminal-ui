@@ -74,7 +74,7 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .zstack: return PageInfo(id: self, category: .layout, name: "ZStack",
-            summary: "Layer children on top of each other. Later children draw over earlier ones.",
+            summary: "Layer children on top of each other. Later children draw over earlier ones, each at its own size, so the block shows beside the label on top of it.",
             code: """
                 ZStack {
                     Text("◼◼◼◼◼◼◼◼◼◼\\n◼◼◼◼◼◼◼◼◼◼\\n◼◼◼◼◼◼◼◼◼◼")

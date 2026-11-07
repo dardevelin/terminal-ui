@@ -23,7 +23,8 @@ import Testing
 //   siblings claim theirs. Same shape as Spacer / ScrollView today
 //   (which already use spacerDistribution).
 // - Inside VStack: .flexible(.vertical) divides remaining vertical.
-// - Inside ZStack: fills both axes to match largest sibling or parent.
+// - Inside ZStack: takes the stack's extent on the axes it names; a
+//   sibling that names none sits at its own size.
 // - Outside a stack: fills the proposed size from parent.
 
 @Suite("FrameDimension — SwiftUI-shaped infinity alias")

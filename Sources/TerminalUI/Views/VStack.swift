@@ -8,7 +8,7 @@
 /// cell tall, and `spacing: 1` inserts one visibly blank row — there is
 /// no sub-cell hairline to fall back on. Reach for `VStack` to arrange a
 /// column of content; use ``HStack`` for a row, ``ZStack`` to layer views
-/// in the same rect, ``ScrollView`` when the column may outgrow the
+/// over one region, ``ScrollView`` when the column may outgrow the
 /// viewport, and ``List`` when rows need selection and a row cursor.
 ///
 /// ```swift
