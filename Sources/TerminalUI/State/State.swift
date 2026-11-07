@@ -57,7 +57,8 @@ public struct TerminalState<Value> {
     /// callbacks — reads return the initial value and writes are silently
     /// dropped. From a handler, mutate through the projected ``Binding``
     /// (`$value`, projected in `body` and captured into the closure) or hold
-    /// state in an `@Observable` class instead.
+    /// state in an `@Observable` class instead, and change it on the main
+    /// actor, as handlers already run (see <doc:KnownIssues>).
     public var wrappedValue: Value {
         get {
             guard let node = GraphContext.currentNode else {

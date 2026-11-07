@@ -4,11 +4,12 @@ import Testing
 @testable import TerminalUI
 
 // Observation calls `onChange` on whichever thread made the change, and an
-// app may change an `@Observable` model from a background task — SwiftUI
-// accepts that from `@Observable` models and updates the view. The graph is
-// main-actor state, so a change made elsewhere may only leave a note for the
-// main actor to act on; marking the node or touching the drain queue from the
-// changing thread raced the frame that was reading them.
+// app may still change an `@Observable` model from a background task. That
+// is safe: it never races the graph. The graph is main-actor state, so a
+// change made elsewhere may only leave a note for the main actor to act on;
+// marking the node or touching the drain queue from the changing thread
+// raced the frame that was reading them. Safe is not the same as seen:
+// ObservationWindowTests pins the changes such a thread can land unreported.
 //
 // The model here is thread-safe on its own, so any race TSan reports is the
 // framework's, not the test's.
@@ -72,7 +73,7 @@ private func firstLine(of graph: AttributeGraph) -> String {
         .trimmingCharacters(in: .whitespaces)
 }
 
-@Suite("Observed state may change on any thread")
+@Suite("A change on another thread never races the graph")
 @MainActor
 struct OffMainObservationTests {
 

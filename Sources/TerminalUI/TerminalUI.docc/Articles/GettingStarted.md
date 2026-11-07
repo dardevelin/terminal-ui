@@ -95,6 +95,11 @@ swift run YourApp
 
 Press `+`, `-`, `q`. That's the full programming model.
 
+`onEvent(_:)` runs on the main actor, and so should every change to state a
+view reads. A change made on another thread is safe but can be missed; hand
+the result of background work back with `await MainActor.run { … }` (see
+<doc:KnownIssues>).
+
 ## What's next
 
 - Explore the full API catalog via `swift run Storybook` in the TerminalUI repo

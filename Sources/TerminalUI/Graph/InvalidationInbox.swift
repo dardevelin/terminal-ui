@@ -3,11 +3,14 @@ import Synchronization
 /// The nodes whose observed state changed since the main actor last looked.
 ///
 /// Observation calls `onChange` on whichever thread made the change, and an
-/// app may change an `@Observable` model from a background task, as SwiftUI
-/// allows. The graph is main-actor state that the frame reads, so an
-/// `onChange` closure holds this inbox rather than the graph: it can post a
-/// node and do nothing else, and because the inbox is a checked `Sendable`,
-/// the compiler keeps it that way.
+/// app may still change an `@Observable` model from a background task. The
+/// graph is main-actor state that the frame reads, so an `onChange` closure
+/// holds this inbox rather than the graph: it can post a node and do nothing
+/// else, and because the inbox is a checked `Sendable`, the compiler keeps
+/// it that way. That makes such a change safe, not seen: Observation can
+/// miss one that lands while the body reading it runs (see
+/// ObservationWindowTests), which is why observed state changes on the main
+/// actor.
 final class InvalidationInbox: Sendable {
     private let pending = Mutex<[ObjectIdentifier: AttributeNode]>([:])
     /// `!pending.isEmpty`, written under the lock, so the frame loop can ask

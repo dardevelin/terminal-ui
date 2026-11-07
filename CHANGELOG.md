@@ -41,6 +41,15 @@ All notable changes to TerminalUI are documented here. Format based on
   of lines skipped rows that were never shown. With one-line rows a page is
   now the rows between the `▲`/`▼` lines — two fewer than before when both
   show.
+- **Change observed state on the main actor.** A change made on another
+  thread is still safe and never races the graph, but Observation installs
+  a view's observers only when its body returns, and reports a change
+  before the new value is stored, so a change that lands while a body
+  reading it runs is not seen until something else redraws that view.
+  `.task` closures, timers and `onEvent(_:)` already run on the main actor;
+  hand other work's results back with `await MainActor.run { … }`. This
+  corrects 2.0.0, which said a model may change on any thread; the docs'
+  Known Issues page explains the gap.
 
 ### Fixed
 
