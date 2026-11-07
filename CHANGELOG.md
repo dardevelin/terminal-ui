@@ -37,6 +37,19 @@ All notable changes to TerminalUI are documented here. Format based on
   was measured to a dash or a row, and now spans the base. Overlay content
   that should cover the base asks the same way.
 
+### Fixed
+
+- **A busy app runs its `.task` work.** While frames kept coming — an
+  animation, a stream of input, a frame longer than its interval — the
+  frame loop never suspended, so nothing else on the main actor ran until
+  the app fell idle: a `.task` body, a timer's continuation, the end of a
+  cursor flash. The loop now gives them a turn after every frame.
+- **A cursor flash is always seen.** The flash at a text input's wall was
+  timed from the key, so a frame that came later than the flash is long —
+  a busy app, a loaded machine — drew the cursor already dark. It is now
+  timed from the first frame that draws it lit, and goes out between
+  frames, where it can no longer be missed by the redraw that ends it.
+
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
 A minor release: an app written for 2.0 compiles unchanged. The mouse does
