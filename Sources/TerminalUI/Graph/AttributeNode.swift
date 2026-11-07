@@ -324,8 +324,9 @@ public class AttributeNode: @unchecked Sendable {
     var rowWindowRebuilder: ((Int) -> Void)?
 
     /// The window a list last drew, and the rows its `ForEach` holds for it —
-    /// what the next pass measures first.
-    var _rowWindowBuild: (window: RowWindow, rows: [Int])?
+    /// what the next pass measures first — with the graph's `frame` the pass
+    /// ran in, nil for the build that seeded the list.
+    var _rowWindowBuild: (window: RowWindow, rows: [Int], frame: Int?)?
 
     /// Set by the list holding this row: nil for a row drawn whole, the
     /// lines a row cut off at the window's foot is drawn in, or 0 for a row

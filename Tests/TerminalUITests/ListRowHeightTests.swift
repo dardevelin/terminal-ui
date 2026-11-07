@@ -19,6 +19,21 @@ private final class Selecting {
 
 private final class Appearances {
     var ids: [Int] = []
+    var disappeared: [Int] = []
+
+    /// How many times each row has appeared, less the times it disappeared:
+    /// 1 for a row in the tree, 0 for one that left it.
+    var present: [Int: Int] {
+        var count: [Int: Int] = [:]
+        for id in ids { count[id, default: 0] += 1 }
+        for id in disappeared { count[id, default: 0] -= 1 }
+        return count
+    }
+}
+
+@Observable
+private final class Scrolling {
+    var offset = 0
 }
 
 @MainActor
@@ -59,6 +74,25 @@ private final class Harness<Content: TerminalView> {
 }
 
 private let rows = (0..<10).map(Row.init)
+
+@MainActor
+private func listNode(in node: AttributeNode) -> AttributeNode? {
+    if node.rowWindowRebuilder != nil || node.geometryRebuilder != nil { return node }
+    for child in node.children {
+        if let found = listNode(in: child) { return found }
+    }
+    return nil
+}
+
+/// The ids of the rows a list's window holds, drawn or held back.
+@MainActor
+private func heldIDs(in root: AttributeNode) -> Set<Int> {
+    guard let list = listNode(in: root) else { return [] }
+    return Set(AttributeGraph.rowNodes(in: list).compactMap { row in
+        guard case .explicit(let key)? = row.id.path.last else { return nil }
+        return key.base as? Int
+    })
+}
 
 @Suite("A list measures its rows at the width it is laid out at")
 @MainActor
@@ -229,5 +263,110 @@ struct ListTallRowNavigationTests {
         harness.frame()
         #expect(harness.engine.routeKeyEvent(KeyEvent(key: .pageUp), root: harness.root))
         #expect(selecting.selected == 0)
+    }
+}
+
+// A row scrolled out of a list's window left the graph without its
+// `onDisappear` running and with its `.task` still going. It leaves as a
+// row a ForEach drops does now; the row past the window's edge, kept to be
+// measured but not drawn, is still in the tree and fires nothing.
+@Suite("A list row scrolled out of view disappears")
+@MainActor
+struct ListRowLifecycleTests {
+
+    private func scrolledList(
+        _ count: Int, _ scrolling: Scrolling, _ seen: Appearances
+    ) -> Harness<some TerminalView> {
+        Harness {
+            List((0..<count).map(Row.init),
+                 scroll: Binding(get: { scrolling.offset }, set: { scrolling.offset = $0 }),
+                 visibleCount: 5) { row in
+                Text("item \(row.id)")
+                    .onAppear { seen.ids.append(row.id) }
+                    .onDisappear { seen.disappeared.append(row.id) }
+            }
+        }
+    }
+
+    @Test func scrollingOneRowDisappearsTheRowThatLeft() {
+        let scrolling = Scrolling()
+        let seen = Appearances()
+        let harness = scrolledList(20, scrolling, seen)
+        harness.frame()
+        #expect(seen.disappeared.isEmpty)
+
+        scrolling.offset = 1
+        let screen = harness.frame()
+
+        #expect(seen.disappeared == [0], "\(screen)")
+    }
+
+    @Test func aHeldRowFiresNothingWhileHeld() {
+        let scrolling = Scrolling()
+        let seen = Appearances()
+        let harness = scrolledList(20, scrolling, seen)
+        let screen = harness.frame()
+        let held = heldIDs(in: harness.root).filter { id in !screen.contains { $0.hasSuffix("item \(id)") } }
+        #expect(held.count == 1, "one row kept past the window: \(held) \(screen)")
+        for _ in 0..<3 { harness.frame() }
+        for offset in 1...2 {
+            scrolling.offset = offset
+            harness.frame()
+            harness.frame()
+        }
+        for id in held {
+            #expect(seen.ids.filter { $0 == id }.count == 1, "row \(id) appeared again: \(seen.ids)")
+            #expect(!seen.disappeared.contains(id), "row \(id) disappeared while held: \(seen.disappeared)")
+        }
+    }
+
+    @Test func aFarJumpLeavesExactlyTheHeldRowsPresent() {
+        let scrolling = Scrolling()
+        let seen = Appearances()
+        let harness = scrolledList(100, scrolling, seen)
+        harness.frame()
+
+        scrolling.offset = 50
+        harness.frame()
+
+        let present = seen.present
+        #expect(present.values.allSatisfy { $0 == 0 || $0 == 1 }, "\(present)")
+        let shown = Set(present.filter { $0.value == 1 }.keys)
+        #expect(shown == heldIDs(in: harness.root), "\(present)")
+        #expect(shown.contains(50))
+    }
+
+    @Test func aDeclaredListDisappearsNothingWhileItStaysPut() {
+        let scrolling = Scrolling()
+        let seen = Appearances()
+        let harness = scrolledList(20, scrolling, seen)
+        harness.frame()
+        scrolling.offset = 4
+        harness.frame()
+        let after = seen.disappeared
+        for _ in 0..<4 { harness.frame() }
+        #expect(seen.disappeared == after, "a steady frame dropped a row: \(seen.disappeared)")
+    }
+
+    @Test func aSizeDrivenListAmongSiblingsDisappearsNothingWhileItStaysPut() {
+        let seen = Appearances()
+        let harness = Harness(height: 8) {
+            VStack {
+                Text("head")
+                List((0..<20).map(Row.init)) { row in
+                    Text("item \(row.id)")
+                        .onAppear { seen.ids.append(row.id) }
+                        .onDisappear { seen.disappeared.append(row.id) }
+                }
+                Text("foot")
+            }
+        }
+        harness.frame()
+        let appeared = seen.ids
+        let disappeared = seen.disappeared
+        for _ in 0..<4 { harness.frame() }
+        #expect(seen.disappeared == disappeared, "a steady frame dropped a row: \(seen.disappeared)")
+        #expect(seen.ids == appeared, "a steady frame built a row again: \(seen.ids)")
+        #expect(Set(seen.present.filter { $0.value == 1 }.keys) == heldIDs(in: harness.root))
     }
 }
