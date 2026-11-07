@@ -58,6 +58,8 @@ final class StorybookState {
     var navPath: [NavItem] = []
     var listSelection: Int? = 0
     var listScroll: Int = 0
+    var tableSelection: Int? = 0
+    var tableScroll: Int = 0
     var tabSelection: Int = 0
     var morseScroll: Int = 0
     // Extra state for previously-stub pages

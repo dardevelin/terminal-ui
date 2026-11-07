@@ -417,10 +417,16 @@ struct PreviewPane: TerminalView {
                 Text(item.label).foreground(item.color)
             }
         case .table:
-            Table(Array(demoItems), columns: [
-                TableColumn("Name") { $0.label },
-                TableColumn("Color") { "\($0.color)" },
-            ])
+            Table(Array(demoItems),
+                  selection: Binding(get: { state.tableSelection },
+                                     set: { state.tableSelection = $0 }),
+                  scroll: Binding(get: { state.tableScroll },
+                                  set: { state.tableScroll = $0 }),
+                  visibleCount: 5,
+                  columns: [
+                      TableColumn("Name") { $0.label },
+                      TableColumn("Color") { "\($0.color)" },
+                  ])
         case .tabView:
             TabView(selection: Binding(get: { state.tabSelection },
                                         set: { state.tabSelection = $0 })) {
