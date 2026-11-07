@@ -622,16 +622,9 @@ public final class AttributeGraph: @unchecked Sendable {
                 if canUpdateInPlace(existing, from: newChild) {
                     updateAnyView(existing, from: newChild)
                 } else {
-                    // Type mismatch — rebuild this child. The outgoing
-                    // subtree leaves the tree, so fire onDisappear before
-                    // we forget about it.
-                    fireDisappear(on: existing)
-                    let childID = node.id.appending(.index(i))
-                    let childNode = constructAnyView(newChild, id: childID)
-                    childNode.parent = node
-                    node.children[i] = childNode
-                    invalidateMeasurementCache(from: node)
-                    changed = true
+                    replaceChild(at: i, of: node) {
+                        constructAnyView(newChild, id: node.id.appending(.index(i)))
+                    }
                 }
             }
         } else {
@@ -956,6 +949,21 @@ public final class AttributeGraph: @unchecked Sendable {
             // on) doesn't double-fire from the stale capture.
             node.onDisappearAction = nil
         }
+    }
+
+    /// Swap `parent.children[index]` for a newly built subtree, tearing the
+    /// old one down first.
+    ///
+    /// `build` is a closure because building is not inert: it runs the new
+    /// subtree's `onAppear` and starts its tasks, and the outgoing subtree's
+    /// `onDisappear` must come first, as when an `if` switches branch.
+    func replaceChild(at index: Int, of parent: AttributeNode, with build: () -> AttributeNode) {
+        fireDisappear(on: parent.children[index])
+        let fresh = build()
+        fresh.parent = parent
+        parent.children[index] = fresh
+        invalidateMeasurementCache(from: parent)
+        changed = true
     }
 
     /// Check if an existing node is structurally compatible with a new view.
@@ -1491,12 +1499,9 @@ public final class AttributeGraph: @unchecked Sendable {
             case .leaf(let view, _) where canUpdateInPlace(existing, from: view):
                 updateAnyView(existing, from: view)
             default:
-                fireDisappear(on: existing)
-                let childNode = constructSplitNode(child, id: existing.id, state: state, path: path + [i])
-                childNode.parent = node
-                node.children[i] = childNode
-                invalidateMeasurementCache(from: node)
-                changed = true
+                replaceChild(at: i, of: node) {
+                    constructSplitNode(child, id: existing.id, state: state, path: path + [i])
+                }
             }
         }
     }
