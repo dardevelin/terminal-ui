@@ -112,13 +112,27 @@ def step(name: str, cmd: list[str], timeout: int) -> tuple[int, str]:
     return run_step(name, cmd, timeout, cwd=REPO_ROOT)
 
 
+# How many of a failed step's last lines are shown.
+FAILURE_TAIL_LINES = 25
+
+# Lines that say what failed: Swift Testing's issue and failure lines, and
+# a compiler's or XCTest's errors. A test step ends in the summaries of the
+# targets that passed, and its tail alone left the failing test unnamed.
+FAILURE_MARKERS = ("✘", "error:")
+
+
+def failure_detail(output: str) -> str:
+    """What a failed step's output says went wrong, then how it ended."""
+    lines = output.splitlines()
+    tail = lines[-FAILURE_TAIL_LINES:]
+    named = [line for line in lines[:-FAILURE_TAIL_LINES] if any(marker in line for marker in FAILURE_MARKERS)]
+    return "\n".join(named + (["…"] if named else []) + tail)
+
+
 def fail(msg: str, detail: str = "") -> int:
     print(f"✗ {msg}")
     if detail:
-        lines = detail.splitlines()
-        if len(lines) > 25:
-            lines = lines[-25:]
-        print("\n".join(lines))
+        print(failure_detail(detail))
     return 2
 
 
