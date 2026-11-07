@@ -4,7 +4,8 @@
 Replaces the old bash verify.sh with a Python driver so we exercise the
 same bridge our smoke tests use. Steps:
 
-1. Skip unless this turn touched a ``.swift`` or ``.py`` file.
+1. Skip unless this turn touched a ``.swift`` or ``.py`` file, or the run
+   was asked for with ``--always`` (a merge, whose changes are committed).
 2. Tear down any leftover debug apps + stale sockets.
 3. Repository checks: the tooling's own tests (``tool_tests.py``), then the
    escape-hatch, colour-literal and tracker-id checks they test.
@@ -121,8 +122,13 @@ def fail(msg: str, detail: str = "") -> int:
     return 2
 
 
-def main() -> int:
-    if not dirty_relevant_sources():
+def wants_gate(arguments: list[str], has_source_changes: bool) -> bool:
+    """Whether to run: on a turn that changed sources, or on ``--always``."""
+    return has_source_changes or "--always" in arguments
+
+
+def main(arguments: list[str]) -> int:
+    if not wants_gate(arguments, dirty_relevant_sources()):
         return 0
 
     # Before, for what earlier runs left; after, for what this one leaves —
@@ -236,4 +242,4 @@ def run_gate() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
