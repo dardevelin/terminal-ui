@@ -830,6 +830,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
                         try? await Task.sleep(for: remaining)
                     }
                 }
+                // A loop with work waiting suspends nowhere above: the wait
+                // returns at once, and a frame longer than its interval
+                // leaves no sleep. Every other job on the main actor — a
+                // `.task`, a cursor flash going out — then waited for the
+                // loop to fall idle, which a busy app or a loaded machine
+                // put off indefinitely. This gives them a turn each pass.
+                await Task.yield()
             }
         }
 
