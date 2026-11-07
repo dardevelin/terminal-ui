@@ -111,6 +111,19 @@ All notable changes to TerminalUI are documented here. Format based on
   SwiftUI; the row just past the window's edge, kept to be measured, still
   counts as shown. A view that has left no longer runs again when state it
   read changes.
+- **A `TreeView` row keeps its identity while the tree opens and closes
+  around it**, as a row of SwiftUI's `OutlineGroup` does. A row was known by
+  its place among the rows shown, so expanding or collapsing a node gave
+  every row below it a new identity: each was rebuilt, lost its
+  `@TerminalState`, ran `onDisappear` and `onAppear`, and had its `.task`
+  cancelled and started again. A row is now known by its item's id and its
+  ancestors': the rows around a node that opens or closes stay as they
+  were, and closing a node runs `onDisappear` only for the rows it hides. An
+  item that appears under two parents is a row under each, and Left on a
+  row selects its own parent, where it chose the first row with that
+  parent's id. A tree whose item contains itself stops at the repeat
+  instead of hanging. A `List` row likewise keeps its state when rows are
+  inserted above it.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 

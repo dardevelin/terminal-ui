@@ -98,6 +98,17 @@ public struct TreeViewStyle: Sendable {
 /// cancelled. Reach for ``List`` when data is
 /// flat, ``Table`` when it's flat *and* columnar.
 ///
+/// A row keeps its state and its running work while the nodes around it
+/// expand and collapse, as a row of SwiftUI's `OutlineGroup` does: it is
+/// identified by the path of ids from its root down to its item, not by
+/// where it falls among the rows shown, and closing a node runs
+/// `onDisappear` only for the rows it hides. An item under two parents is
+/// two rows, one under each; expansion is kept by id, so expanding it
+/// expands every place it appears. Siblings should have distinct ids: ones
+/// that share an id are told apart only by their order. A tree that
+/// contains itself — an item among its own descendants — is shown down to
+/// the repeat, which is not opened.
+///
 /// ```swift
 /// // A file browser pane, as the GitClient example wires it:
 /// TreeView(
