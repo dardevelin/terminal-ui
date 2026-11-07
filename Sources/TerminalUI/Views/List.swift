@@ -136,6 +136,11 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             draw: { window, rows in
                 renderList(window, rows: rows, selectedID: selectedID, scroll: scroll, theme: theme)
             },
+            relocate: { keys, earlier in
+                RowWindowing.rows(holding: keys, heldAt: earlier, total: total) { row in
+                    AnyHashable(element(at: row).id)
+                }
+            },
             settle: { window in
                 // Written only when it moved: a write notifies its observers
                 // whether or not the value changed, and an unconditional one

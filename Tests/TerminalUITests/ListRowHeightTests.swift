@@ -36,6 +36,12 @@ private final class Scrolling {
     var offset = 0
 }
 
+/// A list's rows, changed between frames.
+private final class Rows {
+    var ids: [Int]
+    init(ids: [Int]) { self.ids = ids }
+}
+
 @MainActor
 private final class Harness<Content: TerminalView> {
     let engine = FocusEngine()
@@ -92,6 +98,24 @@ private func heldIDs(in root: AttributeNode) -> Set<Int> {
         guard case .explicit(let key)? = row.id.path.last else { return nil }
         return key.base as? Int
     })
+}
+
+/// The rows a screen draws, by the `item N` they show.
+private func shownIDs(in screen: [String]) -> Set<Int> {
+    Set(screen.compactMap { line in
+        line.range(of: "item ").flatMap { Int(line[$0.upperBound...]) }
+    })
+}
+
+/// A list's row nodes, by the id of the row each holds.
+@MainActor
+private func rowNodesByID(in root: AttributeNode) -> [Int: AttributeNode] {
+    guard let list = listNode(in: root) else { return [:] }
+    var found: [Int: AttributeNode] = [:]
+    for row in AttributeGraph.rowNodes(in: list) {
+        if case .explicit(let key)? = row.id.path.last, let id = key.base as? Int { found[id] = row }
+    }
+    return found
 }
 
 @Suite("A list measures its rows at the width it is laid out at")
@@ -368,5 +392,45 @@ struct ListRowLifecycleTests {
         #expect(seen.disappeared == disappeared, "a steady frame dropped a row: \(seen.disappeared)")
         #expect(seen.ids == appeared, "a steady frame built a row again: \(seen.ids)")
         #expect(Set(seen.present.filter { $0.value == 1 }.keys) == heldIDs(in: harness.root))
+    }
+
+    /// The rows a list held were found again where they had been, so rows
+    /// put in above the window gave the places the list held to other
+    /// rows: the ones they held left and, still in view, were built again.
+    @Test(arguments: [true, false])
+    func rowsInsertedAboveTheWindowLeaveTheRowsInViewAsTheyWere(followed: Bool) {
+        let scrolling = Scrolling()
+        let seen = Appearances()
+        let feed = Rows(ids: Array(0..<20))
+        let harness = Harness {
+            List(feed.ids.map(Row.init),
+                 scroll: Binding(get: { scrolling.offset }, set: { scrolling.offset = $0 }),
+                 visibleCount: 5) { row in
+                Text("item \(row.id)")
+                    .onAppear { seen.ids.append(row.id) }
+                    .onDisappear { seen.disappeared.append(row.id) }
+            }
+        }
+        harness.frame()
+        scrolling.offset = 5
+        let before = harness.frame()
+        let shownBefore = shownIDs(in: before)
+        let nodesBefore = rowNodesByID(in: harness.root)
+        seen.disappeared.removeAll()
+
+        feed.ids = [-2, -1] + feed.ids
+        if followed { scrolling.offset += 2 }
+        let after = harness.frame()
+
+        let stayed = shownBefore.intersection(shownIDs(in: after))
+        #expect(!stayed.isEmpty, "\(before) \(after)")
+        #expect(seen.disappeared.allSatisfy { !stayed.contains($0) }, "\(seen.disappeared)")
+        let nodesAfter = rowNodesByID(in: harness.root)
+        for id in stayed {
+            #expect(nodesAfter[id] === nodesBefore[id], "row \(id) was built again")
+        }
+        if followed {
+            #expect(stayed == shownBefore, "the list kept its rows in view: \(after)")
+        }
     }
 }

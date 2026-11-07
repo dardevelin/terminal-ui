@@ -224,3 +224,44 @@ struct RowWindowTests {
         #expect(window.shown == 0 && !window.showsUp && !window.showsDown)
     }
 }
+
+/// The rows a list held, found again among rows that may have moved.
+@Suite("A list finds the rows it held where they are now")
+struct HeldRowRelocationTests {
+
+    private func relocate(_ keys: [String], heldAt earlier: [Int], in rows: [String]) -> (found: [Int], asked: Int) {
+        var asked = 0
+        let found = RowWindowing.rows(holding: keys.map(AnyHashable.init), heldAt: earlier, total: rows.count) {
+            asked += 1
+            return AnyHashable(rows[$0])
+        }
+        return (found, asked)
+    }
+
+    @Test func rowsThatDidNotMoveAreCheckedWhereTheyWere() {
+        let rows = (0..<1_000).map { "r\($0)" }
+        let (found, asked) = relocate(["r500", "r501", "r502"], heldAt: [500, 501, 502], in: rows)
+        #expect(found == [500, 501, 502])
+        #expect(asked == 3, "an unmoved window scanned the list")
+    }
+
+    @Test func rowsPushedDownAreFoundBelow() {
+        let rows = ["new", "new2", "a", "b", "c"]
+        #expect(relocate(["a", "b", "c"], heldAt: [0, 1, 2], in: rows).found == [2, 3, 4])
+    }
+
+    @Test func aRowThatLeftIsDroppedAndTheRestKeepTheirOrder() {
+        let rows = ["a", "x", "c", "d"]
+        #expect(relocate(["a", "b", "c"], heldAt: [0, 1, 2], in: rows).found == [0, 2])
+    }
+
+    @Test func aRepeatedKeyTakesItsRowsInOrder() {
+        let rows = ["top", "p", "x", "x", "y"]
+        #expect(relocate(["x", "x"], heldAt: [1, 2], in: rows).found == [2, 3])
+    }
+
+    @Test func rowsPastTheEndAreLookedFor() {
+        let rows = ["b", "a"]
+        #expect(relocate(["a", "b"], heldAt: [3, 4], in: rows).found == [0, 1])
+    }
+}

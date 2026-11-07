@@ -233,6 +233,15 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                            expandedBinding: expandedBinding, selectedIdxBinding: selectedIdxBinding,
                            scrollBinding: scrollBinding)
             },
+            relocate: { keys, earlier in
+                // A scan builds a path only for a row whose item the window
+                // held, so a large tree is scanned by its ids, not its paths.
+                let items = Set(keys.compactMap { ($0.base as? TreeRowID<Data.Element.ID>)?.path.last })
+                return RowWindowing.rows(
+                    holding: keys, heldAt: earlier, total: total,
+                    key: { AnyHashable(TreeViewHelpers.rowID(at: $0, in: rows)) },
+                    mayHold: { items.contains(rows[$0].item.id) })
+            },
             settle: { window in
                 let readOffset = scrollBinding.get()
                 let readFollowed = followedBinding.get()

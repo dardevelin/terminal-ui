@@ -111,6 +111,14 @@ private final class Screen<Content: TerminalView> {
 }
 
 @MainActor
+private func taskNodes(in node: AttributeNode) -> [AttributeNode] {
+    var found: [AttributeNode] = []
+    if case .modifier(.task) = node.kind { found.append(node) }
+    for child in node.children { found += taskNodes(in: child) }
+    return found
+}
+
+@MainActor
 private func treeWindow(in node: AttributeNode) -> AttributeNode? {
     if node.rowWindowRebuilder != nil || node.geometryRebuilder != nil { return node }
     for child in node.children {
@@ -208,5 +216,57 @@ struct TreeViewIdentityTests {
         screen.press(.up)
 
         #expect(selecting.selected == 2, "Left went to the other parent's 7")
+    }
+
+    @Test func aRowBelowAnExpandingNodeKeepsItsNodeStateAndTask() {
+        let probe = Probe()
+        let screen = Screen(probedTree(fixture, probe))
+        screen.focus()
+        let before = screen.rows
+        #expect(before.count == 4)
+        guard before.count == 4 else { return }
+        let two = before[2]
+        probe.counter(under: two)?.binding.wrappedValue = 7
+        screen.frame()
+        #expect(probe.counter(under: two)?.count == 7)
+        let task = taskNodes(in: two).first?.lifecycleTask
+        #expect(task != nil, "row 2 starts its task")
+        probe.log.removeAll()
+
+        screen.press(.down)
+        let open = screen.press(.right)
+
+        #expect(open.contains { $0.contains("item 11") }, "\(open)")
+        let after = screen.rows
+        #expect(after.count == 6)
+        #expect(after.count == 6 && after[4] === two, "row 2 is the node it was")
+        #expect(probe.counter(under: two)?.count == 7, "row 2 kept its state")
+        #expect(probe.log.sorted() == ["appear 10", "appear 11"], "\(probe.log)")
+        let still = taskNodes(in: two).first?.lifecycleTask
+        #expect(still != nil && still == task, "row 2's task is the one it started")
+        #expect(task?.isCancelled == false)
+    }
+
+    @Test func expandingANodeNearTheWindowEdgeDisappearsOnlyRowsPushedOut() {
+        let probe = Probe()
+        let screen = Screen(probedTree(fixture, probe, visibleCount: 5))
+        screen.focus()
+        let before = screen.rows
+        #expect(before.count == 4)
+        probe.log.removeAll()
+
+        screen.press(.down)
+        let open = screen.press(.right)
+
+        #expect(open.contains { $0.contains("item 11") }, "\(open)")
+        #expect(!open.contains { $0.contains("item 2 ") }, "row 2 is pushed out of view: \(open)")
+        let after = screen.rows
+        #expect(after.count >= 4)
+        guard after.count >= 4, before.count == 4 else { return }
+        #expect(after[0] === before[0] && after[1] === before[1], "the rows still on screen stay")
+        #expect(probe.log.filter { $0.hasPrefix("appear") }.sorted() == ["appear 10", "appear 11"],
+                "only the rows that came into view appear: \(probe.log)")
+        let gone = probe.log.filter { $0.hasPrefix("disappear") }
+        #expect(gone.allSatisfy { $0 == "disappear 2" || $0 == "disappear 3" }, "\(probe.log)")
     }
 }
