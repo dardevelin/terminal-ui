@@ -14,7 +14,7 @@ import Observation
 /// container gives it — which also makes it greedy in stack layout, the way
 /// any size-reading view has to be.
 ///
-/// Siblings: ``Table`` for column-aligned, non-interactive data; ``TreeView``
+/// Siblings: ``Table`` for column-aligned rows, selectable or not; ``TreeView``
 /// when rows nest and expand/collapse; ``ForEach`` when you just need rows
 /// with no scrolling or selection.
 ///

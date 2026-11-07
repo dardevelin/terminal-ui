@@ -407,12 +407,16 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .table: return PageInfo(id: self, category: .display, name: "Table",
-            summary: "Tabular data with columns.",
+            summary: "Tabular data with columns, and rows to select.",
             code: """
-                Table(Array(items), columns: [
-                    TableColumn("Name")  { $0.label },
-                    TableColumn("Color") { "\\($0.color)" },
-                ])
+                Table(Array(items),
+                      selection: $selectedID,
+                      scroll: $scrollOffset,
+                      visibleCount: 5,
+                      columns: [
+                          TableColumn("Name")  { $0.label },
+                          TableColumn("Color") { "\\($0.color)" },
+                      ])
                 """)
         case .tabView: return PageInfo(id: self, category: .display, name: "TabView",
             summary: "Multiple pages selected via a tab bar.",

@@ -773,12 +773,41 @@ def storybook_divider_renders_rule(app: Client) -> None:
 
 def storybook_table_renders_header_and_rows(app: Client) -> None:
     """Table preview shows Name/Color header columns + data rows for the
-    demo items. No interaction — Table has no keyboard selection yet."""
+    demo items, as it draws before any key or click reaches it."""
     app.goto_page("Table")
     preview = app.preview_text()
     assert_true("Name" in preview, "Table header 'Name' missing")
     assert_true("alpha" in preview, "Table row 'alpha' missing")
     assert_true("beta" in preview, "Table row 'beta' missing")
+
+
+def _table_header_row(preview: str) -> int:
+    return next(i for i, row in enumerate(preview.splitlines()) if "Name" in row and "Color" in row)
+
+
+def _row_holding(preview: str, needle: str) -> int:
+    return next(i for i, row in enumerate(preview.splitlines()) if needle in row)
+
+
+def storybook_table_selection_advances(app: Client) -> None:
+    """Table page: Tab focuses the table, the `▸` cursor starts on the first
+    row, Down moves it a row at a time, and End scrolls the rows under a
+    header that stays where it was. Table had no selection at all."""
+    app.goto_page("Table")
+    app.send_key("tab")
+    preview = app.preview_text()
+    assert_true("▸ alpha" in preview, f"the cursor should start on alpha:\n{preview}")
+    header = _table_header_row(preview)
+    app.press_many("down", 2)
+    preview = app.preview_text()
+    assert_true("▸ gamma" in preview, f"two Downs should select gamma:\n{preview}")
+    assert_true(_table_header_row(preview) == header < _row_holding(preview, "▸ gamma"),
+                f"the header should stay above the rows:\n{preview}")
+    app.send_key("end")
+    preview = app.preview_text()
+    assert_true("▸ theta" in preview and "▲" in preview, f"End should scroll to theta:\n{preview}")
+    assert_true(_table_header_row(preview) == header < _row_holding(preview, "▲"),
+                f"scrolled, the header should stay put over the ▲ line:\n{preview}")
 
 
 def storybook_diffview_marks_changes(app: Client) -> None:
@@ -1330,6 +1359,29 @@ def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
                 f"the wheel should scroll the list:\n{app.preview_text()}")
     click_on("epsilon")
     assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
+
+
+def storybook_a_click_on_a_table_row_selects_it(app: Client) -> None:
+    """Table page: a click on a row selects it, after the wheel has
+    scrolled the rows a click selects the row now drawn there, and a click
+    on the header selects nothing."""
+    app.goto_page("Table")
+
+    def click_on(label: str) -> None:
+        x, y = _find(app, label)
+        app.mouse_click(x, y)
+
+    click_on("gamma")
+    assert_true("▸ gamma" in app.preview_text(), f"expected gamma selected:\n{app.preview_text()}")
+    x, y = _find(app, "gamma")
+    app.mouse_wheel("down", x, y)
+    assert_true("▲" in app.preview_text() and "epsilon" in app.preview_text(),
+                f"the wheel should scroll the rows:\n{app.preview_text()}")
+    click_on("epsilon")
+    assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
+    before = app.preview_text()
+    click_on("Color")
+    assert_true(app.preview_text() == before, f"a click on the header should change nothing:\n{app.preview_text()}")
 
 
 def storybook_taps_count_and_know_their_modifiers(app: Client) -> None:
@@ -2901,6 +2953,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.hstack_renders_horizontal", "Storybook", storybook_hstack_renders_horizontal),
     SmokeCase("storybook.divider_renders_rule", "Storybook", storybook_divider_renders_rule),
     SmokeCase("storybook.table_renders_header_and_rows", "Storybook", storybook_table_renders_header_and_rows),
+    SmokeCase("storybook.table_selection_advances", "Storybook", storybook_table_selection_advances),
     SmokeCase("storybook.diffview_marks_changes", "Storybook", storybook_diffview_marks_changes),
     SmokeCase("storybook.hunkdiffview_navigates_lines", "Storybook", storybook_hunkdiffview_navigates_lines),
     SmokeCase("storybook.progressbar_renders_all_values", "Storybook", storybook_progressbar_renders_all_values),
@@ -2931,6 +2984,8 @@ CASES: list[SmokeCase] = [
               storybook_hover_reaches_only_the_view_on_top),
     SmokeCase("storybook.a_click_on_a_list_row_selects_it", "Storybook",
               storybook_a_click_on_a_list_row_selects_it),
+    SmokeCase("storybook.a_click_on_a_table_row_selects_it", "Storybook",
+              storybook_a_click_on_a_table_row_selects_it),
     SmokeCase("storybook.taps_count_and_know_their_modifiers", "Storybook",
               storybook_taps_count_and_know_their_modifiers),
     SmokeCase("storybook.a_drag_moves_what_it_holds", "Storybook", storybook_a_drag_moves_what_it_holds),
