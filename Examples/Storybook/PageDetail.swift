@@ -27,8 +27,9 @@ struct PageDetail: TerminalView {
             Divider()
             // Code pane: border is the outer frame, ScrollView lives INSIDE
             // the border so the closing ╰─╯ is always visible even for long
-            // snippets. frame(height:) gives a fixed window; content scrolls
-            // within. Still wants a visible scrollbar affordance.
+            // snippets. The preview takes the height it needs and the code
+            // takes the rest, scrolling when it is longer: a fixed height
+            // pushed a tall preview off the foot of a short window.
             Text("Code").foreground(.gray).bold()
             ScrollView(.vertical) {
                 // CodeView wraps each long line under its own code, at the
@@ -36,7 +37,6 @@ struct PageDetail: TerminalView {
                 // that width and overflowed it.
                 CodeView(info.code, language: "swift")
             }
-            .frame(height: 12)
             .padding()
             .border()
             Text("").foreground(.default)
@@ -44,7 +44,6 @@ struct PageDetail: TerminalView {
             PreviewPane(pageID: pageID, state: state)
                 .padding()
                 .border()
-            Spacer()
         }
     }
 }
@@ -524,10 +523,7 @@ struct PreviewPane: TerminalView {
                     .gradient(from: .rgb(124, 92, 255), to: .rgb(61, 219, 217))
             }
         case .morseTicker:
-            MorseTicker("SOS",
-                        scrollOffset: Binding(get: { state.morseScroll },
-                                               set: { state.morseScroll = $0 }),
-                        width: 40)
+            MorseTickerDemo()
 
         // ───── Modifiers ─────
         case .foreground:
@@ -1285,6 +1281,27 @@ struct AsyncTaskDemo: TerminalView {
                 state.asyncTicks += 1
             }
         }
+    }
+}
+
+
+/// The MorseTicker page's preview. The ticker moves only when its offset
+/// does, so the page's own work advances it while the page is shown, and
+/// stops with it.
+struct MorseTickerDemo: TerminalView {
+    // Reads the app-wide singleton for the reason `AsyncTaskDemo` does: the
+    // work outlives a single body evaluation.
+    var body: some TerminalView {
+        MorseTicker("SOS",
+                    scrollOffset: Binding(get: { state.morseScroll },
+                                           set: { state.morseScroll = $0 }),
+                    width: 40)
+            .task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(80))
+                    state.morseScroll += 1
+                }
+            }
     }
 }
 
