@@ -78,6 +78,11 @@ public final class AttributeGraph: @unchecked Sendable {
     /// the one drawn — is what is kept, and the next update writes it.
     private var windowCommits: [ObjectIdentifier: () -> Void] = [:]
 
+    /// Advances as each frame's update or drain begins, drain-only frames
+    /// included, so the passes that lay a list out between two of them know
+    /// they are one frame's — see `buildRowWindow`.
+    private(set) var frame = 0
+
     /// Re-entrancy guard: a `drain()` reached from inside a drain's body
     /// evaluation returns at once and leaves the work to the outer one.
     private var draining: Bool = false
@@ -89,7 +94,7 @@ public final class AttributeGraph: @unchecked Sendable {
 
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {
-        for (_, posted) in invalidations.take() {
+        for (_, posted) in invalidations.take() where !posted.isRetired {
             // A ForEach posts itself for what its row closure read (see
             // `trackingRow`); the body holding it is what runs again.
             var node = posted
@@ -104,7 +109,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// A node a reconciliation replaced no longer belongs to the tree, and
     /// re-evaluating it would only feed a subtree nothing renders.
     private func isAttached(_ node: AttributeNode) -> Bool {
-        node.parent != nil || node === root
+        !node.isRetired && (node.parent != nil || node === root)
     }
 
     /// Re-evaluate every node that became dirty since the last drain.
@@ -112,6 +117,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// outside the dirty nodes themselves — that's the parity claim.
     @discardableResult
     public func drain() -> Bool {
+        if !draining { frame += 1 }
         commitWindows()
         applyInvalidations()
         guard !dirtyQueue.isEmpty else { return false }
@@ -206,6 +212,7 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Returns true if any node values actually changed.
     @discardableResult
     public func update<V: TerminalView>(from view: V) -> Bool {
+        frame += 1
         commitWindows()
         applyInvalidations()
         updateGeneration += 1
@@ -645,6 +652,84 @@ public final class AttributeGraph: @unchecked Sendable {
         node.isDirty = false
     }
 
+    /// Reconciles a `ForEach`'s rows with `data`, matching them by `key`.
+    ///
+    /// A row whose key is still there is updated in place, wherever it moved
+    /// to. A row whose key is gone leaves the tree as any other removed
+    /// subtree does, through `fireDisappear`, and before a row this update
+    /// adds is built: an outgoing row's `onDisappear` runs before an incoming
+    /// one's `onAppear`, as when an `if` switches branch.
+    ///
+    /// Each old row is matched once, so the rows kept are distinct, and kept
+    /// as many as there were with nothing added means none left: an unchanged
+    /// frame or a reorder, settled without building a set. A key the data
+    /// repeats takes the next old row with that key, or a new one, as the
+    /// first build gave each occurrence its own.
+    func updateKeyedChildren<Data: RandomAccessCollection, Row: TerminalView>(
+        _ node: AttributeNode,
+        from data: Data,
+        key: (Data.Element) -> AnyHashable,
+        row: (Data.Element) -> Row
+    ) {
+        var existing: [AnyHashable: AttributeNode] = [:]
+        existing.reserveCapacity(node.children.count)
+        var repeated: [AnyHashable: [AttributeNode]] = [:]
+        for child in node.children {
+            guard case .explicit(let childKey)? = child.id.path.last else { continue }
+            if existing[childKey] == nil {
+                existing[childKey] = child
+            } else {
+                repeated[childKey, default: []].append(child)
+            }
+        }
+
+        var kept: [AttributeNode] = []
+        kept.reserveCapacity(data.count)
+        var inserted: [(position: Int, element: Data.Element, key: AnyHashable)] = []
+        for (position, element) in data.enumerated() {
+            let elementKey = key(element)
+            guard let match = existing.removeValue(forKey: elementKey) else {
+                inserted.append((position, element, elementKey))
+                continue
+            }
+            if var others = repeated[elementKey], !others.isEmpty {
+                existing[elementKey] = others.removeFirst()
+                repeated[elementKey] = others
+            }
+            let view = trackingRow(of: node) { row(element) }
+            updateNode(match, from: view)
+            kept.append(match)
+        }
+
+        if inserted.isEmpty, kept.count == node.children.count {
+            node.children = kept
+            return
+        }
+
+        let staying = Set(kept.map(ObjectIdentifier.init))
+        for old in node.children where !staying.contains(ObjectIdentifier(old)) {
+            fireDisappear(on: old)
+        }
+
+        var merged: [AttributeNode] = []
+        merged.reserveCapacity(kept.count + inserted.count)
+        var nextKept = kept.startIndex
+        for entry in inserted {
+            while merged.count < entry.position {
+                merged.append(kept[nextKept])
+                nextKept += 1
+            }
+            let view = trackingRow(of: node) { row(entry.element) }
+            let fresh = constructNode(for: view, id: node.id.appending(.explicit(entry.key)))
+            fresh.parent = node
+            merged.append(fresh)
+        }
+        merged.append(contentsOf: kept[nextKept...])
+        node.children = merged
+        changed = true
+        invalidateMeasurementCache(from: node)
+    }
+
     /// Invalidate cached width/height on `node` and every ancestor, since
     /// each one's measured size is built from this one's.
     ///
@@ -856,6 +941,7 @@ public final class AttributeGraph: @unchecked Sendable {
         for child in node.children {
             fireDisappear(on: child)
         }
+        node.isRetired = true
         // Work a view started belongs to that view: when it leaves the tree
         // the task goes with it, or a screen the user navigated away from
         // keeps polling and keeps waking the render loop.
@@ -1067,6 +1153,10 @@ public final class AttributeGraph: @unchecked Sendable {
             ?? Size(width: termSize.cols, height: termSize.rows)
         buildRowWindow(window, in: node, width: seedSize.width,
                        lines: window.declaredLines ?? seedSize.height)
+        // Built before any pass knows the list's size, so the frame's passes
+        // need not hold what it kept: a row only the seed asked about leaves
+        // in the frame it came in, not the next.
+        node._rowWindowBuild?.frame = nil
         node._readerBuild = (width: seedSize.width, generation: updateGeneration)
         return node
     }
@@ -1125,6 +1215,14 @@ public final class AttributeGraph: @unchecked Sendable {
     /// walk asked about — the one that did not fit below it, and at the end
     /// of the list the one above it. The next frame's walk asks about those
     /// again; kept, they are not rebuilt and dropped every frame.
+    ///
+    /// A row dropped leaves the tree, and its `onDisappear` runs. A list in a
+    /// stack is laid out more than once a frame, at the stack's height and
+    /// then at its own slot, and a pass at the smaller would drop rows the
+    /// larger kept, which the next frame's larger pass builds again: they
+    /// would appear and disappear every frame. So no pass drops a row an
+    /// earlier pass of its frame kept; it holds it undrawn instead, and the
+    /// next frame's passes decide afresh.
     func buildRowWindow(_ window: any _GraphRowWindow, in node: AttributeNode, width: Int, lines: Int) {
         let width = max(1, width)
         let lines = max(1, lines)
@@ -1152,9 +1250,10 @@ public final class AttributeGraph: @unchecked Sendable {
             }
         }
 
-        if let last = node._rowWindowBuild {
-            let rows = last.rows.filter { $0 < total }
-            if !rows.isEmpty { place(last.window, rows: rows) }
+        let earlier = node._rowWindowBuild
+        if let earlier {
+            let rows = earlier.rows.filter { $0 < total }
+            if !rows.isEmpty { place(earlier.window, rows: rows) }
         }
         var chosen: RowWindow
         var asked: [Int] = []
@@ -1177,8 +1276,12 @@ public final class AttributeGraph: @unchecked Sendable {
         }
 
         let drawn = chosen.offset..<(chosen.offset + chosen.shown)
-        let kept = Set(asked).filter { $0 >= chosen.offset - 1 && $0 <= drawn.upperBound }
-            .union(drawn).sorted()
+        var keeping = Set(asked).filter { $0 >= chosen.offset - 1 && $0 <= drawn.upperBound }
+            .union(drawn)
+        if let earlier, earlier.frame == frame {
+            keeping.formUnion(earlier.rows.lazy.filter { $0 < total })
+        }
+        let kept = keeping.sorted()
         if placed?.window != chosen || placed?.rows != kept {
             place(chosen, rows: kept)
         }
@@ -1191,7 +1294,7 @@ public final class AttributeGraph: @unchecked Sendable {
                 invalidateMeasurementCache(from: rowNode)
             }
         }
-        node._rowWindowBuild = (chosen, kept)
+        node._rowWindowBuild = (chosen, kept, frame)
         windowCommits[ObjectIdentifier(node)] = window.commit(for: chosen)
     }
 

@@ -121,6 +121,13 @@ public class AttributeNode: @unchecked Sendable {
     /// carries no identity and so runs once for the node's lifetime.
     public var lifecycleTaskID: AnyHashable?
 
+    /// Set when the node leaves the tree, by the walk that runs its
+    /// `onDisappear`. Its `parent` is weak and outlives the removal while the
+    /// old parent stays in the tree, so it cannot tell a dropped node from an
+    /// attached one: an invalidation still pending would run the body again
+    /// and restart its task.
+    var isRetired = false
+
     /// Last `EquatableTerminalView` value cached for the user-Equatable
     /// fast path in `updateNode`. Stored as `Any` so the type-erased
     /// reconciler can compare new vs cached without naming the generic
@@ -324,8 +331,9 @@ public class AttributeNode: @unchecked Sendable {
     var rowWindowRebuilder: ((Int) -> Void)?
 
     /// The window a list last drew, and the rows its `ForEach` holds for it —
-    /// what the next pass measures first.
-    var _rowWindowBuild: (window: RowWindow, rows: [Int])?
+    /// what the next pass measures first — with the graph's `frame` the pass
+    /// ran in, nil for the build that seeded the list.
+    var _rowWindowBuild: (window: RowWindow, rows: [Int], frame: Int?)?
 
     /// Set by the list holding this row: nil for a row drawn whole, the
     /// lines a row cut off at the window's foot is drawn in, or 0 for a row
