@@ -6,6 +6,19 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Changed
+
+- **A `ZStack` child sits at its own size.** Each child is offered the
+  stack's size and takes what it claims, as in SwiftUI, under every
+  alignment: all of an axis it claims — a `GeometryReader`, a scroll view,
+  a `Divider` across, `.frame(maxWidth: .infinity)`, a stack holding one of
+  these — and its measured size on one it does not. Under the default
+  `.topLeading` a child that stated no size took the whole stack, so a label
+  on top held the pointer everywhere in it and nothing under it could be
+  hovered or clicked, its padded rows blanked the layers beside it, and a
+  border or background on it spanned the stack. A child that should cover
+  the stack says so with `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
+
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
 A minor release: an app written for 2.0 compiles unchanged. The mouse does

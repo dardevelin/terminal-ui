@@ -836,11 +836,15 @@ def storybook_barchart_renders_bars(app: Client) -> None:
 def storybook_zstack_overlays_label(app: Client) -> None:
     """ZStack preview: `OVER` label rendered on top of a ◼ block background.
     Both should be present in the same snapshot — the label overwrites the
-    fill cells underneath, not the whole frame."""
+    fill cells underneath, not the whole frame. Handed the whole stack, the
+    label padded its row to the stack's width and blanked the ◼ after it."""
     app.goto_page("ZStack")
     preview = app.preview_text()
     assert_true("OVER" in preview, "ZStack top-layer label missing")
     assert_true("◼" in preview, "ZStack background fill glyphs missing")
+    row = next(line for line in preview.split("\n") if "OVER" in line)
+    assert_true("◼" in row[row.index("OVER"):],
+                f"the layer under the label should show beside it; row:\n{row}")
 
 
 def storybook_spacer_pushes_edges(app: Client) -> None:

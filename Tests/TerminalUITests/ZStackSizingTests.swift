@@ -48,6 +48,54 @@ private final class Screen {
 @MainActor
 struct ZStackSizingTests {
 
+    // MARK: - The default alignment
+
+    // A label on top covers only the cells it writes. Handed the whole stack,
+    // it padded its row to the stack's width and blanked what lay beside it.
+    @Test func aLabelOnTopLeavesTheRestOfItsRowDrawn() {
+        let screen = Screen(width: 8, height: 2, ZStack {
+            Text("◼◼◼◼◼◼")
+            Text("ab")
+        })
+        #expect(screen.rows[0] == "ab◼◼◼◼  ")
+        #expect(screen.primitives.map(\.rect) == [
+            Rect(x: 0, y: 0, width: 6, height: 1),
+            Rect(x: 0, y: 0, width: 2, height: 1),
+        ])
+    }
+
+    @Test func aGeometryReaderStillTakesTheWholeStack() {
+        let screen = Screen(width: 12, height: 5, ZStack {
+            GeometryReader { size in Text("\(size.width)x\(size.height)") }
+        })
+        #expect(screen.child == Rect(x: 0, y: 0, width: 12, height: 5))
+        #expect(screen.rows[0].hasPrefix("12x5"))
+    }
+
+    @Test func aColumnHoldingADividerStillTakesTheWidth() {
+        let screen = Screen(width: 12, height: 5, ZStack {
+            VStack {
+                Text("title")
+                Divider()
+            }
+        })
+        #expect(screen.child == Rect(x: 0, y: 0, width: 12, height: 2))
+        #expect(screen.rows[1] == String(repeating: "─", count: 12))
+    }
+
+    @Test func aRowHoldingASpacerStillTakesTheWidth() {
+        let screen = Screen(width: 12, height: 5, ZStack {
+            HStack {
+                Text("[l]")
+                Spacer()
+                Text("[r]")
+            }
+        })
+        #expect(screen.child == Rect(x: 0, y: 0, width: 12, height: 1),
+                "a Spacer stretches its row across, not down")
+        #expect(screen.rows[0] == "[l]      [r]")
+    }
+
     // MARK: - Greedy children under an alignment that places
 
     @Test func aGeometryReaderSeesTheWholeStack() {

@@ -1216,8 +1216,9 @@ public enum GraphRenderer {
 
     static func renderZStack(_ children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
-        // Layer 2: `Layout.stacked` stamped each child's rect. Render reads
-        // them — last child wins on overlapping cells.
+        // Layer 2: `Layout.stacked` stamped each child's rect at the size it
+        // claims. Render reads them — last child wins on overlapping cells,
+        // and only on the cells it covers.
         for child in children {
             var childCtx = context
             childCtx.rect = child.rect

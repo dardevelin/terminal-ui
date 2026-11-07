@@ -4,7 +4,7 @@ import Testing
 
 // Modifier rect math and ZStack semantics belong to the layout phase:
 // padding, border and frame inset the rect a child is placed in, and a
-// ZStack gives every child the parent's rect.
+// ZStack places every child at the size it claims within the parent's rect.
 //
 // The phase-separation contract says the layout phase owns
 // rect computation. This suite pins the per-primitive math at the Layout
@@ -87,8 +87,8 @@ struct LayoutMathTests {
 
     // MARK: - ZStack
 
-    @Test("ZStack: every child's rect equals the parent's rect, before render")
-    func zstackChildrenInheritParentRect() {
+    @Test("ZStack: each child sits at its own size in the parent's rect, before render")
+    func zstackChildrenSitAtTheirOwnSize() {
         let graph = AttributeGraph()
         graph.update(from: ZStack {
             Text("back")
@@ -102,12 +102,26 @@ struct LayoutMathTests {
         Layout.measureAndPlace(graph: root, in: allocated)
 
         let primitives = collectPrimitives(in: root)
-        #expect(primitives.count >= 2,
-                "ZStack should expose at least 2 primitive descendants; got \(primitives.count)")
-        for child in primitives {
-            #expect(child.rect == allocated,
-                    "every ZStack descendant primitive must inherit allocated rect; got \(child.rect) for kind \(child.kind.debugName)")
+        #expect(primitives.map(\.rect) == [
+            Rect(x: 1, y: 2, width: 4, height: 1),
+            Rect(x: 1, y: 2, width: 5, height: 1),
+        ], "a ZStack child takes the size it claims, at the stack's top-leading corner")
+    }
+
+    @Test("ZStack: a child that claims what it is offered gets the parent's rect, before render")
+    func zstackGreedyChildInheritsParentRect() {
+        let graph = AttributeGraph()
+        graph.update(from: ZStack {
+            Text("back").frame(maxWidth: .infinity, maxHeight: .infinity)
+        })
+        guard let root = graph.root else {
+            Issue.record("no root after build")
+            return
         }
+        let allocated = Rect(x: 1, y: 2, width: 14, height: 5)
+        Layout.measureAndPlace(graph: root, in: allocated)
+        #expect(root.children.first?.rect == allocated,
+                "a frame reaching for .infinity claims the whole stack")
     }
 
     // MARK: - Composed: padding inside border inside ZStack
@@ -127,12 +141,17 @@ struct LayoutMathTests {
         let allocated = Rect(x: 0, y: 0, width: 20, height: 10)
         Layout.measureAndPlace(graph: root, in: allocated)
         // ZStack child = border modifier node, its child = padding modifier node,
-        // its child = Text primitive. Border insets by 1, padding insets by 1.
+        // its child = Text primitive. The border sits at its own size — the
+        // text with a cell of padding and one of border on every side — and
+        // insets by 1, padding insets by 1.
         guard let primitive = firstDescendantPrimitive(in: root) else {
             Issue.record("no primitive descendant in composed tree")
             return
         }
-        let expected = allocated.inset(by: 1).inset(by: 1)
+        let bordered = Rect(x: 0, y: 0, width: 9, height: 5)
+        #expect(root.children.first?.rect == bordered,
+                "the bordered child should sit at its own size; got \(String(describing: root.children.first?.rect))")
+        let expected = bordered.inset(by: 1).inset(by: 1)
         #expect(primitive.rect == expected,
                 "composed border→padding→Text should stamp inset(1).inset(1); got \(primitive.rect)")
     }

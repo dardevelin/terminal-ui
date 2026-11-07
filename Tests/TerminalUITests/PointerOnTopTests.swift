@@ -83,6 +83,20 @@ struct PointerOnTopTests {
         #expect(hovered.names == ["over"])
     }
 
+    @Test func besideAnUnsizedViewOnTopTheOneUnderItIsHovered() {
+        let hovered = Hovered()
+        let screen = Screen(ZStack {
+            Text("under").frame(width: 10, height: 2).onHover(hovered.handler("under"))
+            Text("over").onHover(hovered.handler("over"))
+        })
+        screen.move(6, 0)
+        #expect(hovered.names == ["under"])
+        screen.move(1, 1)
+        #expect(hovered.names == ["under"])
+        screen.move(1, 0)
+        #expect(hovered.names == ["over"])
+    }
+
     @Test func aViewHoldingTheHoveredOneIsHoveredToo() {
         let hovered = Hovered()
         let screen = Screen(VStack {

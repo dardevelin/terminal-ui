@@ -19,7 +19,7 @@
 ///
 ///   - Modifier rect transforms — padding (inset by amount), border
 ///     (inset by 1), frame (clamp dimensions).
-///   - ZStack — each child at its stated size, aligned in the stack.
+///   - ZStack — each child at the size it claims, aligned in the stack.
 ///
 /// Layer 3 (still on `GraphRenderer.renderLayout` until extracted)
 /// owns flex distribution:
@@ -126,23 +126,21 @@ public enum Layout {
         }
     }
 
-    /// Where a ZStack places `child` in its `rect`. A size the child states
-    /// is its size, as a stack's cross axis honours one: stamped with the
-    /// whole stack, a `.frame(width: 4, height: 1)` on top held the pointer
-    /// everywhere in it, and nothing under it could be hovered or clicked.
-    /// What the child leaves unstated it takes from the stack under
-    /// `.topLeading`, which draws exactly as before; any other alignment
-    /// places the child at the size it claims when offered the stack's, as
-    /// SwiftUI's does: all of an axis it claims, its measured size on one it
-    /// does not. Measured instead, a GeometryReader saw one row and a Divider
-    /// shrank to a single dash.
+    /// Where a ZStack places `child` in its `rect`: at the size it claims
+    /// when offered the stack's, as SwiftUI's does, under every alignment. A
+    /// size the child states is its size; on an axis it states nothing about
+    /// it takes all of one it claims, and its measured size on one it does
+    /// not. Stamped with the whole stack instead, as `.topLeading` once did,
+    /// a label on top held the pointer everywhere in the stack, nothing under
+    /// it could be hovered or clicked, and its padded rows blanked the layers
+    /// beside it. Measured on an axis it claims, a GeometryReader saw one row
+    /// and a Divider shrank to a single dash.
     private static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
-        let fills = alignment == .topLeading
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
-            ?? (fills || GraphRenderer.claimsOffered(child, horizontal: true)
+            ?? (GraphRenderer.claimsOffered(child, horizontal: true)
                 ? rect.width : GraphMeasurer.measureWidth(child)))
         let height = min(rect.height, GraphRenderer.declaredHeight(of: child)
-            ?? (fills || GraphRenderer.claimsOffered(child, horizontal: false)
+            ?? (GraphRenderer.claimsOffered(child, horizontal: false)
                 ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
         return Rect(
             x: rect.x + alignment.horizontal.offset(for: width, in: rect.width),
