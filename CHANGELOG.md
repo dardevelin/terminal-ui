@@ -6,6 +6,18 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **`Table(_:selection:scroll:visibleCount:columns:separator:showHeader:)`**
+  — a table whose rows a reader can select. The rows are a `List`'s: a `▸`
+  cursor on the selected row, the arrows, PageUp/PageDown and Home/End to
+  move it, a click to select a row, the wheel to scroll, and only the
+  visible window built; the header and its rule stay put above them, and a
+  click on either selects nothing. `visibleCount` counts the row lines, the
+  `▲`/`▼` indicators included and the header not; `nil` fits the rows to
+  the room under the header. Empty, it is still a Tab stop. A table built
+  without a selection draws exactly as before.
+
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
 A minor release: an app written for 2.0 compiles unchanged. The mouse does

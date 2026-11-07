@@ -50,18 +50,23 @@ public struct TableColumn<Row> {
     }
 }
 
-/// A column-aligned data table with precomputed rendering.
+/// A column-aligned data table, display-only or with rows to select.
 ///
 /// Renders a header row, a `─` rule beneath it, and one line per element,
-/// each cell padded/truncated to its ``TableColumn`` width. The entire
-/// table is precomputed into a single ``Text`` node — one graph node, one
-/// measurement, zero per-cell layout overhead — which is why it stays cheap
-/// at hundreds of rows.
+/// each cell padded/truncated to its ``TableColumn`` width.
 ///
-/// `Table` is display-only: no scrolling, no selection, no focus. When rows
-/// need a cursor and keyboard navigation, use ``List`` (formatting each row
-/// into aligned columns yourself); when data nests, use ``TreeView``. Sort
-/// or window the data before passing it in.
+/// Given no selection, `Table` is display-only — no scrolling, no
+/// selection, no focus — and the entire table is precomputed into a single
+/// ``Text`` node: one graph node, one measurement, zero per-cell layout
+/// overhead, which is why it stays cheap at hundreds of rows. Sort or
+/// window the data before passing it in.
+///
+/// Given a `selection` binding, the rows are a ``List``'s: a `▸` cursor on
+/// the selected row, the arrows, PageUp/PageDown and Home/End to move it, a
+/// click to select a row, the wheel to scroll, and only the visible window
+/// built, under a header and rule that stay put. The table is then one Tab
+/// stop, empty or not. `visibleCount` sizes the rows as it does a list's,
+/// the header aside. When data nests, use ``TreeView``.
 ///
 /// ```swift
 /// Table(
@@ -74,6 +79,16 @@ public struct TableColumn<Row> {
 ///         },
 ///     ]
 /// )
+///
+/// // The same rows, to pick one from:
+/// Table(state.processes,
+///       selection: Binding(get: { state.selectedPID },
+///                          set: { state.selectedPID = $0 }),
+///       visibleCount: 10,
+///       columns: [
+///           TableColumn("Process", width: 22) { $0.name },
+///           TableColumn("PID", width: 8, alignment: .right) { "\($0.pid)" },
+///       ])
 /// ```
 public struct Table<Data: RandomAccessCollection>: TerminalView
     where Data.Element: Identifiable
@@ -97,7 +112,7 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     /// the room the container leaves under the header.
     public let visibleCount: Int?
 
-    /// Creates a table over a row collection.
+    /// Creates a display-only table over a row collection.
     ///
     /// - Parameters:
     ///   - data: Rows to render.

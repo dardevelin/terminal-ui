@@ -16,9 +16,9 @@
         @ContentAndMedia {
             ``Table`` renders rows as aligned columns: each ``TableColumn``
             pairs a header, a width, and a closure mapping a row to its cell
-            string. It is display-only — no cursor, no focus — and the whole
-            table precomputes into one text node, which is why it stays
-            cheap at hundreds of rows. The interactive list keeps its job;
+            string. Given no selection it is display-only — no cursor, no
+            focus — and the whole table precomputes into one text node,
+            which is why it stays cheap at hundreds of rows. The interactive list keeps its job;
             the table's job is exact values at a glance.
         }
 
