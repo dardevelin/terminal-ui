@@ -114,6 +114,19 @@ struct PointerOnTopTests {
         #expect(hovered.names == ["mark"])
     }
 
+    @Test func aBackgroundUnderItsViewIsNotHovered() {
+        let hovered = Hovered()
+        let screen = Screen(Text("base").frame(width: 10, height: 2)
+            .onHover(hovered.handler("base"))
+            .backgroundView(alignment: .bottomTrailing) { Text("●").onHover(hovered.handler("mark")) })
+        screen.move(0, 0)
+        #expect(hovered.names == ["base"])
+        screen.move(9, 1)
+        #expect(hovered.names == ["base"], "the view is drawn over its background")
+        let background = screen.root.children[1]
+        #expect(HitTest.nodeAt(x: 9, y: 1, root: screen.root)?.path.contains { $0 === background } == false)
+    }
+
     @Test func aViewHoldingTheHoveredOneIsHoveredToo() {
         let hovered = Hovered()
         let screen = Screen(VStack {

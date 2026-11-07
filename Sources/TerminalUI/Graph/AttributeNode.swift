@@ -364,6 +364,18 @@ public class AttributeNode: @unchecked Sendable {
         return chain
     }
 
+    /// The children in the order they are drawn, the last on top. That is
+    /// `children`, but for a background: its content is the second child
+    /// and drawn first, under the base. A pointer walk that took the last
+    /// child as topmost gave a background's handlers the cells its view
+    /// covers.
+    var childrenInDrawOrder: [AttributeNode] {
+        if case .modifier(.backgroundView) = kind, children.count == 2 {
+            return [children[1], children[0]]
+        }
+        return children
+    }
+
     /// The parent, unless this node is what a modal presents. A presentation
     /// owns the keyboard as it owns the screen, so a key — or an action's
     /// binding — that its content does not take must not climb out into the

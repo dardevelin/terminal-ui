@@ -1536,12 +1536,10 @@ public enum GraphRenderer {
             renderNode(child, into: &buffer, context: ctx)
 
         case .overlay(let alignment):
-            renderLayered(node, base: child, alignment: alignment, behind: false,
-                          into: &buffer, context: ctx)
+            renderLayered(node, base: child, alignment: alignment, into: &buffer, context: ctx)
 
         case .backgroundView(let alignment):
-            renderLayered(node, base: child, alignment: alignment, behind: true,
-                          into: &buffer, context: ctx)
+            renderLayered(node, base: child, alignment: alignment, into: &buffer, context: ctx)
 
         case .focusable:
             // isFocusable is set during graph construction; the focus ring is
@@ -1688,13 +1686,14 @@ public enum GraphRenderer {
     }
 
     /// A view and the content layered on it, an `.overlay`'s over it or a
-    /// background's `behind` it, both in the view's frame. The content is
+    /// background's under it, both in the view's frame. The content is
     /// offered the base's frame and placed at the size it claims there, as
     /// SwiftUI's is — the rule a ZStack places its children by. Handed the
     /// whole frame, a mark in the corner held the pointer across the base,
-    /// and its padded row blanked the base beside it.
+    /// and its padded row blanked the base beside it. The two are drawn in
+    /// `childrenInDrawOrder`, the order the pointer searches in reverse.
     private static func renderLayered(_ node: AttributeNode, base: AttributeNode,
-                                      alignment: Alignment, behind: Bool,
+                                      alignment: Alignment,
                                       into buffer: inout CellBuffer, context: RenderContext) {
         guard node.children.count > 1 else {
             renderNode(base, into: &buffer, context: context)
@@ -1705,9 +1704,9 @@ public enum GraphRenderer {
         decorationContext.rect = Layout.layered(decoration, over: base, in: context.rect,
                                                 alignment: alignment)
         Layout.measureAndPlace(graph: decoration, in: decorationContext.rect)
-        if behind { renderNode(decoration, into: &buffer, context: decorationContext) }
-        renderNode(base, into: &buffer, context: context)
-        if !behind { renderNode(decoration, into: &buffer, context: decorationContext) }
+        for layer in node.childrenInDrawOrder {
+            renderNode(layer, into: &buffer, context: layer === decoration ? decorationContext : context)
+        }
     }
 
     /// A menu: at its content's size, with its top-left corner on the cell
