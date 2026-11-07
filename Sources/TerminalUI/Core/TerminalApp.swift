@@ -662,6 +662,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Each iteration: drain events → handle → render → pace.
         // Event priority: view handlers first, then focus navigation, then debug tools.
         var running = true
+        let pacing = FramePacing(renderMode: renderMode, wake: wake)
+        let drawsEveryPass = if case .uncapped = renderMode { true } else { false }
 
         while running {
             #if DEBUG
@@ -808,36 +810,18 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
             // Render
             if running {
-                if case .uncapped = renderMode {
-                    // Always render — for benchmarking max throughput
-                    renderDiffFrame()
-                    needsRender = false
-                    soundPendingBell()
-                    await Task.yield()
-                    continue
-                }
                 let frameStart = ContinuousClock.now
-                if needsFrame {
+                // `.uncapped` draws every pass, for benchmarking throughput.
+                if drawsEveryPass || needsFrame {
                     renderDiffFrame()
                     needsRender = false
                 }
                 soundPendingBell()
-                await waitForWork()
-                // `.capped` draws at most one frame per interval: woken early,
-                // it waits out the rest. After a long idle there is none left.
-                if case .capped(let interval) = renderMode {
-                    let remaining = interval - (ContinuousClock.now - frameStart)
-                    if remaining > .zero {
-                        try? await Task.sleep(for: remaining)
-                    }
-                }
-                // A loop with work waiting suspends nowhere above: the wait
-                // returns at once, and a frame longer than its interval
-                // leaves no sleep. Every other job on the main actor — a
-                // `.task`, a cursor flash going out — then waited for the
-                // loop to fall idle, which a busy app or a loaded machine
-                // put off indefinitely. This gives them a turn each pass.
-                await Task.yield()
+                // Every pass that goes on to another must end here, and only
+                // here: the pause is the one place the loop is sure to
+                // suspend, and a pass that skipped it kept every other job on
+                // the main actor waiting.
+                await pacing.awaitNextPass(after: frameStart) { hasWork }
             }
         }
 
@@ -858,20 +842,6 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// `Task` was not drawn until the user happened to press a key.
     private var needsFrame: Bool {
         needsRender || graph.hasDirtyNodes
-    }
-
-    /// Sleeps until there is something to do: an event, a frame to draw, a
-    /// quit fired outside event handling or — in a debug build — a remote
-    /// command, which the loop's one `pump()` serves before it drains events,
-    /// so a query is answered only after the keys sent before it are drawn.
-    private func waitForWork() async {
-        // Wakes raised while the loop was busy were for work it has just
-        // done; one left pending would only cost an empty pass.
-        wake.discardPending()
-        while !hasWork {
-            await wake.wait()
-            if Task.isCancelled { return }
-        }
     }
 
     /// Writes BEL if the bell rang and no frame carried it — one that drew
