@@ -11,7 +11,8 @@ import Observation
 /// rows around the visible window are materialized, so a 100k-row list
 /// costs the same as a 20-row one. A row scrolled out of view leaves, its
 /// `onDisappear` run and its `.task` cancelled, and scrolled back it appears
-/// afresh, as in SwiftUI. Arrows, PageUp/PageDown (by the rows
+/// afresh, as in SwiftUI. A row keeps its state and its running work when
+/// rows are inserted above it. Arrows, PageUp/PageDown (by the rows
 /// drawn), Home/End move the selection; clicking any line of a row selects
 /// it.
 ///
@@ -135,6 +136,11 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
             },
             draw: { window, rows in
                 renderList(window, rows: rows, selectedID: selectedID, scroll: scroll, theme: theme)
+            },
+            relocate: { keys, earlier in
+                RowWindowing.rows(holding: keys, heldAt: earlier, total: total) { row in
+                    AnyHashable(element(at: row).id)
+                }
             },
             settle: { window in
                 // Written only when it moved: a write notifies its observers

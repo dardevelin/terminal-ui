@@ -18,6 +18,9 @@ struct _ListWindow: TerminalView, _GraphRowWindow {
     let choose: (_ lines: Int, _ height: (Int) -> Int) -> RowWindow
     /// The list drawn for a window: `VStack { ▲?; ForEach(rows); ▼? }`.
     let draw: (_ window: RowWindow, _ rows: [Int]) -> any TerminalView
+    /// Where the rows the window held are among this frame's rows — see
+    /// `RowWindowing.rows(holding:heldAt:total:key:mayHold:)`.
+    let relocate: (_ keys: [AnyHashable], _ earlier: [Int]) -> [Int]
     /// What drawing a window changes in the list's state, if anything.
     let settle: (_ window: RowWindow) -> (() -> Void)?
 
@@ -27,6 +30,10 @@ struct _ListWindow: TerminalView, _GraphRowWindow {
 
     func content(for window: RowWindow, rows: [Int]) -> any TerminalView {
         draw(window, rows)
+    }
+
+    func rows(holding keys: [AnyHashable], heldAt earlier: [Int]) -> [Int] {
+        relocate(keys, earlier)
     }
 
     func commit(for window: RowWindow) -> (() -> Void)? {

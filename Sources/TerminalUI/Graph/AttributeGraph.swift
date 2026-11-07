@@ -1227,6 +1227,13 @@ public final class AttributeGraph: @unchecked Sendable {
     /// The walk only ever asks about the rows around the window, so a list
     /// of any length measures O(lines) rows.
     ///
+    /// The rows that go in first are found where they are now, by the keys
+    /// their `ForEach` holds them by (`heldRows`): rows inserted above them,
+    /// or a tree node opening there, move them, and found where they had
+    /// been the list would hold other rows in their place, dropping the
+    /// rows it held to build them again. Within a frame, the rows do not
+    /// change, so a later pass finds them where the earlier one left them.
+    ///
     /// The rows kept are the window's, and the row on either side of it the
     /// walk asked about — the one that did not fit below it, and at the end
     /// of the list the one above it. The next frame's walk asks about those
@@ -1268,7 +1275,9 @@ public final class AttributeGraph: @unchecked Sendable {
 
         let earlier = node._rowWindowBuild
         if let earlier {
-            let rows = earlier.rows.filter { $0 < total }
+            let rows = earlier.frame == frame
+                ? earlier.rows.filter { $0 < total }
+                : heldRows(of: window, in: node, heldAt: earlier.rows)
             if !rows.isEmpty { place(earlier.window, rows: rows) }
         }
         var chosen: RowWindow
@@ -1312,6 +1321,28 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         node._rowWindowBuild = (chosen, kept, frame)
         windowCommits[ObjectIdentifier(node)] = window.commit(for: chosen)
+    }
+
+    /// Where the rows a window held at `earlier`, in an earlier frame, are
+    /// among its rows now, found by the keys its `ForEach` holds them by.
+    ///
+    /// Keys that do not pair one to one with `earlier` mean a list whose
+    /// shape `rowNodes(in:)` does not read; its rows are seeded where they
+    /// were, as they were before rows were found by key.
+    private func heldRows(of window: any _GraphRowWindow, in node: AttributeNode,
+                          heldAt earlier: [Int]) -> [Int] {
+        let rowNodes = Self.rowNodes(in: node)
+        var keys: [AnyHashable] = []
+        keys.reserveCapacity(rowNodes.count)
+        for rowNode in rowNodes {
+            guard case .explicit(let key)? = rowNode.id.path.last else { break }
+            keys.append(key)
+        }
+        guard keys.count == earlier.count else {
+            let total = window.rowCount
+            return earlier.filter { $0 < total }
+        }
+        return window.rows(holding: keys, heldAt: earlier)
     }
 
     /// The row nodes of a list's window, in the order its `ForEach` holds
@@ -1838,6 +1869,10 @@ protocol _GraphRowWindow {
     func window(lines: Int, height: (Int) -> Int) -> RowWindow
     /// The list drawn for `window`, its `ForEach` holding `rows` in order.
     func content(for window: RowWindow, rows: [Int]) -> any TerminalView
+    /// Where the rows held at `earlier` last frame, by `keys` — the keys
+    /// the `ForEach` held them by, in order — are among this frame's rows,
+    /// ascending; a key no row holds now is left out.
+    func rows(holding keys: [AnyHashable], heldAt earlier: [Int]) -> [Int]
     /// What drawing `window` changes in the list's state, or nil for
     /// nothing; applied before the next update.
     func commit(for window: RowWindow) -> (() -> Void)?

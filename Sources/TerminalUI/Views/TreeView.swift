@@ -98,6 +98,17 @@ public struct TreeViewStyle: Sendable {
 /// cancelled. Reach for ``List`` when data is
 /// flat, ``Table`` when it's flat *and* columnar.
 ///
+/// A row keeps its state and its running work while the nodes around it
+/// expand and collapse, as a row of SwiftUI's `OutlineGroup` does: it is
+/// identified by the path of ids from its root down to its item, not by
+/// where it falls among the rows shown, and closing a node runs
+/// `onDisappear` only for the rows it hides. An item under two parents is
+/// two rows, one under each; expansion is kept by id, so expanding it
+/// expands every place it appears. Siblings should have distinct ids: ones
+/// that share an id are told apart only by their order. A tree that
+/// contains itself — an item among its own descendants — is shown down to
+/// the repeat, which is not opened.
+///
 /// ```swift
 /// // A file browser pane, as the GitClient example wires it:
 /// TreeView(
@@ -128,6 +139,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
     /// by the tree; this is just the label).
     public let content: (Data.Element) -> Content
 
+    /// Keyed by item id, not by row: an item shown under two parents is open
+    /// or closed in both places at once.
     @TerminalState var expandedIDs: Set<AnyHashableID> = []
     @TerminalState var selectedIndex: Int = 0
     @TerminalState var scrollOffset: Int = 0
@@ -221,10 +234,24 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                                     height: height)
             },
             draw: { window, shown in
-                renderTree(window, rows: shown.map { rows[$0] }, currentIndex: currentIndex,
+                // Only the rows handed to the ForEach are given ids: a path
+                // is as long as the row is deep, and the window is O(lines).
+                let windowRows = shown.map { position in
+                    TreeWindowRow(row: rows[position], id: TreeViewHelpers.rowID(at: position, in: rows))
+                }
+                return renderTree(window, rows: windowRows, currentIndex: currentIndex,
                            expandedIDs: expanded, theme: theme,
                            expandedBinding: expandedBinding, selectedIdxBinding: selectedIdxBinding,
                            scrollBinding: scrollBinding)
+            },
+            relocate: { keys, earlier in
+                // A scan builds a path only for a row whose item the window
+                // held, so a large tree is scanned by its ids, not its paths.
+                let items = Set(keys.compactMap { ($0.base as? TreeRowID<Data.Element.ID>)?.path.last })
+                return RowWindowing.rows(
+                    holding: keys, heldAt: earlier, total: total,
+                    key: { AnyHashable(TreeViewHelpers.rowID(at: $0, in: rows)) },
+                    mayHold: { items.contains(rows[$0].item.id) })
             },
             settle: { window in
                 let readOffset = scrollBinding.get()
@@ -241,7 +268,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
 
     private func renderTree(
         _ window: RowWindow,
-        rows shown: [FlatRow<Data.Element>],
+        rows shown: [TreeWindowRow<Data.Element>],
         currentIndex: Int,
         expandedIDs expanded: Set<AnyHashableID>,
         theme: any Theme,
@@ -261,7 +288,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                     .foreground(theme.foregroundMuted)
             }
 
-            ForEach(shown) { row in
+            ForEach(shown) { windowRow in
+                let row = windowRow.row
                 treeRow(row, isSelected: row.flatIndex == currentIndex, expandedIDs: expanded, theme: theme)
                     // Each row takes its own clicks: a row may be several
                     // lines tall, so counting lines from the top found the
@@ -339,11 +367,9 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                     var ids = expanded
                     ids.remove(AnyHashableID(row.item.id))
                     expandedBinding.set(ids)
-                } else if let parentID = row.parentID {
-                    if let parentIdx = rows.firstIndex(where: { AnyHashableID($0.item.id) == parentID }) {
-                        selectedIdxBinding.set(parentIdx)
-                        TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: parentIdx)
-                    }
+                } else if let parentIdx = row.parentRow {
+                    selectedIdxBinding.set(parentIdx)
+                    TreeViewHelpers.syncSelection(selection: selection, rows: rows, index: parentIdx)
                 }
                 return .handled
 
@@ -435,7 +461,7 @@ enum TreeViewHelpers {
                 depth: 0,
                 isLast: offset == lastIndex,
                 ancestorHasNext: [],
-                parentID: nil,
+                parentRow: nil,
                 childrenKeyPath: childrenKeyPath,
                 expandedIDs: expandedIDs,
                 into: &result
@@ -451,7 +477,7 @@ enum TreeViewHelpers {
         depth: Int,
         isLast: Bool,
         ancestorHasNext: [Bool],
-        parentID: AnyHashableID?,
+        parentRow: Int?,
         childrenKeyPath: KeyPath<Data.Element, Data?>,
         expandedIDs: Set<AnyHashableID>,
         into result: inout [FlatRow<Data.Element>]
@@ -462,7 +488,7 @@ enum TreeViewHelpers {
             depth: depth,
             isLast: isLast,
             ancestorHasNext: ancestorHasNext,
-            parentID: parentID,
+            parentRow: parentRow,
             flatIndex: flatIndex
         ))
 
@@ -470,6 +496,14 @@ enum TreeViewHelpers {
         // don't recurse into them.
         let itemID = AnyHashableID(item.id)
         guard expandedIDs.contains(itemID) else { return }
+        // Expansion is by id, so an item that is its own ancestor is open
+        // wherever it repeats, and would be descended into forever. It is
+        // shown at the repeat and not opened there.
+        var ancestor = parentRow
+        while let position = ancestor {
+            if result[position].item.id == item.id { return }
+            ancestor = result[position].parentRow
+        }
         guard let children = item[keyPath: childrenKeyPath] else { return }
         let childCount = children.count
         guard childCount > 0 else { return }
@@ -487,7 +521,7 @@ enum TreeViewHelpers {
                 depth: depth + 1,
                 isLast: childOffset == lastChildIndex,
                 ancestorHasNext: childAncestorHasNext,
-                parentID: itemID,
+                parentRow: flatIndex,
                 childrenKeyPath: childrenKeyPath,
                 expandedIDs: expandedIDs,
                 into: &result
@@ -495,6 +529,22 @@ enum TreeViewHelpers {
             childOffset += 1
             childIdx = children.index(after: childIdx)
         }
+    }
+
+    /// The identity of the row at `index`: its item's id and its ancestors',
+    /// so a row keeps it however many rows open or close above it.
+    static func rowID<Element: Identifiable>(
+        at index: Int, in rows: [FlatRow<Element>]
+    ) -> TreeRowID<Element.ID> where Element.ID: Sendable {
+        var path: [Element.ID] = []
+        path.reserveCapacity(rows[index].depth + 1)
+        var position: Int? = index
+        while let current = position {
+            path.append(rows[current].item.id)
+            position = rows[current].parentRow
+        }
+        path.reverse()
+        return TreeRowID(path: path)
     }
 
     // MARK: - Connectors
@@ -586,25 +636,53 @@ enum TreeViewHelpers {
 // MARK: - FlatRow
 
 /// A single visible row in the flattened tree, carrying layout metadata.
-struct FlatRow<Element: Identifiable>: Identifiable {
+///
+/// Its position is where selection and clicks find it, not what it is: a
+/// node opening above a row moves it without making it another row. Its
+/// identity is `TreeViewHelpers.rowID(at:in:)`'s, worked out only for the
+/// rows the window draws.
+struct FlatRow<Element: Identifiable> {
     let item: Element
     let depth: Int
     let isLast: Bool
     let ancestorHasNext: [Bool]
-    let parentID: AnyHashableID?
+    /// The parent's position among the flattened rows, nil for a root. A
+    /// position rather than the parent's path, so flattening a tree builds
+    /// nothing per row that only the window's rows need.
+    let parentRow: Int?
     let flatIndex: Int
-
-    var id: FlatRowID<Element.ID> {
-        FlatRowID(itemID: item.id, flatIndex: flatIndex)
-    }
 }
 
-/// Stable identity for flattened rows, combining the item ID with its
-/// position to handle the same item appearing at different depths if
-/// re-expanded.
-struct FlatRowID<ItemID: Hashable>: Hashable {
-    let itemID: ItemID
-    let flatIndex: Int
+/// A row as the window's `ForEach` holds it.
+struct TreeWindowRow<Element: Identifiable>: Identifiable where Element.ID: Sendable {
+    let row: FlatRow<Element>
+    let id: TreeRowID<Element.ID>
+}
+
+/// A tree row's identity: the ids from its root down to its item.
+///
+/// An item under two parents is two rows, and a row keeps its identity
+/// while rows above it open and close. The hash is worked out once, as the
+/// row is given its id, so a `ForEach` matching rows by it hashes an Int
+/// rather than walking the path again.
+struct TreeRowID<ItemID: Hashable & Sendable>: Hashable, Sendable {
+    let path: [ItemID]
+    private let pathHash: Int
+
+    init(path: [ItemID]) {
+        self.path = path
+        var hasher = Hasher()
+        hasher.combine(path)
+        pathHash = hasher.finalize()
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(pathHash)
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.pathHash == rhs.pathHash && lhs.path == rhs.path
+    }
 }
 
 // MARK: - AnyHashableID

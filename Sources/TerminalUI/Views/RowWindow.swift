@@ -167,4 +167,51 @@ enum RowWindowing {
         }
         return first
     }
+
+    /// Where the rows a list held, at `earlier`, are now, found by `keys`,
+    /// the keys its `ForEach` held them by, in the same order.
+    ///
+    /// A list seeds each frame's build with the rows it held, so they are
+    /// measured and kept rather than built again. Rows inserted or opened
+    /// above them move them, and seeded by position the list held other rows
+    /// in their place: the ones it had held left, and those still in view
+    /// were built again. A key found nowhere is a row that left, and is
+    /// dropped. A key the list repeats takes the rows holding it in order,
+    /// as the `ForEach` matches them.
+    ///
+    /// - Parameters:
+    ///   - key: The key row `i` is held by.
+    ///   - mayHold: Whether row `i` can hold one of `keys`: a cheaper test
+    ///     than `key`, so a scan builds keys only for the rows that pass it.
+    /// - Returns: The rows' positions now, ascending. They need not be
+    ///   contiguous: the window walk adds the rows between them it asks for.
+    static func rows(holding keys: [AnyHashable], heldAt earlier: [Int], total: Int,
+                     key: (Int) -> AnyHashable,
+                     mayHold: (Int) -> Bool = { _ in true }) -> [Int] {
+        // A frame whose rows did not move checks only the rows it held; only
+        // one where they moved scans the list.
+        if keys.count == earlier.count,
+           zip(keys, earlier).allSatisfy({ held, row in row < total && key(row) == held }) {
+            return earlier
+        }
+        var wanted: [AnyHashable: Int] = [:]
+        wanted.reserveCapacity(keys.count)
+        for held in keys { wanted[held, default: 0] += 1 }
+        var remaining = keys.count
+        var found: [Int] = []
+        found.reserveCapacity(keys.count)
+        var row = 0
+        while row < total, remaining > 0 {
+            if mayHold(row) {
+                let rowKey = key(row)
+                if let count = wanted[rowKey], count > 0 {
+                    wanted[rowKey] = count - 1
+                    remaining -= 1
+                    found.append(row)
+                }
+            }
+            row += 1
+        }
+        return found
+    }
 }
