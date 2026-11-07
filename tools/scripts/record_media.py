@@ -21,7 +21,7 @@ it, against this checkout.
 
 Run::
 
-    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|all] [--only STEP]
+    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|all] [--only STEP|CHAPTER]
 
 Needs vhs (with ttyd and ffmpeg) and ImageMagick.
 """
@@ -172,6 +172,10 @@ def make_card(chapter: int) -> None:
          "-compose", "Over", "-composite", str(card)])
 
 
+def wanted(step: Step, only: str | None) -> bool:
+    return only in (None, step.name, str(step.chapter))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("what", nargs="?", default="all",
@@ -184,7 +188,7 @@ def main() -> int:
         build(TUTORIAL_PACKAGE, "release")
     if args.what in ("previews", "all"):
         for step in STEPS:
-            if args.only in (None, step.name):
+            if wanted(step, args.only):
                 record_preview(step)
     if args.what in ("gifs", "all"):
         for chapter in CARD_STEP:
