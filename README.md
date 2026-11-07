@@ -378,8 +378,8 @@ image code.
 
 ## Status
 
-v2.2.0. 1786 tests in 344 suites, run on macOS and Linux, plus a PTY-driven
-harness that walks every Storybook page, runs 162 behavioural cases against
+v2.2.0. 1802 tests in 346 suites, run on macOS and Linux, plus a PTY-driven
+harness that walks every Storybook page, runs 164 behavioural cases against
 the example apps and drives every tutorial step through what its page
 says, and a Thread Sanitizer build of the tests and the cases. Builds with
 zero warnings under `-warnings-as-errors`, and every change is checked for
