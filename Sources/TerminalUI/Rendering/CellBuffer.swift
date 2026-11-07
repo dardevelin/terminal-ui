@@ -140,6 +140,10 @@ public struct CellBuffer: Sendable {
     /// `componentOverflow` framework warning per offending node per
     /// frame. Cleared with the rest of the buffer.
     ///
+    /// In debug builds it excludes the writes an `.overflowOK()` subtree
+    /// excused: the renderer takes them back out as it leaves each node
+    /// that allows overflow, so no enclosing scope counts them either.
+    ///
     /// Note: writes that fall outside the buffer dimensions (e.g.,
     /// negative coordinates from a layout bug) DO NOT count as
     /// "overflow" — those are tracked via the always-on bounds check

@@ -72,6 +72,15 @@ All notable changes to TerminalUI are documented here. Format based on
   siblings.** A list in a stack is laid out twice in a frame, first at the
   stack's size and then at its own, and it followed the selection at the
   first: moving the selection down could leave it below the window.
+- **`.overflowOK()` quiets the views around it too.** It kept the views
+  inside it from reporting `componentOverflow`, but every view around it —
+  the modifier itself included — counted the same clipped cells as its own
+  and reported them, so a shadow or banner marked as intended still warned
+  once for each enclosing view. Cells clipped inside a marked view now count
+  for no view, whether they fell outside its own frame or an enclosing one;
+  an enclosing view still reports what its other children and its own
+  drawing clip. In debug builds `CellBuffer.clipRejectedWrites` no longer
+  counts the cells it excused.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 

@@ -60,7 +60,8 @@ public enum GraphRenderer {
         // BEFORE descending into children — the parent env is what this
         // node sees, descendants update their own slot when the
         // .environment modifier path mutates the in-flight context.
-        node._resolvedEnv = GraphContext.currentEnvironment ?? EnvironmentValues()
+        let environment = GraphContext.currentEnvironment ?? EnvironmentValues()
+        node._resolvedEnv = environment
 
         #if DEBUG
         DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
@@ -83,10 +84,12 @@ public enum GraphRenderer {
                 // writes are bounded to its assigned rect intersected with
                 // all ancestors' rects, so a misbehaving child can't punch
                 // through a parent's border/frame. `withClipMeasured` also
-                // returns the count of writes the clip dropped — when
-                // non-zero AND the subtree hasn't opted into `.overflowOK()`,
-                // emit a `componentOverflow` framework warning so the
-                // layout bug is loud instead of silent.
+                // returns the count of writes the clip dropped anywhere in
+                // this subtree — when non-zero, a node outside every
+                // `.overflowOK()` emits a `componentOverflow` framework
+                // warning so the layout bug is loud instead of silent, and
+                // a node inside one takes the count back, so no view around
+                // it reports what the marked subtree was excused.
                 let droppedCells = bufPtr.pointee.withClipMeasured(context.rect) { buffer in
                     switch node.kind {
                     case .primitive(let content):
@@ -135,8 +138,16 @@ public enum GraphRenderer {
                 }
                 #if DEBUG
                 if droppedCells > 0 {
-                    let envAllows = (node._resolvedEnv ?? GraphContext.currentEnvironment ?? EnvironmentValues()).overflowAllowed
-                    if !envAllows {
+                    // Read from the snapshot taken above, not the node's
+                    // slot: a node marked dirty while its body drew has had
+                    // that slot cleared.
+                    if environment.overflowAllowed {
+                        // Every enclosing node measures the counter across
+                        // its own subtree, so rewinding it to this scope's
+                        // starting count hides the excused cells from all of
+                        // them, not only from this node.
+                        bufPtr.pointee.clipRejectedWrites -= droppedCells
+                    } else {
                         DebugStream.shared.emitWarning(
                             .componentOverflow,
                             message: "node \(node.kind.debugName) wrote \(droppedCells) cell(s) outside its assigned rect (\(context.rect.width)×\(context.rect.height) at (\(context.rect.x), \(context.rect.y))). Layout bug? Suppress with `.overflowOK()` if intentional."

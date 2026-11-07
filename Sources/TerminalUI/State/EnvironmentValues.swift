@@ -150,7 +150,11 @@ public struct EnvironmentValues: Sendable {
     /// framework warning. Default `false` — overflow warns. Subtrees
     /// where escape is intentional (shadows, popovers, edge-to-edge
     /// banners) opt in via `.overflowOK()`. Reads inherit through the
-    /// env chain so a parent's opt-in covers its descendants.
+    /// env chain so a parent's opt-in covers its descendants, and a cell
+    /// clipped where this is `true` counts for no view — neither the one
+    /// that drew it nor any around it. Setting it back to `false` inside
+    /// such a subtree makes that part warn again, up to the nearest view
+    /// that allows overflow.
     public var overflowAllowed: Bool = false
 
     /// Callback registered via `.onBoundaryHit { reason in ... }`.
