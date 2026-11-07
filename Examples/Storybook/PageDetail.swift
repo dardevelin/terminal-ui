@@ -605,7 +605,7 @@ struct PreviewPane: TerminalView {
                 // A badge drawn over a card: over the badge, the card under
                 // it is not hovered.
                 ZStack {
-                    Text("card ·········\n·············")
+                    Text("card ········\n·············")
                         .onHover { [state] isHovering in
                             if isHovering { state.hoveredLayer = "card" }
                         }

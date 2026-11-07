@@ -1333,6 +1333,8 @@ def storybook_hover_reaches_only_the_view_on_top(app: Client) -> None:
     rows = app.text().split("\n")
     y = next(i for i, row in enumerate(rows) if "[badge]" in row)
     x = rows[y].index("[badge]") + 1
+    assert_true("[badge]······" in rows[y] and "·············" in rows[y + 1],
+                f"the card should show around the badge, two rows of its width:\n{app.preview_text()}")
     app.mouse_move(x, y)
     assert_true("on top: badge" in app.preview_text(), f"expected the badge; preview:\n{app.preview_text()}")
     app.mouse_move(x, y + 1)
