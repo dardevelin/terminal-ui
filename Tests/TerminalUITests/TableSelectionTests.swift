@@ -115,6 +115,24 @@ struct TableSelectionTests {
         #expect(screen.frame().first == "— no rows —")
     }
 
+    // MARK: - Header and row lines
+
+    @Test func aRowLineIsThatRowsLineOfTheText() {
+        let table = Table(processes, columns: columns)
+        #expect(processes.map(table.rowLine) == rows)
+    }
+
+    @Test func theHeaderLinesAreTheHeaderAndTheRuleIndentedAsAsked() {
+        let table = Table(processes, columns: columns)
+        #expect(table.headerLines(indent: 0) == [header, rule])
+        #expect(table.headerLines(indent: 2) == ["  " + header, "  " + rule])
+    }
+
+    @Test func aTableWithoutAHeaderHasNoHeaderLines() {
+        let table = Table(processes, columns: columns, showHeader: false)
+        #expect(table.headerLines(indent: 2).isEmpty)
+    }
+
     @Test func aDisplayOnlyTableIsNoTabStop() {
         let screen = Screen(Table(processes, columns: columns))
         screen.frame()

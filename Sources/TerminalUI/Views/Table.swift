@@ -117,28 +117,26 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     }
 
     func renderTable() -> String {
-        var lines: [String] = []
-
-        if showHeader {
-            // Header
-            lines.append(formatRow(columns.map(\.title), bold: false))
-            // Separator
-            let sep = columns.map { col in
-                String(repeating: "─", count: col.width)
-            }.joined(separator: separator)
-            lines.append(sep)
-        }
-
-        // Data rows
-        for element in data {
-            let values = columns.map { col in col.content(element) }
-            lines.append(formatRow(values, bold: false))
-        }
-
-        return lines.joined(separator: "\n")
+        (headerLines(indent: 0) + data.map(rowLine)).joined(separator: "\n")
     }
 
-    func formatRow(_ values: [String], bold: Bool) -> String {
+    /// The header and the `─` rule under it, each led by `indent` blanks —
+    /// none when `showHeader` is false.
+    func headerLines(indent: Int) -> [String] {
+        guard showHeader else { return [] }
+        let lead = String(repeating: " ", count: indent)
+        let rule = columns.map { column in
+            String(repeating: "─", count: column.width)
+        }.joined(separator: separator)
+        return [lead + formatRow(columns.map(\.title)), lead + rule]
+    }
+
+    /// One row's cells, each padded or cut to its column.
+    func rowLine(_ element: Data.Element) -> String {
+        formatRow(columns.map { column in column.content(element) })
+    }
+
+    func formatRow(_ values: [String]) -> String {
         var cells: [String] = []
         for (i, col) in columns.enumerated() {
             let value = i < values.count ? values[i] : ""
