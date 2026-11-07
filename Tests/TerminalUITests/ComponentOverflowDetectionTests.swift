@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import TerminalUI
 
@@ -108,6 +109,158 @@ struct OverflowOKModifierTests {
         let actual = env.overflowAllowed
         #expect(actual == false,
                 "default env must NOT allow overflow (warning posture); got \(String(describing: actual))")
+    }
+}
+
+/// Keeps every `componentOverflow` message, so a test can tell which node
+/// reported and how many cells it counted.
+private final class OverflowProbe: DebugSink, Sendable {
+    let messages = Mutex<[String]>([])
+
+    func receive(_ event: DebugEvent) {
+        guard case .frameworkWarning(let info) = event, info.code == .componentOverflow else { return }
+        messages.withLock { $0.append(info.message) }
+    }
+}
+
+/// A report read back out of its message: the node's debug name and the
+/// cells it said it dropped.
+private struct OverflowReport: Equatable {
+    let node: String
+    let cells: Int
+
+    init?(_ message: String) {
+        let words = message.split(separator: " ")
+        guard words.count > 3, words[0] == "node", words[2] == "wrote", let cells = Int(words[3]) else {
+            return nil
+        }
+        node = String(words[1])
+        self.cells = cells
+    }
+}
+
+/// Lays out and draws `view` in a rect `rows` lines tall over a buffer
+/// taller than it: a write past the buffer's own edge returns before the
+/// clip is consulted and is never counted, so the room below the rect is
+/// where a clipped write must land to be seen.
+@MainActor
+private func renderReporting(rows: Int, @TerminalViewBuilder _ view: () -> some TerminalView)
+    -> (reports: [OverflowReport], counted: Int) {
+    let probe = OverflowProbe()
+    DebugStream.shared.addSink(probe)
+    DebugStream.shared.unsuppressAllWarnings()
+    DebugStream.shared.resetWarningDedup()
+    defer {
+        DebugStream.shared.removeAllSinks()
+        DebugStream.shared.unsuppressAllWarnings()
+        DebugStream.shared.resetWarningDedup()
+    }
+    let engine = FocusEngine()
+    let graph = AttributeGraph()
+    GraphContext.$currentFocusEngine.withValue(engine) { graph.update(from: view()) }
+    var buffer = CellBuffer(width: 20, height: 6)
+    let rect = Rect(x: 0, y: 0, width: 20, height: rows)
+    Layout.measureAndPlace(graph: graph.root!, in: rect)
+    GraphContext.$currentFocusEngine.withValue(engine) {
+        GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+    }
+    let reports = probe.messages.withLock { $0 }.compactMap(OverflowReport.init)
+    return (reports, buffer.clipRejectedWrites)
+}
+
+/// Three lines, so in a one-line rect two of them are clipped.
+@MainActor
+private var tall: some TerminalView {
+    VStack {
+        Text("1")
+        Text("2")
+        Text("3")
+    }
+}
+
+// A cell clipped while drawing a node counts for an enclosing node only when
+// no node between them allows overflow. Each node took in the drops of its
+// whole subtree, so a marked view's escape was reported by every view
+// around it, the marker's own modifier node first.
+@Suite("Overflow detection — .overflowOK() covers its subtree for every ancestor", .serialized)
+@MainActor
+struct OverflowOKAncestorTests {
+
+    @Test func aMarkedViewEscapingItsParentWarnsNowhere() {
+        let result = renderReporting(rows: 1) {
+            HStack { tall.overflowOK() }
+        }
+        #expect(result.reports.isEmpty, "\(result.reports)")
+        #expect(result.counted == 0, "the excused cells still counted on the buffer")
+    }
+
+    @Test func aMarkedViewEscapingAnEnclosingRectWarnsNowhere() {
+        let result = renderReporting(rows: 2) {
+            VStack {
+                Text("top")
+                tall.overflowOK()
+            }
+        }
+        #expect(result.reports.isEmpty, "\(result.reports)")
+        #expect(result.counted == 0)
+    }
+
+    @Test func anUnmarkedSiblingStillReportsItsOwnCells() {
+        let result = renderReporting(rows: 1) {
+            HStack {
+                tall.overflowOK()
+                tall
+            }
+        }
+        let stacks = result.reports.filter { $0.node == "VStack" }
+        #expect(stacks.count == 1, "only the unmarked stack overflowed: \(result.reports)")
+        #expect(!result.reports.contains { $0.node == "environment" }, "\(result.reports)")
+        let row = result.reports.filter { $0.node == "HStack" }
+        #expect(row.count == 1 && row.first?.cells == stacks.first?.cells,
+                "the HStack counts its unmarked child's cells and no more: \(result.reports)")
+    }
+
+    @Test func overflowReEnabledInsideAMarkedViewWarnsOnlyBelowTheMarker() {
+        let result = renderReporting(rows: 1) {
+            HStack {
+                VStack {
+                    tall.environment(\.overflowAllowed, false)
+                }
+                .overflowOK()
+            }
+        }
+        #expect(result.reports.filter { $0.node == "VStack" }.count == 1,
+                "the re-enabled stack reports, the marked one around it does not: \(result.reports)")
+        #expect(!result.reports.contains { $0.node == "environment" || $0.node == "HStack" },
+                "\(result.reports)")
+        #expect(result.counted == 0, "the marker excuses what its re-enabled part reported")
+    }
+}
+
+private struct TallRow: Identifiable {
+    let id: Int
+}
+
+// A list draws the row at the top of its window from that row's top and cuts
+// it at the window's foot when the row is taller than the window. Those are
+// cells it clips on purpose, so neither the row's parts placed below the cut
+// nor anything around them may report them.
+@Suite("Overflow detection — the row a List cuts at its foot", .serialized)
+@MainActor
+struct CutListRowOverflowTests {
+
+    @Test func aCompositeRowCutAtTheWindowsFootWarnsNowhere() {
+        let rows = (0..<3).map(TallRow.init)
+        let result = renderReporting(rows: 6) {
+            List(rows, visibleCount: 3) { row in
+                VStack {
+                    Text("label \(row.id)\nsecond\nthird")
+                    Button("x") {}
+                }
+            }
+        }
+        #expect(result.reports.isEmpty, "\(result.reports)")
+        #expect(result.counted == 0, "the cut row's cells still counted on the buffer")
     }
 }
 

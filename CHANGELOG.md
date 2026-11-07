@@ -62,7 +62,8 @@ All notable changes to TerminalUI are documented here. Format based on
   frame. The rows are now measured at the width the list is laid out at,
   and placed whole until its lines run out, a line held for `▼` while rows
   remain below; a row taller than the whole list is drawn from its top and
-  cut off. `visibleCount` counts lines, the `▲`/`▼` indicators included, as
+  cut off, and no view reports `componentOverflow` for the lines the cut
+  hides. `visibleCount` counts lines, the `▲`/`▼` indicators included, as
   its documentation said; with one-line rows nothing changes. Selecting a
   row below the window brings it in whole at the bottom, the wheel stops
   where the last row is drawn, `▲`/`▼` count rows, and a click on any line
@@ -72,6 +73,15 @@ All notable changes to TerminalUI are documented here. Format based on
   siblings.** A list in a stack is laid out twice in a frame, first at the
   stack's size and then at its own, and it followed the selection at the
   first: moving the selection down could leave it below the window.
+- **`.overflowOK()` quiets the views around it too.** It kept the views
+  inside it from reporting `componentOverflow`, but every view around it —
+  the modifier itself included — counted the same clipped cells as its own
+  and reported them, so a shadow or banner marked as intended still warned
+  once for each enclosing view. Cells clipped inside a marked view now count
+  for no view, whether they fell outside its own frame or an enclosing one;
+  an enclosing view still reports what its other children and its own
+  drawing clip. In debug builds `CellBuffer.clipRejectedWrites` no longer
+  counts the cells it excused.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
