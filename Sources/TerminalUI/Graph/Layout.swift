@@ -20,7 +20,8 @@
 ///   - Modifier rect transforms — padding (inset by amount), border
 ///     (inset by 1), frame (clamp dimensions).
 ///   - ZStack — each child at the size it claims, aligned in the stack.
-///   - Overlay — its content placed over the base by the ZStack's rule.
+///   - Overlay / background-view — the content placed over or under the
+///     base by the ZStack's rule.
 ///
 /// Layer 3 (still on `GraphRenderer.renderLayout` until extracted)
 /// owns flex distribution:
@@ -28,8 +29,7 @@
 ///   - VStack / HStack — flex weighting + per-child rect along the
 ///     stack axis.
 ///   - ScrollView — content-buffer sizing + scroll-offset blit.
-///   - Modal / background-view — content centering and z-order rect
-///     computation.
+///   - Modal — content centering.
 ///
 /// The split lines up with risk: Layer 2 is pure rect arithmetic
 /// (easy to verify per-primitive at the layout level). Layer 3 needs
@@ -142,8 +142,9 @@ public enum Layout {
     /// a label on top held the pointer everywhere in the stack, nothing under
     /// it could be hovered or clicked, and its padded rows blanked the layers
     /// beside it. Measured on an axis it claims, a GeometryReader saw one row
-    /// and a Divider shrank to a single dash. An `.overlay` is placed over
-    /// its base by the same rule, in `layered`.
+    /// and a Divider shrank to a single dash. An `.overlay` or
+    /// `.backgroundView` is placed against its base by the same rule, in
+    /// `layered`.
     static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
             ?? (GraphRenderer.claimsOffered(child, horizontal: true)
@@ -158,8 +159,9 @@ public enum Layout {
         )
     }
 
-    /// Where an `.overlay`'s content sits over its `base`, which was placed
-    /// in `rect`: offered the base's frame and placed in it by `stacked`.
+    /// Where an `.overlay`'s or `.backgroundView`'s content sits against its
+    /// `base`, which was placed in `rect`: offered the base's frame and
+    /// placed in it by `stacked`.
     /// The frame is the base view's own, not the rect the parent happened to
     /// hand down: a stack gives its children the full cross axis, so aligning
     /// against that would pin a badge to the screen edge rather than to the
@@ -324,13 +326,12 @@ public enum Layout {
     /// **Layer 2** (here): padding (inset by amount), border (inset
     /// by 1), frame (clamp dimensions). These are pure rect arithmetic;
     /// they don't depend on env, sibling sizes, or content
-    /// measurement. An overlay's content is placed over its base by
-    /// `layered`, which render reads too.
+    /// measurement. An overlay's or background's content is placed
+    /// against its base by `layered`, which render reads too.
     ///
-    /// **Layer 3** (still in `GraphRenderer.renderModifier`):
-    /// backgroundView, modal — which compute z-order rect math that
-    /// depends on content measurement (modal centering) or sibling
-    /// rects. Move with the rest of Layer 3.
+    /// **Layer 3** (still in `GraphRenderer.renderModifier`): modal,
+    /// whose centering depends on content measurement. Move with the
+    /// rest of Layer 3.
     ///
     /// **Pass-through modifiers** (no rect transform): foreground,
     /// background, bold, italic, underline, flexible, explicitID,
@@ -345,14 +346,14 @@ public enum Layout {
         measureAndPlace(graph: child, in: childRect)
 
         // Overlay / backgroundView / modal carry a SECOND child
-        // (`children[1]`). An overlay's is placed where render draws it, by
-        // the one rule both read. A modal's is stamped with the parent rect
-        // as a safe pre-stamp: it is composited over the screen once the
-        // tree is drawn, and placed again there.
+        // (`children[1]`). An overlay's or background's is placed where
+        // render draws it, by the one rule both read. A modal's is stamped
+        // with the parent rect as a safe pre-stamp: it is composited over
+        // the screen once the tree is drawn, and placed again there.
         if node.children.count > 1 {
             let second = node.children[1]
             switch effect {
-            case .overlay(let alignment):
+            case .overlay(let alignment), .backgroundView(let alignment):
                 measureAndPlace(graph: second,
                                 in: layered(second, over: child, in: rect, alignment: alignment))
             default:

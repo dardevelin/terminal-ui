@@ -688,9 +688,10 @@ public enum ModifierEffect {
     /// Renders the base, then the second child on top of it, placed by
     /// `alignment` within the base view's own frame.
     case overlay(alignment: Alignment)     // child[0] = base, child[1] = overlay content
-    /// Renders the background child first, then the base over it, so the
-    /// base's cells win wherever both draw.
-    case backgroundView(alignment: Alignment)  // child[0] = background content, child[1] = base (render bg first)
+    /// Renders the background child first, placed by `alignment` within
+    /// the base view's own frame, then the base over it, so the base's
+    /// cells win wherever both draw.
+    case backgroundView(alignment: Alignment)  // child[0] = base, child[1] = background content (render bg first)
     /// Renders the base always; while presented, defers the panel child to
     /// composite over the full screen after the main walk, trapping focus
     /// inside it (containment).

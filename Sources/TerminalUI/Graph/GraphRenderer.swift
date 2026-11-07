@@ -1539,12 +1539,9 @@ public enum GraphRenderer {
             renderLayered(node, base: child, alignment: alignment, behind: false,
                           into: &buffer, context: ctx)
 
-        case .backgroundView:
-            // Render background first, then base on top
-            if node.children.count > 1 {
-                renderNode(node.children[1], into: &buffer, context: ctx)
-            }
-            renderNode(child, into: &buffer, context: ctx)
+        case .backgroundView(let alignment):
+            renderLayered(node, base: child, alignment: alignment, behind: true,
+                          into: &buffer, context: ctx)
 
         case .focusable:
             // isFocusable is set during graph construction; the focus ring is
