@@ -87,8 +87,10 @@ python3 tools/scripts/check_tutorial_steps.py  # every tutorial step builds, war
 # The whole local gate in one command: tooling tests and repository checks →
 # build (tests included, warnings as errors) → public API → test → walk →
 # integration scripts → smoke → tutorial steps. Skips itself when the turn touched no .swift /
-# .py file. Builds into .build-automation/.
+# .py file; --always runs it anyway, as a merge whose changes are all
+# committed needs. Builds into .build-automation/.
 python3 tools/scripts/verify.py
+python3 tools/scripts/verify.py --always
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
 # locks a build directory for the length of a build or test, so sharing .build
