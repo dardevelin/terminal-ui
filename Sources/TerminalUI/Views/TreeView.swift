@@ -485,6 +485,14 @@ enum TreeViewHelpers {
         // don't recurse into them.
         let itemID = AnyHashableID(item.id)
         guard expandedIDs.contains(itemID) else { return }
+        // Expansion is by id, so an item that is its own ancestor is open
+        // wherever it repeats, and would be descended into forever. It is
+        // shown at the repeat and not opened there.
+        var ancestor = parentRow
+        while let position = ancestor {
+            if result[position].item.id == item.id { return }
+            ancestor = result[position].parentRow
+        }
         guard let children = item[keyPath: childrenKeyPath] else { return }
         let childCount = children.count
         guard childCount > 0 else { return }

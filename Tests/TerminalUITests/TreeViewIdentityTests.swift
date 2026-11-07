@@ -270,3 +270,107 @@ struct TreeViewIdentityTests {
         #expect(gone.allSatisfy { $0 == "disappear 2" || $0 == "disappear 3" }, "\(probe.log)")
     }
 }
+
+/// A node that is its own child. Its children are counted, and run out
+/// after a bound, so a tree that never stops descending fails the test
+/// rather than hanging the suite.
+private final class Loop: Identifiable {
+    let id = 1
+    private(set) var visits = 0
+    var children: [Loop]? {
+        visits += 1
+        return visits > 64 ? nil : [self]
+    }
+}
+
+/// A over R over 10, and P over two children that share id 5. A and P are
+/// roots, so they start open; R starts closed.
+private let twins = [
+    Item(id: 1, children: [Item(id: 3, children: [Item(id: 10)])]),
+    Item(id: 2, children: [Item(id: 5), Item(id: 5)]),
+]
+
+@Suite("Siblings that share an id stay two rows, and a tree that contains itself stops")
+@MainActor
+struct TreeViewRepeatedIDTests {
+
+    private func selectedLine(_ screen: [String]) -> Int? {
+        screen.firstIndex { $0.contains("▸ item 5") }
+    }
+
+    @Test func siblingsThatShareAnIDAreTwoRows() {
+        let probe = Probe()
+        let screen = Screen(probedTree(twins, probe))
+        let drawn = screen.frame()
+        #expect(drawn.filter { $0.contains("item 5") }.count == 2, "\(drawn)")
+        let rows = screen.rows
+        #expect(rows.count == 5)
+        guard rows.count == 5 else { return }
+        #expect(rows[3] !== rows[4])
+    }
+
+    @Test func downVisitsEachOfThem() {
+        let screen = Screen(probedTree(twins, Probe()))
+        screen.focus()
+        screen.press(.down)
+        screen.press(.down)
+        let first = screen.press(.down)
+        #expect(selectedLine(first) == 3, "\(first)")
+        let second = screen.press(.down)
+        #expect(selectedLine(second) == 4, "\(second)")
+    }
+
+    @Test func aClickOnTheSecondSelectsIt() {
+        let screen = Screen(probedTree(twins, Probe()))
+        screen.focus()
+        screen.engine.handleMouseClick(x: 10, y: 4, root: screen.root)
+        let drawn = screen.frame()
+        #expect(selectedLine(drawn) == 4, "\(drawn)")
+    }
+
+    @Test func closingTheirParentDisappearsBoth() {
+        let probe = Probe()
+        let screen = Screen(probedTree(twins, probe))
+        screen.focus()
+        screen.press(.down)
+        screen.press(.down)
+        probe.log.removeAll()
+
+        let closed = screen.press(.left)
+
+        #expect(!closed.contains { $0.contains("item 5") }, "\(closed)")
+        #expect(probe.log == ["disappear 5", "disappear 5"], "\(probe.log)")
+    }
+
+    @Test func openingANodeAboveThemKeepsBoth() {
+        let probe = Probe()
+        let screen = Screen(probedTree(twins, probe))
+        screen.focus()
+        let before = screen.rows
+        #expect(before.count == 5)
+        probe.log.removeAll()
+
+        screen.press(.down)
+        let open = screen.press(.right)
+
+        #expect(open.contains { $0.contains("item 10") }, "\(open)")
+        let after = screen.rows
+        #expect(after.count == 6)
+        guard before.count == 5, after.count == 6 else { return }
+        #expect(after[4] === before[3] && after[5] === before[4], "the twins are the nodes they were")
+        #expect(probe.log == ["appear 10"], "\(probe.log)")
+    }
+
+    @Test func aTreeThatContainsItselfStopsAtTheRepeat() {
+        let loop = Loop()
+        let rows = TreeViewHelpers.flattenedRows(data: [loop], childrenKeyPath: \.children,
+                                                 expandedIDs: [AnyHashableID(1)])
+        #expect(rows.count == 2, "the node, and itself once as its child")
+
+        let screen = Screen(TreeView([Loop()], children: \.children, visibleCount: 10) { node in
+            Text("loop \(node.id)")
+        })
+        let drawn = screen.frame()
+        #expect(drawn.filter { $0.contains("loop 1") }.count == 2, "\(drawn)")
+    }
+}
