@@ -14,6 +14,7 @@ private final class Screen {
     let graph = AttributeGraph()
     let width: Int
     let height: Int
+    private(set) var rows: [String] = []
 
     init(width: Int = 20, height: Int = 8, _ view: some TerminalView) {
         self.width = width
@@ -32,6 +33,9 @@ private final class Screen {
             GraphRenderer.render(root, into: &buffer, context: RenderContext(rect: rect))
         }
         engine.rebuildIndex(root: root)
+        rows = (0..<height).map { y in
+            (0..<width).map { String(buffer[$0, y].character) }.joined()
+        }
     }
 
     func move(_ x: Int, _ y: Int) {
@@ -81,6 +85,33 @@ struct PointerOnTopTests {
         #expect(hovered.names == ["under"])
         screen.move(1, 0)
         #expect(hovered.names == ["over"])
+    }
+
+    @Test func besideAnUnsizedViewOnTopTheOneUnderItIsHovered() {
+        let hovered = Hovered()
+        let screen = Screen(ZStack {
+            Text("under").frame(width: 10, height: 2).onHover(hovered.handler("under"))
+            Text("over").onHover(hovered.handler("over"))
+        })
+        screen.move(6, 0)
+        #expect(hovered.names == ["under"])
+        screen.move(1, 1)
+        #expect(hovered.names == ["under"])
+        screen.move(1, 0)
+        #expect(hovered.names == ["over"])
+    }
+
+    @Test func besideAnUnsizedOverlayTheViewUnderItIsHovered() {
+        let hovered = Hovered()
+        let screen = Screen(Text("under the mark")
+            .onHover(hovered.handler("base"))
+            .overlay { Text("!").onHover(hovered.handler("mark")) })
+        #expect(screen.rows[0].hasPrefix("!nder the mark"),
+                "the mark draws in the base's corner and leaves the base beside it drawn")
+        screen.move(5, 0)
+        #expect(hovered.names == ["base"])
+        screen.move(0, 0)
+        #expect(hovered.names == ["mark"])
     }
 
     @Test func aViewHoldingTheHoveredOneIsHoveredToo() {

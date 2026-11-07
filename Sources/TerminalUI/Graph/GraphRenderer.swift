@@ -563,6 +563,45 @@ public enum GraphRenderer {
         isVFlexChild(node)
     }
 
+    /// Whether `node`, offered a size, claims all of it along one axis — the
+    /// question SwiftUI asks a ZStack's child, which is offered the stack's
+    /// size and sits at what it answers.
+    ///
+    /// A view that fills a stack's axis claims it here too. A scroll view
+    /// claims both: it wants all of its content and accepts whatever it is
+    /// given. A stack claims what one of its children claims, except that a
+    /// Spacer stretches only along its own stack's axis, as `isFlexChild`
+    /// has it — directly in a ZStack, along both. A frame or `.flexible`
+    /// that states nothing on this axis leaves the answer to its content.
+    static func claimsOffered(_ node: AttributeNode, horizontal: Bool) -> Bool {
+        if horizontal ? fillsHorizontally(node) : fillsVertically(node) { return true }
+        switch node.kind {
+        case .layout(let info):
+            let spacerAxis: Bool?
+            switch info.kind {
+            case .scroll: return true
+            case .split: return false
+            case .hstack: spacerAxis = horizontal
+            case .vstack: spacerAxis = !horizontal
+            case .zstack: spacerAxis = nil
+            }
+            return effectiveChildren(of: node).contains { child in
+                if case .primitive(.spacer) = child.kind { return spacerAxis ?? true }
+                return claimsOffered(child, horizontal: horizontal)
+            }
+        case .modifier(.frame(let width, let height, let minW, let maxW, let minH, let maxH, _)):
+            let statesAxis = horizontal
+                ? width != nil || minW != nil || maxW != nil
+                : height != nil || minH != nil || maxH != nil
+            guard !statesAxis, let child = node.children.first else { return false }
+            return claimsOffered(child, horizontal: horizontal)
+        case .modifier(.flexible):
+            return node.children.first.map { claimsOffered($0, horizontal: horizontal) } ?? false
+        default:
+            return flexBearingChild(of: node).map { claimsOffered($0, horizontal: horizontal) } ?? false
+        }
+    }
+
     /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
     /// `.frame(maxHeight: .infinity)`, and `GeometryReader` all consume
     /// remaining height. A GeometryReader exists to be told its size — with
@@ -579,20 +618,6 @@ public enum GraphRenderer {
         if case .modifier(.frame(_, _, _, _, _, let maxH, _)) = node.kind, maxH == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
         return false
-    }
-
-    /// A child's own size, placed inside `available` by `alignment`.
-    private static func placedRect(of node: AttributeNode, in available: Rect,
-                                   alignment: Alignment) -> Rect {
-        let width = min(available.width, declaredWidth(of: node) ?? measureWidth(node))
-        let height = min(available.height,
-                         declaredHeight(of: node)
-                            ?? measureHeight(node, proposedWidth: max(1, width)))
-        return Rect(
-            x: available.x + alignment.horizontal.offset(for: width, in: available.width),
-            y: available.y + alignment.vertical.offset(for: height, in: available.height),
-            width: max(1, width), height: max(1, height)
-        )
     }
 
     /// The width a subtree explicitly asked for, or nil when it asked for
@@ -1177,8 +1202,9 @@ public enum GraphRenderer {
 
     static func renderZStack(_ children: [AttributeNode],
                              into buffer: inout CellBuffer, context: RenderContext) {
-        // Layer 2: `Layout.stacked` stamped each child's rect. Render reads
-        // them — last child wins on overlapping cells.
+        // Layer 2: `Layout.stacked` stamped each child's rect at the size it
+        // claims. Render reads them — last child wins on overlapping cells,
+        // and only on the cells it covers.
         for child in children {
             var childCtx = context
             childCtx.rect = child.rect
@@ -1501,15 +1527,16 @@ public enum GraphRenderer {
             renderNode(child, into: &buffer, context: ctx)
 
         case .overlay(let alignment):
-            // Base first, then the overlay over it. `.topLeading` keeps the
-            // original behaviour of handing the overlay the base's whole rect;
-            // any other alignment is a request to *place* it, which needs its
-            // own size — a badge pinned `.topTrailing` is the case this exists
-            // for.
+            // Base first, then the overlay over it, offered the base's frame
+            // and placed at the size it claims there, as SwiftUI's is — the
+            // rule a ZStack places its children by. Handed the whole frame
+            // under `.topLeading`, a mark in the corner held the pointer
+            // across the base, and its padded row blanked the base beside it.
             renderNode(child, into: &buffer, context: ctx)
             if node.children.count > 1 {
                 let overlay = node.children[1]
                 var overlayCtx = ctx
+                var base = ctx.rect
                 if alignment != .topLeading {
                     // Aligned within the *base view's* frame, not the rect the
                     // parent happened to hand down. A stack gives its children
@@ -1519,11 +1546,11 @@ public enum GraphRenderer {
                     let baseWidth = min(ctx.rect.width, measureWidth(child))
                     let baseHeight = min(ctx.rect.height,
                                          measureHeight(child, proposedWidth: max(1, baseWidth)))
-                    let base = Rect(x: ctx.rect.x, y: ctx.rect.y,
-                                    width: max(1, baseWidth), height: max(1, baseHeight))
-                    overlayCtx.rect = placedRect(of: overlay, in: base, alignment: alignment)
-                    Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
+                    base = Rect(x: ctx.rect.x, y: ctx.rect.y,
+                                width: max(1, baseWidth), height: max(1, baseHeight))
                 }
+                overlayCtx.rect = Layout.stacked(overlay, in: base, alignment: alignment)
+                Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
                 renderNode(overlay, into: &buffer, context: overlayCtx)
             }
 

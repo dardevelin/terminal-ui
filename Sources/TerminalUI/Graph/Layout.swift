@@ -19,7 +19,7 @@
 ///
 ///   - Modifier rect transforms — padding (inset by amount), border
 ///     (inset by 1), frame (clamp dimensions).
-///   - ZStack — each child at its stated size, aligned in the stack.
+///   - ZStack — each child at the size it claims, aligned in the stack.
 ///
 /// Layer 3 (still on `GraphRenderer.renderLayout` until extracted)
 /// owns flex distribution:
@@ -96,8 +96,13 @@ public enum Layout {
         switch info.kind {
         case .zstack:
             // Last child wins on overlapping cells; each is placed by
-            // `stacked`, and the render walk reads the rects it stamps.
-            for child in node.children {
+            // `stacked`, and the render walk reads the rects it stamps. A
+            // ForEach's rows are the stack's children, as the render walk
+            // draws them: placed as one, every row took the union of all of
+            // them. The ForEach itself holds the stack, so the pointer
+            // still reaches its rows through it.
+            stampStructural(node.children, with: rect)
+            for child in GraphRenderer.effectiveChildren(of: node) {
                 measureAndPlace(graph: child, in: stacked(child, in: rect, alignment: info.alignment))
             }
 
@@ -121,25 +126,37 @@ public enum Layout {
         }
     }
 
-    /// Where a ZStack places `child` in its `rect`. A size the child states
-    /// is its size, as a stack's cross axis honours one: stamped with the
-    /// whole stack, a `.frame(width: 4, height: 1)` on top held the pointer
-    /// everywhere in it, and nothing under it could be hovered or clicked.
-    /// What the child leaves unstated it takes from the stack under
-    /// `.topLeading`, which draws exactly as before; any other alignment
-    /// places the child at its measured size, a child that takes the width
-    /// it is offered at the stack's, as `aligned` places a frame's content.
-    private static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
-        let fills = alignment == .topLeading
+    /// Where a ZStack places `child` in its `rect`: at the size it claims
+    /// when offered the stack's, as SwiftUI's does, under every alignment. A
+    /// size the child states is its size; on an axis it states nothing about
+    /// it takes all of one it claims, and its measured size on one it does
+    /// not. Stamped with the whole stack instead, as `.topLeading` once did,
+    /// a label on top held the pointer everywhere in the stack, nothing under
+    /// it could be hovered or clicked, and its padded rows blanked the layers
+    /// beside it. Measured on an axis it claims, a GeometryReader saw one row
+    /// and a Divider shrank to a single dash. An `.overlay` is placed over
+    /// its base by the same rule.
+    static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
-            ?? (fills || GraphRenderer.takesOfferedWidth(child) ? rect.width : GraphMeasurer.measureWidth(child)))
+            ?? (GraphRenderer.claimsOffered(child, horizontal: true)
+                ? rect.width : GraphMeasurer.measureWidth(child)))
         let height = min(rect.height, GraphRenderer.declaredHeight(of: child)
-            ?? (fills ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
+            ?? (GraphRenderer.claimsOffered(child, horizontal: false)
+                ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
         return Rect(
             x: rect.x + alignment.horizontal.offset(for: width, in: rect.width),
             y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
             width: max(1, width), height: max(1, height)
         )
+    }
+
+    /// Give every structural node among `nodes`, and those nested in them,
+    /// the rect of the container they are transparent to.
+    private static func stampStructural(_ nodes: [AttributeNode], with rect: Rect) {
+        for node in nodes where GraphRenderer.isStructuralLayout(node) {
+            node.rect = rect
+            stampStructural(node.children, with: rect)
+        }
     }
 
     /// The column — or, for a `.vertical` split, the row — of each divider
