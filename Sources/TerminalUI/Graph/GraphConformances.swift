@@ -359,47 +359,7 @@ extension ForEach: _GraphForEach {
 
     func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph) {
         guard case .layout = node.kind else { return }
-
-        let newElements = Array(data)
-
-        // Build lookup of existing children by explicit ID
-        var existingByID: [AnyHashable: AttributeNode] = [:]
-        for child in node.children {
-            if let lastComponent = child.id.path.last,
-               case .explicit(let key) = lastComponent {
-                existingByID[key] = child
-            }
-        }
-
-        // Rebuild children list — reuse existing nodes where possible
-        var newChildren: [AttributeNode] = []
-        var didChange = false
-
-        for element in newElements {
-            let key = AnyHashable(element.id)
-            let childID = node.id.appending(.explicit(key))
-
-            if let existing = existingByID[key] {
-                // Reuse — update in place
-                let childView = graph.trackingRow(of: node) { content(element) }
-                graph.updateNode(existing, from: childView)
-                newChildren.append(existing)
-            } else {
-                // New element — construct
-                let childView = graph.trackingRow(of: node) { content(element) }
-                let childNode = graph.constructNode(for: childView, id: childID)
-                childNode.parent = node
-                newChildren.append(childNode)
-                didChange = true
-            }
-        }
-
-        if newChildren.count != node.children.count { didChange = true }
-        if didChange {
-            graph.changed = true
-            graph.invalidateMeasurementCache(from: node)
-        }
-        node.children = newChildren
+        graph.updateKeyedChildren(node, from: data, key: { AnyHashable($0.id) }, row: content)
     }
 }
 
@@ -419,40 +379,6 @@ extension ForEachWithID: _GraphForEach {
 
     func updateForEachNode(_ node: AttributeNode, graph: AttributeGraph) {
         guard case .layout = node.kind else { return }
-
-        var existingByID: [AnyHashable: AttributeNode] = [:]
-        for child in node.children {
-            if let lastComponent = child.id.path.last,
-               case .explicit(let key) = lastComponent {
-                existingByID[key] = child
-            }
-        }
-
-        var newChildren: [AttributeNode] = []
-        var didChange = false
-
-        for element in data {
-            let key = AnyHashable(element[keyPath: idKeyPath])
-            let childID = node.id.appending(.explicit(key))
-
-            if let existing = existingByID[key] {
-                let childView = graph.trackingRow(of: node) { content(element) }
-                graph.updateNode(existing, from: childView)
-                newChildren.append(existing)
-            } else {
-                let childView = graph.trackingRow(of: node) { content(element) }
-                let childNode = graph.constructNode(for: childView, id: childID)
-                childNode.parent = node
-                newChildren.append(childNode)
-                didChange = true
-            }
-        }
-
-        if newChildren.count != node.children.count { didChange = true }
-        if didChange {
-            graph.changed = true
-            graph.invalidateMeasurementCache(from: node)
-        }
-        node.children = newChildren
+        graph.updateKeyedChildren(node, from: data, key: { AnyHashable($0[keyPath: idKeyPath]) }, row: content)
     }
 }

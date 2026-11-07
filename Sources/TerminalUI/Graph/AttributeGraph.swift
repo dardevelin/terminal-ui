@@ -645,6 +645,84 @@ public final class AttributeGraph: @unchecked Sendable {
         node.isDirty = false
     }
 
+    /// Reconciles a `ForEach`'s rows with `data`, matching them by `key`.
+    ///
+    /// A row whose key is still there is updated in place, wherever it moved
+    /// to. A row whose key is gone leaves the tree as any other removed
+    /// subtree does, through `fireDisappear`, and before a row this update
+    /// adds is built: an outgoing row's `onDisappear` runs before an incoming
+    /// one's `onAppear`, as when an `if` switches branch.
+    ///
+    /// Each old row is matched once, so the rows kept are distinct, and kept
+    /// as many as there were with nothing added means none left: an unchanged
+    /// frame or a reorder, settled without building a set. A key the data
+    /// repeats takes the next old row with that key, or a new one, as the
+    /// first build gave each occurrence its own.
+    func updateKeyedChildren<Data: RandomAccessCollection, Row: TerminalView>(
+        _ node: AttributeNode,
+        from data: Data,
+        key: (Data.Element) -> AnyHashable,
+        row: (Data.Element) -> Row
+    ) {
+        var existing: [AnyHashable: AttributeNode] = [:]
+        existing.reserveCapacity(node.children.count)
+        var repeated: [AnyHashable: [AttributeNode]] = [:]
+        for child in node.children {
+            guard case .explicit(let childKey)? = child.id.path.last else { continue }
+            if existing[childKey] == nil {
+                existing[childKey] = child
+            } else {
+                repeated[childKey, default: []].append(child)
+            }
+        }
+
+        var kept: [AttributeNode] = []
+        kept.reserveCapacity(data.count)
+        var inserted: [(position: Int, element: Data.Element, key: AnyHashable)] = []
+        for (position, element) in data.enumerated() {
+            let elementKey = key(element)
+            guard let match = existing.removeValue(forKey: elementKey) else {
+                inserted.append((position, element, elementKey))
+                continue
+            }
+            if var others = repeated[elementKey], !others.isEmpty {
+                existing[elementKey] = others.removeFirst()
+                repeated[elementKey] = others
+            }
+            let view = trackingRow(of: node) { row(element) }
+            updateNode(match, from: view)
+            kept.append(match)
+        }
+
+        if inserted.isEmpty, kept.count == node.children.count {
+            node.children = kept
+            return
+        }
+
+        let staying = Set(kept.map(ObjectIdentifier.init))
+        for old in node.children where !staying.contains(ObjectIdentifier(old)) {
+            fireDisappear(on: old)
+        }
+
+        var merged: [AttributeNode] = []
+        merged.reserveCapacity(kept.count + inserted.count)
+        var nextKept = kept.startIndex
+        for entry in inserted {
+            while merged.count < entry.position {
+                merged.append(kept[nextKept])
+                nextKept += 1
+            }
+            let view = trackingRow(of: node) { row(entry.element) }
+            let fresh = constructNode(for: view, id: node.id.appending(.explicit(entry.key)))
+            fresh.parent = node
+            merged.append(fresh)
+        }
+        merged.append(contentsOf: kept[nextKept...])
+        node.children = merged
+        changed = true
+        invalidateMeasurementCache(from: node)
+    }
+
     /// Invalidate cached width/height on `node` and every ancestor, since
     /// each one's measured size is built from this one's.
     ///
