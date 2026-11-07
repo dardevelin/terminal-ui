@@ -93,6 +93,14 @@ private final class Screen<Content: TerminalView> {
     func press(_ key: Key) {
         _ = engine.routeKeyEvent(KeyEvent(key: key), root: root)
     }
+
+    func click(_ x: Int, _ y: Int) {
+        engine.handleMouseClick(x: x, y: y, root: root)
+    }
+
+    func wheel(_ key: Key, _ x: Int, _ y: Int) {
+        _ = engine.routeWheel(KeyEvent(key: key), root: root, x: x, y: y, policy: .clickToLock)
+    }
 }
 
 @Suite("A table lists rows in aligned columns, and can take a selection")
@@ -252,5 +260,49 @@ struct TableSelectionTests {
             "  launchd",
             "",
         ], "\(drawn)")
+    }
+
+    // MARK: - Pointer
+
+    @Test func aClickOnARowSelectsIt() {
+        let selecting = Selecting(1)
+        let screen = Screen(Table(processes, selection: selecting.binding, visibleCount: 4, columns: columns))
+        screen.frame()
+        screen.click(4, 4)
+        #expect(selecting.selected == 3)
+        screen.frame()
+        screen.click(4, 2)
+        #expect(selecting.selected == 1)
+    }
+
+    @Test func aClickOnTheHeaderOrTheRuleChangesNothing() {
+        let selecting = Selecting(2)
+        let screen = Screen(Table(processes, selection: selecting.binding, visibleCount: 4, columns: columns))
+        let before = screen.frame()
+        screen.click(4, 0)
+        screen.click(4, 1)
+        #expect(selecting.selected == 2)
+        #expect(screen.frame() == before)
+    }
+
+    @Test func aClickAfterTheWheelScrolledSelectsTheRowDrawnThere() {
+        let selecting = Selecting(10)
+        let table = Table(many, selection: selecting.binding, visibleCount: 4, columns: columns)
+        let screen = Screen(table)
+        screen.frame()
+        screen.wheel(.down, 4, 3)
+        let drawn = screen.frame()
+        #expect(Array(drawn.prefix(6)) == [
+            "  " + header,
+            "  " + rule,
+            "  ▲ 1 more",
+            "  " + table.rowLine(many[1]),
+            "  " + table.rowLine(many[2]),
+            "  ▼ 7 more",
+        ], "the wheel scrolls the rows and leaves the selection: \(drawn)")
+        screen.click(4, 2)
+        #expect(selecting.selected == 10, "the indicator line is no row")
+        screen.click(4, 4)
+        #expect(selecting.selected == 12)
     }
 }
