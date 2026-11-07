@@ -13,7 +13,9 @@ is now made here, from the tutorial's own code steps and the tapes under
 - **Chapter GIFs**, ``demo-ch<N>.gif``: ``tools/recordings/demo-ch<N>.tape``.
 - **Chapter cards**, ``card-ch<N>.png``: a chapter's preview, framed, with
   the fox in its corner.
-- **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``.
+- **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``, once
+  ``check_vhs_compat.py`` has shown vhs draws every Storybook page as the
+  framework does.
 
 The steps are built as one package of executables in
 ``.build-recordings/tutorial``, as ``tools/terminalui/tutorial.py`` writes
@@ -228,6 +230,9 @@ def main() -> int:
         # Apart from .build, whose lock a developer's own `swift run` holds.
         run(["swift", "build", "-c", "release", "--scratch-path", str(WORK / "app")])
         run(["swift", "build", "--scratch-path", str(WORK / "app")])
+        # The README is recorded with vhs; first, vhs must show every page
+        # as the framework drew it.
+        run([sys.executable, "tools/scripts/check_vhs_compat.py", str(WORK / "app" / "debug")])
         run_vhs("assets/demo.tape")
         run_vhs("assets/debug.tape")
     return 0
