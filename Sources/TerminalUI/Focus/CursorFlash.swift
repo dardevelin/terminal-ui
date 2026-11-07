@@ -54,6 +54,11 @@ public final class CursorFlash: Sendable, Observable {
         }
     }
 
+    /// Called by the runtime after each frame it draws. Returns the task that
+    /// ends a flash, for a caller that waits on it.
+    @MainActor @discardableResult
+    func frameDrawn() -> Task<Void, Never>? { nil }
+
     /// Puts the cursor out, unless a hit since `hit` keeps it lit.
     func putOut(after hit: Int) {
         let wentDark = state.withLock { state in
