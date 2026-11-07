@@ -563,6 +563,45 @@ public enum GraphRenderer {
         isVFlexChild(node)
     }
 
+    /// Whether `node`, offered a size, claims all of it along one axis — the
+    /// question SwiftUI asks a ZStack's child, which is offered the stack's
+    /// size and sits at what it answers.
+    ///
+    /// A view that fills a stack's axis claims it here too. A scroll view
+    /// claims both: it wants all of its content and accepts whatever it is
+    /// given. A stack claims what one of its children claims, except that a
+    /// Spacer stretches only along its own stack's axis, as `isFlexChild`
+    /// has it — directly in a ZStack, along both. A frame or `.flexible`
+    /// that states nothing on this axis leaves the answer to its content.
+    static func claimsOffered(_ node: AttributeNode, horizontal: Bool) -> Bool {
+        if horizontal ? fillsHorizontally(node) : fillsVertically(node) { return true }
+        switch node.kind {
+        case .layout(let info):
+            let spacerAxis: Bool?
+            switch info.kind {
+            case .scroll: return true
+            case .split: return false
+            case .hstack: spacerAxis = horizontal
+            case .vstack: spacerAxis = !horizontal
+            case .zstack: spacerAxis = nil
+            }
+            return effectiveChildren(of: node).contains { child in
+                if case .primitive(.spacer) = child.kind { return spacerAxis ?? true }
+                return claimsOffered(child, horizontal: horizontal)
+            }
+        case .modifier(.frame(let width, let height, let minW, let maxW, let minH, let maxH, _)):
+            let statesAxis = horizontal
+                ? width != nil || minW != nil || maxW != nil
+                : height != nil || minH != nil || maxH != nil
+            guard !statesAxis, let child = node.children.first else { return false }
+            return claimsOffered(child, horizontal: horizontal)
+        case .modifier(.flexible):
+            return node.children.first.map { claimsOffered($0, horizontal: horizontal) } ?? false
+        default:
+            return flexBearingChild(of: node).map { claimsOffered($0, horizontal: horizontal) } ?? false
+        }
+    }
+
     /// Vertical flex: spacers, vertical scroll views, `.flexible(.vertical)`,
     /// `.frame(maxHeight: .infinity)`, and `GeometryReader` all consume
     /// remaining height. A GeometryReader exists to be told its size — with

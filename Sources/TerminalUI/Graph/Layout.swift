@@ -127,14 +127,18 @@ public enum Layout {
     /// everywhere in it, and nothing under it could be hovered or clicked.
     /// What the child leaves unstated it takes from the stack under
     /// `.topLeading`, which draws exactly as before; any other alignment
-    /// places the child at its measured size, a child that takes the width
-    /// it is offered at the stack's, as `aligned` places a frame's content.
+    /// places the child at the size it claims when offered the stack's, as
+    /// SwiftUI's does: all of an axis it claims, its measured size on one it
+    /// does not. Measured instead, a GeometryReader saw one row and a Divider
+    /// shrank to a single dash.
     private static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
         let fills = alignment == .topLeading
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
-            ?? (fills || GraphRenderer.takesOfferedWidth(child) ? rect.width : GraphMeasurer.measureWidth(child)))
+            ?? (fills || GraphRenderer.claimsOffered(child, horizontal: true)
+                ? rect.width : GraphMeasurer.measureWidth(child)))
         let height = min(rect.height, GraphRenderer.declaredHeight(of: child)
-            ?? (fills ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
+            ?? (fills || GraphRenderer.claimsOffered(child, horizontal: false)
+                ? rect.height : GraphMeasurer.measureHeight(child, proposedWidth: max(1, width))))
         return Rect(
             x: rect.x + alignment.horizontal.offset(for: width, in: rect.width),
             y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
