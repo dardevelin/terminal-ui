@@ -38,6 +38,12 @@ public struct ModalModifier<ModalContent: TerminalView>: ViewModifier {
 
 extension TerminalView {
     /// Render additional content on top of this view's frame.
+    ///
+    /// The content is offered the frame's size and sits at the size it
+    /// claims, placed by `alignment`, as a ``ZStack`` child does: a mark in
+    /// the corner covers only its own cells, and the pointer reaches this
+    /// view beside it. Content that should cover the whole frame says so
+    /// with `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
     public func overlay<V: TerminalView>(
         alignment: Alignment = .topLeading,
         @TerminalViewBuilder content: () -> V

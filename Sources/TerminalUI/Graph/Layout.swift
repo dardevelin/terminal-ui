@@ -134,8 +134,9 @@ public enum Layout {
     /// a label on top held the pointer everywhere in the stack, nothing under
     /// it could be hovered or clicked, and its padded rows blanked the layers
     /// beside it. Measured on an axis it claims, a GeometryReader saw one row
-    /// and a Divider shrank to a single dash.
-    private static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
+    /// and a Divider shrank to a single dash. An `.overlay` is placed over
+    /// its base by the same rule.
+    static func stacked(_ child: AttributeNode, in rect: Rect, alignment: Alignment) -> Rect {
         let width = min(rect.width, GraphRenderer.declaredWidth(of: child)
             ?? (GraphRenderer.claimsOffered(child, horizontal: true)
                 ? rect.width : GraphMeasurer.measureWidth(child)))

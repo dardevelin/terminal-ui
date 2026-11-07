@@ -18,6 +18,12 @@ All notable changes to TerminalUI are documented here. Format based on
   hovered or clicked, its padded rows blanked the layers beside it, and a
   border or background on it spanned the stack. A child that should cover
   the stack says so with `.frame(maxWidth: .infinity, maxHeight: .infinity)`.
+  `.overlay` places its content over the base view by the same rule: under
+  `.topLeading` an unsized overlay took the base's whole frame, so a mark in
+  its corner held the pointer across the base and blanked the rest of its
+  row; under the other alignments a `Divider` or `GeometryReader` overlay
+  was measured to a dash or a row, and now spans the base. Overlay content
+  that should cover the base asks the same way.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 

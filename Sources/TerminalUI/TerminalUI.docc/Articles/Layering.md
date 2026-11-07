@@ -32,7 +32,7 @@ the whole stack says so with `.frame(maxWidth: .infinity, maxHeight: .infinity)`
 ```swift
 Text("Hello")
     .overlay {
-        Text("!").foreground(.red)  // on top, same frame
+        Text("!").foreground(.red)  // on top, at its own size in the frame
     }
     .background {
         Text("░░░")  // behind, same frame

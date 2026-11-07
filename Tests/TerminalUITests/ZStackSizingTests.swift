@@ -145,6 +145,15 @@ struct ZStackSizingTests {
         #expect(screen.rows[0].hasPrefix("row 0"))
     }
 
+    // MARK: - An overlay, placed by the same rule
+
+    @Test func anOverlaidDividerSpansTheBase() {
+        let screen = Screen(width: 12, height: 5, Text("abcdef\nabcdef")
+            .overlay(alignment: .bottom) { Divider() })
+        #expect(screen.root.children[1].rect == Rect(x: 0, y: 1, width: 6, height: 1))
+        #expect(screen.rows[1] == "──────      ")
+    }
+
     // MARK: - Rows a ForEach hands the stack
 
     // A ForEach is no view of its own in a stack: its rows are the stack's

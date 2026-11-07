@@ -620,20 +620,6 @@ public enum GraphRenderer {
         return false
     }
 
-    /// A child's own size, placed inside `available` by `alignment`.
-    private static func placedRect(of node: AttributeNode, in available: Rect,
-                                   alignment: Alignment) -> Rect {
-        let width = min(available.width, declaredWidth(of: node) ?? measureWidth(node))
-        let height = min(available.height,
-                         declaredHeight(of: node)
-                            ?? measureHeight(node, proposedWidth: max(1, width)))
-        return Rect(
-            x: available.x + alignment.horizontal.offset(for: width, in: available.width),
-            y: available.y + alignment.vertical.offset(for: height, in: available.height),
-            width: max(1, width), height: max(1, height)
-        )
-    }
-
     /// The width a subtree explicitly asked for, or nil when it asked for
     /// nothing and should take what the stack offers.
     ///
@@ -1541,15 +1527,16 @@ public enum GraphRenderer {
             renderNode(child, into: &buffer, context: ctx)
 
         case .overlay(let alignment):
-            // Base first, then the overlay over it. `.topLeading` keeps the
-            // original behaviour of handing the overlay the base's whole rect;
-            // any other alignment is a request to *place* it, which needs its
-            // own size — a badge pinned `.topTrailing` is the case this exists
-            // for.
+            // Base first, then the overlay over it, offered the base's frame
+            // and placed at the size it claims there, as SwiftUI's is — the
+            // rule a ZStack places its children by. Handed the whole frame
+            // under `.topLeading`, a mark in the corner held the pointer
+            // across the base, and its padded row blanked the base beside it.
             renderNode(child, into: &buffer, context: ctx)
             if node.children.count > 1 {
                 let overlay = node.children[1]
                 var overlayCtx = ctx
+                var base = ctx.rect
                 if alignment != .topLeading {
                     // Aligned within the *base view's* frame, not the rect the
                     // parent happened to hand down. A stack gives its children
@@ -1559,11 +1546,11 @@ public enum GraphRenderer {
                     let baseWidth = min(ctx.rect.width, measureWidth(child))
                     let baseHeight = min(ctx.rect.height,
                                          measureHeight(child, proposedWidth: max(1, baseWidth)))
-                    let base = Rect(x: ctx.rect.x, y: ctx.rect.y,
-                                    width: max(1, baseWidth), height: max(1, baseHeight))
-                    overlayCtx.rect = placedRect(of: overlay, in: base, alignment: alignment)
-                    Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
+                    base = Rect(x: ctx.rect.x, y: ctx.rect.y,
+                                width: max(1, baseWidth), height: max(1, baseHeight))
                 }
+                overlayCtx.rect = Layout.stacked(overlay, in: base, alignment: alignment)
+                Layout.measureAndPlace(graph: overlay, in: overlayCtx.rect)
                 renderNode(overlay, into: &buffer, context: overlayCtx)
             }
 
