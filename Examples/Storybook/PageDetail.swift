@@ -408,13 +408,25 @@ struct PreviewPane: TerminalView {
 
         // ───── Display ─────
         case .list:
-            List(Array(demoItems),
-                 selection: Binding(get: { state.listSelection },
-                                    set: { state.listSelection = $0 }),
-                 scroll: Binding(get: { state.listScroll },
-                                 set: { state.listScroll = $0 }),
-                 visibleCount: 5) { item in
-                Text(item.label).foreground(item.color)
+            VStack(spacing: 1) {
+                List(Array(demoItems),
+                     selection: Binding(get: { state.listSelection },
+                                        set: { state.listSelection = $0 }),
+                     scroll: Binding(get: { state.listScroll },
+                                     set: { state.listScroll = $0 }),
+                     visibleCount: 5) { item in
+                    Text(item.label).foreground(item.color)
+                }
+                // Rows of any height: five lines hold two of these.
+                List(demoSeasons,
+                     selection: Binding(get: { state.seasonSelection },
+                                        set: { state.seasonSelection = $0 }),
+                     visibleCount: 5) { season in
+                    VStack {
+                        Text(season.name).bold()
+                        Text(season.weather).foreground(.gray)
+                    }
+                }
             }
         case .table:
             Table(Array(demoItems),
@@ -1172,6 +1184,21 @@ let demoItems: [DemoItem] = [
     .init(id: 5, label: "zeta",    color: .blue),
     .init(id: 6, label: "eta",     color: .white),
     .init(id: 7, label: "theta",   color: .gray),
+]
+
+struct DemoSeason: Identifiable {
+    let id: Int
+    let name: String
+    let weather: String
+}
+
+let demoSeasons: [DemoSeason] = [
+    .init(id: 0, name: "spring",    weather: "rain and thaw"),
+    .init(id: 1, name: "summer",    weather: "long light evenings"),
+    .init(id: 2, name: "autumn",    weather: "leaves and gales"),
+    .init(id: 3, name: "winter",    weather: "frost on the glass"),
+    .init(id: 4, name: "monsoon",   weather: "warm torrential rain"),
+    .init(id: 5, name: "harmattan", weather: "dust off the Sahara"),
 ]
 
 let sineData: [Double] = (0..<40).map { i in

@@ -1361,6 +1361,30 @@ def storybook_a_click_on_a_list_row_selects_it(app: Client) -> None:
     assert_true("▸ epsilon" in app.preview_text(), f"expected epsilon selected:\n{app.preview_text()}")
 
 
+def storybook_a_list_of_tall_rows_keeps_its_height(app: Client) -> None:
+    """List page, second list: rows two lines tall in five lines. End
+    draws the last row whole, under `▲ 4 more`, and the list keeps the five
+    lines it was given. Counting a line a row, it drew four rows — eight
+    lines — and pushed the preview's border down."""
+    app.goto_page("List")
+    app.send_key("tab")
+    app.send_key("tab")
+
+    def border_row() -> int:
+        rows = app.text().split("\n")
+        start = next(i for i, row in enumerate(rows) if "Preview" in row)
+        return next(i for i in range(start + 2, len(rows)) if "╰" in rows[i])
+
+    before = border_row()
+    app.send_key("end")
+    preview = app.preview_text()
+    assert_true("▸ harmattan" in preview, f"End should select the last row:\n{preview}")
+    assert_true("dust off the Sahara" in preview, f"the last row should be drawn whole:\n{preview}")
+    assert_true("▲ 4 more" in preview, f"four rows above the last two:\n{preview}")
+    assert_true(border_row() == before,
+                f"the list should keep its height: border at {border_row()}, was {before}\n{app.text()}")
+
+
 def storybook_a_click_on_a_table_row_selects_it(app: Client) -> None:
     """Table page: a click on a row selects it, after the wheel has
     scrolled the rows a click selects the row now drawn there, and a click
@@ -2984,6 +3008,8 @@ CASES: list[SmokeCase] = [
               storybook_hover_reaches_only_the_view_on_top),
     SmokeCase("storybook.a_click_on_a_list_row_selects_it", "Storybook",
               storybook_a_click_on_a_list_row_selects_it),
+    SmokeCase("storybook.a_list_of_tall_rows_keeps_its_height", "Storybook",
+              storybook_a_list_of_tall_rows_keeps_its_height),
     SmokeCase("storybook.a_click_on_a_table_row_selects_it", "Storybook",
               storybook_a_click_on_a_table_row_selects_it),
     SmokeCase("storybook.taps_count_and_know_their_modifiers", "Storybook",

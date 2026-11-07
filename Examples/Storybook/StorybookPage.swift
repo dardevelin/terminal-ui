@@ -399,11 +399,22 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .list: return PageInfo(id: self, category: .display, name: "List",
             summary: "Scrollable, selectable list of items.",
             code: """
-                List(Array(items),
-                     selection: $selectedID,
-                     scroll: $scrollOffset,
-                     visibleCount: 5) { item in
-                    Text(item.label).foreground(item.color)
+                VStack(spacing: 1) {
+                    List(Array(items),
+                         selection: $selectedID,
+                         scroll: $scrollOffset,
+                         visibleCount: 5) { item in
+                        Text(item.label).foreground(item.color)
+                    }
+                    // Rows of any height:
+                    List(seasons, selection: $season,
+                         visibleCount: 5) { season in
+                        VStack {
+                            Text(season.name).bold()
+                            Text(season.weather)
+                                .foreground(.gray)
+                        }
+                    }
                 }
                 """)
         case .table: return PageInfo(id: self, category: .display, name: "Table",
