@@ -97,7 +97,9 @@ public struct DiagConfig: Sendable {
         socketEnabled: true
     )
 
-    /// Default config for DEBUG builds — trace on with a frame cap.
+    /// Tracing on, capped at 100 frames — a preset to save with
+    /// `DiagPaths.saveConfig(_:)`. Nothing loads it on its own: with no
+    /// file, a debug build runs with ``DiagConfig/default``, which traces nothing.
     public static let debug = DiagConfig(
         traceEnabled: true,
         captureScreenshots: true,

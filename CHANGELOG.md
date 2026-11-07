@@ -136,6 +136,16 @@ All notable changes to TerminalUI are documented here. Format based on
   parent's id. A tree whose item contains itself stops at the repeat
   instead of hanging. A `List` row likewise keeps its state when rows are
   inserted above it.
+- **A debug build traces what `.terminalui/terminalui.toml` says.**
+  `TerminalAppProtocol.devTrace` defaulted, in debug builds, to tracing on
+  with a 100-frame limit, and a configuration an app states replaces the
+  file's, so the file's `[trace]` section reached no app that did not
+  override it: `swtui disable trace` and `swtui set frame_limit` changed
+  nothing, and every run traced exactly 100 frames, writing a screenshot
+  and a trace file for each. The default is now `nil`, which follows the
+  file — and, with no file, as `swtui status` already said, traces nothing;
+  `swtui enable trace` turns it on. An app that states its own `devTrace`
+  still has it in place of the file's settings.
 
 ## [2.1.0] — 2026-10-24 — The pointer, as a desktop's
 
