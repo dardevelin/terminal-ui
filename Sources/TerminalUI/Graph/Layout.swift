@@ -96,8 +96,13 @@ public enum Layout {
         switch info.kind {
         case .zstack:
             // Last child wins on overlapping cells; each is placed by
-            // `stacked`, and the render walk reads the rects it stamps.
-            for child in node.children {
+            // `stacked`, and the render walk reads the rects it stamps. A
+            // ForEach's rows are the stack's children, as the render walk
+            // draws them: placed as one, every row took the union of all of
+            // them. The ForEach itself holds the stack, so the pointer
+            // still reaches its rows through it.
+            stampStructural(node.children, with: rect)
+            for child in GraphRenderer.effectiveChildren(of: node) {
                 measureAndPlace(graph: child, in: stacked(child, in: rect, alignment: info.alignment))
             }
 
@@ -144,6 +149,15 @@ public enum Layout {
             y: rect.y + alignment.vertical.offset(for: height, in: rect.height),
             width: max(1, width), height: max(1, height)
         )
+    }
+
+    /// Give every structural node among `nodes`, and those nested in them,
+    /// the rect of the container they are transparent to.
+    private static func stampStructural(_ nodes: [AttributeNode], with rect: Rect) {
+        for node in nodes where GraphRenderer.isStructuralLayout(node) {
+            node.rect = rect
+            stampStructural(node.children, with: rect)
+        }
     }
 
     /// The column — or, for a `.vertical` split, the row — of each divider

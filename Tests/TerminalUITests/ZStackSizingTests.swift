@@ -96,4 +96,21 @@ struct ZStackSizingTests {
                 "a scroll view takes what it is offered on both axes")
         #expect(screen.rows[0].hasPrefix("row 0"))
     }
+
+    // MARK: - Rows a ForEach hands the stack
+
+    // A ForEach is no view of its own in a stack: its rows are the stack's
+    // children. Placed as one, at the union of its rows, every row took that
+    // union's rect and the stacking never happened.
+    @Test func eachRowOfAForEachIsStackedOnItsOwn() {
+        let screen = Screen(width: 10, height: 4, ZStack(alignment: .bottomTrailing) {
+            ForEachWithID(["a", "bb"], id: \.self) { Text($0) }
+        })
+        #expect(screen.primitives.map(\.rect) == [
+            Rect(x: 9, y: 3, width: 1, height: 1),
+            Rect(x: 8, y: 3, width: 2, height: 1),
+        ])
+        #expect(screen.rows[3] == "        bb")
+        #expect(screen.rows[2] == "          ")
+    }
 }
