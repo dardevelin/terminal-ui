@@ -34,6 +34,20 @@ private func renderedText(_ node: AttributeNode) -> String? {
     return node.children.lazy.compactMap { renderedText($0) }.first
 }
 
+@MainActor
+private func forEachNode(in node: AttributeNode) -> AttributeNode? {
+    if GraphRenderer.isStructuralLayout(node) { return node }
+    for child in node.children {
+        if let found = forEachNode(in: child) { return found }
+    }
+    return nil
+}
+
+@MainActor
+private func rows(of graph: AttributeGraph) -> [AttributeNode] {
+    graph.root.flatMap(forEachNode(in:))?.children ?? []
+}
+
 private final class Counts {
     var seen: [String: Int] = [:]
     var bindings: [String: Binding<Int>] = [:]
@@ -99,6 +113,95 @@ private struct Working: TerminalView {
                 .onDisappear { log?.entries.append("disappear") }
                 .task { await waitForCancellation() }
                 .id(tag)
+        }
+    }
+}
+
+private struct Versioned: Identifiable {
+    let id: Int
+    var version = 0
+}
+
+private struct VersionedRows: TerminalView {
+    let items: [Versioned]
+    let counts: Counts
+    var body: some TerminalView {
+        VStack {
+            ForEach(items) { item in
+                Counter(name: "row \(item.id)", counts: counts).id(item.version)
+            }
+        }
+    }
+}
+
+private struct Message: Identifiable {
+    let id: Int
+}
+
+/// The shape Chat, Coder and Storybook use: each row tagged with its own key,
+/// so `.scrollPosition(id:)` can name it.
+private struct KeyedRows: TerminalView {
+    let ids: [Int]
+    let log: Log
+    var body: some TerminalView {
+        VStack {
+            ForEach(ids.map(Message.init)) { message in
+                Text("message \(message.id)")
+                    .onAppear { log.entries.append("appear \(message.id)") }
+                    .onDisappear { log.entries.append("disappear \(message.id)") }
+                    .task { await waitForCancellation() }
+                    .id(message.id)
+            }
+        }
+    }
+}
+
+/// A composite whose body's root is the view `.id` names, beside state of
+/// its own.
+private struct RootTagged: TerminalView {
+    let tag: Int
+    let counts: Counts
+    @TerminalState var outer = 0
+    var body: some TerminalView {
+        counts.seen["outer"] = outer
+        counts.bindings["outer"] = $outer
+        return Counter(name: "inner", counts: counts).id(tag)
+    }
+}
+
+@Observable
+private final class Document {
+    var version = 0
+    var tick = 0
+}
+
+private struct ModelTagged: TerminalView {
+    let document: Document
+    let counts: Counts
+    var body: some TerminalView {
+        VStack {
+            Counter(name: "inner", counts: counts).id(document.version)
+        }
+    }
+}
+
+private struct Ticker: TerminalView {
+    let tag: Int
+    let document: Document
+    let log: Log
+    var body: some TerminalView {
+        log.entries.append("body \(tag)")
+        return Text("\(tag): \(document.tick)").task { await waitForCancellation() }
+    }
+}
+
+private struct TaggedTicker: TerminalView {
+    let tag: Int
+    let document: Document
+    let log: Log
+    var body: some TerminalView {
+        VStack {
+            Ticker(tag: tag, document: document, log: log).id(tag)
         }
     }
 }
@@ -175,5 +278,104 @@ struct ExplicitIDTests {
         #expect(log.entries.isEmpty, "\(log.entries)")
         #expect(!running.isCancelled)
         #expect(graph.root.flatMap(renderedText) == "after 1")
+    }
+
+    @Test func aNewIDInAForEachRowResetsThatRowAlone() {
+        let counts = Counts()
+        let graph = AttributeGraph()
+        var items = [Versioned(id: 1), Versioned(id: 2), Versioned(id: 3)]
+        graph.update(from: VersionedRows(items: items, counts: counts))
+        counts.bindings["row 1"]?.wrappedValue = 7
+        counts.bindings["row 2"]?.wrappedValue = 7
+        graph.update(from: VersionedRows(items: items, counts: counts))
+        let before = rows(of: graph)
+
+        items[1].version += 1
+        graph.update(from: VersionedRows(items: items, counts: counts))
+
+        #expect(counts.seen["row 1"] == 7, "a row whose id held keeps its state")
+        #expect(counts.seen["row 2"] == 0, "the row given a new id starts over")
+        let after = rows(of: graph)
+        #expect(after.count == 3)
+        #expect(zip(before, after).allSatisfy { $0 === $1 }, "the ForEach's own rows stay")
+    }
+
+    @Test func aRowTaggedWithItsOwnKeyIsUntouchedByAnAppendOrAReorder() {
+        let log = Log()
+        let graph = AttributeGraph()
+        graph.update(from: KeyedRows(ids: [1, 2, 3], log: log))
+        func content() -> [String: AttributeNode] {
+            Dictionary(uniqueKeysWithValues: (graph.root.flatMap(taskNodes(in:)) ?? []).compactMap { node in
+                renderedText(node).map { ($0, node) }
+            })
+        }
+        let before = content()
+        let running = before.values.compactMap(\.lifecycleTask)
+        #expect(before.count == 3 && running.count == 3)
+        log.entries.removeAll()
+
+        graph.update(from: KeyedRows(ids: [1, 2, 3, 4], log: log))
+        #expect(log.entries == ["appear 4"], "only the row added appears")
+
+        log.entries.removeAll()
+        graph.update(from: KeyedRows(ids: [4, 3, 1, 2], log: log))
+        #expect(log.entries.isEmpty, "\(log.entries)")
+
+        let after = content()
+        for (text, node) in before {
+            #expect(after[text] === node, "\(text) was rebuilt")
+        }
+        #expect(running.allSatisfy { !$0.isCancelled })
+    }
+
+    @Test func aNewIDAtABodysRootResetsTheViewItNamesAlone() {
+        let counts = Counts()
+        let graph = AttributeGraph()
+        graph.update(from: RootTagged(tag: 1, counts: counts))
+        counts.bindings["outer"]?.wrappedValue = 7
+        counts.bindings["inner"]?.wrappedValue = 7
+        graph.update(from: RootTagged(tag: 1, counts: counts))
+        #expect(counts.seen["outer"] == 7 && counts.seen["inner"] == 7)
+
+        graph.update(from: RootTagged(tag: 2, counts: counts))
+
+        #expect(counts.seen["inner"] == 0, "the view `.id` is applied to starts over")
+        #expect(counts.seen["outer"] == 7, "the composite whose body it is keeps its own state")
+    }
+
+    @Test func aNewIDFromAnObservableResetsStateOnDrain() {
+        let counts = Counts()
+        let document = Document()
+        let graph = AttributeGraph()
+        graph.update(from: ModelTagged(document: document, counts: counts))
+        counts.bindings["inner"]?.wrappedValue = 7
+        graph.update(from: ModelTagged(document: document, counts: counts))
+        #expect(counts.seen["inner"] == 7)
+
+        document.version += 1
+        graph.drain()
+
+        #expect(counts.seen["inner"] == 0)
+    }
+
+    @Test func aReplacedViewDoesNotRunAgainForWhatItRead() {
+        let log = Log()
+        let document = Document()
+        let graph = AttributeGraph()
+        graph.update(from: TaggedTicker(tag: 1, document: document, log: log))
+        guard let old = graph.root.flatMap(taskNodes(in:))?.first else {
+            Issue.record("the view starts no task")
+            return
+        }
+
+        graph.update(from: TaggedTicker(tag: 2, document: document, log: log))
+        #expect(old.lifecycleTask == nil)
+        log.entries.removeAll()
+
+        document.tick += 1
+        graph.drain()
+
+        #expect(log.entries == ["body 2"], "\(log.entries)")
+        #expect(old.lifecycleTask == nil, "a view that left started its task again")
     }
 }
