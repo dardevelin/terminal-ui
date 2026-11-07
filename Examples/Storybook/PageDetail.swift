@@ -116,6 +116,11 @@ struct PreviewPane: TerminalView {
                 Text("above")
                 Divider()
                 Text("below")
+                HStack(spacing: 1) {
+                    Text("left\nside")
+                    Divider()
+                    Text("right")
+                }
             }
         case .scrollview:
             ScrollView(.vertical) {

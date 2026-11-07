@@ -116,12 +116,17 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 }
                 """)
         case .divider: return PageInfo(id: self, category: .layout, name: "Divider",
-            summary: "Horizontal rule separator.",
+            summary: "Rule separator: across a VStack, down an HStack.",
             code: """
                 VStack {
                     Text("above")
                     Divider()
                     Text("below")
+                    HStack(spacing: 1) {
+                        Text("left\\nside")
+                        Divider()
+                        Text("right")
+                    }
                 }
                 """)
         case .scrollview: return PageInfo(id: self, category: .layout, name: "ScrollView",

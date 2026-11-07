@@ -233,6 +233,9 @@ public enum GraphMeasurer {
                 case .none, .truncate: return countLines(text)
                 }
             case .spacer: return 1
+            // One cell whichever way it rules: along its length the stack
+            // hands it the cross axis, so a rule down an HStack never makes
+            // the row taller than its other children do.
             case .divider: return 1
             case .empty: return 0
             case .progressBar: return 1

@@ -169,6 +169,10 @@ public struct EnvironmentValues: Sendable {
     /// the one an app installs for the whole process.
     var boundaryBounce: (@Sendable (BoundaryHitReason) -> Void)? = nil
 
+    /// Which way a `Divider` here rules — set by the render walk at each
+    /// stack, so nothing outside the framework reads or sets it.
+    var dividerOrientation: DividerOrientation = .horizontal
+
     /// The terminal's bell — see ``BellAction``. Silent until a running
     /// app supplies its own, for every frame it draws.
     public var bell = BellAction {}
