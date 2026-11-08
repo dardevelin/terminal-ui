@@ -6,6 +6,20 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `ForEach` whose rows only moved is laid out again.** Reordering a
+  `ForEach`'s elements, with none added or removed, kept the sizes its
+  containers had measured for the old order, and the graph's update said
+  nothing had changed. A container's size can follow the order of its rows
+  — an `HStack` measures only the rows that start inside its width, and
+  hands the columns an even split of its spare width leaves over to the
+  first of its flexible rows — so a row
+  moved to the front of an `HStack` could be drawn cut to the height the
+  old order had, its lower lines missing and the view below it drawn in
+  their place. A reorder now re-measures the rows' containers and counts as
+  a change, as an added or removed row does.
+
 ## [2.2.0] — 2026-11-08 — Layout and identity, as SwiftUI's
 
 A minor release: an app written for 2.1 compiles unchanged. Layout and
