@@ -52,11 +52,11 @@ struct BusyLoopTests {
         let flash = CursorFlash(duration: .milliseconds(10))
         flash.light()
         flash.frameDrawn()
-        let deadline = ContinuousClock.now + .seconds(5)
+        let deadline = ContinuousClock.now + mainActorTurnLimit
         while flash.isLit && ContinuousClock.now < deadline {
             await pacing.awaitNextPass(after: frameStart) { true }
         }
-        #expect(!flash.isLit, "the flash stayed lit through 5 s of passes that each had work")
+        #expect(!flash.isLit, "the flash stayed lit through \(mainActorTurnLimit) of passes that each had work")
     }
 
     @Test("With nothing to do, it waits for a wake")
@@ -78,7 +78,7 @@ struct BusyLoopTests {
         #expect(!returned.value, "the pause returned with nothing to do and no wake")
         hasWork.value = true
         wake.wake()
-        #expect(await finishes(within: .seconds(5)) { await pace.value },
+        #expect(await finishes(within: mainActorTurnLimit) { await pace.value },
                 "a wake with work waiting did not end the pause")
     }
 }
