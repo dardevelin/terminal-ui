@@ -1485,11 +1485,15 @@ def storybook_taps_count_and_know_their_modifiers(app: Client) -> None:
     x = rows[y].index("notes.md")
     app.mouse_click(x, y)
     assert_true("taps: 1   opens: 0" in app.preview_text(), f"one click, one tap:\n{app.preview_text()}")
-    app.mouse_click(x, y)
-    assert_true("taps: 1   opens: 1" in app.preview_text(),
-                f"the second click of a double click opens:\n{app.preview_text()}")
+    # A double click as a terminal sends it: both clicks in one write, so
+    # they reach the app together. A read of the screen between them spent
+    # its time inside the double-click interval, and under a sanitizer took
+    # all of it. On the next cell, so it does not continue the click above.
+    app.write_raw((_sgr(0, x + 1, y) + _sgr(0, x + 1, y, release=True)) * 2)
+    assert_true("taps: 2   opens: 1" in app.preview_text(),
+                f"the first click of a double click taps, the second opens:\n{app.preview_text()}")
     app.mouse_click(x + 2, y, "left", "ctrl")
-    assert_true("taps: 1   opens: 1   marked: yes" in app.preview_text(),
+    assert_true("taps: 2   opens: 1   marked: yes" in app.preview_text(),
                 f"Ctrl+click marks, and is no tap:\n{app.preview_text()}")
 
 
