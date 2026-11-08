@@ -6,6 +6,21 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.2.0] — 2026-11-08 — Layout and identity, as SwiftUI's
+
+A minor release: an app written for 2.1 compiles unchanged. Layout and
+identity now do what SwiftUI's do where they did not: a `ZStack` child, an
+overlay and a background sit at their own size; a `List` or `TreeView` takes
+rows of any height; a `Divider` in an `HStack` rules down it; a view given a
+new `.id`, or a row a `ForEach` drops, leaves as SwiftUI's does, and a tree
+row keeps its identity while the tree opens and closes around it. A `Table`
+gains a selection, and a busy app runs its `.task` work. Changes in
+behaviour, each under Changed or Fixed: an unsized `ZStack` child, overlay
+or background no longer covers the whole stack; PageUp and PageDown move by
+the rows drawn; a `Divider` in an `HStack` is vertical; and a debug build
+traces only what `.terminalui/terminalui.toml` asks for. Observed state
+should change on the main actor — the Known Issues page says why.
+
 ### Added
 
 - **`Table(_:selection:scroll:visibleCount:columns:separator:showHeader:)`**
@@ -1208,7 +1223,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dardevelin/terminal-ui/compare/v1.0.0...v2.0.0
