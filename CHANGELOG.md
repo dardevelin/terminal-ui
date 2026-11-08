@@ -6,6 +6,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **The repeat in a `TreeView` that contains itself is a leaf.** The tree
+  stopped at an item found among its own ancestors, but expansion is kept
+  by id, so the repeat drew an open `▾` with nothing under it, and Enter,
+  Space, Left or a click on it closed its earlier occurrence instead —
+  folding away the branch the cursor stood in. It now draws a leaf's mark,
+  Right, Enter, Space and a click open and close nothing, and Left selects
+  its parent, as from any leaf. The earlier occurrence opens and closes as
+  before.
+
 ## [2.2.0] — 2026-11-08 — Layout and identity, as SwiftUI's
 
 A minor release: an app written for 2.1 compiles unchanged. Layout and

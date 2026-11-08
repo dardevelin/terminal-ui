@@ -107,7 +107,11 @@ public struct TreeViewStyle: Sendable {
 /// expands every place it appears. Siblings should have distinct ids: ones
 /// that share an id are told apart only by their order. A tree that
 /// contains itself — an item among its own descendants — is shown down to
-/// the repeat, which is not opened.
+/// the repeat, which is a leaf there: it draws a leaf's mark rather than
+/// a disclosure arrow, Right, Enter, Space and a click open and close
+/// nothing, and Left selects its parent. Its expansion is its earlier
+/// occurrence's, so toggling it would open or close that row instead; that
+/// row opens and closes as any other.
 ///
 /// ```swift
 /// // A file browser pane, as the GitClient example wires it:
@@ -297,7 +301,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
                     .onClick { [selection, childrenKeyPath] _, _ in
                         selectedIdxBinding.set(row.flatIndex)
                         selection?.set(row.item.id)
-                        TreeViewHelpers.toggleExpand(row.item, childrenKeyPath: childrenKeyPath,
+                        TreeViewHelpers.toggleExpand(row, childrenKeyPath: childrenKeyPath,
                                                      expandedBinding: expandedBinding)
                     }
             }
@@ -349,7 +353,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             case .right:
                 guard idx < total else { return .handled }
                 let row = rows[idx]
-                if TreeViewHelpers.hasChildren(row.item, childrenKeyPath: childrenKeyPath)
+                if TreeViewHelpers.opens(row, childrenKeyPath: childrenKeyPath)
                     && !expanded.contains(AnyHashableID(row.item.id))
                 {
                     var ids = expanded
@@ -361,7 +365,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
             case .left:
                 guard idx < total else { return .handled }
                 let row = rows[idx]
-                if TreeViewHelpers.hasChildren(row.item, childrenKeyPath: childrenKeyPath)
+                if TreeViewHelpers.opens(row, childrenKeyPath: childrenKeyPath)
                     && expanded.contains(AnyHashableID(row.item.id))
                 {
                     var ids = expanded
@@ -375,7 +379,7 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
 
             case .enter, .character(" "):
                 guard idx < total else { return .handled }
-                TreeViewHelpers.toggleExpand(rows[idx].item, childrenKeyPath: childrenKeyPath, expandedBinding: expandedBinding)
+                TreeViewHelpers.toggleExpand(rows[idx], childrenKeyPath: childrenKeyPath, expandedBinding: expandedBinding)
                 return .handled
 
             case .pageUp:
@@ -483,27 +487,31 @@ enum TreeViewHelpers {
         into result: inout [FlatRow<Data.Element>]
     ) where Data.Element: Identifiable, Data.Element.ID: Sendable {
         let flatIndex = result.count
+        // Expansion is by id, so an item that is its own ancestor is open
+        // wherever it repeats, and would be descended into forever. It is
+        // shown at the repeat and not opened there. Only an open item can
+        // repeat — its earlier occurrence is drawn open, and shares its id —
+        // so a collapsed one costs no walk up its ancestors.
+        let isOpen = expandedIDs.contains(AnyHashableID(item.id))
+        var repeatsAncestor = false
+        var ancestor = parentRow
+        while isOpen, !repeatsAncestor, let position = ancestor {
+            repeatsAncestor = result[position].item.id == item.id
+            ancestor = result[position].parentRow
+        }
         result.append(FlatRow(
             item: item,
             depth: depth,
             isLast: isLast,
             ancestorHasNext: ancestorHasNext,
             parentRow: parentRow,
-            flatIndex: flatIndex
+            flatIndex: flatIndex,
+            repeatsAncestor: repeatsAncestor
         ))
 
         // Short-circuit: collapsed branches contribute no rows and we
         // don't recurse into them.
-        let itemID = AnyHashableID(item.id)
-        guard expandedIDs.contains(itemID) else { return }
-        // Expansion is by id, so an item that is its own ancestor is open
-        // wherever it repeats, and would be descended into forever. It is
-        // shown at the repeat and not opened there.
-        var ancestor = parentRow
-        while let position = ancestor {
-            if result[position].item.id == item.id { return }
-            ancestor = result[position].parentRow
-        }
+        guard isOpen, !repeatsAncestor else { return }
         guard let children = item[keyPath: childrenKeyPath] else { return }
         let childCount = children.count
         guard childCount > 0 else { return }
@@ -581,14 +589,15 @@ enum TreeViewHelpers {
         isSelected: Bool
     ) -> TextSpan where Data.Element: Identifiable, Data.Element.ID: Sendable {
         let color = isSelected ? style.selectedArrowColor(in: theme) : style.arrowColor(in: theme)
-        if hasChildren(row.item, childrenKeyPath: childrenKeyPath) {
+        if opens(row, childrenKeyPath: childrenKeyPath) {
             if expandedIDs.contains(AnyHashableID(row.item.id)) {
                 return TextSpan("\(style.expandedArrow) ", foreground: color, bold: isSelected)
             } else {
                 return TextSpan("\(style.collapsedArrow) ", foreground: color, bold: isSelected)
             }
         }
-        // Leaf items: show arrow when selected, space when not
+        // Leaves, and repeats, which do not open: arrow when selected,
+        // space when not.
         if isSelected {
             return TextSpan("\(style.collapsedArrow) ", foreground: color, bold: true)
         }
@@ -597,22 +606,26 @@ enum TreeViewHelpers {
 
     // MARK: - Expand / Collapse
 
-    static func hasChildren<Data: RandomAccessCollection>(
-        _ item: Data.Element,
+    /// Whether the row opens and closes: its item has children, and it is
+    /// not a repeat of one of its ancestors. A repeat's expansion is its
+    /// earlier occurrence's, so toggling it there would open or close that
+    /// row instead.
+    static func opens<Data: RandomAccessCollection>(
+        _ row: FlatRow<Data.Element>,
         childrenKeyPath: KeyPath<Data.Element, Data?>
     ) -> Bool where Data.Element: Identifiable, Data.Element.ID: Sendable {
-        guard let children = item[keyPath: childrenKeyPath] else { return false }
+        guard !row.repeatsAncestor, let children = row.item[keyPath: childrenKeyPath] else { return false }
         return !children.isEmpty
     }
 
     static func toggleExpand<Data: RandomAccessCollection>(
-        _ item: Data.Element,
+        _ row: FlatRow<Data.Element>,
         childrenKeyPath: KeyPath<Data.Element, Data?>,
         expandedBinding: Binding<Set<AnyHashableID>>
     ) where Data.Element: Identifiable, Data.Element.ID: Sendable {
-        guard hasChildren(item, childrenKeyPath: childrenKeyPath) else { return }
+        guard opens(row, childrenKeyPath: childrenKeyPath) else { return }
         var ids = expandedBinding.get()
-        let key = AnyHashableID(item.id)
+        let key = AnyHashableID(row.item.id)
         if ids.contains(key) {
             ids.remove(key)
         } else {
@@ -651,6 +664,9 @@ struct FlatRow<Element: Identifiable> {
     /// nothing per row that only the window's rows need.
     let parentRow: Int?
     let flatIndex: Int
+    /// The item is one of its own ancestors, in a tree that contains itself.
+    /// The row is not opened, so it is drawn and handled as a leaf.
+    let repeatsAncestor: Bool
 }
 
 /// A row as the window's `ForEach` holds it.
