@@ -374,3 +374,98 @@ struct TreeViewRepeatedIDTests {
         #expect(drawn.filter { $0.contains("loop 1") }.count == 2, "\(drawn)")
     }
 }
+
+/// Root 1 over 2 and a second 1, which has a child of its own: a tree that
+/// contains itself, as ids see it. A struct, unlike `Loop`, so its children
+/// never run out and a test that reads them often still sees the repeat
+/// with children to open.
+private let selfContaining = [
+    Item(id: 1, children: [Item(id: 2), Item(id: 1, children: [Item(id: 2)])]),
+]
+
+/// The line of the repeat, under 1 and after 2.
+private let repeatLine = 2
+
+@Suite("The repeat in a tree that contains itself is a leaf")
+@MainActor
+struct TreeViewRepeatRowTests {
+
+    private func screen(selecting: Selecting? = nil) -> Screen<some TerminalView> {
+        let selection = selecting.map { selecting in
+            Binding(get: { selecting.selected }, set: { selecting.selected = $0 })
+        }
+        return Screen(probedTree(selfContaining, Probe(), selection: selection))
+    }
+
+    @Test func theRepeatIsFlattenedAsARepeat() {
+        let rows = TreeViewHelpers.flattenedRows(data: selfContaining, childrenKeyPath: \.children,
+                                                 expandedIDs: [AnyHashableID(1)])
+        #expect(rows.map(\.repeatsAncestor) == [false, false, true])
+    }
+
+    @Test func theRepeatDrawsALeafsMarkNotAnOpenArrow() {
+        let screen = screen()
+        let drawn = screen.frame()
+        #expect(drawn[repeatLine].hasPrefix("└──   item 1"), "\(drawn)")
+
+        screen.focus()
+        screen.press(.down)
+        let selected = screen.press(.down)
+        #expect(selected[repeatLine].hasPrefix("└── ▸ item 1"),
+                "selected, it draws a selected leaf's mark: \(selected)")
+    }
+
+    @Test(arguments: [Key.right, .enter, .character(" ")])
+    func aKeyOnTheRepeatOpensAndClosesNothing(_ key: Key) {
+        let screen = screen()
+        screen.focus()
+        screen.press(.down)
+        let before = screen.press(.down)
+
+        let after = screen.press(key)
+
+        #expect(after == before, "\(key) changed the tree: \(after)")
+    }
+
+    @Test func aClickOnTheRepeatSelectsItAndClosesNothing() {
+        let screen = screen()
+        screen.focus()
+        let before = screen.frame()
+
+        screen.engine.handleMouseClick(x: 4, y: repeatLine, root: screen.root)
+        let after = screen.frame()
+
+        #expect(after[0] == before[0] && after[1] == before[1], "\(after)")
+        #expect(after[repeatLine].hasPrefix("└── ▸ item 1"), "\(after)")
+    }
+
+    @Test func leftFromTheRepeatSelectsItsParent() {
+        let selecting = Selecting()
+        let screen = screen(selecting: selecting)
+        screen.focus()
+        screen.press(.down)
+        let before = screen.press(.down)
+
+        let after = screen.press(.left)
+        #expect(after[repeatLine].hasPrefix("└──   item 1"), "the repeat is no longer selected: \(after)")
+        #expect(after[1] == before[1], "the tree stays open: \(after)")
+        screen.press(.down)
+
+        #expect(selecting.selected == 2, "Left went to the root, so Down reaches its first child")
+    }
+
+    @Test func theFirstOccurrenceStillOpensAndCloses() {
+        let screen = screen()
+        screen.focus()
+
+        let closed = screen.press(.enter)
+        #expect(!closed.contains { $0.contains("item 2") }, "\(closed)")
+        let reopened = screen.press(.enter)
+        #expect(reopened[repeatLine].hasPrefix("└──   item 1"), "\(reopened)")
+
+        let leftClosed = screen.press(.left)
+        #expect(!leftClosed.contains { $0.contains("item 2") }, "\(leftClosed)")
+        let rightOpened = screen.press(.right)
+        #expect(rightOpened == reopened, "\(rightOpened)")
+    }
+}
