@@ -553,25 +553,36 @@ class Client:
         preview the height it needs and the code pane the rest, so where
         the box sits follows from the page. A box the window cuts off runs
         to the window's foot."""
-        lines = self.text().splitlines()
-        column = self._STORYBOOK_DETAIL_COLUMN
-        label = next((row for row, line in enumerate(lines) if line[column:].strip() == "Preview"), None)
-        if label is None or label + 1 >= len(lines) or "╭" not in lines[label + 1]:
-            raise RuntimeError(f"no Preview box on page {self.storybook_page_title()!r}")
-        top = label + 1
-        left = lines[top].index("╭")
-        right = lines[top].index("╮", left)
-        # By column, since a preview may draw boxes of its own.
-        bottom = next((row for row in range(top + 1, len(lines)) if lines[row][left:left + 1] == "╰"),
-                      len(lines) - 1)
-        return left, top, right - left + 1, bottom - top + 1
+        return self._preview_box(self.cells().rows)
 
     def preview_cells(self) -> CellSlice:
         """Snapshot the Storybook page's preview box. Keeps assertions
         scoped to the page's rendered output and avoids matching
         substrings in the Code block or sidebar. Storybook-specific by
-        convention; other apps call ``cells()``."""
-        return self.cells(rect=self.preview_rect())
+        convention; other apps call ``cells()``.
+
+        One request, the box cut out of the whole frame: a case that reads
+        the preview between two presses spends the read inside the
+        double-click interval, and a second request doubled it under a
+        sanitizer."""
+        rows = self.cells().rows
+        left, top, width, height = self._preview_box(rows)
+        # A row holds one character per cell, so string indices are columns.
+        return CellSlice(x=left, y=top, width=width, height=height,
+                         rows=tuple(row[left:left + width] for row in rows[top:top + height]))
+
+    def _preview_box(self, rows: Sequence[str]) -> tuple[int, int, int, int]:
+        column = self._STORYBOOK_DETAIL_COLUMN
+        label = next((row for row, line in enumerate(rows) if line[column:].strip() == "Preview"), None)
+        if label is None or label + 1 >= len(rows) or "╭" not in rows[label + 1]:
+            raise RuntimeError(f"no Preview box on page {self.storybook_page_title()!r}")
+        top = label + 1
+        left = rows[top].index("╭")
+        right = rows[top].index("╮", left)
+        # By column, since a preview may draw boxes of its own.
+        bottom = next((row for row in range(top + 1, len(rows)) if rows[row][left:left + 1] == "╰"),
+                      len(rows) - 1)
+        return left, top, right - left + 1, bottom - top + 1
 
     def preview_text(self) -> str:
         return self.preview_cells().text()
