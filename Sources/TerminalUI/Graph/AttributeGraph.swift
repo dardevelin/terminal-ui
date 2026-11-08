@@ -663,7 +663,12 @@ public final class AttributeGraph: @unchecked Sendable {
     ///
     /// Each old row is matched once, so the rows kept are distinct, and kept
     /// as many as there were with nothing added means none left: an unchanged
-    /// frame or a reorder, settled without building a set. A key the data
+    /// frame or a reorder, settled without building a set. A reorder is still
+    /// a change, though no row was built or dropped: the frame draws the rows
+    /// somewhere else, and a stack's size can follow their order — an
+    /// `HStack` measures only the rows that start inside its width, and hands
+    /// the columns an even split of its spare width leaves over to the first
+    /// of its flexible rows. A key the data
     /// repeats takes the next old row with that key, or a new one, as the
     /// first build gave each occurrence its own.
     func updateKeyedChildren<Data: RandomAccessCollection, Row: TerminalView>(
@@ -703,7 +708,10 @@ public final class AttributeGraph: @unchecked Sendable {
         }
 
         if inserted.isEmpty, kept.count == node.children.count {
+            guard !kept.elementsEqual(node.children, by: ===) else { return }
             node.children = kept
+            changed = true
+            invalidateMeasurementCache(from: node)
             return
         }
 
