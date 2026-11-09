@@ -6,6 +6,55 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.3.1] — 2026-11-09 — The caret where it is drawn
+
+A patch release over 2.3.0: an app written for 2.3 compiles unchanged.
+A caret in a `PromptInput` or `TextArea` lands where it is drawn — after
+a line wraps, and on either side of a wide character — and the emoji
+below plane 1 that terminals draw two columns wide are two columns.
+
+### Fixed
+
+- **A `PromptInput`'s caret keeps its column after a wrap.** Word wrapping
+  drops the space a line breaks at, and the prompt counted it as drawn: on
+  each row after such a wrap a click landed one character before the one
+  clicked, the caret was drawn one column past the cursor, and a collapsed
+  paste's marker was styled one column off. Up and Down stepped a row's
+  width of characters, so they drifted further on every row, and they and
+  the scroll position counted the expanded text where the prompt draws a
+  marker. Drawing, the caret, a click, Up and Down and scrolling now read
+  one projection of the text onto the rows as drawn, markers included. A
+  `TextArea` skipped one dropped space where a wrap can drop a run of them,
+  and drew no caret at all on a dropped space; a caret there is now drawn
+  where the next row starts.
+- **A click, Up and Down over wide characters land on the column aimed
+  at.** A `TextArea` and a `PromptInput` drew a CJK ideograph or an emoji
+  in two columns but read a column as a character, so a click past a wide
+  glyph landed characters to the right of the one clicked, and Up and Down
+  kept a character count across rows rather than a column. A column now
+  means the glyph drawn over it, and either half of a wide glyph is that
+  glyph, as a block caret covers both cells and as a `TextInput` already
+  placed a click. Up and Down, and a `TextArea`'s PageUp and PageDown, aim
+  for the column the caret is drawn in and keep it across rows of any
+  content; `TextAreaState.desiredCol` is that display column, and a
+  `TextArea` in `.display` mode no longer took the caret's character
+  index for it, which sent the first Down from a wrapped row to the next
+  row's end. Past a row's last character is the row's end; on a row a wrap
+  ends, its last character, so the caret stays on the row clicked.
+- **An emoji below U+10000 takes the two columns a terminal gives it.**
+  `Character.displayWidth` counted ⭐, ⌚, ⌛, ☔, ♈–♓, ⚡, ⛔, ✅, ❌ and the
+  rest of the Emoji_Presentation characters in plane 0 as one column, where
+  xterm, VTE, kitty, iTerm2, WezTerm and Ghostty draw them in two, so
+  everything after one on its row was drawn a column late. The widths now
+  come from a table generated from Unicode 17.0's EastAsianWidth.txt
+  (UAX #11: W and F are two columns, marks and ignorable format characters
+  none, ambiguous width one), which
+  `tools/scripts/generate_width_table.py` rebuilds from a copy of the file.
+  A text-default emoji followed by U+FE0F (❤️, ⚠️, a keycap) is two
+  columns, as most terminals draw an emoji presentation sequence; a symbol
+  in plane 1 that is text by default (🌡, 🖥) is one, as a terminal draws it,
+  where every code point from U+1F000 to U+1FAFF used to be two.
+
 ## [2.3.0] — 2026-11-09 — Wide characters, drawn where they belong
 
 A minor release: an app written for 2.2 compiles unchanged. CJK text and
@@ -1322,7 +1371,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0
