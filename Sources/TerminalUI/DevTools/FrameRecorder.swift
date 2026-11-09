@@ -20,6 +20,8 @@ enum RecordingError: Error, Equatable, CustomStringConvertible {
     case cannotOpen(path: String, errno: Int32)
     /// A write to the log failed, and the recording stopped.
     case writeFailed(path: String, errno: Int32)
+    /// A mark or a stop asked of a recorder with no recording open.
+    case notRecording
 
     var description: String {
         switch self {
@@ -31,6 +33,8 @@ enum RecordingError: Error, Equatable, CustomStringConvertible {
             "cannot create \(path): \(String(cString: strerror(code)))"
         case .writeFailed(let path, let code):
             "writing \(path) failed, so the recording stopped: \(String(cString: strerror(code)))"
+        case .notRecording:
+            "no recording is active"
         }
     }
 }
@@ -67,17 +71,35 @@ final class FrameRecorder {
     private var styleIDs: [StyleKey: Int] = [:]
     private var framesWritten = 0
     private var marksWritten = 0
+    /// The mark a start was given, written with the first frame.
+    private var startMark: (label: String, holdMs: Int?)?
+    /// When the recording ended, in microseconds since its first frame;
+    /// nil while it runs.
+    private var endTime: Int?
+    /// The runtime's number for the last frame recorded: the screen a mark
+    /// made now would show.
+    private(set) var lastFrameNumber: Int?
+
+    /// How the last recording started stands: the one being written, or
+    /// the last one, stopped.
+    var info: RecordingInfo {
+        let duration = endTime ?? (framesWritten > 0 ? elapsedMicroseconds() : 0)
+        return RecordingInfo(path: path.isEmpty ? nil : path, frames: framesWritten, marks: marksWritten,
+                             durationMs: duration / Microseconds.perMillisecond, active: isActive)
+    }
 
     /// Starts a recording at `path`, a file it creates readable by its owner
     /// alone. `current` is the screen as it is now — drawn as `frame`, on
     /// `windowBackground` — written as the first frame; nil, before the app
-    /// has drawn, makes the first frame drawn the first recorded.
+    /// has drawn, makes the first frame drawn the first recorded. A `label`
+    /// marks that first frame, at the recording's time 0.
     ///
     /// The file is created with `O_CREAT | O_EXCL | O_NOFOLLOW`: anything
     /// already at `path` — a file, a directory, a FIFO, or a link, even one
     /// that points nowhere — is refused, never opened, followed or replaced.
     func start(path: String, appName: String, current: CellBuffer?,
-               windowBackground: Color? = nil, frame: Int = 0) throws(RecordingError) {
+               windowBackground: Color? = nil, frame: Int = 0,
+               label: String? = nil, holdMs: Int? = nil) throws(RecordingError) {
         guard !isActive else { throw .alreadyRecording }
         let flags = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC
         let descriptor = open(path, flags, FileMode.ownerReadWrite)
@@ -92,6 +114,9 @@ final class FrameRecorder {
         styleIDs = [:]
         framesWritten = 0
         marksWritten = 0
+        startMark = label.map { ($0, holdMs) }
+        endTime = nil
+        lastFrameNumber = nil
         failure = nil
         isActive = true
         if let current {
@@ -119,7 +144,9 @@ final class FrameRecorder {
     func stop() {
         guard isActive else { return }
         if lastFrame != nil {
-            writer.write(.end(time: elapsedMicroseconds(), frames: framesWritten, marks: marksWritten))
+            let end = elapsedMicroseconds()
+            endTime = end
+            writer.write(.end(time: end, frames: framesWritten, marks: marksWritten))
         }
         flush()
         closeFile()
@@ -170,6 +197,12 @@ final class FrameRecorder {
         framesWritten += 1
         lastFrame = buffer
         lastWindowBackground = background
+        lastFrameNumber = frame
+        if let startMark {
+            self.startMark = nil
+            writer.write(.mark(time: time, label: startMark.label, holdMs: startMark.holdMs))
+            marksWritten += 1
+        }
         if writer.bytes.count >= Self.flushThreshold { flush() }
     }
 
@@ -232,6 +265,7 @@ final class FrameRecorder {
     }
 
     private func closeFile() {
+        if endTime == nil, framesWritten > 0 { endTime = elapsedMicroseconds() }
         close(descriptor)
         descriptor = -1
         isActive = false
@@ -246,6 +280,7 @@ private enum FileMode {
 
 private enum Microseconds {
     static let perSecond = 1_000_000
+    static let perMillisecond = 1_000
     static let attosecondsPerMicrosecond: Int64 = 1_000_000_000_000
 }
 

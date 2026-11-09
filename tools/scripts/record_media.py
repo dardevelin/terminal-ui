@@ -41,6 +41,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from terminalui.tutorial import (  # noqa: E402
     REPO_ROOT, RESOURCES, STEPS, Action, Loaded, Press, Step, Type, binary_name, build,
 )
+# vhs's shell inherits the environment of the terminal this script was
+# started in, and an app would then detect that terminal's features rather
+# than xterm.js's; ttyd sets `TERM` itself.
+from terminalui.recording import recording_environment  # noqa: E402
 
 RECORDINGS = REPO_ROOT / "tools" / "recordings"
 WORK = REPO_ROOT / ".build-recordings"
@@ -111,27 +115,6 @@ CARD_STEP = {
     6: "tasks6-01-01",
     7: "tasks7-03-01",
 }
-
-
-# What a terminal tells the programs it runs about itself. vhs's shell
-# inherits them from the terminal this script was started in, and an app
-# would then detect that terminal's features rather than xterm.js's.
-HOST_TERMINAL_VARIABLES = {
-    "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "TERM_SESSION_ID", "TERMINFO",
-    "LC_TERMINAL", "LC_TERMINAL_VERSION", "VTE_VERSION", "WT_SESSION", "WT_PROFILE_ID",
-    "TMUX", "TMUX_PANE", "STY", "COLORFGBG",
-}
-HOST_TERMINAL_PREFIXES = ("ITERM_", "KITTY_", "WEZTERM_", "GHOSTTY_", "ALACRITTY_", "KONSOLE_")
-
-
-def recording_environment(host: dict[str, str]) -> dict[str, str]:
-    """The environment vhs runs with: the host's, less what describes the
-    host's terminal. ttyd sets ``TERM`` itself; ``COLORTERM`` says what
-    xterm.js draws, 24-bit colour, whatever the host's says."""
-    environment = {key: value for key, value in host.items()
-                   if key not in HOST_TERMINAL_VARIABLES and not key.startswith(HOST_TERMINAL_PREFIXES)}
-    environment["COLORTERM"] = "truecolor"
-    return environment
 
 
 def run(command: list[str], cwd: Path = REPO_ROOT, env: dict[str, str] | None = None) -> None:

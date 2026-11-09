@@ -29,10 +29,11 @@ import threading
 import time
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Callable, Iterator, Optional, Sequence, Tuple
+from typing import Callable, Iterator, Mapping, Optional, Sequence, Tuple
 
 from . import verdict
 from .client import Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
+from .recording import RECORDING_TERMINAL, recording_environment
 
 
 # Where the binaries under test live. `TERMINALUI_BUILD_DIR` points automation
@@ -131,6 +132,20 @@ def _repo_root() -> Path:
 # after its build.
 BOOT_TIMEOUT = 15.0
 
+
+def app_environment(host: Mapping[str, str], env: Optional[Mapping[str, str]], *,
+                    inherit_terminal: bool) -> dict[str, str]:
+    """The environment an app is spawned with, before its size: ``host``'s,
+    or with ``inherit_terminal`` false the one a recording is made in, then
+    ``env`` over either."""
+    if inherit_terminal:
+        environment = dict(host)
+    else:
+        environment = {**recording_environment(dict(host)), **RECORDING_TERMINAL}
+    environment.update(env or {})
+    return environment
+
+
 @contextmanager
 def spawn_and_connect(target: str,
                       build_dir: Optional[str] = None,
@@ -140,6 +155,7 @@ def spawn_and_connect(target: str,
                       rows: int = 40,
                       connect_timeout: float = BOOT_TIMEOUT,
                       connect: bool = True,
+                      inherit_terminal: bool = True,
                       ) -> Iterator[Tuple[subprocess.Popen, Client]]:
     """Run ``<build_dir>/<target>`` in a pseudo-TTY, wait for its control
     socket, yield (process, connected Client). Kills + closes on exit.
@@ -157,6 +173,12 @@ def spawn_and_connect(target: str,
     ``connect=False`` is for an app that should have no socket: the client
     is handed over unconnected, with its terminal, process and data dir,
     and the app is still checked on the way out.
+
+    ``inherit_terminal=False`` is for an app being recorded: it is told it
+    runs in an xterm with 24-bit colour, not in the terminal this runs in,
+    whose variables would have it choose that terminal's features — the
+    environment ``recording.recording_environment`` gives, with
+    ``recording.RECORDING_TERMINAL``. ``env`` still has the last word.
     """
     root = _repo_root()
     resolved_build_dir = Path(build_dir or DEFAULT_BUILD_DIR)
@@ -168,8 +190,7 @@ def spawn_and_connect(target: str,
             f"{exe} not found — run `swift build` before spawning {target}"
         )
 
-    env_full = os.environ.copy()
-    env_full.update(env or {})
+    env_full = app_environment(os.environ, env, inherit_terminal=inherit_terminal)
     env_full["COLUMNS"] = str(cols)
     env_full["LINES"] = str(rows)
     env_full["TERM"] = env_full.get("TERM") or "xterm-256color"
