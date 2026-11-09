@@ -7,4 +7,14 @@ This product is licensed under any of
   MIT license                        (see LICENSE-MIT or http://opensource.org/licenses/MIT)
   European Union Public Licence 1.2  (see LICENSE-EUPL or https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12)
 
-at your option.
+at your option, except where a file says otherwise.
+
+Third-party material
+
+  JetBrains Mono v2.304 (tools/fonts/JetBrainsMono/)
+  Copyright 2020 The JetBrains Mono Project Authors
+  Licensed under the SIL Open Font License, Version 1.1
+  (see tools/fonts/JetBrainsMono/OFL.txt or https://openfontlicense.org)
+
+  The font is used only by developer tooling, to draw the documentation's
+  pictures, and is part of no library product. It is distributed unmodified.

@@ -406,6 +406,12 @@ TerminalUI is available under any of:
 - European Union Public Licence 1.2 ([`LICENSE-EUPL`](LICENSE-EUPL) or
   <https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12>)
 
-at your option. Unless you explicitly state otherwise, any contribution you
-submit for inclusion will be licensed as above without additional terms or
-conditions.
+at your option, except where a file says otherwise. Unless you explicitly
+state otherwise, any contribution you submit for inclusion will be licensed
+as above without additional terms or conditions.
+
+The JetBrains Mono font in [`tools/fonts/JetBrainsMono/`](tools/fonts/JetBrainsMono/),
+which only developer tooling uses, to draw the documentation's pictures, and
+no library product contains, is Copyright 2020 The JetBrains Mono Project
+Authors under the SIL Open Font License, Version 1.1
+([`OFL.txt`](tools/fonts/JetBrainsMono/OFL.txt)).
