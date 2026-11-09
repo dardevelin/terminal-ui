@@ -56,7 +56,79 @@ def a_failure_with_no_marked_lines_shows_its_tail() -> None:
     assert verify.failure_detail(output).splitlines() == [f"line {number}" for number in range(75, 100)]
 
 
+def release_runs_the_gate_whatever_the_tree_holds() -> None:
+    assert verify.wants_gate(["--release"], has_source_changes=False)
+
+
+def release_runs_what_ci_runs_beyond_the_gate() -> None:
+    commands = [" ".join(command) for _, command, _ in verify.release_steps()]
+    def ran(*fragments: str) -> bool:
+        return any(all(fragment in command for fragment in fragments) for command in commands)
+    assert ran("swift build", "-c release"), commands
+    assert ran("swift test", "--sanitize=thread"), commands
+    assert ran("swift build", "--sanitize=thread"), commands
+    assert ran("integration_suite.py", ".build-tsan/debug"), commands
+    assert ran("storybook_smoke.py", ".build-tsan/debug"), commands
+    assert ran("docker", "swift:6.2", "swift build", "--build-tests"), commands
+    assert ran("docker", "swift:6.2", "swift test"), commands
+    assert ran("linux_harness.sh", "storybook_smoke.py"), commands
+
+
+def linux_runs_natively_for_this_machine() -> None:
+    commands = [" ".join(command) for _, command, _ in verify.release_steps()]
+    docker = [command for command in commands if "docker" in command or "linux_harness" in command]
+    assert docker and all(verify.LINUX_PLATFORM in command for command in docker), docker
+    assert all(verify.LINUX_SCRATCH_PATH in command for command in docker), docker
+
+
+def an_everyday_gate_runs_none_of_it() -> None:
+    assert not verify.wants_release(["--always"])
+    assert verify.wants_release(["--release"])
+
+
+def release_steps_stop_at_the_first_failure() -> None:
+    ran: list[str] = []
+    def runner(name: str, command: list[str], timeout: int) -> tuple[int, str]:
+        ran.append(name)
+        return (1, "boom") if name == "two" else (0, "fine")
+    steps = [(name, ["true"], 1) for name in ("one", "two", "three")]
+    assert verify.run_release_steps(steps, runner) == 2
+    assert ran == ["one", "two"], ran
+
+
+def a_known_issue_does_not_fail_a_release_step_but_an_issue_does() -> None:
+    known = "✘ Test run with 3 tests in 1 suite passed after 1.0 seconds with 2 known issues."
+    issue = "✘ Test aRowFits() recorded an issue at RowTests.swift:12:9: Expectation failed"
+    steps = [("tests", ["true"], 1)]
+    assert verify.run_release_steps(steps, lambda *_: (0, known)) == 0
+    assert verify.run_release_steps(steps, lambda *_: (0, issue)) == 2
+
+
+def main_runs_the_release_steps_after_the_gate() -> None:
+    called: list[str] = []
+    saved = (verify.run_gate, verify.run_release_steps, verify.reap_dead_apps)
+    verify.run_gate = lambda: called.append("gate") or 0
+    verify.run_release_steps = lambda steps, runner: called.append("release") or 0
+    verify.reap_dead_apps = lambda *_: None
+    try:
+        assert verify.main(["--release"]) == 0
+        assert called == ["gate", "release"], called
+        called.clear()
+        assert verify.main(["--always"]) == 0
+        assert called == ["gate"], called
+    finally:
+        verify.run_gate, verify.run_release_steps, verify.reap_dead_apps = saved
+
+
 CASES: list[tuple[str, Callable[[], None]]] = [
+    ("release steps stop at the first failure", release_steps_stop_at_the_first_failure),
+    ("a known issue does not fail a release step, but an issue does",
+     a_known_issue_does_not_fail_a_release_step_but_an_issue_does),
+    ("main runs the release steps after the gate", main_runs_the_release_steps_after_the_gate),
+    ("linux runs natively for this machine", linux_runs_natively_for_this_machine),
+    ("--release runs the gate whatever the tree holds", release_runs_the_gate_whatever_the_tree_holds),
+    ("--release runs what CI runs beyond the gate", release_runs_what_ci_runs_beyond_the_gate),
+    ("an everyday gate runs none of it", an_everyday_gate_runs_none_of_it),
     ("a failure names what failed above the tail", a_failure_names_what_failed_above_the_tail),
     ("a failure with no marked lines shows its tail", a_failure_with_no_marked_lines_shows_its_tail),
     ("a turn with no source changes skips", a_turn_with_no_source_changes_skips),

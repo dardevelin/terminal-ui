@@ -47,6 +47,13 @@ All notable changes to TerminalUI are documented here. Format based on
   is approximated, with a warning that names it. Defaults for every render
   flag can be set in a `[render]` section of `.terminalui/terminalui.toml`.
 
+## [2.3.1] — 2026-11-09 — The caret where it is drawn
+
+A patch release over 2.3.0: an app written for 2.3 compiles unchanged.
+A caret in a `PromptInput` or `TextArea` lands where it is drawn — after
+a line wraps, and on either side of a wide character — and the emoji
+below plane 1 that terminals draw two columns wide are two columns.
+
 ### Fixed
 
 - **A `PromptInput`'s caret keeps its column after a wrap.** Word wrapping
@@ -1405,7 +1412,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...HEAD
+[2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0

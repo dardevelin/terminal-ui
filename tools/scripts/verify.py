@@ -20,6 +20,10 @@ same bridge our smoke tests use. Steps:
 9. ``storybook_smoke.py`` — live harness cases against Storybook + Demo.
 10. ``check_tutorial_steps.py`` — every tutorial step builds and does what
     its captions say.
+11. With ``--release``, what CI runs beyond this gate: the release build,
+    the Thread Sanitizer job (tests, examples, integration scripts, smoke)
+    and the Linux leg in Docker (build with its tests, test, smoke). Run it
+    before tagging, so nothing reaches CI that has not passed here.
 
 Each failure prints the relevant output and exits with code 2 so the
 stop-hook surfaces it to the conversation.
@@ -28,9 +32,11 @@ stop-hook surfaces it to the conversation.
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
+from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -137,8 +143,64 @@ def fail(msg: str, detail: str = "") -> int:
 
 
 def wants_gate(arguments: list[str], has_source_changes: bool) -> bool:
-    """Whether to run: on a turn that changed sources, or on ``--always``."""
-    return has_source_changes or "--always" in arguments
+    """Whether to run: on a turn that changed sources, or on ``--always``
+    or ``--release``."""
+    return has_source_changes or "--always" in arguments or wants_release(arguments)
+
+
+def wants_release(arguments: list[str]) -> bool:
+    """Whether to run, after the gate, what CI runs beyond it."""
+    return "--release" in arguments
+
+
+# CI's Thread Sanitizer job builds apart, as here; its Linux leg runs in this
+# image, which Package.swift's tools version requires (swift:6.0 rejects it),
+# building into a directory of its own so Linux and macOS artefacts never mix.
+TSAN_SCRATCH_PATH = ".build-tsan"
+LINUX_IMAGE = "swift:6.2"
+# Linux runs natively for this machine: Docker on an Apple-silicon Mac runs
+# an x86_64 image under emulation, whose own SIGSEGV handling kept an app the
+# smoke suite crashes on purpose alive. CI's Linux leg is x86_64 on real
+# hardware, so between the two both architectures run natively. Each gets a
+# build directory of its own, as Linux and macOS do.
+LINUX_PLATFORM = "linux/arm64" if platform.machine() in ("arm64", "aarch64") else "linux/amd64"
+LINUX_SCRATCH_PATH = f".build-linux-{LINUX_PLATFORM.split('/')[1]}"
+# A sanitized build and suite run several times slower than a plain one, and
+# the Linux leg builds everything from cold the first time.
+RELEASE_BUILD_TIMEOUT_SECONDS = 900
+SANITIZER_TIMEOUT_SECONDS = 1800
+LINUX_TIMEOUT_SECONDS = 2400
+
+
+def release_steps() -> list[tuple[str, list[str], int]]:
+    """What CI runs that the everyday gate does not, as (name, command,
+    timeout): its release build, its Thread Sanitizer job and its Linux leg.
+    CI found what the gate had passed whenever a test held its timing here
+    and not on CI's slower three-core runner; running these before a tag is
+    pushed is what keeps a release's CI green."""
+    sanitized = f"{TSAN_SCRATCH_PATH}/debug"
+    linux = ["docker", "run", "--rm", "--platform", LINUX_PLATFORM, "-v", f"{REPO_ROOT}:/app", "-w", "/app",
+             "-e", "TUI_WARNINGS_AS_ERRORS=1", LINUX_IMAGE]
+    return [
+        # As CI builds it: with warnings as errors, stated here rather than
+        # inherited from the gate, so the step means the same run on its own.
+        ("release build", ["env", "TUI_WARNINGS_AS_ERRORS=1", "swift", "build", "-c", "release",
+                           "--scratch-path", SCRATCH_PATH], RELEASE_BUILD_TIMEOUT_SECONDS),
+        ("swift test, thread sanitizer",
+         ["swift", "test", "--sanitize=thread", "--scratch-path", TSAN_SCRATCH_PATH], SANITIZER_TIMEOUT_SECONDS),
+        ("examples, thread sanitizer",
+         ["swift", "build", "--sanitize=thread", "--scratch-path", TSAN_SCRATCH_PATH], SANITIZER_TIMEOUT_SECONDS),
+        ("integration scripts, thread sanitizer",
+         [sys.executable, "tools/scripts/integration_suite.py", sanitized], SANITIZER_TIMEOUT_SECONDS),
+        ("storybook smoke, thread sanitizer",
+         [sys.executable, "tools/scripts/storybook_smoke.py", sanitized], SANITIZER_TIMEOUT_SECONDS),
+        ("linux build", linux + ["swift", "build", "--build-tests", "--scratch-path", LINUX_SCRATCH_PATH],
+         LINUX_TIMEOUT_SECONDS),
+        ("linux test", linux + ["swift", "test", "--scratch-path", LINUX_SCRATCH_PATH], LINUX_TIMEOUT_SECONDS),
+        ("linux smoke", ["env", f"TERMINALUI_LINUX_PLATFORM={LINUX_PLATFORM}",
+                         f"TERMINALUI_LINUX_SCRATCH={LINUX_SCRATCH_PATH}",
+                         "tools/scripts/linux_harness.sh", "storybook_smoke.py"], LINUX_TIMEOUT_SECONDS),
+    ]
 
 
 def main(arguments: list[str]) -> int:
@@ -150,9 +212,26 @@ def main(arguments: list[str]) -> int:
     # it can remove that app's output.
     reap_dead_apps()
     try:
-        return run_gate()
+        result = run_gate()
+        if result == 0 and wants_release(arguments):
+            result = run_release_steps(release_steps(), step)
+        return result
     finally:
         reap_dead_apps()
+
+
+def run_release_steps(steps: list[tuple[str, list[str], int]],
+                      runner: Callable[[str, list[str], int], tuple[int, str]]) -> int:
+    """Run `steps` in turn with `runner`, stopping at the first that fails.
+    A Swift Testing run reports a known issue with a ✘ too; only an issue
+    it does not expect fails a step."""
+    for name, command, timeout in steps:
+        rc, out = runner(name, command, timeout)
+        if rc != 0 or any(line.strip().startswith("✘") and "known issue" not in line
+                          for line in out.splitlines()):
+            return fail(f"{name} failed: CI would fail the release the same way", out)
+        print(f"{name}: passed")
+    return 0
 
 
 # Source-only checks, cheap enough to run ahead of the build: (step label,

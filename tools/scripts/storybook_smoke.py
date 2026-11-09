@@ -1254,6 +1254,14 @@ def storybook_every_page_fits_the_recording_window(app: Client) -> None:
     assert_true(not cut, f"pages whose preview runs past row {RECORDING_ROWS}: {cut}")
 
 
+# How long the runner's reader may take to bring in the bytes of a frame the
+# app has answered for, and how long a page has to show one frame both ways.
+# Generous for a sanitized build on a three-core runner; a page that agrees
+# returns at once.
+REPLAY_CATCH_UP_SECONDS = 1.0
+REPLAY_AGREEMENT_SECONDS = 10.0
+
+
 def storybook_every_page_reaches_the_terminal_as_drawn(app: Client) -> None:
     """The bytes the app sends its terminal, replayed through a terminal
     model, show each page exactly as the app's own cells hold it. A buffer
@@ -1267,19 +1275,32 @@ def storybook_every_page_reaches_the_terminal_as_drawn(app: Client) -> None:
     screen = vt.Screen(size.width, size.height)
     fed = 0
 
-    def agrees(client: Client) -> bool:
+    def catch_up() -> None:
         nonlocal fed
-        output = client.pty_output()
+        output = app.pty_output()
         screen.feed(output[fed:])
         fed = len(output)
-        return screen.text() == client.text()
+
+    def agrees(client: Client) -> bool:
+        # The cells first, then the bytes: the app wrote a frame's bytes
+        # before it answered for that frame, and the runner's own thread
+        # reads them off the PTY moments later. Read the other way round, an
+        # animated page — the Timeline's spinner ticks every 100 ms — drew
+        # its next frames while a slow build answered for the cells, and
+        # the bytes in hand were always frames behind them.
+        cells = client.text()
+
+        def shows_them(_: Client) -> bool:
+            catch_up()
+            return screen.text() == cells
+        return client.wait_until(shows_them, timeout=REPLAY_CATCH_UP_SECONDS)
 
     differing: list[str] = []
     for title in app.storybook_pages():
         app.goto_page(title)
-        # The terminal's bytes are read off its PTY on the runner's own
-        # thread, so the frame the app answers for may not all be in yet.
-        if app.wait_until(agrees, timeout=2.0):
+        # An animated page can draw again between the cells and their
+        # bytes; another try takes a fresh pair.
+        if app.wait_until(agrees, timeout=REPLAY_AGREEMENT_SECONDS):
             continue
         drawn, shown = app.cells().rows, screen.lines()
         row = next((index for index, (row_cells, line) in enumerate(zip(drawn, shown)) if row_cells != line), None)

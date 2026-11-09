@@ -51,11 +51,38 @@ struct ShutdownWakeTests {
             _ = InputParser.readEvent(from: &source)
             return source.cutShort && source.waitForActivity() == .terminate
         }
-        try? await Task.sleep(for: .milliseconds(200))
-        pipes.terminate.signal()
+        // The terminate is meant for a read inside the paste, waiting for its
+        // end, and the parser gives a paste 3 s of wall-clock time: it must
+        // arrive within them. So it is sent from a thread of its own, once
+        // the reader has taken the half paste in. Sent from a task, it waited
+        // on the cooperative pool, which on CI's three-core runner under the
+        // Thread Sanitizer, shared with every test in the run, let the 3 s
+        // run out first; the paste then ended on its own, not cut short.
+        let terminator = BlockingThread(name: "test terminate") {
+            Self.waitUntilTaken(from: terminal)
+            pipes.terminate.signal()
+        }
 
-        #expect(await finishes(within: .seconds(1)) { _ = await reader.value })
+        // Only a hang waits this long; that the terminate, not the paste's
+        // 3 s limit, ended the read is what the next expectation checks.
+        #expect(await finishes(within: eventualLimit) { await terminator.value })
+        #expect(await finishes(within: eventualLimit) { _ = await reader.value })
         #expect(await reader.value, "the read should say it was cut short, and the next wait why")
+    }
+
+    /// Blocks until nothing written to `pipe` is waiting to be read: on a
+    /// thread of its own, where blocking belongs.
+    private static func waitUntilTaken(from pipe: SelfPipe) {
+        var pending = pollfd(fd: pipe.read, events: Int16(POLLIN), revents: 0)
+        while poll(&pending, 1, 0) == 1 {
+            pending.revents = 0
+            usleep(PollPause.microseconds)
+        }
+    }
+
+    /// How long the terminator waits between looks at the pipe.
+    private enum PollPause {
+        static let microseconds: UInt32 = 1_000
     }
 
     // A hang-up part-way through an escape sequence ends the read early, and

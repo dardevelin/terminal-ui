@@ -99,6 +99,12 @@ python3 tools/scripts/check_vhs_compat.py [build_dir]  # local only, needs vhs: 
 # committed needs. Builds into .build-automation/.
 python3 tools/scripts/verify.py
 python3 tools/scripts/verify.py --always
+# Before tagging a release: the gate, then what CI runs beyond it — the
+# release build, the Thread Sanitizer job and the Linux leg (Docker must be
+# running). CI failed releases the gate had passed, on tests whose timing
+# held here and not on its three-core runner; a tag waits for this, and is
+# pushed once.
+python3 tools/scripts/verify.py --release
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
 # locks a build directory for the length of a build or test, so sharing .build
@@ -481,6 +487,18 @@ previews. A caption that promises new behaviour gets a stage there.
   the switch reaches SwiftPM, which deadlocks under it on the runner. There
   the three-core runner's own small pool, and each job's 60-minute limit,
   are what turn a block into a failure.
+- **A test does not race the clock on the cooperative pool.** CI's Thread
+  Sanitizer job runs every test at once on a three-core runner, where a task
+  can wait seconds for a pool thread: a cursor flash waited 8 s for the main
+  actor, and a terminate sent from a task arrived after the 3 s the paste
+  parser waits, so the paste ended on its own. A wait for something that
+  happens in its own time takes `eventualLimit` (Tests/…/Support/Finishes.swift),
+  which only a regression reaches; an action that must land inside a
+  deadline the code under test keeps is taken on a thread of its own
+  (`BlockingThread`), never a task; and a test waits for the condition it
+  means — bytes taken, a flag set — never a guessed sleep. None of this
+  shows on a fast Mac, so `verify.py --release` runs the sanitizer job
+  before a release and CI is the judge.
 - **Concurrency escape hatches are listed.** `@unchecked Sendable` and
   `nonisolated(unsafe)` switch the compiler's checking off, and every data race
   this framework shipped sat behind one. Prefer what the compiler checks:
