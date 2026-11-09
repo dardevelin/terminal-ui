@@ -191,7 +191,7 @@ PTY it holds a crashed process open for 30s offering a debugger.
 - **0 errors, 0 warnings, always.** DX is paramount.
 - All debug/diagnostic machinery is `#if DEBUG`-gated — zero release overhead.
 
-## Package layout (5 library targets — a deliberate layering)
+## Package layout (6 library targets — a deliberate layering)
 
 The package ships four public libraries so consumers pull only what they need.
 This layering is the modularity strategy — not backend abstraction.
@@ -203,10 +203,17 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol (no decoder ships), a half-block renderer, a pure-Swift inflate. Apps without image needs don't pay for it. |
+| `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`. The encoders the recording renderer writes stills and animations with (`design/self-recording.md`). |
 
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
-`TerminalLogTests`, `TerminalUIIOTests`).
+`TerminalLogTests`, `TerminalUIIOTests`, `TerminalUIRasterTests`). The raster
+goldens under `Tests/TerminalUIRasterTests/Fixtures/` are checked twice: byte
+for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
+decoder of its own) by `tools/tests/test_raster_encoders.py`. A change that
+means to alter the encoding rewrites them with `TERMINALUI_UPDATE_GOLDENS=1
+swift test --filter TerminalUIRasterTests`, and the Python test then says
+whether they still decode to the same pictures.
 
 ## Core architecture
 
@@ -243,6 +250,7 @@ allocation- and cast-free.
 | **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `ColorBlending` (sRGB↔Oklab), `BorderStyle`, `Theme`; `Coordinate`, text layout; timeline scheduling |
 | **DevTools** | `TerminalUI/DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` |
 | **Config / CLI** | `TerminalUIConfig/`, `swtui/` | `DiagConfig`, `TOMLParser`, `KeyCombo`, `DiagPaths`; the diagnostic CLI (links TerminalUI for `swtui keys`) |
+| **Raster** (internal) | `TerminalUIRaster/` | `PixelCanvas`, `IndexedImage`; `Deflate` (LZ77 + `HuffmanCode` package-merge, each block the cheapest of stored/fixed/dynamic), `PNGWriter`, `LZW`, `GIFWriter` |
 
 Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
 `#expect`). Graph tests are `@MainActor`.

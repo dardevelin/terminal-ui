@@ -98,6 +98,15 @@ let package = Package(
             path: "Sources/TerminalUIIO",
             swiftSettings: strictSettings
         ),
+        // TerminalUIRaster — PNG and GIF encoders and the canvas the
+        // recording renderer draws into. Pure Swift, integer only, so a
+        // picture is the same bytes on every system. In no product: only
+        // swtui's renderer uses it, and its API is `package`.
+        .target(
+            name: "TerminalUIRaster",
+            path: "Sources/TerminalUIRaster",
+            swiftSettings: strictSettings
+        ),
         // Developer CLI tool for managing .terminalui/ config
         .executableTarget(
             name: "swtui",
@@ -179,6 +188,16 @@ let package = Package(
             // source tree — not Bundle.module — so they must be excluded
             // from the target's resource processing. Without this SwiftPM
             // emits an "unhandled files" warning on every build.
+            exclude: ["Fixtures"],
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalUIRasterTests",
+            // TerminalUIIO only for its Inflate, the round trip the encoder
+            // is checked against.
+            dependencies: ["TerminalUIRaster", "TerminalUIIO"],
+            path: "Tests/TerminalUIRasterTests",
+            // Goldens read through `#filePath`, as TerminalUIIOTests' are.
             exclude: ["Fixtures"],
             swiftSettings: strictSettings
         ),
