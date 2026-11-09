@@ -2989,6 +2989,43 @@ def storybook_a_disabled_socket_is_never_opened(app: Client) -> None:
     assert_true(not sockets, f"a socket was opened despite enabled = false: {sockets}")
 
 
+def storybook_records_from_launch(app: Client) -> None:
+    """`enabled = true` under `[record]` records every frame the app draws,
+    from launch, into the project's `.terminalui/recordings/` — not the
+    per-process data dir, which goes when the app quits. SIGTERM, which the
+    app turns into a quit, still leaves the log whole: it ends with its
+    `end` line, and `swtui record dump` prints the page that was showing."""
+    import json
+    import signal
+
+    # Not the first page, so the log holds more than the launch frame.
+    app.goto_page("Toggle")
+    title = app.storybook_page_title()
+    assert_true(title == "Toggle", f"the page shows '{title}'")
+    app.expected_exit_signal = signal.SIGTERM
+    os.kill(app.pid, signal.SIGTERM)
+    assert_true(app.wait_for_exit(BOOT_TIMEOUT) is not None, "the app was still running after SIGTERM")
+
+    log = Path(app.project_dir) / ".terminalui" / "recordings" / f"Storybook-{app.pid}.tuirec"
+    assert_true(log.is_file(), f"no recording at {log}")
+    lines = [json.loads(line) for line in log.read_text().splitlines()]
+    assert_true(lines[0].get("tuirec") == 1, f"the log starts {lines[0]}")
+    assert_true(lines[-1].get("end") is True, f"the log ends {lines[-1]}")
+    frames = [line for line in lines if "frame" in line]
+    assert_true(lines[-1]["frames"] == len(frames) > 1,
+                f"the end counts {lines[-1]['frames']} frames, the log holds {len(frames)}")
+
+    dump = subprocess.run([str(app.build_dir / "swtui"), "record", "dump", str(log)],
+                          capture_output=True, text=True, timeout=BOOT_TIMEOUT)
+    assert_true(dump.returncode == 0, f"swtui record dump failed: {dump.stderr}")
+    # The title where the app drew it, not the sidebar's entry for the page,
+    # which every frame shows.
+    x, y, width, _ = Client._STORYBOOK_TITLE_RECT
+    rows = dump.stdout.splitlines()
+    shown = rows[y][x:x + width].strip() if len(rows) > y else ""
+    assert_true(shown == title, f"the dump's title is '{shown}':\n{dump.stdout}")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3152,6 +3189,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.a_disabled_socket_is_never_opened", "Storybook",
               storybook_a_disabled_socket_is_never_opened, connects=False,
               project_files=((".terminalui/terminalui.toml", "[socket]\nenabled = false\n"),)),
+    SmokeCase("storybook.records_from_launch", "Storybook", storybook_records_from_launch,
+              project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),

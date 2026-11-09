@@ -57,6 +57,8 @@ case "ctl":
     ctlCommand(args: Array(args.dropFirst()))
 case "keys":
     keysCommand(args: Array(args.dropFirst()))
+case "record":
+    recordCommand(args: Array(args.dropFirst()))
 case "help", "--help", "-h":
     printUsage()
 default:
@@ -129,6 +131,13 @@ func statusCommand() {
     ink("")
     ink("[socket]", .primary, .bold)
     statusRow("enabled", bool: config.socketEnabled)
+
+    ink("")
+    ink("[record]", .primary, .bold)
+    statusRow("enabled", bool: config.recordOnLaunch)
+    if let path = config.recordPath {
+        statusRow("path", value: path, color: .named(.cyan))
+    }
 
     ink("")
     ink("[keybindings]", .primary, .bold)
@@ -306,7 +315,7 @@ func printUsage() {
     let rows: [(String, String)] = [
         ("init",                 "Create .terminalui/ with default config"),
         ("status",               "Show current config and app status"),
-        ("enable <feature>",     "Enable a feature (trace, capture, screenshots, events, socket)"),
+        ("enable <feature>",     "Enable a feature (trace, capture, screenshots, events, socket, record)"),
         ("disable <feature>",    "Disable a feature"),
         ("set <key> <value>",    "Set a config value (frame_limit, use_tmp, or section.key)"),
         ("bind <action> <key>",  "Remap a debug keybinding (e.g. swtui bind toggle_inspector F5)"),
@@ -314,6 +323,7 @@ func printUsage() {
         ("clean",                "Remove all diagnostic output"),
         ("ctl <cmd> [...]",      "Drive a running debug build (see `swtui ctl`)"),
         ("keys [--check <file>]", "List the text-editing commands and keys, or check a keys.toml"),
+        ("record dump <log>",    "Print a .tuirec recording's screen (--at LABEL, --frame N)"),
         ("help",                 "Show this help"),
     ]
     for (cmd, desc) in rows {

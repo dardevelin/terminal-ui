@@ -214,6 +214,9 @@ class Client:
         # Thread Sanitizer runs a signal's handler only once the thread the
         # signal reached calls into its runtime.
         self.sanitizer: Optional[str] = None
+        # Set by the runner: the directory the app's binary was run from,
+        # which holds the `swtui` built with it.
+        self.build_dir: Optional[Path] = None
         self.pty_output: Callable[[], bytes] = lambda: b""
         # The runner fails any app that dies on a signal. A case that kills
         # the app on purpose names the signal here, and the runner then

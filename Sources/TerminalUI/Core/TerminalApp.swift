@@ -378,6 +378,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// and then nothing — trace, screenshots, captures, warnings, socket —
     /// goes there.
     private var diagnosticsAreWritable = true
+    /// Keeps the frames this runtime draws in a `.tuirec` log while a
+    /// recording is open: from launch with `[record] enabled`.
+    private let frameRecorder = FrameRecorder()
+    /// Why the recording `[record]` asked for did not start, said once the
+    /// terminal is the shell's again: written while the app holds the
+    /// screen, it would be drawn over, or draw over the app.
+    private var recordingProblem: String?
     #endif
 
     /// Creates a runtime for `content` without starting it — call ``run()``
@@ -516,6 +523,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
             let socketPath = "\(socketDir)/\(ProcessInfo.processInfo.processIdentifier).sock"
             attachRemoteControl(socketPath: socketPath)
         }
+        if diagConfig.recordOnLaunch {
+            startRecordingFromLaunch(config: diagConfig)
+        }
         #endif
 
         Terminal.resizeWakeFD = wakePipes.resize.write
@@ -524,6 +534,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
         defer {
             tracer.writeSummary()
             #if DEBUG
+            // Before the terminate pipe is cleared below, like the rest of
+            // this teardown: a SIGTERM that asked for this quit still ends
+            // the log with its `end` line.
+            frameRecorder.finish()
             // Hand the terminal back; warnings can return to stderr now.
             DebugStream.shared.setLiveTUI(false)
             // drop the remote-control server explicitly so its deinit
@@ -548,6 +562,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
             Terminal.restoreWindowBackground()
             Terminal.exitAlternateScreen()
             Terminal.disableRawMode()
+            #if DEBUG
+            if let problem = recordingProblem ?? frameRecorder.failure.map(String.init(describing:)) {
+                Log("TerminalUI").warn(problem)
+            }
+            #endif
 
             // Cleared before the pipes close, so a late signal does not write
             // to a closed — or reopened — descriptor. The input task, which
@@ -1221,11 +1240,26 @@ public final class TerminalRuntime<RootView: TerminalView> {
         )
         #if DEBUG
         debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
+        frameRecorder.frameDrawn(renderBuffer, windowBackground: wantedBackground, frame: frameStats.frameCount)
         #endif
         previousBuffer = renderBuffer
     }
 
     #if DEBUG
+    /// Opens the log `[record]` names, which the first frame drawn starts.
+    private func startRecordingFromLaunch(config: DiagConfig) {
+        let appName = ProcessInfo.processInfo.processName
+        let path = DiagPaths.recordingPath(config: config, appName: appName,
+                                           pid: ProcessInfo.processInfo.processIdentifier)
+        try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
+                                                 withIntermediateDirectories: true)
+        do {
+            try frameRecorder.start(path: path, appName: appName, current: nil)
+        } catch {
+            recordingProblem = "[record] recorded nothing: \(error)"
+        }
+    }
+
     private func cycleDebugMode() {
         if !debugOverlay.visible && debugPanel.mode == .hidden {
             // hidden → overlay

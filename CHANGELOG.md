@@ -6,6 +6,24 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **A debug build records what it draws.** With `enabled = true` under
+  `[record]` in `.terminalui/terminalui.toml` (or `swtui enable record`), a
+  debug build keeps every frame it draws, from launch until it quits, in a
+  `.tuirec` log: one JSON line per frame, holding only the rows that changed,
+  each style declared once, with times in whole microseconds, so the same
+  session gives the same bytes on macOS and Linux. The log goes to
+  `.terminalui/recordings/<app>-<pid>.tuirec`, or to `path` under `[record]`,
+  and outlives the app, whose own data dir is removed as it quits; a SIGTERM
+  still ends it whole. It is created readable by its owner alone, and a path
+  that already names something — a file, a link — is refused, never written
+  over. `swtui record dump <log>` prints the screen it ends on, `--at LABEL`
+  the screen at a mark and `--frame N` the screen after a frame. The
+  recorder is compiled out of a release build, and costs a debug build one
+  check per frame while it is off. `DiagConfig` gains `recordOnLaunch` and
+  `recordPath`.
+
 ### Fixed
 
 - **A `ForEach` whose rows only moved is laid out again.** Reordering a

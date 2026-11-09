@@ -302,6 +302,19 @@ public enum DiagPaths {
         (dataDir(useTmp: useTmp) as NSString).appendingPathComponent("warnings.log")
     }
 
+    /// Where a recording from launch is written: `[record] path`, against
+    /// the project when relative, or else
+    /// `.terminalui/recordings/<app>-<pid>.tuirec`. Not under the data dir,
+    /// which the app removes as it quits.
+    package static func recordingPath(config: DiagConfig, appName: String, pid: Int32) -> String {
+        guard let path = config.recordPath else {
+            return (configDir as NSString)
+                .appendingPathComponent("recordings/\(appName)-\(pid).\(RecordingLog.fileExtension)")
+        }
+        if path.hasPrefix("/") { return path }
+        return (FileManager.default.currentDirectoryPath as NSString).appendingPathComponent(path)
+    }
+
     // MARK: - Directory setup
 
     /// Create the data dirs and record the app's name in them.

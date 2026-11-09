@@ -314,12 +314,22 @@ ephemeral output in a **per-process PID-isolated** dir,
 when it quits — SIGTERM included, which it turns into a quit. Every running app
 owns its own world, and nothing names "the" app — this isolation is load-bearing
 for concurrent test runs. Features: `trace`, `capture`, `screenshots`, `events`,
-`socket`.
+`socket`, `record`.
+
+`[record] enabled = true` (`swtui enable record`) keeps every frame the app
+draws, launch to quit, in a `.tuirec` log (`TerminalUIConfig/Recording/`,
+written by `DevTools/FrameRecorder.swift`): JSON lines, changed rows only,
+fixed key order and integers only, so the bytes match on macOS and Linux. It
+goes to `.terminalui/recordings/<app>-<pid>.tuirec` or `[record] path` —
+outside the data dir, which the app deletes as it quits — mode 0600, and a
+path that already names anything is refused. `design/self-recording.md` plans
+how the docs' pictures are rendered from such logs.
 
 ```bash
 swift run swtui init | status | config | clean
 swift run swtui enable trace | disable trace | set frame_limit 50
 swift run swtui bind toggle_inspector F5      # remap a debug keybinding
+swift run swtui record dump <log> [--at LABEL | --frame N]   # a recorded screen as text
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit

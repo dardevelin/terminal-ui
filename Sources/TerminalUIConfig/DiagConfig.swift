@@ -42,6 +42,19 @@ public struct DiagConfig: Sendable {
     /// `[socket] enabled` — expose the remote-control socket `swtui ctl` talks to.
     public var socketEnabled: Bool
 
+    // MARK: - [record]
+
+    /// `[record] enabled` — record every frame the app draws, from launch
+    /// until it quits, into a `.tuirec` log that `swtui record dump` reads.
+    /// Off by default.
+    public var recordOnLaunch: Bool = false
+    /// `[record] path` — where that log is written, relative to the project
+    /// (the directory the app runs from) unless absolute. Nil writes
+    /// `.terminalui/recordings/<app>-<pid>.tuirec`, outside the per-process
+    /// data dir, which is removed when the app quits. A path that already
+    /// names something is never written over: that launch records nothing.
+    public var recordPath: String? = nil
+
     // MARK: - [keybindings]
 
     /// Action name → key string. E.g. "toggle_debug_overlay" → "F1", "toggle_debug_panel" → "ctrl+F2"
@@ -118,6 +131,7 @@ public struct DiagConfig: Sendable {
         let capture = sections["capture"] ?? [:]
         let output = sections["output"] ?? [:]
         let socket = sections["socket"] ?? [:]
+        let record = sections["record"] ?? [:]
 
         self.traceEnabled = Self.parseBool(trace["enabled"]) ?? DiagConfig.default.traceEnabled
         self.captureScreenshots = Self.parseBool(trace["screenshots"]) ?? DiagConfig.default.captureScreenshots
@@ -129,6 +143,9 @@ public struct DiagConfig: Sendable {
         self.useTmp = Self.parseBool(output["use_tmp"]) ?? DiagConfig.default.useTmp
 
         self.socketEnabled = Self.parseBool(socket["enabled"]) ?? DiagConfig.default.socketEnabled
+
+        self.recordOnLaunch = Self.parseBool(record["enabled"]) ?? DiagConfig.default.recordOnLaunch
+        self.recordPath = record["path"].flatMap { $0.isEmpty ? nil : $0 }
 
         // Keybindings: start from defaults, override with file values
         var bindings = DiagConfig.defaultKeybindings
@@ -165,6 +182,13 @@ public struct DiagConfig: Sendable {
             "enabled": String(socketEnabled),
         ]
 
+        sections["record"] = [
+            "enabled": String(recordOnLaunch),
+        ]
+        if let recordPath {
+            sections["record"]?["path"] = recordPath
+        }
+
         // Only write keybindings that differ from defaults
         var customBindings: [String: String] = [:]
         for (action, key) in keybindings {
@@ -197,12 +221,13 @@ public struct DiagConfig: Sendable {
         case "screenshots": return ("trace", "screenshots")
         case "events": return ("trace", "events")
         case "socket": return ("socket", "enabled")
+        case "record": return ("record", "enabled")
         default: return nil
         }
     }
 
     /// All recognized feature names for help text.
-    public static let featureNames = ["trace", "capture", "screenshots", "events", "socket"]
+    public static let featureNames = ["trace", "capture", "screenshots", "events", "socket", "record"]
 
     // MARK: - Parsing helpers
 
