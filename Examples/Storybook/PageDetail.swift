@@ -158,7 +158,7 @@ struct PreviewPane: TerminalView {
                 Text("bold").bold()
                 Text("colored").foreground(.green)
                 Text("both").bold().foreground(.red)
-                Text("wide 中文 · emoji 🙂 · combining cafe\u{301}").foreground(.cyan)
+                Text("wide 中文 · emoji 🙂 ⭐ · combining cafe\u{301}").foreground(.cyan)
             }
         case .gradient:
             VStack {

@@ -1136,7 +1136,7 @@ def storybook_text_styles_render(app: Client) -> None:
         assert_true(label in preview, f"Text preview missing '{label}'")
     # One entry per column: a wide glyph's right half is a space, and the
     # combining acute is drawn on its `e`, not in a cell of its own.
-    wide = "wide 中 文  · emoji 🙂  · combining café"
+    wide = "wide 中 文  · emoji 🙂  ⭐  · combining café"
     assert_true(wide in preview, f"Text preview missing {wide!r}:\n{preview}")
 
 
@@ -1260,7 +1260,9 @@ def storybook_every_page_reaches_the_terminal_as_drawn(app: Client) -> None:
     can be right while its output is not: a wide glyph's second cell sent
     as a space of its own pushed the rest of its row one column right, and
     every assertion on cells still passed. The Text page draws wide glyphs,
-    an emoji and a combining mark, so the walk always meets some."""
+    emoji in planes 0 and 1 and a combining mark, so the walk always meets
+    some: a ⭐ the framework counted one column wide, where the terminal
+    draws it in two, put the rest of its row a column late."""
     size = app.cells()
     screen = vt.Screen(size.width, size.height)
     fed = 0

@@ -1,0 +1,87 @@
+# EastAsianWidth-17.0.0.txt
+# Date: 2025-07-24, 00:12:54 GMT
+# © 2025 Unicode®, Inc.
+# Unicode and the Unicode Logo are registered trademarks of Unicode, Inc. in the U.S. and other countries.
+# For terms of use and license, see https://www.unicode.org/terms_of_use.html
+#
+# Unicode Character Database
+#   For documentation, see https://www.unicode.org/reports/tr44/
+#
+# East_Asian_Width Property
+#
+# This file is a normative contributory data file in the
+# Unicode Character Database.
+#
+# The format is two fields separated by a semicolon.
+# Field 0: Unicode code point value or range of code point values
+# Field 1: East_Asian_Width property, consisting of one of the following values:
+#         "A", "F", "H", "N", "Na", "W"
+#  - All code points, assigned or unassigned, that are not listed
+#      explicitly are given the value "N".
+#  - The unassigned code points in the following blocks default to "W":
+#         CJK Unified Ideographs Extension A: U+3400..U+4DBF
+#         CJK Unified Ideographs:             U+4E00..U+9FFF
+#         CJK Compatibility Ideographs:       U+F900..U+FAFF
+#  - All undesignated code points in Planes 2 and 3, whether inside or
+#      outside of allocated blocks, default to "W":
+#         Plane 2:                            U+20000..U+2FFFD
+#         Plane 3:                            U+30000..U+3FFFD
+#
+# Character ranges are specified as for other property files in the
+# Unicode Character Database.
+#
+# The comments following the number sign "#" list the General_Category
+# property value or the L& alias of the derived value LC, the Unicode
+# character name or names, and, in lines with ranges of code points,
+# the code point count in square brackets.
+#
+# For more information, see UAX #11: East Asian Width,
+# at https://www.unicode.org/reports/tr11/
+#
+# @missing: 0000..10FFFF; N
+0020           ; Na # Zs         SPACE
+0041..005A     ; Na # Lu    [26] LATIN CAPITAL LETTER A..LATIN CAPITAL LETTER Z
+00A1           ; A  # Po         INVERTED EXCLAMATION MARK
+00AD           ; A  # Cf         SOFT HYPHEN
+0300..036F     ; A  # Mn   [112] COMBINING GRAVE ACCENT..COMBINING LATIN SMALL LETTER X
+0488..0489     ; N  # Me     [2] COMBINING CYRILLIC HUNDRED THOUSANDS SIGN..COMBINING CYRILLIC MILLIONS SIGN
+0600..0605     ; N  # Cf     [6] ARABIC NUMBER SIGN..ARABIC NUMBER MARK ABOVE
+061C           ; N  # Cf         ARABIC LETTER MARK
+1100..115F     ; W  # Lo    [96] HANGUL CHOSEONG KIYEOK..HANGUL CHOSEONG FILLER
+180E           ; N  # Cf         MONGOLIAN VOWEL SEPARATOR
+200B..200F     ; N  # Cf     [5] ZERO WIDTH SPACE..RIGHT-TO-LEFT MARK
+2024..2027     ; A  # Po     [4] ONE DOT LEADER..HYPHENATION POINT
+2060..2064     ; N  # Cf     [5] WORD JOINER..INVISIBLE PLUS
+2066..206F     ; N  # Cf    [10] LEFT-TO-RIGHT ISOLATE..NOMINAL DIGIT SHAPES
+231A..231B     ; W  # So     [2] WATCH..HOURGLASS
+2500..254B     ; A  # So    [76] BOX DRAWINGS LIGHT HORIZONTAL..BOX DRAWINGS HEAVY VERTICAL AND HORIZONTAL
+2614..2615     ; W  # So     [2] UMBRELLA WITH RAIN DROPS..HOT BEVERAGE
+2630..2637     ; W  # So     [8] TRIGRAM FOR HEAVEN..TRIGRAM FOR EARTH
+2648..2653     ; W  # So    [12] ARIES..PISCES
+26A0           ; N  # So         WARNING SIGN
+26A1           ; W  # So         HIGH VOLTAGE SIGN
+2705           ; W  # So         WHITE HEAVY CHECK MARK
+274C           ; W  # So         CROSS MARK
+2758..2767     ; N  # So    [16] LIGHT VERTICAL BAR..ROTATED FLORAL HEART BULLET
+276F           ; N  # Pe         HEAVY RIGHT-POINTING ANGLE QUOTATION MARK ORNAMENT
+2B50           ; W  # So         WHITE MEDIUM STAR
+3000           ; F  # Zs         IDEOGRAPHIC SPACE
+302A..302D     ; W  # Mn     [4] IDEOGRAPHIC LEVEL TONE MARK..IDEOGRAPHIC ENTERING TONE MARK
+302E..302F     ; W  # Mc     [2] HANGUL SINGLE DOT TONE MARK..HANGUL DOUBLE DOT TONE MARK
+3099..309A     ; W  # Mn     [2] COMBINING KATAKANA-HIRAGANA VOICED SOUND MARK..COMBINING KATAKANA-HIRAGANA SEMI-VOICED SOUND MARK
+3400..4DBF     ; W  # Lo  [6592] CJK UNIFIED IDEOGRAPH-3400..CJK UNIFIED IDEOGRAPH-4DBF
+4DC0..4DFF     ; W  # So    [64] HEXAGRAM FOR THE CREATIVE HEAVEN..HEXAGRAM FOR BEFORE COMPLETION
+4E00..9FFF     ; W  # Lo [20992] CJK UNIFIED IDEOGRAPH-4E00..CJK UNIFIED IDEOGRAPH-9FFF
+AC00..D7A3     ; W  # Lo [11172] HANGUL SYLLABLE GA..HANGUL SYLLABLE HIH
+FE00..FE0F     ; A  # Mn    [16] VARIATION SELECTOR-1..VARIATION SELECTOR-16
+FEFF           ; N  # Cf         ZERO WIDTH NO-BREAK SPACE
+FF01..FF03     ; F  # Po     [3] FULLWIDTH EXCLAMATION MARK..FULLWIDTH NUMBER SIGN
+FF61           ; H  # Po         HALFWIDTH IDEOGRAPHIC FULL STOP
+1F1E6..1F1FF   ; N  # So    [26] REGIONAL INDICATOR SYMBOL LETTER A..REGIONAL INDICATOR SYMBOL LETTER Z
+1F321..1F32C   ; N  # So    [12] THERMOMETER..WIND BLOWING FACE
+1F600..1F64F   ; W  # So    [80] GRINNING FACE..PERSON WITH FOLDED HANDS
+20000..2A6DF   ; W  # Lo [42720] CJK UNIFIED IDEOGRAPH-20000..CJK UNIFIED IDEOGRAPH-2A6DF
+E0001          ; N  # Cf         LANGUAGE TAG
+E0020..E007F   ; N  # Cf    [96] TAG SPACE..CANCEL TAG
+
+# EOF

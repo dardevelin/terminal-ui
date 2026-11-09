@@ -312,10 +312,29 @@ struct WideCharacterOutputTests {
         #expect(buffer[2, 0].character == "a")
         #expect(TerminalReplay(showing: buffer).rows == rows(of: buffer))
 
+        // U+FE0F after a text-default emoji asks for emoji presentation,
+        // which is two columns (UTS #51 ED-9a).
+        let heart = line("❤\u{FE0F}a", width: 4)
+        #expect(heart[0, 0].character == "❤\u{FE0F}")
+        #expect(heart[1, 0].isContinuation)
+        #expect(heart[2, 0].character == "a")
+        #expect(TerminalReplay(showing: heart).rows == rows(of: heart))
+
+        var spans = CellBuffer(width: 4, height: 1)
+        spans.writeSpans([TextSpan("🙂"), TextSpan("\u{FE0F}"), TextSpan("a")],
+                         x: 0, y: 0, maxWidth: 4, maxHeight: 1, baseStyle: .plain)
+        #expect(spans[0, 0].character == "🙂\u{FE0F}")
+        #expect(spans[2, 0].character == "a")
+    }
+
+    @Test("a selector in a span of its own that would widen its base is dropped")
+    func widenedBaseAcrossSpans() {
+        // The glyph was stored one column wide and the write has moved on
+        // past it: composing would take a column already handed to `a`.
         var spans = CellBuffer(width: 4, height: 1)
         spans.writeSpans([TextSpan("❤"), TextSpan("\u{FE0F}"), TextSpan("a")],
                          x: 0, y: 0, maxWidth: 4, maxHeight: 1, baseStyle: .plain)
-        #expect(spans[0, 0].character == "❤\u{FE0F}")
+        #expect(spans[0, 0].character == "❤")
         #expect(spans[1, 0].character == "a")
     }
 

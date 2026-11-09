@@ -87,8 +87,27 @@ def emoji_clusters_are_one_wide_glyph() -> None:
 
 def column_widths_follow_east_asian_width() -> None:
     for char, width in (("a", 1), ("中", 2), ("Ａ", 2), ("…", 1), ("─", 1),
-                        ("́", 0), ("​", 0), ("️", 0), ("\U0001F642", 2)):
+                        ("́", 0), ("​", 0), ("️", 0), ("\U000E0067", 0), ("\U0001F642", 2),
+                        ("⭐", 2), ("⌚", 2), ("✅", 2), ("\U0001F1FA", 2), ("❤", 1), ("\U0001F321", 1)):
         expect((char, vt.column_width(char)), (char, width))
+
+
+def a_wide_emoji_below_plane_1_takes_two_columns() -> None:
+    expect(lines(HOME + "⭐a⌚b".encode(), 6), ["⭐ a⌚ b"])
+
+
+def an_emoji_presentation_selector_widens_a_narrow_glyph() -> None:
+    heart = "❤️"
+    expect(lines(HOME + (heart + "a").encode(), 4), [heart + " a "])
+    keycap = "1️⃣"
+    expect(lines(HOME + (keycap + "a").encode(), 4), [keycap + " a "])
+    # Over whatever was in the column it widens into, and into a pending
+    # wrap when that column is the last.
+    expect(lines(HOME + b"xyz\x1b[1;1H" + heart.encode(), 3), [heart + " z"])
+    expect(lines(HOME + ("ab" + heart).encode() + b"c", 4, 2), ["ab" + heart + " ", "c   "])
+    # A wide glyph stays two columns, and one in the last column stays one.
+    expect(lines(HOME + "⭐️a".encode(), 4), ["⭐️ a "])
+    expect(lines(HOME + ("ab" + heart).encode(), 3), ["ab" + heart])
 
 
 def sgr_and_strings_draw_nothing() -> None:
@@ -131,6 +150,9 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("a combining mark joins its base", a_combining_mark_joins_its_base),
     ("emoji clusters are one wide glyph", emoji_clusters_are_one_wide_glyph),
     ("column widths follow East Asian Width", column_widths_follow_east_asian_width),
+    ("a wide emoji below plane 1 takes two columns", a_wide_emoji_below_plane_1_takes_two_columns),
+    ("an emoji presentation selector widens a narrow glyph",
+     an_emoji_presentation_selector_widens_a_narrow_glyph),
     ("SGR and strings draw nothing", sgr_and_strings_draw_nothing),
     ("the alternate screen starts clear and restores the main",
      the_alternate_screen_starts_clear_and_restores_the_main),
