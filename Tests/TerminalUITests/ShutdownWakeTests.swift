@@ -51,11 +51,30 @@ struct ShutdownWakeTests {
             _ = InputParser.readEvent(from: &source)
             return source.cutShort && source.waitForActivity() == .terminate
         }
-        try? await Task.sleep(for: .milliseconds(200))
+        // The terminate is meant for a read inside the paste, waiting for its
+        // end: signal once the reader has taken the half paste in. A fixed
+        // 200 ms assumed the thread was reading by then, and on a loaded
+        // runner under the Thread Sanitizer it had not started, so the wake
+        // came first and the read never saw a paste to cut short.
+        #expect(await finishes(within: eventualLimit) { await Self.waitUntilTaken(from: terminal) },
+                "the reader never took the half paste in")
         pipes.terminate.signal()
 
-        #expect(await finishes(within: .seconds(1)) { _ = await reader.value })
+        // Only a hang waits this long; that the terminate, not the paste's
+        // 3 s limit, ended the read is what the next expectation checks.
+        #expect(await finishes(within: eventualLimit) { _ = await reader.value })
         #expect(await reader.value, "the read should say it was cut short, and the next wait why")
+    }
+
+    /// Returns once nothing written to `pipe` is waiting to be read.
+    private static func waitUntilTaken(from pipe: SelfPipe) async {
+        var pending = pollfd(fd: pipe.read, events: Int16(POLLIN), revents: 0)
+        while poll(&pending, 1, 0) == 1 {
+            pending.revents = 0
+            // A pause, not a yield: a yield spins a pool thread the reader
+            // and the rest of a sanitized run are waiting for.
+            try? await Task.sleep(for: .milliseconds(1))
+        }
     }
 
     // A hang-up part-way through an escape sequence ends the read early, and

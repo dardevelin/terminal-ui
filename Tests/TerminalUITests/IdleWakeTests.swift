@@ -30,7 +30,7 @@ struct IdleWakeTests {
     @Test func aWakeBeforeTheWaitIsKept() async {
         let signal = WakeSignal()
         signal.wake()
-        #expect(await finishes(within: .seconds(1)) { await signal.wait() })
+        #expect(await finishes(within: eventualLimit) { await signal.wait() })
     }
 
     @Test func aWaitSleepsUntilAWake() async {
@@ -38,7 +38,7 @@ struct IdleWakeTests {
         let waiter = Task { await signal.wait() }
         try? await Task.sleep(for: .milliseconds(20))
         signal.wake()
-        #expect(await finishes(within: .seconds(1)) { await waiter.value })
+        #expect(await finishes(within: eventualLimit) { await waiter.value })
     }
 
     @Test func wakesBeforeOneWaitAreOneWake() async {
@@ -53,7 +53,7 @@ struct IdleWakeTests {
         let signal = WakeSignal()
         let queue = EventQueue(wake: signal)
         queue.push(.timer("tick"))
-        #expect(await finishes(within: .seconds(1)) { await signal.wait() })
+        #expect(await finishes(within: eventualLimit) { await signal.wait() })
     }
 
     @Test @MainActor func aChangeToObservedStateWakesTheLoop() async {
@@ -62,7 +62,7 @@ struct IdleWakeTests {
         let graph = AttributeGraph(wake: signal)
         graph.update(from: CounterView(counter: counter))
         counter.value = 1
-        #expect(await finishes(within: .seconds(1)) { await signal.wait() })
+        #expect(await finishes(within: eventualLimit) { await signal.wait() })
     }
 }
 

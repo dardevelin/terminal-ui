@@ -26,7 +26,7 @@ struct TerminalBellTests {
     func ringWakesTheLoop() async {
         let wake = WakeSignal()
         let bell = TerminalBell(wake: wake)
-        let woke = await finishes(within: .seconds(2)) {
+        let woke = await finishes(within: eventualLimit) {
             async let waited: Void = wake.wait()
             try? await Task.sleep(for: .milliseconds(20))
             bell.ring()
