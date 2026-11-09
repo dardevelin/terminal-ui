@@ -39,6 +39,15 @@ package struct PixelCanvas: Equatable, Sendable {
         }
     }
 
+    /// A canvas of `bytes`, four a pixel, rows top to bottom.
+    package init(width: Int, height: Int, bytes: [UInt8]) {
+        precondition(width >= 0 && height >= 0 && bytes.count == width * height * Self.bytesPerPixel,
+                     "\(bytes.count) bytes for a \(width)×\(height) canvas")
+        self.width = width
+        self.height = height
+        self.bytes = bytes
+    }
+
     package subscript(x: Int, y: Int) -> RGBA {
         get {
             let offset = self.offset(x, y)

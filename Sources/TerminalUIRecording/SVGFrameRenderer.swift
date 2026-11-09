@@ -312,7 +312,8 @@ struct SVGPainting {
 }
 
 /// Where cells, baselines and underlines fall on the canvas, in device
-/// pixels.
+/// pixels: the SVG and raster renderers share it, so the two pictures of a
+/// screen put every glyph on the same baseline.
 struct SVGLayout {
     let cellWidth: Int
     let cellHeight: Int

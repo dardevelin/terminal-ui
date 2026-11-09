@@ -235,6 +235,51 @@ keys from a `[render]` section of `.terminalui/terminalui.toml` itself (not
 `tools/fonts/JetBrainsMono/` in the checkout, found from the source file's own
 path; if missing, the error names the path and suggests `--font PATH`.
 
+### As built in step 9 (where it differs from the above)
+
+- Until step 10 there is no system engine, so `--font` defaults to
+  `bundled`, and `--font system` and `--engine system` are refused with a
+  message naming what to use instead — not quietly drawn in another font.
+  `--missing-glyph system`, still the default, draws boxes and says the
+  cascade is not there yet.
+- `[render]` keys are the flags' names with `_` for `-` (`font_size`,
+  `missing_glyph`, `fallback_fonts = [...]` for `--fallback-font`). The
+  settings parser reads no floats, so decimals and durations are quoted
+  (`line_height = "1.2"`, `quantum = "40ms"`); an unknown key, or a line in
+  `[render]` the parser cannot read, is an error naming its line. `swtui
+  set` rewrites the file through the parser's flat view, which drops lists,
+  so `fallback_fonts` is hand-edited.
+- A raster's cell is `--font`'s own advance (its `0` over `unitsPerEm`), so
+  a PATH font lays out on its own grid; the SVG keeps JetBrains Mono's 0.6.
+- Pixels are kept as `BlendedPixel` (foreground over background at a
+  coverage), so a later layer blends over what the pixel shows and the
+  palette builder sees each edge's two colours. "Exact colours" are every
+  solid colour and both ends of every edge. Ramps are cut through 16, 6, 4
+  and 2 levels (every level, every third, every fifth, the ends — nested,
+  as 15 = 3 · 5), the least-used pair to its ends before the next pair is
+  touched. Whether one global table fits is decided over every frame's
+  changed pixels; if not, every frame gets a local table. Past 255 exact
+  colours in one table, the least-used are drawn as their nearest kept
+  colour in Oklab, from the framework's own transform (`Color.oklab`,
+  `package`), in millionths so the choice is by integers; that path alone
+  goes through `pow` and `cbrt`, so only it could, at a near tie, differ
+  between two systems' maths libraries. Emoji's median-cut slots wait for a
+  glyph source that draws colour (step 10): a colour pixel is held solid.
+- A frame that changes no pixel adds its delay to the one before; a delay
+  is capped at GIF's 655.35 s.
+- A PNG is indexed only when its pixels are at most 256 colours, which
+  changes none of them; anti-aliased text usually makes it RGB.
+- Glyph ink is not clipped to its cells (a terminal does not clip an
+  italic's overhang either). A glyph wider than its cells is shrunk by a box
+  filter in integers. A missing glyph's box is drawn through `DeviceGlyph`
+  in the cells it spans, so a wide glyph's box has the stroke of a
+  two-cell-wide glyph.
+- swtui runs unoptimised (`swift run`), where a range's iterator and an
+  array's checked subscript cost a call through generic metadata a pixel:
+  the per-pixel loops walk storage with `while`, as LZ77 already did, and
+  the PNG filter search was rewritten that way (same bytes). A 97 × 37
+  README walk of 79 frames renders in about 8 s in a debug build.
+
 ## The bundled font
 
 `tools/fonts/JetBrainsMono/`: JetBrains Mono v2.304, Regular, Bold, Italic and

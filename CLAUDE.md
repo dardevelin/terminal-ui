@@ -211,8 +211,8 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol (no decoder ships), a half-block renderer, a pure-Swift inflate. Apps without image needs don't pay for it. |
-| `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`; `TrueTypeFont` (a `glyf` parser), `CoverageRasterizer` (signed-area coverage in 24.8 fixed point, no hinting) and `BuiltinGlyphSource`. The encoders and glyphs the recording renderer draws stills and animations with (`design/self-recording.md`). |
-| `TerminalUIRecording` | TerminalUI, Config | Internal, swtui-only; not a product. Renders a `.tuirec` recording: `RecordingReader`, `PresentationClock`, `RecordingPalette`, `CellMetrics`, `CastEncoder`. |
+| `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `BlendCanvas` (pixels kept as foreground over background at a coverage), `IndexedPaletteBuilder`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`; `TrueTypeFont` (a `glyf` parser), `CoverageRasterizer` (signed-area coverage in 24.8 fixed point, no hinting) and `BuiltinGlyphSource`. The encoders and glyphs the recording renderer draws stills and animations with (`design/self-recording.md`). |
+| `TerminalUIRecording` | TerminalUI, Config, Raster | Internal, swtui-only; not a product. Renders a `.tuirec` recording: `RecordingReader`, `PresentationClock`, `RecordingPalette`, `CellMetrics`, `CastEncoder`, `SVGFrameRenderer` and `SVGAnimationRenderer`, and the raster pictures — `RasterFrameComposer` (a screen into pixels) and `RasterAnimator` (a timeline into a GIF). |
 
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
@@ -223,7 +223,10 @@ for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
 decoder of its own) by `tools/tests/test_raster_encoders.py`. A change that
 means to alter the encoding rewrites them with `TERMINALUI_UPDATE_GOLDENS=1
 swift test --filter TerminalUIRasterTests`, and the Python test then says
-whether they still decode to the same pictures. The glyph goldens there
+whether they still decode to the same pictures. The PNG stills and GIF that
+`Tests/TerminalUIRecordingTests/Fixtures/` holds for the raster renderer are
+decoded the same way, the GIF's last frame compared with the still of its
+screen. The glyph goldens there
 (`glyph-*.pgm`, viewable in any image viewer) are drawn from the bundled
 JetBrains Mono, which the tests read from `tools/fonts/JetBrainsMono/`.
 
@@ -262,7 +265,7 @@ allocation- and cast-free.
 | **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `ColorBlending` (sRGB↔Oklab), `BorderStyle`, `Theme`; `Coordinate`, text layout; timeline scheduling |
 | **DevTools** | `TerminalUI/DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` |
 | **Config / CLI** | `TerminalUIConfig/`, `swtui/` | `DiagConfig`, `TOMLParser`, `KeyCombo`, `DiagPaths`; the diagnostic CLI (links TerminalUI for `swtui keys`) |
-| **Raster** (internal) | `TerminalUIRaster/` | `PixelCanvas`, `IndexedImage`; `Deflate` (LZ77 + `HuffmanCode` package-merge, each block the cheapest of stored/fixed/dynamic), `PNGWriter`, `LZW`, `GIFWriter` |
+| **Raster** (internal) | `TerminalUIRaster/` | `PixelCanvas`, `IndexedImage`, `BlendCanvas`, `IndexedPaletteBuilder`; `Deflate` (LZ77 + `HuffmanCode` package-merge, each block the cheapest of stored/fixed/dynamic), `PNGWriter`, `LZW`, `GIFWriter` |
 
 Tests live in `Tests/<Target>Tests/`, Swift Testing (`import Testing`, `@Test`,
 `#expect`). Graph tests are `@MainActor`.
@@ -369,6 +372,11 @@ swift run swtui record render <log> --format svg --at LABEL -o OUT   # one scree
 #   [--frame N] [--font-size 15] [--line-height 1.2] [--padding 12] [--scale 1|2] [--palette …]
 swift run swtui record render <log> --format svg -o OUT   # no --at/--frame: a CSS-animated SVG
 #   [--from L --to L] [--loop-pause 1.5s] [--svg-embed-font] (bundled JetBrains Mono, ~740 KB)
+swift run swtui record render <log> --format png --at LABEL -o OUT   # one screen as a PNG (--scale 2: @2x)
+swift run swtui record render <log> --format gif -o OUT              # the timeline as a looping GIF
+#   [--from L --to L] [--loop-pause 1.5s] [--quantum 40ms] and the svg flags, plus the text's fonts:
+#   [--font bundled|PATH] [--font-bold PATH] [--font-italic PATH] [--font-bold-italic PATH]
+#   [--fallback-font PATH]... [--engine auto|builtin] [--missing-glyph system|box|fail]
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit
@@ -377,6 +385,21 @@ swift run swtui ctl cells [x y w h] | probe <x> <y> | inspect
 swift run swtui ctl inspector-move <x> <y> | inspector-toggle
 swift run swtui ctl list | reap | kill --pid <N>
 ```
+
+PNG and GIF text is drawn by the builtin TrueType engine, the same bytes on
+macOS and Linux: `--font bundled` (the default until the system font engine
+lands) is JetBrains Mono from `tools/fonts/JetBrainsMono/`, found from swtui's
+own source path; `--font system` and `--engine system` are refused until then.
+A glyph no font has is a hollow box, warned about with its code point and
+frames (`--missing-glyph box`, and `system` for now), or refuses the render
+(`fail`, what the docs' pictures use). A PNG is indexed when it shows at most
+256 colours and RGB otherwise; a GIF's colours come from
+`IndexedPaletteBuilder` (exact colours always exact, anti-aliased edges in up
+to 16 steps). The render flags' defaults can sit in a `[render]` section of
+`.terminalui/terminalui.toml`, read by swtui itself, keys spelled like the
+flags with `_` (`font_size = 15`, `missing_glyph = "fail"`,
+`fallback_fonts = ["a.ttf"]`, decimals and durations quoted:
+`line_height = "1.2"`); a flag wins.
 
 With no `--pid`, `ctl` (and `record`) reaches the one app running from this checkout and
 refuses, listing them, when several are; `--pid`, `--socket`, `--dir` choose.

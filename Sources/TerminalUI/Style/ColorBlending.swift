@@ -112,6 +112,16 @@ private enum Oklab {
 }
 
 extension Color {
+    /// An sRGB colour's place in Oklab — lightness, then the green–red and
+    /// blue–yellow axes — by the transform blending uses, for a caller that
+    /// asks how far apart two colours look: the recording renderer's GIF
+    /// palette, choosing a stand-in for a colour its table cannot hold.
+    package static func oklab(red: UInt8, green: UInt8, blue: UInt8)
+        -> (lightness: Double, greenRed: Double, blueYellow: Double) {
+        let (lightness, greenRed, blueYellow) = Oklab.fromRGB((red, green, blue))
+        return (lightness, greenRed, blueYellow)
+    }
+
     /// This color as an exact sRGB triple, or `nil` when it has none.
     ///
     /// Named palette entries resolve to xterm's defaults — a stand-in, since
