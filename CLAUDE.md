@@ -99,6 +99,12 @@ python3 tools/scripts/check_vhs_compat.py [build_dir]  # local only, needs vhs: 
 # committed needs. Builds into .build-automation/.
 python3 tools/scripts/verify.py
 python3 tools/scripts/verify.py --always
+# Before tagging a release: the gate, then what CI runs beyond it — the
+# release build, the Thread Sanitizer job and the Linux leg (Docker must be
+# running). CI failed releases the gate had passed, on tests whose timing
+# held here and not on its three-core runner; a tag waits for this, and is
+# pushed once.
+python3 tools/scripts/verify.py --release
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
 # locks a build directory for the length of a build or test, so sharing .build
