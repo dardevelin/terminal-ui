@@ -43,7 +43,10 @@ public struct TextAreaState: Equatable, Sendable {
     public var scrollOffset: Int = 0
     /// Active selection range, if any.
     public var selection: TextAreaSelection?
-    /// Desired column preserved during vertical movement (sticky column).
+    /// The column Up and Down aim for (the sticky column): a display
+    /// column, in cells from the row's start rather than characters, so it
+    /// holds across rows of wide glyphs. Set by the first vertical move and
+    /// kept through the next, `nil` once the caret moves any other way.
     public var desiredCol: Int?
     /// The caret the view last moved to show. The view follows the caret
     /// only when it moves, so the wheel can scroll the text away from it
@@ -322,9 +325,7 @@ public struct TextArea: TerminalView {
         case .logical:
             rowCount = lines.count
         case .display:
-            rowCount = Self.cursorDisplayRow(cursorLogicalRow: max(0, lines.count - 1),
-                                             cursorLogicalCol: lines.last?.count ?? 0,
-                                             lines: lines, wrapWidth: wrapWidth) + 1
+            rowCount = WrappedText(lines: lines, width: wrapWidth).rowCount
         }
         // The farthest the wheel takes the view: the last row at the bottom.
         let maxScroll = max(0, rowCount - visibleHeight)
@@ -560,154 +561,6 @@ public struct TextArea: TerminalView {
         return max(0, scroll)
     }
 
-    // MARK: - Cursor projection (logical → display row)
-
-    /// Project a logical column into (chunkIndex, columnInChunk) for
-    /// the wrapped chunks of `logicalLine`. Used by `.display` arrow
-    /// mode to walk wrapped chunks of a single logical line before
-    /// crossing logical-line boundaries.
-    ///
-    /// Mirrors `PromptInput.projectCursor` shape but operates on a
-    /// single logical line — the caller resolves logical row first
-    /// and passes just the line.
-    ///
-    /// Reassembly contract: `wrapWords` may drop a single space at a
-    /// wrap boundary; we account for that with `consumed` so the
-    /// projection lands at the right column.
-    static func projectCursor(logicalLine: String, logicalCol: Int, wrapWidth: Int)
-        -> (chunkIndex: Int, columnInChunk: Int)
-    {
-        guard wrapWidth > 0 else { return (0, logicalCol) }
-        let chunks = TextLayout.wrapWords(logicalLine, width: wrapWidth)
-        if chunks.isEmpty { return (0, 0) }
-
-        var consumed = 0  // logical chars accounted for so far
-        for (idx, chunk) in chunks.enumerated() {
-            let chunkLen = chunk.count
-            let chunkEnd = consumed + chunkLen
-            // Cursor is inside or at the end of this chunk?
-            if logicalCol <= chunkEnd {
-                return (idx, max(0, logicalCol - consumed))
-            }
-            // Past this chunk — advance, accounting for a possibly-
-            // dropped boundary space in the source line.
-            consumed = chunkEnd
-            if consumed < logicalLine.count {
-                let nextCharIdx = logicalLine.index(logicalLine.startIndex, offsetBy: consumed)
-                if logicalLine[nextCharIdx] == " " {
-                    consumed += 1
-                }
-            }
-        }
-        // Past every chunk — pin to the last chunk's end.
-        let last = chunks.count - 1
-        return (last, chunks[last].count)
-    }
-
-    /// Inverse of `projectCursor`: given `(chunkIndex, columnInChunk)`,
-    /// return the absolute logical column. Pre-computed `chunks` is
-    /// passed in so callers can reuse a single wrap call. The
-    /// `logicalLine` is used to detect dropped boundary spaces so the
-    /// reconstructed column lands on the correct source character.
-    static func unprojectCursor(
-        chunks: [String],
-        chunkIndex: Int,
-        columnInChunk: Int,
-        logicalLine: String
-    ) -> Int {
-        guard !chunks.isEmpty else { return 0 }
-        let safeIdx = max(0, min(chunkIndex, chunks.count - 1))
-        var consumed = 0
-        for i in 0..<safeIdx {
-            consumed += chunks[i].count
-            if consumed < logicalLine.count {
-                let nextCharIdx = logicalLine.index(logicalLine.startIndex, offsetBy: consumed)
-                if logicalLine[nextCharIdx] == " " {
-                    consumed += 1
-                }
-            }
-        }
-        let safeCol = max(0, min(columnInChunk, chunks[safeIdx].count))
-        return min(consumed + safeCol, logicalLine.count)
-    }
-
-    /// Resolve `.display` arrow Down. Returns the destination
-    /// (chunkIndex, columnInChunk) within the current OR next logical
-    /// line. A returned `chunkIndex == -1` is the sentinel meaning
-    /// "cross to next logical line; caller manages the row jump and
-    /// re-projects with `chunksOfNextLine`".
-    ///
-    /// `desiredCol` is the sticky column the cursor is trying to
-    /// preserve across vertical movement (SwiftUI `desiredCol`).
-    static func displayArrowDown(
-        currentChunk: Int,
-        currentCol: Int,
-        chunksOfCurrentLine: [String],
-        chunksOfNextLine: [String]?,
-        desiredCol: Int
-    ) -> (chunkIndex: Int, columnInChunk: Int) {
-        // Try advancing within the current logical line's chunks.
-        if currentChunk + 1 < chunksOfCurrentLine.count {
-            let nextChunk = chunksOfCurrentLine[currentChunk + 1]
-            let col = min(desiredCol, nextChunk.count)
-            return (currentChunk + 1, col)
-        }
-        // Last chunk → cross logical-line boundary. Sentinel.
-        if let nextChunks = chunksOfNextLine, !nextChunks.isEmpty {
-            let col = min(desiredCol, nextChunks[0].count)
-            return (-1, col)
-        }
-        // No next line — stay put.
-        return (currentChunk, currentCol)
-    }
-
-    /// Symmetric for arrow Up.
-    static func displayArrowUp(
-        currentChunk: Int,
-        currentCol: Int,
-        chunksOfCurrentLine: [String],
-        chunksOfPreviousLine: [String]?,
-        desiredCol: Int
-    ) -> (chunkIndex: Int, columnInChunk: Int) {
-        if currentChunk > 0 {
-            let prevChunk = chunksOfCurrentLine[currentChunk - 1]
-            let col = min(desiredCol, prevChunk.count)
-            return (currentChunk - 1, col)
-        }
-        if let prevChunks = chunksOfPreviousLine, !prevChunks.isEmpty {
-            let lastIdx = prevChunks.count - 1
-            let col = min(desiredCol, prevChunks[lastIdx].count)
-            return (-1, col)
-        }
-        return (currentChunk, currentCol)
-    }
-
-    /// Compute the absolute display row index for a logical (row, col)
-    /// position given the wrap width. Sums display rows above the
-    /// cursor's logical line, then adds the chunk index within that
-    /// line.
-    static func cursorDisplayRow(
-        cursorLogicalRow: Int,
-        cursorLogicalCol: Int,
-        lines: [String],
-        wrapWidth: Int
-    ) -> Int {
-        var displayRow = 0
-        for r in 0..<min(cursorLogicalRow, lines.count) {
-            let chunks = TextLayout.wrapWords(lines[r], width: wrapWidth)
-            displayRow += max(1, chunks.count)
-        }
-        if cursorLogicalRow < lines.count {
-            let (chunkIdx, _) = projectCursor(
-                logicalLine: lines[cursorLogicalRow],
-                logicalCol: cursorLogicalCol,
-                wrapWidth: wrapWidth
-            )
-            displayRow += chunkIdx
-        }
-        return displayRow
-    }
-
     /// Display-row scroll clamp. Unlike `clampScroll` (logical-row),
     /// this projects the cursor's logical position to its display row
     /// then keeps THAT row in the viewport. Used when soft-wrap is
@@ -720,12 +573,8 @@ public struct TextArea: TerminalView {
         visibleHeight: Int,
         wrapWidth: Int
     ) -> Int {
-        let cursorDisplay = cursorDisplayRow(
-            cursorLogicalRow: cursorLogicalRow,
-            cursorLogicalCol: cursorLogicalCol,
-            lines: lines,
-            wrapWidth: wrapWidth
-        )
+        let cursorDisplay = WrappedText(lines: lines, width: wrapWidth)
+            .row(ofCaret: cursorLogicalCol, line: min(max(0, cursorLogicalRow), lines.count - 1))
         var scroll = currentScroll
         if cursorDisplay < scroll {
             scroll = cursorDisplay
@@ -784,16 +633,17 @@ public struct TextArea: TerminalView {
         )
 
         outer: for row in scrollOffset..<endRow {
-            let line = lines[row]
+            let layout = WrappedLine(lines[row], width: wrapWidth)
+            let caret = showsCursor && row == cursor.row ? layout.caret(at: cursor.col) : nil
 
-            let chunks = displayChunks(of: line, wrapWidth: wrapWidth)
-
-            // For each wrapped chunk produce one display row. Track
-            // the column offset into the LOGICAL line so cursor /
-            // selection positions resolve correctly across chunks.
-            var chunkColStart = 0
-            for (chunkIdx, chunk) in chunks.enumerated() {
+            // One display row per wrapped row. Its range is where it sits
+            // in the LOGICAL line, which selection and token colours are
+            // kept in; the caret is placed by the cell it is drawn in.
+            for (chunkIdx, range) in layout.rows.enumerated() {
                 if emittedRows >= visibleHeight { break outer }
+                let chunk = layout.text(ofRow: chunkIdx)
+                let chunkColStart = range.lowerBound
+                let caretOffset = caret?.row == chunkIdx ? caret?.offset : nil
 
                 if emittedRows > 0 {
                     spans.append(TextSpan("\n"))
@@ -815,11 +665,9 @@ public struct TextArea: TerminalView {
                     }
                 }
 
-                let chunkColEnd = chunkColStart + chunk.count
                 // Empty chunk on an empty logical line
                 if chunk.isEmpty {
-                    if showsCursor && row == cursor.row
-                        && cursor.col >= chunkColStart && cursor.col <= chunkColEnd {
+                    if caretOffset != nil {
                         spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
                     }
                 } else {
@@ -869,7 +717,7 @@ public struct TextArea: TerminalView {
 
                     for col in 0..<chunk.count {
                         let logicalCol = chunkColStart + col
-                        let atCursor = showsCursor && row == cursor.row && logicalCol == cursor.col
+                        let atCursor = caretOffset == col
                         let selected = isPositionSelected(row: row, col: logicalCol, selection: selection)
                         let style: CharStyle = atCursor ? .cursor : selected ? .selected : .normal
                         let charColor: Color = tokenColors.isEmpty ? theme.plain : tokenColors[col]
@@ -886,31 +734,11 @@ public struct TextArea: TerminalView {
                     }
                     flushRun(upTo: chunk.count)
 
-                    // Cursor past last character of this chunk —
-                    // only when this is the LAST chunk of the
-                    // logical line (otherwise cursor lives on the
-                    // next chunk).
-                    if showsCursor && row == cursor.row && cursor.col >= chunkColEnd
-                        && chunkIdx == chunks.count - 1
-                    {
+                    // Cursor past the last character — only ever on the
+                    // line's last row, as the end of a row a wrap ends
+                    // is drawn at the start of the next.
+                    if caretOffset == chunk.count {
                         spans.append(TextSpan(String(cursorBlock), foreground: cursorFg, background: cursorBg))
-                    }
-                }
-
-                chunkColStart = chunkColEnd
-                // Advance past the boundary space dropped by
-                // wrapWords when the chunk transition happened on a
-                // whitespace token. Reassembly contract: at most one
-                // space per wrap point may be dropped.
-                if chunkIdx < chunks.count - 1 {
-                    // Look ahead: if the next chunk in the source
-                    // line starts after a space, account for it.
-                    let nextStart = chunkColEnd
-                    if nextStart < line.count {
-                        let idx = line.index(line.startIndex, offsetBy: nextStart)
-                        if line[idx] == " " {
-                            chunkColStart += 1
-                        }
                     }
                 }
 
@@ -937,32 +765,18 @@ public struct TextArea: TerminalView {
 
     /// The caret position drawn at column `x`, row `y` of the rows
     /// `buildDisplaySpans` lays out from `scrollOffset`: what a click there
-    /// places the caret at. Past the end of a line it is the line's end;
-    /// below the last line, the end of the last; on the gutter, the start
-    /// of the line.
+    /// places the caret at — see ``WrappedLine/index(row:column:)``. Below
+    /// the last line it is the end of the last; on the gutter, the start of
+    /// the row.
     static func cursor(atColumn x: Int, row y: Int, lines: [String], scrollOffset: Int,
                        lineNumbers: Bool, wrapWidth: Int) -> TextAreaCursor {
         let textStart = lineNumbers ? gutterWidth(for: lines.count) + 1 : 0
-        var displayRow = 0
-        for row in max(0, scrollOffset)..<lines.count {
-            let line = lines[row]
-            let chunks = displayChunks(of: line, wrapWidth: wrapWidth)
-            if y < displayRow + chunks.count {
-                let col = unprojectCursor(chunks: chunks, chunkIndex: y - displayRow,
-                                          columnInChunk: max(0, x - textStart), logicalLine: line)
-                return TextAreaCursor(row: row, col: col)
-            }
-            displayRow += chunks.count
+        let firstLine = min(max(0, scrollOffset), lines.count - 1)
+        guard let caret = WrappedText(lines: lines, width: wrapWidth)
+            .caret(atRow: y, column: max(0, x - textStart), from: firstLine) else {
+            return TextAreaCursor(row: lines.count - 1, col: lines[lines.count - 1].count)
         }
-        let last = max(0, lines.count - 1)
-        return TextAreaCursor(row: last, col: lines.indices.contains(last) ? lines[last].count : 0)
-    }
-
-    /// The rows `line` is drawn in: wrapped at `wrapWidth` cells when it
-    /// is wider, whole otherwise — and whole when `wrapWidth` is 0, the 1:1
-    /// rendering older callers ask for.
-    static func displayChunks(of line: String, wrapWidth: Int) -> [String] {
-        wrapWidth > 0 && line.displayWidth > wrapWidth ? TextLayout.wrapWords(line, width: wrapWidth) : [line]
+        return TextAreaCursor(row: caret.line, col: caret.index)
     }
 
     static func gutterWidth(for totalLines: Int) -> Int {
@@ -1135,122 +949,27 @@ public struct TextArea: TerminalView {
             case .redo:
                 applyRedo(text: text, state: state, visibleHeight: visibleHeight)
                 return .handled
-            case .moveUp:
-                if arrowMode == .display && wrapWidth > 0 {
-                    // Project current cursor to (chunk, col) within the
-                    // current logical line, ask displayArrowUp for the
-                    // destination, and translate back to (row, col).
-                    let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
-                    let (curChunk, _) = projectCursor(
-                        logicalLine: lines[cursor.row],
-                        logicalCol: cursor.col,
-                        wrapWidth: wrapWidth
-                    )
-                    let desired = editorState.desiredCol ?? cursor.col
-                    let prevChunks: [String]? = cursor.row > 0
-                        ? TextLayout.wrapWords(lines[cursor.row - 1], width: wrapWidth)
-                        : nil
-                    let (newChunk, newCol) = displayArrowUp(
-                        currentChunk: curChunk,
-                        currentCol: cursor.col,
-                        chunksOfCurrentLine: currentChunks,
-                        chunksOfPreviousLine: prevChunks,
-                        desiredCol: desired
-                    )
-                    if newChunk == -1 {
-                        // Cross to previous logical line, last chunk.
-                        cursor.row -= 1
-                        let prev = prevChunks ?? []
-                        cursor.col = unprojectCursor(
-                            chunks: prev,
-                            chunkIndex: prev.count - 1,
-                            columnInChunk: newCol,
-                            logicalLine: lines[cursor.row]
-                        )
-                    } else if newChunk != curChunk {
-                        // Move within current logical line — translate
-                        // (chunk, col) back to logical col.
-                        cursor.col = unprojectCursor(
-                            chunks: currentChunks,
-                            chunkIndex: newChunk,
-                            columnInChunk: newCol,
-                            logicalLine: lines[cursor.row]
-                        )
-                    } else {
-                        // Wall: row 0 + chunk 0, displayArrowUp returned
-                        // (curChunk, currentCol) — no destination.
-                        textEditing.boundaryHit(.topEdge)
-                    }
-                    editorState.desiredCol = desired
-                } else if cursor.row > 0 {
-                    let desired = editorState.desiredCol ?? cursor.col
-                    cursor.row -= 1
-                    cursor.col = min(desired, lines[cursor.row].count)
-                    editorState.desiredCol = desired
+            case .moveUp, .moveDown:
+                // `.display` steps through the rows a line wraps into;
+                // `.logical` holds each line on one row. Both aim for the
+                // column the caret is drawn in, kept across short lines.
+                let text = WrappedText(lines: lines, width: arrowMode == .display ? wrapWidth : 0)
+                let desired = editorState.desiredCol ?? text.column(ofCaret: cursor.col, line: cursor.row)
+                if let moved = text.caret(movedBy: command == .moveUp ? -1 : 1, from: cursor.col,
+                                          line: cursor.row, column: desired) {
+                    cursor = TextAreaCursor(row: moved.line, col: moved.index)
                 } else {
-                    // .logical mode at row 0 — buffer-top wall.
-                    textEditing.boundaryHit(.topEdge)
+                    textEditing.boundaryHit(command == .moveUp ? .topEdge : .bottomEdge)
                 }
-                commitCursorMove()
-                return .handled
-
-            case .moveDown:
-                if arrowMode == .display && wrapWidth > 0 {
-                    let currentChunks = TextLayout.wrapWords(lines[cursor.row], width: wrapWidth)
-                    let (curChunk, _) = projectCursor(
-                        logicalLine: lines[cursor.row],
-                        logicalCol: cursor.col,
-                        wrapWidth: wrapWidth
-                    )
-                    let desired = editorState.desiredCol ?? cursor.col
-                    let nextChunks: [String]? = cursor.row + 1 < lines.count
-                        ? TextLayout.wrapWords(lines[cursor.row + 1], width: wrapWidth)
-                        : nil
-                    let (newChunk, newCol) = displayArrowDown(
-                        currentChunk: curChunk,
-                        currentCol: cursor.col,
-                        chunksOfCurrentLine: currentChunks,
-                        chunksOfNextLine: nextChunks,
-                        desiredCol: desired
-                    )
-                    if newChunk == -1 {
-                        // Cross to next logical line, chunk 0.
-                        cursor.row += 1
-                        let next = nextChunks ?? []
-                        cursor.col = unprojectCursor(
-                            chunks: next,
-                            chunkIndex: 0,
-                            columnInChunk: newCol,
-                            logicalLine: lines[cursor.row]
-                        )
-                    } else if newChunk != curChunk {
-                        cursor.col = unprojectCursor(
-                            chunks: currentChunks,
-                            chunkIndex: newChunk,
-                            columnInChunk: newCol,
-                            logicalLine: lines[cursor.row]
-                        )
-                    } else {
-                        // Wall: last row + last chunk — no destination.
-                        textEditing.boundaryHit(.bottomEdge)
-                    }
-                    editorState.desiredCol = desired
-                } else if cursor.row < lines.count - 1 {
-                    let desired = editorState.desiredCol ?? cursor.col
-                    cursor.row += 1
-                    cursor.col = min(desired, lines[cursor.row].count)
-                    editorState.desiredCol = desired
-                } else {
-                    // .logical mode at last row — buffer-bottom wall.
-                    textEditing.boundaryHit(.bottomEdge)
-                }
+                editorState.desiredCol = desired
                 commitCursorMove()
                 return .handled
 
             case .pageUp, .pageDown:
                 let jump = max(1, visibleHeight) * (command == .pageUp ? -1 : 1)
+                let column = WrappedLine(lines[cursor.row], width: 0).caret(at: cursor.col).column
                 cursor.row = min(lines.count - 1, max(0, cursor.row + jump))
-                cursor.col = min(cursor.col, lines[cursor.row].count)
+                cursor.col = WrappedLine(lines[cursor.row], width: 0).index(row: 0, column: column)
                 commitCursorMove()
                 return .handled
             default:

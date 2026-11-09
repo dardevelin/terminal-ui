@@ -424,6 +424,10 @@ public struct PromptInputState: Equatable, Sendable {
     public var savedInput: String = ""
     /// The paste markers in ``savedInput``, put back with it.
     var savedReferences: [PasteReference] = []
+    /// The display column Up and Down aim for, in cells: set by the first
+    /// vertical move, kept through the next, dropped by any other key, a
+    /// click or a paste.
+    var desiredColumn: Int?
     /// Buffer pool — append-only across the prompt's lifetime. References
     /// point into here; deleting a reference does NOT delete its buffer
     /// so it can be re-inserted. Indexed by `id`.
@@ -653,20 +657,10 @@ public struct PromptInput: TerminalView {
         let prefix = resolvedPrefix
         let contentWidth = max(1, width - prefix.width)
         let st = self.state.get()
-        // Project the EXPANDED binding text + reference set into
-        // the COLLAPSED display text. Markers replace each
-        // collapsed reference's range with `[Pasted text #N +M
-        // lines]`. The mapping is also used to translate cursor
-        // (row, col) in expanded space → display space.
-        let projection = Self.projectCollapsedDisplay(
-            expandedText: self.text.get(),
-            references: st.references,
-            buffers: st.buffers,
-            localizer: localizer
-        )
-        let lines = TextLines.split(projection.displayText)
-        let wraps = Self.wrapPerLine(lines: lines, width: contentWidth)
-        let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
+        let localizer = self.localizer
+        let layout = PromptLayout(text: self.text.get(), references: st.references, buffers: st.buffers,
+                                  width: contentWidth, localizer: localizer)
+        let totalDisplayRows = layout.totalDisplayRows
         let ceiling = Self.resolveCeiling(
             policy: self.heightPolicy,
             legacy: self.maxVisibleLines,
@@ -685,11 +679,8 @@ public struct PromptInput: TerminalView {
             placeholder: self.placeholder,
             badge: self.badge,
             prefix: prefix,
-            lines: lines,
-            wraps: wraps,
-            totalDisplayRows: totalDisplayRows,
-            visibleLines: renderedHeight,
-            projection: projection
+            layout: layout,
+            visibleLines: renderedHeight
         )
         return rows
             .focusable()
@@ -698,6 +689,7 @@ public struct PromptInput: TerminalView {
                 var current = state.get()
                 (current.cursorRow, current.cursorCol) = Self.cursor(
                     atColumn: x - prefix.width, row: y, rows: rows)
+                current.desiredColumn = nil
                 state.set(current)
             }
             .onKeyPress { [text, state, onSubmit, arrowMode, textEditing] event in
@@ -707,7 +699,8 @@ public struct PromptInput: TerminalView {
                     maxVisibleLines: renderedHeight,
                     wrapWidth: contentWidth,
                     arrowMode: arrowMode,
-                    textEditing: textEditing
+                    textEditing: textEditing,
+                    localizer: localizer
                 )
             }
             .onPaste { [text, state, pasteMode] payload in
@@ -717,7 +710,8 @@ public struct PromptInput: TerminalView {
                     state: state,
                     maxVisibleLines: renderedHeight,
                     wrapWidth: contentWidth,
-                    pasteMode: pasteMode
+                    pasteMode: pasteMode,
+                    localizer: localizer
                 )
             }
     }
@@ -764,88 +758,18 @@ public struct PromptInput: TerminalView {
         }
     }
 
-    // MARK: - Soft wrap
-
-    /// Splits a logical line into ≤`width`-character chunks, breaking
-    /// on whitespace boundaries. Now a thin wrapper over the shared
-    /// `TextLayout.wrapWords` primitive so PromptInput, Text, and
-    /// future text-view components share one wrap algorithm.
-    static func wrapLine(_ line: String, width: Int) -> [String] {
-        TextLayout.wrapWords(line, width: width)
-    }
-
-    /// Pre-computes wrapped chunks for every logical line. Used by both the
-    /// renderer and the scroll/navigation math so they agree on display rows.
-    static func wrapPerLine(lines: [String], width: Int) -> [[String]] {
-        lines.map { wrapLine($0, width: width) }
-    }
-
-    /// Maps a logical cursor to its (displayRow, displayCol) in the flattened
-    /// post-wrap grid. `displayRow` is summed across all preceding logical
-    /// lines' chunk counts plus the wrap-index within the current line.
-    /// `displayCol` is the cursor's column within that chunk.
-    static func projectCursor(
-        logicalRow: Int,
-        logicalCol: Int,
-        wraps: [[String]]
-    ) -> (displayRow: Int, displayCol: Int) {
-        var displayRow = 0
-        for row in 0..<min(logicalRow, wraps.count) {
-            displayRow += max(1, wraps[row].count)
-        }
-        let chunks = wraps[min(logicalRow, wraps.count - 1)]
-        // `chunks[i]` covers logical columns [i*W, (i+1)*W). The cursor's
-        // position inside the chunk is `logicalCol - i*W`. When the cursor
-        // sits at the boundary (`logicalCol == chunkLen` and another chunk
-        // follows), prefer the start of the next chunk — matches how editors
-        // position a trailing cursor after a word-wrap.
-        var remaining = logicalCol
-        for (i, chunk) in chunks.enumerated() {
-            if remaining < chunk.count {
-                return (displayRow + i, remaining)
-            }
-            if remaining == chunk.count {
-                // End of a chunk: if another chunk follows, move to its start;
-                // otherwise render at the end of this chunk (cursor block
-                // drawn to the right of the last character).
-                if i + 1 < chunks.count {
-                    return (displayRow + i + 1, 0)
-                }
-                return (displayRow + i, remaining)
-            }
-            remaining -= chunk.count
-        }
-        // Defensive: cursor past end — pin at end of last chunk.
-        let lastIdx = max(0, chunks.count - 1)
-        return (displayRow + lastIdx, chunks[lastIdx].count)
-    }
-
     /// Where in the text a click at column `x` of the text — past the
     /// prefix — and row `y` of `rows` as `buildDisplay` draws them puts the
-    /// cursor: on the character there, at the end of a row clicked past
-    /// its end, and at the nearer edge of a collapsed paste marker clicked
-    /// inside, as the cursor never lives within one.
+    /// cursor: before the character drawn there, at the end of a row clicked
+    /// past its end (see ``WrappedLine/index(row:column:)``), and at the
+    /// nearer edge of a collapsed paste marker clicked inside, as the cursor
+    /// never lives within one.
     static func cursor(atColumn x: Int, row y: Int, rows: PromptRows) -> (row: Int, col: Int) {
-        let expandedLines = TextLines.split(rows.text)
         guard !rows.text.isEmpty else { return (0, 0) }
-        var target = max(0, min(rows.firstVisibleRow + y, rows.totalDisplayRows - 1))
-        var lineIndex = 0
-        var columnInLine = 0
-        for (index, chunks) in rows.wraps.enumerated() {
-            guard target >= chunks.count else {
-                // Chunks follow one another in the line, as `projectCursor`
-                // counts them.
-                columnInLine = chunks.prefix(target).reduce(0) { $0 + $1.count }
-                    + max(0, min(x, chunks[target].count))
-                lineIndex = index
-                break
-            }
-            target -= chunks.count
-            lineIndex = index
-            columnInLine = rows.lines.indices.contains(index) ? rows.lines[index].count : 0
-        }
-        let offset = TextLines.offset(row: lineIndex, col: columnInLine, in: rows.lines)
-        return TextLines.position(of: untranslateOffset(offset, in: rows.projection), in: expandedLines)
+        let layout = rows.layout
+        let target = max(0, min(rows.firstVisibleRow + y, layout.totalDisplayRows - 1))
+        guard let caret = WrappedText(layout.wraps).caret(atRow: target, column: max(0, x)) else { return (0, 0) }
+        return layout.cursor(line: caret.line, index: caret.index)
     }
 
     // MARK: - Collapsed-display projection
@@ -1012,25 +936,14 @@ public struct PromptInput: TerminalView {
     /// the cursor only while focused, and reserved rows past the text.
     fileprivate static func buildDisplay(_ rows: PromptRows, isFocused: Bool, cursorLit: Bool,
                                          theme: any Theme) -> [TextSpan] {
-        let st = rows.state
-        let lines = rows.lines
-        let wraps = rows.wraps
-        let projection = rows.projection
-        // Translate cursor from expanded coordinates → display
-        // coordinates. Markers shift the column count for any
-        // position past their start. The cursor never lives INSIDE a
-        // collapsed range (input handlers snap to edges),
-        // so a single-pass delta lookup is sufficient.
-        let expandedLines = TextLines.split(rows.text)
-        let cursorRowInExpanded = min(st.cursorRow, max(0, expandedLines.count - 1))
-        let cursorColInExpanded = min(st.cursorCol, expandedLines[cursorRowInExpanded].count)
-        let expandedOffset = TextLines.offset(row: cursorRowInExpanded, col: cursorColInExpanded,
-                                              in: expandedLines)
-        let displayOffset = translateOffset(expandedOffset, deltas: projection.deltas)
-        let (cursorRow, cursorCol) = TextLines.position(of: displayOffset, in: lines)
-        let (cursorDisplayRow, cursorDisplayCol) = projectCursor(
-            logicalRow: cursorRow, logicalCol: cursorCol, wraps: wraps
-        )
+        let layout = rows.layout
+        let projection = layout.projection
+        // The cursor never lives INSIDE a collapsed range (input handlers
+        // snap to edges), so it is before a character of the display text,
+        // drawn on the row and at the offset in it the wrap puts it.
+        let caret = layout.displayCaret(row: rows.state.cursorRow, col: rows.state.cursorCol)
+        let cursorDisplayRow = layout.displayRow(of: caret)
+        let cursorDisplayCol = layout.wraps[caret.line].caret(at: caret.index).offset
 
         // Flatten (logicalRow, chunkIndex) pairs for the visible window.
         let startDisplayRow = rows.firstVisibleRow
@@ -1042,8 +955,12 @@ public struct PromptInput: TerminalView {
         var currentDisplayRow = 0
         var emittedRows = 0
 
-        outer: for (logicalIdx, chunks) in wraps.enumerated() {
-            for (chunkIdx, chunk) in chunks.enumerated() {
+        // Where each line starts in the display text: the lines before it,
+        // each with its joining `\n`.
+        var lineStartInDisplay = 0
+        outer: for wrapped in layout.wraps {
+            defer { lineStartInDisplay += wrapped.characters.count + 1 }
+            for (chunkIdx, range) in wrapped.rows.enumerated() {
                 defer { currentDisplayRow += 1 }
                 if currentDisplayRow < startDisplayRow { continue }
                 if currentDisplayRow >= endDisplayRow { break outer }
@@ -1068,18 +985,11 @@ public struct PromptInput: TerminalView {
                     continue
                 }
 
-                // Compute this chunk's start offset in the
-                // collapsed display text. Walk earlier logical lines
-                // (each contributes its full `lines[i].count + 1` for
-                // the joining `\n`), then earlier chunks of the
-                // current logical line.
-                var chunkStartInDisplay = 0
-                for r in 0..<logicalIdx {
-                    chunkStartInDisplay += lines[r].count + 1
-                }
-                for c in 0..<chunkIdx {
-                    chunkStartInDisplay += wraps[logicalIdx][c].count
-                }
+                // The row's offset in the display text, past any
+                // whitespace the wrap dropped before it — the coordinates
+                // the paste markers are kept in.
+                let chunk = wrapped.text(ofRow: chunkIdx)
+                let chunkStartInDisplay = lineStartInDisplay + range.lowerBound
 
                 let isCursorRow = isFocused && currentDisplayRow == cursorDisplayRow
                 if isCursorRow {
@@ -1112,9 +1022,9 @@ public struct PromptInput: TerminalView {
                         }
                     } else {
                         // Cursor sits past the last character of this chunk —
-                        // render the block glyph. `projectCursor` only lands
-                        // here for the last chunk of the last logical line
-                        // (otherwise it rolls to the next chunk's col 0).
+                        // render the block glyph. Only a line's last row has
+                        // its end drawn on it; a wrapped row's end is drawn
+                        // at the start of the next.
                         spans.append(TextSpan(String(cursorChar), foreground: cursorStyle.background))
                     }
                 } else {
@@ -1245,7 +1155,8 @@ public struct PromptInput: TerminalView {
         state: Binding<PromptInputState>,
         maxVisibleLines: Int,
         wrapWidth: Int,
-        pasteMode: PasteMode = .claudeCode
+        pasteMode: PasteMode = .claudeCode,
+        localizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()
     ) {
         guard !payload.isEmpty else { return }
 
@@ -1254,6 +1165,7 @@ public struct PromptInput: TerminalView {
 
         var st = state.get()
         var lines = TextLines.split(text.get())
+        st.desiredColumn = nil
 
         st.cursorRow = min(st.cursorRow, lines.count - 1)
         st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
@@ -1284,7 +1196,8 @@ public struct PromptInput: TerminalView {
             let range = st.references[adjacentIdx]
             let endOffset = range.start + range.length
             (st.cursorRow, st.cursorCol) = TextLines.position(of: endOffset, in: lines)
-            adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+            adjustScroll(&st, text: TextLines.join(lines), maxVisibleLines: maxVisibleLines,
+                         wrapWidth: wrapWidth, localizer: localizer)
             state.set(st)
             return
         }
@@ -1347,7 +1260,8 @@ public struct PromptInput: TerminalView {
 
         st.historyIndex = -1
         text.set(TextLines.join(lines))
-        adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+        adjustScroll(&st, text: TextLines.join(lines), maxVisibleLines: maxVisibleLines,
+                     wrapWidth: wrapWidth, localizer: localizer)
         state.set(st)
     }
 
@@ -1362,11 +1276,15 @@ public struct PromptInput: TerminalView {
         maxVisibleLines: Int,
         wrapWidth: Int = .max,
         arrowMode: PromptArrowMode = .display,
-        textEditing: TextEditingContext = EnvironmentValues().textEditing
+        textEditing: TextEditingContext = EnvironmentValues().textEditing,
+        localizer: any PromptInputLocalizer = DefaultPromptInputLocalizer()
     ) -> KeyEventResult {
         let content = text.get()
         var st = state.get()
         var lines = TextLines.split(content)
+        // Only a vertical move keeps the column it aimed for, for the next.
+        let desiredColumn = st.desiredColumn
+        st.desiredColumn = nil
 
         // Clamp cursor
         st.cursorRow = min(st.cursorRow, lines.count - 1)
@@ -1438,10 +1356,12 @@ public struct PromptInput: TerminalView {
                     st.references = []
                 }
                 return .handled
-            case .moveUp:
-                return moveCursorUp(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode) ? .handled : nil
-            case .moveDown:
-                return moveCursorDown(&st, lines: lines, wrapWidth: wrapWidth, arrowMode: arrowMode) ? .handled : nil
+            case .moveUp, .moveDown:
+                // `.logical` holds each line on one row.
+                let layout = PromptLayout(text: content, references: st.references, buffers: st.buffers,
+                                          width: arrowMode == .display ? wrapWidth : 0, localizer: localizer)
+                return moveCursor(by: command == .moveUp ? -1 : 1, &st, layout: layout,
+                                  desiredColumn: desiredColumn) ? .handled : nil
             case .previousHistory:
                 guard st.historyIndex + 1 < st.history.count else {
                     textEditing.boundaryHit(.topEdge)
@@ -1488,134 +1408,50 @@ public struct PromptInput: TerminalView {
         }
         // Otherwise a chord no command claims, which bubbles to the parent.
         guard let result else { return .ignored }
-        adjustScroll(&st, maxVisibleLines: maxVisibleLines, wrapWidth: wrapWidth, lines: lines)
+        adjustScroll(&st, text: TextLines.join(lines), maxVisibleLines: maxVisibleLines,
+                     wrapWidth: wrapWidth, localizer: localizer)
         state.set(st)
         return result
     }
 
     // MARK: - Helpers
 
-    /// Moves the cursor up one step under the selected arrow mode. Returns
-    /// false if it could not move (already at top) so the caller can fall
-    /// through to history recall.
-    private static func moveCursorUp(
+    /// Moves the cursor one display row of `layout` up (`step` −1) or down
+    /// (1), to `desiredColumn` or else the column it is drawn at. Returns
+    /// false at the first or last row so the caller can fall through to
+    /// history recall.
+    private static func moveCursor(
+        by step: Int,
         _ st: inout PromptInputState,
-        lines: [String],
-        wrapWidth: Int,
-        arrowMode: PromptArrowMode
+        layout: PromptLayout,
+        desiredColumn: Int?
     ) -> Bool {
-        switch arrowMode {
-        case .logical:
-            if st.cursorRow > 0 {
-                st.cursorRow -= 1
-                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-                return true
-            }
-            return false
-        case .display:
-            guard wrapWidth > 0, wrapWidth != .max else {
-                // No wrap info → fall back to logical.
-                if st.cursorRow > 0 {
-                    st.cursorRow -= 1
-                    st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-                    return true
-                }
-                return false
-            }
-            // Inside a soft-wrapped logical line: step back by `wrapWidth`.
-            if st.cursorCol >= wrapWidth {
-                st.cursorCol -= wrapWidth
-                return true
-            }
-            // At the top display row of this logical line → jump to the
-            // bottom display row of the previous logical line, preserving
-            // the desired column as closely as possible.
-            if st.cursorRow > 0 {
-                st.cursorRow -= 1
-                let prevLine = lines[st.cursorRow]
-                let prevLen = prevLine.count
-                let lastChunkStart = (prevLen / wrapWidth) * wrapWidth
-                // If prevLen is an exact multiple of wrapWidth, `lastChunkStart`
-                // lands on the empty trailing chunk; back up one row.
-                let adjustedStart: Int
-                if prevLen > 0 && prevLen % wrapWidth == 0 {
-                    adjustedStart = prevLen - wrapWidth
-                } else {
-                    adjustedStart = lastChunkStart
-                }
-                let desiredCol = st.cursorCol  // carry column intent
-                let chunkLen = prevLen - adjustedStart
-                st.cursorCol = min(adjustedStart + desiredCol, adjustedStart + chunkLen)
-                return true
-            }
+        let rows = WrappedText(layout.wraps)
+        let caret = layout.displayCaret(row: st.cursorRow, col: st.cursorCol)
+        let column = desiredColumn ?? rows.column(ofCaret: caret.index, line: caret.line)
+        guard let moved = rows.caret(movedBy: step, from: caret.index, line: caret.line, column: column) else {
             return false
         }
-    }
-
-    private static func moveCursorDown(
-        _ st: inout PromptInputState,
-        lines: [String],
-        wrapWidth: Int,
-        arrowMode: PromptArrowMode
-    ) -> Bool {
-        let lineCount = lines.count
-        switch arrowMode {
-        case .logical:
-            if st.cursorRow < lineCount - 1 {
-                st.cursorRow += 1
-                st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-                return true
-            }
-            return false
-        case .display:
-            guard wrapWidth > 0, wrapWidth != .max else {
-                if st.cursorRow < lineCount - 1 {
-                    st.cursorRow += 1
-                    st.cursorCol = min(st.cursorCol, lines[st.cursorRow].count)
-                    return true
-                }
-                return false
-            }
-            let line = lines[st.cursorRow]
-            let remainingInLine = line.count - st.cursorCol
-            if remainingInLine >= wrapWidth {
-                // Another wrapped chunk exists in this logical line.
-                st.cursorCol += wrapWidth
-                return true
-            }
-            // Bottom chunk of current line → jump to first chunk of next line.
-            if st.cursorRow < lineCount - 1 {
-                st.cursorRow += 1
-                let colInChunk = st.cursorCol % wrapWidth
-                st.cursorCol = min(colInChunk, lines[st.cursorRow].count)
-                return true
-            }
-            return false
-        }
+        (st.cursorRow, st.cursorCol) = layout.cursor(line: moved.line, index: moved.index)
+        st.desiredColumn = column
+        return true
     }
 
     /// Scrolls so the cursor's display row is visible. Works on DISPLAY rows
-    /// throughout: a single long soft-wrapped line scrolls row-by-row, a
-    /// short line with lots of `\n`s still scrolls correctly.
+    /// throughout — the text as drawn, markers and wraps included: a single
+    /// long soft-wrapped line scrolls row-by-row, a short line with lots of
+    /// newlines still scrolls correctly.
     private static func adjustScroll(
         _ st: inout PromptInputState,
+        text: String,
         maxVisibleLines: Int,
         wrapWidth: Int,
-        lines: [String]
+        localizer: any PromptInputLocalizer
     ) {
-        let wraps: [[String]]
-        if wrapWidth <= 0 || wrapWidth == .max {
-            wraps = lines.map { [$0] }
-        } else {
-            wraps = wrapPerLine(lines: lines, width: wrapWidth)
-        }
-        let (cursorDisplayRow, _) = projectCursor(
-            logicalRow: min(st.cursorRow, max(0, lines.count - 1)),
-            logicalCol: min(st.cursorCol, lines[min(st.cursorRow, max(0, lines.count - 1))].count),
-            wraps: wraps
-        )
-        let totalDisplayRows = wraps.reduce(0) { $0 + $1.count }
-        let maxScroll = max(0, totalDisplayRows - maxVisibleLines)
+        let layout = PromptLayout(text: text, references: st.references, buffers: st.buffers,
+                                  width: wrapWidth, localizer: localizer)
+        let cursorDisplayRow = layout.displayRow(of: layout.displayCaret(row: st.cursorRow, col: st.cursorCol))
+        let maxScroll = max(0, layout.totalDisplayRows - maxVisibleLines)
 
         if cursorDisplayRow < st.scrollDisplayRow {
             st.scrollDisplayRow = cursorDisplayRow
@@ -1623,6 +1459,62 @@ public struct PromptInput: TerminalView {
             st.scrollDisplayRow = cursorDisplayRow - maxVisibleLines + 1
         }
         st.scrollDisplayRow = max(0, min(st.scrollDisplayRow, maxScroll))
+    }
+}
+
+/// A prompt's text as it is drawn — each collapsed paste shown as its
+/// marker, each line wrapped to the prompt's width — and the way between
+/// the cursor, kept in the expanded text, and the cell it is drawn in.
+/// Drawing, a click, Up and Down and scrolling all read it.
+struct PromptLayout {
+    /// The expanded text's lines, which the cursor indexes.
+    let expandedLines: [String]
+    /// The expanded text with each collapsed paste replaced by its marker.
+    let projection: PromptInput.CollapsedProjection
+    /// The display text's lines.
+    let lines: [String]
+    /// Each display line wrapped to the width.
+    let wraps: [WrappedLine]
+
+    /// `text`, its pastes collapsed as `references` and `buffers` say and
+    /// labelled by `localizer`, wrapped to `width` cells.
+    init(text: String, references: [PasteReference], buffers: [PasteBuffer], width: Int,
+         localizer: any PromptInputLocalizer) {
+        expandedLines = TextLines.split(text)
+        projection = PromptInput.projectCollapsedDisplay(expandedText: text, references: references,
+                                                         buffers: buffers, localizer: localizer)
+        lines = TextLines.split(projection.displayText)
+        wraps = lines.map { WrappedLine($0, width: width) }
+    }
+
+    /// The display rows the text takes.
+    var totalDisplayRows: Int {
+        wraps.reduce(0) { $0 + $1.rows.count }
+    }
+
+    /// The display line, and the character in it, the cursor at `col` of
+    /// expanded line `row` is drawn before. A collapsed marker shifts every
+    /// position past it.
+    func displayCaret(row: Int, col: Int) -> (line: Int, index: Int) {
+        let row = min(max(0, row), expandedLines.count - 1)
+        let col = min(max(0, col), expandedLines[row].count)
+        let offset = PromptInput.translateOffset(TextLines.offset(row: row, col: col, in: expandedLines),
+                                                 deltas: projection.deltas)
+        let position = TextLines.position(of: offset, in: lines)
+        return (position.row, position.col)
+    }
+
+    /// The display row `caret`, a ``displayCaret(row:col:)``, is drawn on.
+    func displayRow(of caret: (line: Int, index: Int)) -> Int {
+        WrappedText(wraps).row(ofCaret: caret.index, line: caret.line)
+    }
+
+    /// The cursor, in the expanded text, of the caret before character
+    /// `index` of display line `line`: inside a collapsed marker, its
+    /// nearer edge, as the cursor never lives within one.
+    func cursor(line: Int, index: Int) -> (row: Int, col: Int) {
+        let offset = TextLines.offset(row: line, col: index, in: lines)
+        return TextLines.position(of: PromptInput.untranslateOffset(offset, in: projection), in: expandedLines)
     }
 }
 
@@ -1636,15 +1528,17 @@ struct PromptRows: TerminalView {
     let placeholder: String?
     let badge: String?
     let prefix: PromptPrefix
-    let lines: [String]
-    let wraps: [[String]]
-    let totalDisplayRows: Int
+    let layout: PromptLayout
     let visibleLines: Int
-    let projection: PromptInput.CollapsedProjection
 
     @TerminalEnvironment(\.isFocused) var isFocused
     @TerminalEnvironment(\.theme) var theme
     @TerminalEnvironment(\.cursorFlash) var cursorFlash
+
+    /// The display rows the text takes.
+    var totalDisplayRows: Int {
+        layout.totalDisplayRows
+    }
 
     /// The display row drawn first: the scroll position, kept from showing
     /// rows past the end.

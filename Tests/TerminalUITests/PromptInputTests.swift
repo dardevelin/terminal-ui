@@ -115,10 +115,9 @@ struct PromptInputTests {
     func cursorProjection() {
         // 20-char logical line wrapped at width 8 → 3 chunks (8, 8, 4).
         // Cursor at col 15 should land in chunk 1 (8..16) at offset 7.
-        let wraps: [[String]] = [["abcdefgh", "ijklmnop", "qrst"]]
-        let (row, col) = PromptInput.projectCursor(logicalRow: 0, logicalCol: 15, wraps: wraps)
-        #expect(row == 1)
-        #expect(col == 7)
+        let caret = WrappedLine("abcdefghijklmnopqrst", width: 8).caret(at: 15)
+        #expect(caret.row == 1)
+        #expect(caret.column == 7)
     }
 
     @Test(".unbounded grows to full content even past the 8-row default")
@@ -259,7 +258,7 @@ struct PromptInputWordWrapTests {
     @Test("ASCII sentence wraps at word boundaries, not mid-word")
     func wrapsAtWordBoundaries() {
         let sentence = "type a very long line and see if it will properly wrap"
-        let chunks = PromptInput.wrapLine(sentence, width: 20)
+        let chunks = TextLayout.wrapWords(sentence, width: 20)
         // Every chunk that ISN'T the last one must end on a word
         // boundary — i.e. the chunk's last char is a space, OR the
         // next chunk starts after a space, OR the chunk is itself a
@@ -295,7 +294,7 @@ struct PromptInputWordWrapTests {
     @Test("re-joining wrapped chunks reproduces the original (modulo trimmed spaces)")
     func wrapsLossless() {
         let sentence = "type a very long line and see if it will properly wrap and do the right thing"
-        let chunks = PromptInput.wrapLine(sentence, width: 20)
+        let chunks = TextLayout.wrapWords(sentence, width: 20)
         // Each chunk fits within width.
         for chunk in chunks {
             #expect(chunk.count <= 20, "chunk too long: \(chunk) (\(chunk.count) > 20)")
@@ -320,7 +319,7 @@ struct PromptInputWordWrapTests {
     @Test("a single word longer than width falls back to character-level break")
     func longWordHardBreaks() {
         let url = "https://example.com/very/long/path/that/exceeds/wrap/width"
-        let chunks = PromptInput.wrapLine(url, width: 20)
+        let chunks = TextLayout.wrapWords(url, width: 20)
         for chunk in chunks {
             #expect(chunk.count <= 20)
         }
@@ -332,18 +331,18 @@ struct PromptInputWordWrapTests {
     @Test("short input that fits in width returns one chunk unchanged")
     func shortInputOneChunk() {
         let s = "hello world"
-        #expect(PromptInput.wrapLine(s, width: 20) == [s])
+        #expect(TextLayout.wrapWords(s, width: 20) == [s])
     }
 
     @Test("empty input yields one empty chunk (so the row is navigable)")
     func emptyInputOneEmptyChunk() {
-        #expect(PromptInput.wrapLine("", width: 20) == [""])
+        #expect(TextLayout.wrapWords("", width: 20) == [""])
     }
 
     @Test("multiple consecutive spaces are preserved across wraps")
     func multipleSpaces() {
         let s = "a  b  c  d  e  f  g  h"
-        let chunks = PromptInput.wrapLine(s, width: 8)
+        let chunks = TextLayout.wrapWords(s, width: 8)
         for chunk in chunks { #expect(chunk.count <= 8) }
         // Reassemble reproduces the source.
         let reassembled = chunks.joined()
