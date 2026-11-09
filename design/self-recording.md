@@ -112,9 +112,15 @@ keeps real µs and `PresentationClock` derives the picture's timeline.
 - `.script` (record_media's default): a mark shows the screen as it is for
   `hold`; segment *i* starts at `P_i = Σ D_j` and lasts `hold_i`, or the
   quantised real span when no hold was given (a live segment, for what
-  animates). A frame in segment *i* shows at `P_i + min(q(t − m_i), D_i)`; the
-  last of frames at one instant wins; frames before the first mark collapse
-  into it; `q` rounds to the quantum, at least 20 ms, default 40 ms.
+  animates). A held segment shows the mark's screen for its whole hold, and
+  what was drawn during it appears when it ends, at `P_i + D_i`: a driver's
+  dwell does not sleep, so the next key's frame comes milliseconds after the
+  mark and would otherwise replace its screen at once. In a live segment a
+  frame shows at `P_i + min(q(t − m_i), D_i)`. The last of frames at one
+  instant wins; frames before the first mark collapse into it; `q` rounds to
+  the quantum, at least 20 ms, default 40 ms. A duration on the command line
+  always states its unit (`400ms`, `1.5s`) and is a whole number of
+  milliseconds.
 - `.draw`: real times with gaps capped at 2 s, for ad-hoc recordings.
 - A driver's dwell does not sleep for real (`client.send_key("down");
   rec.hold(0.4)`), so a 45-second walk records in seconds; `rec.live(2.0)`

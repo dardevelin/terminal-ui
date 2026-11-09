@@ -59,7 +59,8 @@ def milliseconds(seconds: float) -> int:
     """``seconds`` as the whole milliseconds the log holds."""
     if seconds < 0:
         raise ValueError(f"a hold is a duration, at least 0, not {seconds}")
-    # Half up, as `swtui record --hold` rounds, not Python's half to even.
+    # Half up, not Python's half to even: a hold is whole milliseconds on
+    # the wire, and `swtui record --hold` takes only whole ones.
     return math.floor(seconds * MILLISECONDS_PER_SECOND + 0.5)
 
 

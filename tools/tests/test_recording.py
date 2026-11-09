@@ -66,7 +66,7 @@ def a_hold_is_written_in_whole_milliseconds() -> None:
     assert milliseconds(0.4) == 400
     assert milliseconds(1.5) == 1500
     assert milliseconds(0) == 0
-    assert milliseconds(0.0005) == 1, "half a millisecond rounds up, as swtui's --hold does"
+    assert milliseconds(0.0005) == 1, "half a millisecond rounds up"
     assert milliseconds(0.0025) == 3, "not to even, as Python's round would"
 
 
