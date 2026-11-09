@@ -44,21 +44,44 @@ public struct Style: Equatable, Sendable {
 ///
 /// The atom of the render pipeline — every frame is a ``CellBuffer`` of
 /// these, and the delta pass compares cells by simple equality to decide
-/// what to re-emit. A double-width character (CJK, emoji) occupies two
-/// cells: the glyph in the first, a styled space continuation in the
-/// second.
+/// what to re-emit.
+///
+/// A double-width character (UAX #11 East Asian Wide or Fullwidth, most
+/// emoji) occupies two cells: the glyph in the first, and in the second a
+/// cell whose ``isContinuation`` is `true`. A terminal draws the glyph
+/// across both columns and advances its cursor by two, so the output
+/// stage never sends a continuation cell — sending it would put
+/// everything after it on the row one column late.
 public struct Cell: Equatable, Sendable {
     /// The grapheme cluster drawn in this cell. Control characters are
     /// refused at the ``CellBuffer`` write boundary, so a stored
-    /// character is always drawable.
+    /// character is always drawable. A continuation cell holds a space,
+    /// so a reader that lays one character out per column still lines up.
     public var character: Character
-    /// The resolved visual attributes this cell is drawn with.
+    /// The resolved visual attributes this cell is drawn with. A
+    /// continuation cell carries its glyph's style: the terminal draws
+    /// both columns with the attributes the glyph was printed with.
     public var style: Style
+    /// Whether this cell is the right half of the double-width glyph in
+    /// the cell to its left.
+    ///
+    /// Only a ``CellBuffer`` makes one, when it stores a double-width
+    /// glyph, and it keeps the pair whole: a write over either half
+    /// blanks the other, as a terminal does.
+    public private(set) var isContinuation: Bool
 
     /// Create a cell from a character and a fully resolved style.
     public init(character: Character, style: Style) {
         self.character = character
         self.style = style
+        self.isContinuation = false
+    }
+
+    /// The right half of a double-width glyph drawn in `style`.
+    static func continuation(style: Style) -> Cell {
+        var cell = Cell(character: " ", style: style)
+        cell.isContinuation = true
+        return cell
     }
 
     /// A blank cell: a space with ``Style/plain``. The state every cell
@@ -202,35 +225,113 @@ public struct CellBuffer: Sendable {
     /// buffer or the active `clipRect` are dropped, and control
     /// characters are refused — this subscript is the single choke
     /// point for both guarantees, so no writer can bypass them.
+    ///
+    /// It also keeps every double-width glyph whole, as a terminal does
+    /// (xterm erases the rest of a wide character any write lands on):
+    ///
+    /// - A double-width character fills this cell and the next, which
+    ///   becomes its continuation (``Cell/isContinuation``). Where that
+    ///   next column is past the buffer's edge or outside the clip, the
+    ///   glyph cannot be drawn at all, and the cell gets a space in its
+    ///   style instead — as terminals and editors leave the last column
+    ///   when a wide glyph does not fit.
+    /// - A write onto either half of a wide glyph already here blanks the
+    ///   other half, keeping its style, even where that half is outside
+    ///   the clip: half a glyph is not something a terminal can show.
+    /// - A continuation cell assigned here, as a compositor copying cells
+    ///   from another buffer does, is kept only where the glyph to its
+    ///   left already placed one; anywhere else it is a space.
     public subscript(x: Int, y: Int) -> Cell {
         get {
             guard x >= 0, x < width, y >= 0, y < height else { return .empty }
             return cells[y * width + x]
         }
         set {
-            guard x >= 0, x < width, y >= 0, y < height else { return }
-            // A cell holds a rendered glyph. `OutputBuffer.writeCharacter`
-            // copies cell bytes verbatim to the file descriptor, so a stored
-            // control character is executed by the terminal rather than drawn
-            // — any string the program does not control (a filename, a chat
-            // message, a branch name) could move the cursor or clear the
-            // screen. Refused here, at the same choke point that enforces
-            // clipping, so no writer can forget to filter.
-            guard !newValue.character.isTerminalControl else { return }
-            if let clip = clipRect {
-                guard x >= clip.x, x < clip.x + clip.width,
-                      y >= clip.y, y < clip.y + clip.height else {
-                    // Record the rejection so the renderer can
-                    // attribute overflow to the offending child via
-                    // `withClipMeasured`'s delta. Cheaper than tracking
-                    // per-cell positions; the renderer only needs a
-                    // count to decide "did this child overflow at all."
-                    clipRejectedWrites += 1
-                    return
-                }
-            }
-            cells[y * width + x] = newValue
+            store(newValue, x: x, y: y)
         }
+    }
+
+    /// Store `cell` at (x, y) under the guarantees the subscript documents,
+    /// and report whether the cell now draws the glyph it was given —
+    /// `false` when the write was refused, clipped, or turned into a space
+    /// because the glyph's second column was not available.
+    @discardableResult
+    mutating func store(_ cell: Cell, x: Int, y: Int) -> Bool {
+        guard x >= 0, x < width, y >= 0, y < height else { return false }
+        // A cell holds a rendered glyph. `OutputBuffer.writeCharacter`
+        // copies cell bytes verbatim to the file descriptor, so a stored
+        // control character is executed by the terminal rather than drawn
+        // — any string the program does not control (a filename, a chat
+        // message, a branch name) could move the cursor or clear the
+        // screen. Refused here, at the same choke point that enforces
+        // clipping, so no writer can forget to filter.
+        guard !cell.character.isTerminalControl else { return false }
+        guard admitsWrite(x: x, y: y) else { return false }
+        let index = y * width + x
+        if cell.isContinuation {
+            if cells[index].isContinuation { return true }
+            release(x: x, y: y)
+            cells[index] = Cell(character: " ", style: cell.style)
+            return false
+        }
+        release(x: x, y: y)
+        guard cell.character.displayWidth == Self.wideGlyphColumns else {
+            cells[index] = cell
+            return true
+        }
+        guard x + 1 < width, admitsWrite(x: x + 1, y: y) else {
+            cells[index] = Cell(character: " ", style: cell.style)
+            return false
+        }
+        release(x: x + 1, y: y)
+        cells[index] = cell
+        cells[index + 1] = .continuation(style: cell.style)
+        return true
+    }
+
+    /// Columns a double-width glyph covers (UAX #11 W and F).
+    private static let wideGlyphColumns = 2
+
+    /// Whether the clip admits a write at an in-buffer (x, y), counting the
+    /// rejection when it does not — the renderer attributes overflow to the
+    /// offending child through `withClipMeasured`'s delta. Cheaper than
+    /// tracking per-cell positions; the renderer only needs a count to
+    /// decide "did this child overflow at all."
+    private mutating func admitsWrite(x: Int, y: Int) -> Bool {
+        guard let clip = clipRect else { return true }
+        guard x >= clip.x, x < clip.x + clip.width,
+              y >= clip.y, y < clip.y + clip.height else {
+            clipRejectedWrites += 1
+            return false
+        }
+        return true
+    }
+
+    /// Blank the other half of a wide glyph that the cell at (x, y) is part
+    /// of, ahead of a write there.
+    private mutating func release(x: Int, y: Int) {
+        let index = y * width + x
+        if cells[index].isContinuation {
+            cells[index - 1] = Cell(character: " ", style: cells[index - 1].style)
+        } else if x + 1 < width, cells[index + 1].isContinuation {
+            cells[index + 1] = Cell(character: " ", style: cells[index + 1].style)
+        }
+    }
+
+    /// Join a zero-width character onto the glyph at (x, y), which the
+    /// calling writer drew. Swift's `Character` is a UAX #29 extended
+    /// grapheme cluster, so a combining mark, a variation selector or a
+    /// ZWJ after its base joins it (GB9, GB9a) and is drawn with it — the
+    /// mark arriving in a span of its own is what reaches here. A
+    /// zero-width character that does not join (U+200B is a grapheme of
+    /// its own), or that would change how many columns its base takes,
+    /// has nothing to draw in a cell grid and is dropped.
+    private mutating func compose(_ mark: Character, x: Int, y: Int) {
+        let base = self[x, y]
+        let joined = String(base.character) + String(mark)
+        guard joined.count == 1, let glyph = joined.first,
+              glyph.displayWidth == base.character.displayWidth else { return }
+        store(Cell(character: glyph, style: base.style), x: x, y: y)
     }
 
     /// Run `body` with `clipRect` temporarily set to the intersection of the
@@ -264,37 +365,43 @@ public struct CellBuffer: Sendable {
 
     /// Write a single line of text starting at (x, y), one uniform style.
     ///
-    /// Advances by each character's `displayWidth` — double-wide glyphs
-    /// take two cells (glyph + styled continuation space), zero-width
-    /// combining marks compose onto the previous cell. Clips at the
-    /// buffer's right edge; does not wrap and does not interpret
-    /// newlines (use `writeSpans` for wrapping multi-line output).
+    /// Advances by each character's `displayWidth`: a double-width glyph
+    /// takes two cells (see the subscript), and a zero-width character
+    /// joins the glyph this call drew before it when Swift's grapheme
+    /// rules allow, and is dropped otherwise — including at the start of
+    /// the write, where the cell to the left belongs to someone else.
+    /// Clips at the buffer's right edge; does not wrap and does not
+    /// interpret newlines (use `writeSpans` for wrapping multi-line output).
     public mutating func write(_ text: String, x: Int, y: Int, style: Style) {
         var col = x
+        // The column of the glyph this call last drew, which a following
+        // zero-width character joins; nil while there is none to join.
+        var base: Int?
         for char in text {
             guard col < width else { break }
             // Skipped before the zero-width branch below: that branch exists to
             // compose combining marks onto their base glyph, which is right for
-            // U+0301 and wrong for U+001B — merging a control would both store
-            // it and destroy the character it merged onto.
+            // U+0301 and wrong for U+001B.
             if char.isTerminalControl { continue }
-            let w = char.displayWidth
-            if w == 0 {
-                if col > x {
-                    self[col - 1, y] = Cell(character: char, style: style)
-                }
+            let columns = char.displayWidth
+            if columns == 0 {
+                if let base { compose(char, x: base, y: y) }
                 continue
             }
-            self[col, y] = Cell(character: char, style: style)
-            if w == 2 && col + 1 < width {
-                self[col + 1, y] = Cell(character: " ", style: style)
-            }
-            col += w
+            base = store(Cell(character: char, style: style), x: col, y: y) ? col : nil
+            col += columns
         }
     }
 
     /// Write styled spans, handling newlines within spans. Each span resolves its
     /// style overrides against the base style. Clips to maxWidth × maxHeight.
+    ///
+    /// Widths and zero-width characters are handled as in
+    /// ``write(_:x:y:style:)``, across span boundaries: a combining mark
+    /// in a span of its own joins the glyph the span before it ended on.
+    /// A double-width glyph is never split across rows. Without `wrap`,
+    /// the first glyph that does not fit ends its line: nothing after it
+    /// is drawn until the next newline.
     public mutating func writeSpans(_ spans: [TextSpan], x: Int, y: Int,
                                      maxWidth: Int, maxHeight: Int, baseStyle: Style,
                                      wrap: Bool = true) {
@@ -302,43 +409,41 @@ public struct CellBuffer: Sendable {
         var row = y
         let maxX = x + maxWidth
         let maxY = y + maxHeight
+        var base: Int?
+        var lineClipped = false
 
         for span in spans {
             let style = span.resolved(over: baseStyle)
             for char in span.text {
-                if char == "\n" {
+                // CRLF is one grapheme cluster (UAX #29 GB3), so `"\r\n"`
+                // never compares equal to `"\n"`.
+                if char == "\n" || char == "\r\n" {
                     row += 1
                     col = x
+                    base = nil
+                    lineClipped = false
                     guard row < maxY else { return }
                     continue
                 }
-                let w = char.displayWidth
-                // Zero-width: compose onto previous base cell, no advance.
-                if w == 0 {
-                    if col > x {
-                        self[col - 1, row] = Cell(character: char, style: style)
-                    }
+                if char.isTerminalControl || lineClipped { continue }
+                let columns = char.displayWidth
+                if columns == 0 {
+                    if let base { compose(char, x: base, y: row) }
                     continue
                 }
-                // Wrap or clip when this grapheme wouldn't fit on the
-                // current line. Double-wide chars wrap as a unit — never
-                // split across rows.
-                if col + w > maxX {
-                    if wrap {
-                        // Wrap to next line
-                        row += 1
-                        col = x
-                        guard row < maxY else { return }
-                    } else {
-                        continue // clip
+                if col + columns > maxX {
+                    guard wrap else {
+                        lineClipped = true
+                        base = nil
+                        continue
                     }
+                    row += 1
+                    col = x
+                    guard row < maxY else { return }
                 }
                 guard row < maxY else { return }
-                self[col, row] = Cell(character: char, style: style)
-                if w == 2 && col + 1 < maxX {
-                    self[col + 1, row] = Cell(character: " ", style: style)
-                }
-                col += w
+                base = store(Cell(character: char, style: style), x: col, y: row) ? col : nil
+                col += columns
             }
         }
     }
@@ -388,37 +493,19 @@ public struct CellBuffer: Sendable {
     /// back to a full-frame render when `previous` is `nil` or sized
     /// differently. The hot path uses `renderDiff` into an
     /// ``OutputBuffer`` instead; this form serves frame capture and
-    /// tests, at String-allocation cost.
+    /// tests, at String-allocation cost. It is that same output, decoded,
+    /// so what a capture holds is what the terminal was sent.
     public func diff(from previous: CellBuffer?) -> String {
-        guard let previous, previous.width == width, previous.height == height else {
-            return fullRender()
-        }
-
-        var output = ""
-        var lastStyle = Style.plain
-
-        for y in 0..<height {
-            for x in 0..<width {
-                let cell = self[x, y]
-                let prev = previous[x, y]
-                if cell != prev {
-                    output += "\u{1B}[\(y + 1);\(x + 1)H"
-                    if cell.style != lastStyle {
-                        output += styleToAnsi(cell.style)
-                        lastStyle = cell.style
-                    }
-                    output += String(cell.character)
-                }
-            }
-        }
-
-        output += "\u{1B}[0m"
-        return output
+        var out = OutputBuffer()
+        renderDiff(from: previous, into: &out)
+        return String(decoding: out.writtenBytes, as: UTF8.self)
     }
 
     // MARK: - Direct byte buffer rendering
 
-    /// Render full frame into an OutputBuffer — zero String allocation
+    /// Render full frame into an OutputBuffer — zero String allocation.
+    /// A double-width glyph is sent once: the terminal draws it across
+    /// both its cells, so its continuation cell is never written.
     public func renderFull(into out: inout OutputBuffer) {
         out.reset()
         out.writeCSI()
@@ -428,6 +515,7 @@ public struct CellBuffer: Sendable {
         for y in 0..<height {
             for x in 0..<width {
                 let cell = self[x, y]
+                if cell.isContinuation { continue }
                 if cell.style != lastStyle {
                     out.writeStyle(cell.style)
                     lastStyle = cell.style
@@ -451,6 +539,12 @@ public struct CellBuffer: Sendable {
     /// Cost model: cursor move (CSI row;colH) costs ~8-10 bytes. Overwriting 1-3
     /// unchanged cells costs 1-3 bytes. Bridging small gaps saves bytes and reduces
     /// terminal parse overhead — especially important over SSH where latency dominates.
+    ///
+    /// A double-width glyph is written whole: a run that reaches either of
+    /// its cells starts at the glyph and steps over both, as the terminal's
+    /// cursor does. Because a buffer blanks what is left of any glyph a
+    /// write splits, every cell a terminal erases when a glyph changes
+    /// width also differs from the previous frame, and is written again.
     public func renderDiff(from previous: CellBuffer?, into out: inout OutputBuffer) {
         out.reset()
         guard let previous, previous.width == width, previous.height == height else {
@@ -465,48 +559,32 @@ public struct CellBuffer: Sendable {
         for y in 0..<height {
             var x = 0
             while x < width {
-                let cell = self[x, y]
-                let prev = previous[x, y]
-
-                if cell == prev {
+                guard changed(x, y, from: previous) else {
                     x += 1
                     continue
                 }
+                if x > 0, self[x, y].isContinuation { x -= 1 }
 
-                // Found a changed cell. Position cursor if not already there.
                 if cursorRow != y || cursorCol != x {
                     out.writeCursorPosition(row: y + 1, col: x + 1)
                 }
 
-                // Write this cell and any consecutive changed cells
+                let runStart = x
                 while x < width {
-                    let c = self[x, y]
-                    let p = previous[x, y]
-
-                    // Stop the run if we hit an unchanged cell
-                    // BUT: if the gap to the next changed cell is small (< 4),
-                    // it's cheaper to overwrite than to emit a new cursor position
-                    if c == p {
-                        // Look ahead for nearby changes
-                        var nextDirty = x + 1
-                        while nextDirty < min(x + 4, width) {
-                            if self[nextDirty, y] != previous[nextDirty, y] { break }
-                            nextDirty += 1
-                        }
-                        if nextDirty < x + 4 && nextDirty < width && self[nextDirty, y] != previous[nextDirty, y] {
-                            // Small gap — cheaper to overwrite than reposition
-                        } else {
-                            break
-                        }
+                    // An unchanged cell ends the run unless another change
+                    // follows close enough that rewriting the gap is
+                    // cheaper than repositioning.
+                    if x > runStart, !changed(x, y, from: previous),
+                       !changeAhead(of: x, y, from: previous) {
+                        break
                     }
-
                     let current = self[x, y]
                     if current.style != lastStyle {
                         out.writeStyle(current.style)
                         lastStyle = current.style
                     }
                     out.writeCharacter(current.character)
-                    x += 1
+                    x += columns(at: x, y)
                 }
 
                 cursorRow = y
@@ -516,30 +594,47 @@ public struct CellBuffer: Sendable {
         out.writeReset()
     }
 
-    // MARK: - String-based rendering (used by frame capture)
+    /// Unchanged cells a diff run rewrites rather than move the cursor past
+    /// them: a CUP costs 6–10 bytes, a narrow cell 1–4.
+    private static let bridgedGap = 3
 
-    func fullRender() -> String {
-        var output = "\u{1B}[H" // cursor home
-        var lastStyle = Style.plain
-
-        for y in 0..<height {
-            for x in 0..<width {
-                let cell = self[x, y]
-                if cell.style != lastStyle {
-                    output += styleToAnsi(cell.style)
-                    lastStyle = cell.style
-                }
-                output += String(cell.character)
-            }
-            if y < height - 1 {
-                output += "\r\n"
-            }
-        }
-
-        output += "\u{1B}[0m"
-        return output
+    private func changed(_ x: Int, _ y: Int, from previous: CellBuffer) -> Bool {
+        self[x, y] != previous[x, y]
     }
 
+    /// Whether a changed cell lies within ``bridgedGap`` cells after `x`.
+    private func changeAhead(of x: Int, _ y: Int, from previous: CellBuffer) -> Bool {
+        let end = min(x + Self.bridgedGap + 1, width)
+        guard x + 1 < end else { return false }
+        return (x + 1..<end).contains { changed($0, y, from: previous) }
+    }
+
+    /// Columns the glyph at (x, y) takes on the terminal: two when the cell
+    /// to its right is its continuation.
+    private func columns(at x: Int, _ y: Int) -> Int {
+        x + 1 < width && self[x + 1, y].isContinuation ? Self.wideGlyphColumns : 1
+    }
+
+    // MARK: - String-based rendering (used by frame capture)
+
+    /// ``renderFull(into:)``'s output as a String, for frame capture.
+    func fullRender() -> String {
+        var out = OutputBuffer()
+        renderFull(into: &out)
+        return String(decoding: out.writtenBytes, as: UTF8.self)
+    }
+
+    /// Row `y` as it reads on screen: each glyph once, a double-width one
+    /// without its continuation — for the plain-text captures people open
+    /// in an editor, where the continuation's space would push the rest of
+    /// the row out of line.
+    func screenText(row y: Int) -> String {
+        var line = ""
+        for x in 0..<width where !self[x, y].isContinuation {
+            line.append(self[x, y].character)
+        }
+        return line
+    }
     func styleToAnsi(_ style: Style) -> String {
         var codes = "\u{1B}[0m"
         if let fg = style.foreground {

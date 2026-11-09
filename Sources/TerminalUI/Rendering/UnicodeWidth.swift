@@ -13,8 +13,9 @@
 // alignment, cursor positioning, hit-testing, and diff rendering for any
 // non-ASCII content. This module is the cross-cutting fix: writers and
 // measurers consult `displayWidth` instead of `.count`, and CellBuffer
-// records continuation cells (`Cell.continuation`) on the trailing column
-// of a 2-wide character so diff/cursor logic can skip past them.
+// marks the trailing column of a 2-wide character as its continuation
+// (`Cell.isContinuation`), which the output stage never sends: the
+// terminal's cursor already stepped over it.
 //
 // The width tables here cover the major double-width ranges. Exhaustive
 // coverage of every Unicode code point is impractical without committing

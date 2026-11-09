@@ -30,7 +30,7 @@ from typing import Callable, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from terminalui import Client, CellSlice, Probe  # noqa: E402
+from terminalui import Client, CellSlice, Probe, vt  # noqa: E402
 from terminalui.process import usable_cpus  # noqa: E402
 from terminalui.runner import BOOT_TIMEOUT, AppExitedBadly, spawn_and_connect  # noqa: E402
 
@@ -1133,6 +1133,10 @@ def storybook_text_styles_render(app: Client) -> None:
     preview = app.preview_text()
     for label in ("plain", "bold", "colored", "both"):
         assert_true(label in preview, f"Text preview missing '{label}'")
+    # One entry per column: a wide glyph's right half is a space, and the
+    # combining acute is drawn on its `e`, not in a cell of its own.
+    wide = "wide 中 文  · emoji 🙂  · combining café"
+    assert_true(wide in preview, f"Text preview missing {wide!r}:\n{preview}")
 
 
 def storybook_forEach_renders_all_items(app: Client) -> None:
@@ -1247,6 +1251,39 @@ def storybook_every_page_fits_the_recording_window(app: Client) -> None:
         if app.text(rect=(left, top + height - 1, 1, 1)) != "╰":
             cut.append(title)
     assert_true(not cut, f"pages whose preview runs past row {RECORDING_ROWS}: {cut}")
+
+
+def storybook_every_page_reaches_the_terminal_as_drawn(app: Client) -> None:
+    """The bytes the app sends its terminal, replayed through a terminal
+    model, show each page exactly as the app's own cells hold it. A buffer
+    can be right while its output is not: a wide glyph's second cell sent
+    as a space of its own pushed the rest of its row one column right, and
+    every assertion on cells still passed. The Text page draws wide glyphs,
+    an emoji and a combining mark, so the walk always meets some."""
+    size = app.cells()
+    screen = vt.Screen(size.width, size.height)
+    fed = 0
+
+    def agrees(client: Client) -> bool:
+        nonlocal fed
+        output = client.pty_output()
+        screen.feed(output[fed:])
+        fed = len(output)
+        return screen.text() == client.text()
+
+    differing: list[str] = []
+    for title in app.storybook_pages():
+        app.goto_page(title)
+        # The terminal's bytes are read off its PTY on the runner's own
+        # thread, so the frame the app answers for may not all be in yet.
+        if app.wait_until(agrees, timeout=2.0):
+            continue
+        drawn, shown = app.cells().rows, screen.lines()
+        row = next((index for index, (cells, line) in enumerate(zip(drawn, shown)) if cells != line), None)
+        differing.append(f"{title}: row {row}\n  cells:    {drawn[row]!r}\n  terminal: {shown[row]!r}"
+                         if row is not None else title)
+    assert_true(not differing, "pages the terminal shows differently from their cells:\n"
+                + "\n".join(differing))
 
 
 def storybook_foreground_renders_colored_words(app: Client) -> None:
@@ -3104,6 +3141,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.morseticker_scrolls_on_its_own", "Storybook", storybook_morseticker_scrolls_on_its_own),
     SmokeCase("storybook.every_page_fits_the_recording_window", "Storybook",
               storybook_every_page_fits_the_recording_window),
+    SmokeCase("storybook.every_page_reaches_the_terminal_as_drawn", "Storybook",
+              storybook_every_page_reaches_the_terminal_as_drawn),
     SmokeCase("storybook.foreground_renders_colored_words", "Storybook", storybook_foreground_renders_colored_words),
     SmokeCase("storybook.bold_distinguishes_styles", "Storybook", storybook_bold_distinguishes_styles),
     SmokeCase("storybook.border_wraps_text", "Storybook", storybook_border_wraps_text),

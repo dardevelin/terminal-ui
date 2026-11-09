@@ -36,7 +36,7 @@ struct FormLabel: TerminalView {
         // emit a stray separator space of its own.
         guard !text.isEmpty else { return "" }
         guard let width, !stacks else { return "\(text) " }
-        return "\(text) " + String(repeating: " ", count: max(0, width - text.count))
+        return "\(text) " + String(repeating: " ", count: max(0, width - text.displayWidth))
     }
 }
 
@@ -87,7 +87,7 @@ public struct Form<Content: TerminalView>: TerminalView {
     public init(@TerminalViewBuilder content: () -> Content) {
         let content = content()
         self.content = content
-        self.labelColumn = (FormLabels.collect(from: content).map(\.count).max() ?? 0) + 1
+        self.labelColumn = (FormLabels.collect(from: content).map(\.displayWidth).max() ?? 0) + 1
     }
 
     /// Narrowest control worth rendering beside a label. Below this the row

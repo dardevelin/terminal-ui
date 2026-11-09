@@ -958,11 +958,11 @@ public struct TextArea: TerminalView {
         return TextAreaCursor(row: last, col: lines.indices.contains(last) ? lines[last].count : 0)
     }
 
-    /// The rows `line` is drawn in: wrapped at `wrapWidth` when it is
-    /// longer, whole otherwise — and whole when `wrapWidth` is 0, the 1:1
+    /// The rows `line` is drawn in: wrapped at `wrapWidth` cells when it
+    /// is wider, whole otherwise — and whole when `wrapWidth` is 0, the 1:1
     /// rendering older callers ask for.
     static func displayChunks(of line: String, wrapWidth: Int) -> [String] {
-        wrapWidth > 0 && line.count > wrapWidth ? TextLayout.wrapWords(line, width: wrapWidth) : [line]
+        wrapWidth > 0 && line.displayWidth > wrapWidth ? TextLayout.wrapWords(line, width: wrapWidth) : [line]
     }
 
     static func gutterWidth(for totalLines: Int) -> Int {

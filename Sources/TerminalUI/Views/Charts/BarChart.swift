@@ -98,7 +98,7 @@ public struct BarChart: TerminalView {
         guard !items.isEmpty else { return "" }
 
         let hi = maxValue ?? (items.map(\.value).max() ?? 1)
-        let labelWidth = items.map(\.label.count).max() ?? 0
+        let labelWidth = items.map(\.label.displayWidth).max() ?? 0
         let valueWidth = showValues
             ? items.map { formatValue($0.value).count }.max() ?? 0
             : 0
@@ -110,7 +110,7 @@ public struct BarChart: TerminalView {
 
         var lines: [String] = []
         for item in items {
-            let label = item.label.padding(toLength: labelWidth, withPad: " ", startingAt: 0)
+            let label = item.label + String(repeating: " ", count: labelWidth - item.label.displayWidth)
             let ratio = hi > 0 ? item.value / hi : 0
 
             // Full cells + fractional part

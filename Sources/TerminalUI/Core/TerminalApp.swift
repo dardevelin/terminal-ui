@@ -1279,9 +1279,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
         var text = "capture: \(ts)\nsize: \(buffer.width)x\(buffer.height)\n---\n"
         for y in 0..<buffer.height {
-            for x in 0..<buffer.width {
-                text += String(buffer[x, y].character)
-            }
+            text += buffer.screenText(row: y)
             text += "\n"
         }
         try? text.write(toFile: "\(captureDir)/\(ts).txt", atomically: true, encoding: .utf8)
@@ -1651,6 +1649,8 @@ public enum TerminalApp {
             var lastStyle = Style.plain
             for x in 0..<cols {
                 let cell = buffer[x, y]
+                // The terminal draws a wide glyph across both its columns.
+                if cell.isContinuation { continue }
                 if cell.style != lastStyle {
                     line += buffer.styleToAnsi(cell.style)
                     lastStyle = cell.style

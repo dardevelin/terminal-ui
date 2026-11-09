@@ -217,7 +217,7 @@ public enum GraphRenderer {
                         chunks = TextLayout.wrapWords(String(line), width: maxWidth)
                     case .none:
                         // Legacy: clip to rect width, no wrapping.
-                        let clipped = line.count > maxWidth ? String(line.prefix(maxWidth)) : String(line)
+                        let clipped = maxWidth > 0 ? LineBreakMode.byClipping.apply(to: String(line), width: maxWidth) : ""
                         chunks = [clipped]
                     case .truncate(let edge):
                         // One row, elision marked. Runs through
@@ -233,7 +233,7 @@ public enum GraphRenderer {
                         // region is cleared when content shrank from a
                         // longer previous frame ("epsilone" →
                         // "epsilon" stale-cell bug).
-                        let padCount = max(0, maxWidth - chunk.count)
+                        let padCount = max(0, maxWidth - chunk.displayWidth)
                         let padded = chunk + String(repeating: " ", count: padCount)
                         buffer.write(padded, x: context.rect.x, y: y, style: context.style)
                     }
@@ -298,7 +298,7 @@ public enum GraphRenderer {
             let width = context.rect.width
             let labelPart = label.map { $0 + " " } ?? ""
             let percentText = " \(Int(value * 100))%"
-            let barWidth = max(0, width - labelPart.count - percentText.count)
+            let barWidth = max(0, width - labelPart.displayWidth - percentText.count)
             let filledCount = Int(Double(barWidth) * value)
             let emptyCount = barWidth - filledCount
             let barText = labelPart
@@ -1230,8 +1230,10 @@ public enum GraphRenderer {
         let endY = max(startY, min(rect.y + rect.height, buffer.height))
         let marked = Style(foreground: .black, background: style.foreground,
                            bold: style.bold, italic: false, underline: false)
+        // Restyled in place: a fresh cell would turn a wide glyph's
+        // continuation into a space and erase the glyph it belongs to.
         for y in startY..<endY {
-            buffer[rect.x, y] = Cell(character: buffer[rect.x, y].character, style: marked)
+            buffer[rect.x, y].style = marked
         }
     }
 
@@ -2059,7 +2061,9 @@ public enum GraphRenderer {
         let startY = max(0, min(r.y, buffer.height))
         let endY = max(startY, min(r.y + r.height, buffer.height))
         guard startY < endY else { return false }
-        for y in startY..<endY where buffer[x, y].character != " " {
+        // A continuation holds a space but is half of the glyph to its
+        // left, which drawing over it would erase.
+        for y in startY..<endY where buffer[x, y].character != " " || buffer[x, y].isContinuation {
             return false
         }
         return true

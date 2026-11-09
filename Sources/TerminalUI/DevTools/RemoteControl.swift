@@ -875,6 +875,9 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         let lastCol = min(x + w, buffer.width)
         if lastRow > y && lastCol > x {
             for row in y..<lastRow {
+                // One grapheme per column, so a client can index a row by
+                // column: the right half of a wide glyph is its
+                // continuation cell's space.
                 var line = ""
                 for col in x..<lastCol {
                     line.append(buffer[col, row].character)

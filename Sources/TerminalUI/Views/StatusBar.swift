@@ -322,29 +322,13 @@ struct StatusBarLine {
         )
     }
 
-    /// Measure total character width of spans (single line).
+    /// Total width of spans (single line), in cells.
     private func textWidth(_ spans: [TextSpan]) -> Int {
-        spans.reduce(0) { $0 + $1.text.count }
+        spans.reduce(0) { $0 + $1.text.displayWidth }
     }
 
-    /// Truncate spans to fit within a maximum width.
+    /// Truncate spans to fit within a maximum width, in cells.
     private func truncateSpans(_ spans: [TextSpan], to maxWidth: Int) -> [TextSpan] {
-        var result: [TextSpan] = []
-        var remaining = maxWidth
-
-        for span in spans {
-            guard remaining > 0 else { break }
-            if span.text.count <= remaining {
-                result.append(span)
-                remaining -= span.text.count
-            } else {
-                var truncated = span
-                truncated.text = String(span.text.prefix(remaining))
-                result.append(truncated)
-                remaining = 0
-            }
-        }
-
-        return result
+        TextLayout.prefix(spans, width: maxWidth)
     }
 }

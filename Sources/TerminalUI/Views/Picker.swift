@@ -398,7 +398,7 @@ struct PickerBody: TerminalView {
     static func segmentedWidth(of titles: [String], label: String) -> Int {
         // Each segment costs its title plus a trailing space and separator;
         // the first carries no leading space, hence the -1.
-        label.count + 1 + titles.reduce(0) { $0 + $1.count + 3 } - 1
+        label.displayWidth + 1 + titles.reduce(0) { $0 + $1.displayWidth + 3 } - 1
     }
 
     // MARK: - Dropdown

@@ -182,13 +182,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
 
         // ───── Primitives ─────
         case .text: return PageInfo(id: self, category: .primitives, name: "Text",
-            summary: "Styled text — bold, foreground, italic, per-character spans.",
+            summary: "Styled text — bold, foreground, italic, per-character spans. Wide glyphs take two columns, and a combining mark draws on the letter before it.",
             code: """
                 VStack {
                     Text("plain")
                     Text("bold").bold()
                     Text("colored").foreground(.green)
                     Text("both").bold().foreground(.red)
+                    Text("wide 中文 · emoji 🙂 · combining cafe\\u{301}").foreground(.cyan)
                 }
                 """)
         case .gradient: return PageInfo(id: self, category: .primitives, name: "Text.gradient",
