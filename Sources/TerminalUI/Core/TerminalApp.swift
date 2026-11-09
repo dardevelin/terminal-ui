@@ -379,8 +379,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// goes there.
     private var diagnosticsAreWritable = true
     /// Keeps the frames this runtime draws in a `.tuirec` log while a
-    /// recording is open: from launch with `[record] enabled`.
-    private let frameRecorder = FrameRecorder()
+    /// recording is open: from launch with `[record] enabled`, or from a
+    /// control client's `record_start`.
+    let frameRecorder = FrameRecorder()
+    /// What the last frame drawn was drawn on, and its number: with
+    /// `previousBuffer`, the screen a `record_start` begins from.
+    private var drawnWindowBackground: Color?
+    private var drawnFrameNumber = 0
     /// Why the recording `[record]` asked for did not start, said once the
     /// terminal is the shell's again: written while the app holds the
     /// screen, it would be drawn over, or draw over the app.
@@ -1241,6 +1246,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         #if DEBUG
         debugPanel.recordFrameTime(Double(buildEnd - buildStart) / 1_000_000.0)
         frameRecorder.frameDrawn(renderBuffer, windowBackground: wantedBackground, frame: frameStats.frameCount)
+        drawnWindowBackground = wantedBackground
+        drawnFrameNumber = frameStats.frameCount
         #endif
         previousBuffer = renderBuffer
     }
@@ -1248,7 +1255,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
     #if DEBUG
     /// Opens the log `[record]` names, which the first frame drawn starts.
     private func startRecordingFromLaunch(config: DiagConfig) {
-        let appName = ProcessInfo.processInfo.processName
+        let appName = recordingAppName
         let path = DiagPaths.recordingPath(config: config, appName: appName,
                                            pid: ProcessInfo.processInfo.processIdentifier)
         try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
@@ -1447,6 +1454,14 @@ public final class TerminalRuntime<RootView: TerminalView> {
 
 #if DEBUG
 extension TerminalRuntime: RemoteControlRuntime {}
+
+extension TerminalRuntime: RecordingRuntime {
+    var recordingAppName: String { ProcessInfo.processInfo.processName }
+
+    func drawnScreen() -> DrawnScreen? {
+        previousBuffer.map { DrawnScreen(buffer: $0, windowBackground: drawnWindowBackground, frame: drawnFrameNumber) }
+    }
+}
 #endif
 
 // MARK: - Runtime errors

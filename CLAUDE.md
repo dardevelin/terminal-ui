@@ -333,11 +333,24 @@ outside the data dir, which the app deletes as it quits — mode 0600, and a
 path that already names anything is refused. `design/self-recording.md` plans
 how the docs' pictures are rendered from such logs.
 
+A client records a running app over its socket too: the verbs `record_start
+{path, label?}`, `record_mark {label, hold_ms?}`, `record_stop` and
+`record_status`, reached through the internal `RecordingRuntime` (not the
+public `RemoteControlRuntime`), and answered with a `RecordingInfo`. A mark is
+served before the next drain, so the screen at it is the one the keys before
+it left — no wait. A hold is a number in the log, not a sleep.
+`tools/terminalui/recording.py`'s `Recording` wraps them for a driver
+(`mark`, `hold`, `live`), and `spawn_and_connect(inherit_terminal=False)`
+runs the app as one being recorded: the host terminal's variables dropped,
+`TERM=xterm-256color`, `COLORTERM=truecolor`.
+
 ```bash
 swift run swtui init | status | config | clean
 swift run swtui enable trace | disable trace | set frame_limit 50
 swift run swtui bind toggle_inspector F5      # remap a debug keybinding
 swift run swtui record dump <log> [--at LABEL | --frame N]   # a recorded screen as text
+swift run swtui record start <path> [--label L [--hold 1.5s]]  # record a running app, as ctl reaches it
+swift run swtui record mark <label> [--hold 400ms] | stop | status
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit
@@ -347,7 +360,7 @@ swift run swtui ctl inspector-move <x> <y> | inspector-toggle
 swift run swtui ctl list | reap | kill --pid <N>
 ```
 
-With no `--pid`, `ctl` reaches the one app running from this checkout and
+With no `--pid`, `ctl` (and `record`) reaches the one app running from this checkout and
 refuses, listing them, when several are; `--pid`, `--socket`, `--dir` choose.
 `kill` requires an explicit PID (no dragnet); `reap` unlinks stale sockets whose
 owning PID is dead; `list` is read-only.

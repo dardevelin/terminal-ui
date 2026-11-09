@@ -23,6 +23,22 @@ All notable changes to TerminalUI are documented here. Format based on
   recorder is compiled out of a release build, and costs a debug build one
   check per frame while it is off. `DiagConfig` gains `recordOnLaunch` and
   `recordPath`.
+- **A running debug build is recorded from outside it.** `swtui record start
+  <path>` opens a recording on the screen the app shows now, `swtui record
+  mark <label> [--hold 400ms]` names a moment of it, `swtui record stop` ends
+  it and `swtui record status` says how it stands; they reach the app as
+  `swtui ctl` does, by `--pid`, `--socket` or `--dir`, or the one app running
+  from the checkout. Over the control socket they are `record_start`,
+  `record_mark`, `record_stop` and `record_status`, answered with the new
+  `RecordingInfo` in `RemoteResult.recording`; `RemoteRequest` gains `path`,
+  `label` and `holdMs`. A mark is answered once every key sent before it has
+  been drawn, so the screen at a mark is the one those keys left, with no
+  wait, and its reply names that frame. A hold is how long a picture made
+  from the log shows the mark, written into it rather than slept. The
+  Python harness gains `terminalui.recording.Recording` for a driver —
+  `mark`, `hold` and `live` — and `spawn_and_connect(inherit_terminal=False)`,
+  which runs an app as one being recorded: in an xterm with 24-bit colour,
+  whatever terminal the harness runs in.
 
 ### Fixed
 

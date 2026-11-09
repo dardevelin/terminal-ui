@@ -324,6 +324,7 @@ func printUsage() {
         ("ctl <cmd> [...]",      "Drive a running debug build (see `swtui ctl`)"),
         ("keys [--check <file>]", "List the text-editing commands and keys, or check a keys.toml"),
         ("record dump <log>",    "Print a .tuirec recording's screen (--at LABEL, --frame N)"),
+        ("record start <path>",  "Record a running debug build; then record mark, stop, status"),
         ("help",                 "Show this help"),
     ]
     for (cmd, desc) in rows {
@@ -354,32 +355,14 @@ func ctlCommand(args: [String]) {
     // (`DiagPaths.runningApps`), never through its own `tmpDataDir` — the PID
     // in that path is ctl's, and no app ever wrote there. Resolution defers
     // until after flag parsing so `--pid` and `--dir` can choose.
-    var explicitDir: String? = nil
-    var explicitSocket: String? = nil
-    var explicitPID: Int32? = nil
-    var nonFlags: [String] = []
-    var i = 0
-    while i < args.count {
-        let arg = args[i]
-        if arg == "--pid", i + 1 < args.count {
-            explicitPID = Int32(args[i + 1])
-            i += 2
-        } else if arg == "--socket", i + 1 < args.count {
-            explicitSocket = args[i + 1]
-            i += 2
-        } else if arg == "--dir", i + 1 < args.count {
-            explicitDir = args[i + 1]
-            i += 2
-        } else {
-            nonFlags.append(arg)
-            i += 1
-        }
-    }
+    let (target, nonFlags) = AppTarget.peel(from: args)
     guard let subcommand = nonFlags.first else {
         printCtlUsage()
         exit(1)
     }
     let positional = Array(nonFlags.dropFirst())
+    let explicitDir = target.dir
+    let explicitPID = target.pid
 
     let socketDirs: [String]
     if let explicitDir {
@@ -415,40 +398,7 @@ func ctlCommand(args: [String]) {
         break
     }
 
-    let socketPath: String
-    if let explicitSocket {
-        socketPath = explicitSocket
-    } else if let explicitDir {
-        guard let resolved = DiagPaths.socket(inRemoteDir: explicitDir, pid: explicitPID) else {
-            let wanted = explicitPID.map { "pid \($0)'s socket" } ?? "exactly one app socket"
-            log.error("\(explicitDir) does not hold \(wanted)")
-            exit(1)
-        }
-        socketPath = resolved
-    } else if let explicitPID {
-        guard let resolved = DiagPaths.clientSocketPath(pid: explicitPID) else {
-            log.error("no debug app with pid \(explicitPID) is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
-            exit(1)
-        }
-        socketPath = resolved
-    } else {
-        // The one app running from this checkout. Several is a choice for
-        // the caller: picking the newest let an app a test harness started
-        // take over a developer's session.
-        let apps = DiagPaths.runningApps()
-        switch apps.count {
-        case 1:
-            socketPath = apps[0].socketPath
-        case 0:
-            log.error("no debug app is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
-            exit(1)
-        default:
-            let rows = apps.map { "  --pid \($0.pid)  \($0.name ?? "?")" }.joined(separator: "\n")
-            FileHandle.standardError.write(Data(
-                "swtui ctl: \(apps.count) debug apps are running from this checkout; name one:\n\(rows)\n".utf8))
-            exit(2)
-        }
-    }
+    let socketPath = target.socketPath(command: "swtui ctl")
 
     let payload: [String: Any]
     switch subcommand {
@@ -548,7 +498,73 @@ func ctlCommand(args: [String]) {
     print(response)
 }
 
-private func ctlSend(socketPath: String, payload: [String: Any]) -> String {
+/// Which running app a command that reaches one over its socket means:
+/// `--pid`, `--socket` and `--dir`, which may come anywhere among its
+/// arguments, or none of them for the one app running from this checkout.
+struct AppTarget {
+    var pid: Int32?
+    var socket: String?
+    var dir: String?
+
+    /// The target `args` name, and what is left of them.
+    static func peel(from args: [String]) -> (AppTarget, [String]) {
+        var target = AppTarget()
+        var rest: [String] = []
+        var i = 0
+        while i < args.count {
+            let value = i + 1 < args.count ? args[i + 1] : nil
+            switch (args[i], value) {
+            case ("--pid", let value?): target.pid = Int32(value)
+            case ("--socket", let value?): target.socket = value
+            case ("--dir", let value?): target.dir = value
+            default:
+                rest.append(args[i])
+                i += 1
+                continue
+            }
+            i += 2
+        }
+        return (target, rest)
+    }
+
+    /// The socket of the app this names. With nothing named, the one app
+    /// running from this checkout; several is a choice for the caller, and
+    /// exits 2 listing them: picking the newest let an app a test harness
+    /// started take over a developer's session. Exits 1 when there is none.
+    func socketPath(command: String) -> String {
+        if let socket { return socket }
+        if let dir {
+            guard let resolved = DiagPaths.socket(inRemoteDir: dir, pid: pid) else {
+                let wanted = pid.map { "pid \($0)'s socket" } ?? "exactly one app socket"
+                log.error("\(dir) does not hold \(wanted)")
+                exit(1)
+            }
+            return resolved
+        }
+        if let pid {
+            guard let resolved = DiagPaths.clientSocketPath(pid: pid) else {
+                log.error("no debug app with pid \(pid) is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
+                exit(1)
+            }
+            return resolved
+        }
+        let apps = DiagPaths.runningApps()
+        switch apps.count {
+        case 1:
+            return apps[0].socketPath
+        case 0:
+            log.error("no debug app is running from this checkout (searched /tmp/terminalui-\(DiagPaths.cwdHash)-*/remote)")
+            exit(1)
+        default:
+            let rows = apps.map { "  --pid \($0.pid)  \($0.name ?? "?")" }.joined(separator: "\n")
+            FileHandle.standardError.write(Data(
+                "\(command): \(apps.count) debug apps are running from this checkout; name one:\n\(rows)\n".utf8))
+            exit(2)
+        }
+    }
+}
+
+func ctlSend(socketPath: String, payload: [String: Any]) -> String {
     guard let payloadData = try? JSONSerialization.data(withJSONObject: payload, options: []) else {
         log.error("failed to encode payload")
         exit(1)

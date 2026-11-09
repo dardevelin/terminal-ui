@@ -34,7 +34,8 @@ public enum RemoteControlProtocol {
 /// `focus_get`, `focus_set`, `query_cells`, `query_tree`,
 /// `inspector_probe`, `inspector_move`, `inspector_toggle`,
 /// `inspect_range`, `scan`, `frame_number`, `terminal_input`, `screenshot`, `list_actions`,
-/// `invoke_action`, `quit`, `crash`. The typed Python client in
+/// `invoke_action`, `record_start`, `record_mark`, `record_stop`,
+/// `record_status`, `quit`, `crash`. The typed Python client in
 /// `tools/terminalui/client.py` speaks this same shape.
 public struct RemoteRequest: Codable, Sendable {
     /// Client-chosen correlation ID; the response echoes it back.
@@ -90,6 +91,19 @@ public struct RemoteRequest: Codable, Sendable {
     /// Action invocation payload — the stable Action.ID to fire via
     /// ActionDispatch.invoke. Used by the `invoke_action` command.
     public var actionId: String?
+    /// `record_start`: the file to write the recording to, which must not
+    /// exist yet. A relative path is the app's working directory's, so a
+    /// client in another directory sends an absolute one.
+    public var path: String?
+    /// `record_mark`: the name of the moment being marked, which
+    /// `swtui record dump --at` finds it by. `record_start`: an optional
+    /// mark on the recording's first frame.
+    public var label: String?
+    /// `record_mark` and a labelled `record_start` (`hold_ms` on the wire):
+    /// how long, in milliseconds, a picture made from the recording shows
+    /// the screen as it is at the mark. Absent, the picture plays the time
+    /// that really passed until the next mark.
+    public var holdMs: Int?
 }
 
 /// One JSON-line reply to a ``RemoteRequest`` — always `{id, ok}` plus
@@ -124,7 +138,9 @@ public struct RemoteResult: Codable, Sendable {
     public var cells: CellSlice?
     /// `query_tree`'s answer — the graph root, nested.
     public var tree: GraphDebugNode?
-    /// `frame_number`'s answer — the current frame counter.
+    /// `frame_number`'s answer — the current frame counter. For
+    /// `record_start` and `record_mark`, the frame the recording shows at
+    /// that moment: the last one it recorded.
     public var frame: Int?
     /// `terminal_input`'s answer — what the app has taken from its terminal.
     public var terminalInput: TerminalInputTaken?
@@ -140,6 +156,10 @@ public struct RemoteResult: Codable, Sendable {
     public var actions: [ActionRemoteInfo]?
     /// Whether `invoke_action` matched and fired an action.
     public var fired: Bool?
+    /// The recording verbs' answer — how the app's recording stands after
+    /// the request. `record_start` and `record_mark` also set ``frame`` to
+    /// the number of the frame the recording's screen is at.
+    public var recording: RecordingInfo?
 
     /// Assembles a payload; pass only the field matching the verb.
     public init(focus: FocusInfo? = nil,
@@ -163,6 +183,27 @@ public struct RemoteResult: Codable, Sendable {
         self.actions = actions
         self.fired = fired
     }
+}
+
+/// How a debug app's recording stands — the answer to `record_start`,
+/// `record_mark`, `record_stop` and `record_status`.
+///
+/// After a `record_stop`, it describes the recording just ended, and goes
+/// on doing so until the next starts.
+public struct RecordingInfo: Codable, Sendable, Equatable {
+    /// The recording's `.tuirec` file; nil when the app has recorded
+    /// nothing since it started.
+    public var path: String?
+    /// The frames written to it: a frame identical to the one before it is
+    /// not recorded.
+    public var frames: Int
+    /// The marks written to it.
+    public var marks: Int
+    /// The time from its first frame to now or, once stopped, to its end
+    /// (`duration_ms` on the wire).
+    public var durationMs: Int
+    /// Whether it is still being written.
+    public var active: Bool
 }
 
 /// Wire-format action info — what `list_actions` returns. Mirrors
@@ -689,6 +730,29 @@ extension RemoteControlRuntime {
     public func remoteRequestFrame() {}
 }
 
+/// The screen as a runtime last drew it.
+struct DrawnScreen {
+    var buffer: CellBuffer
+    /// The colour the runtime set behind the whole terminal; nil is the
+    /// terminal's own.
+    var windowBackground: Color?
+    /// The runtime's number for the frame.
+    var frame: Int
+}
+
+/// What the recording verbs need of a runtime. Internal, and reached with
+/// `as?`, so that ``RemoteControlRuntime`` — public, and conformed to
+/// outside the framework — gains no requirement.
+@MainActor
+protocol RecordingRuntime: AnyObject {
+    /// The recorder the runtime hands every frame it draws.
+    var frameRecorder: FrameRecorder { get }
+    /// The name a recording's header gives the app.
+    var recordingAppName: String { get }
+    /// The screen as last drawn; nil before the first frame.
+    func drawnScreen() -> DrawnScreen?
+}
+
 /// Concrete dispatcher that translates `RemoteRequest` → actions on the
 /// runtime. Owned by the server; weakly references the runtime so the
 /// runtime's lifetime controls ours.
@@ -727,6 +791,8 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         case "crash":       return crash(request)
         case "list_actions": return listActions(request, runtime: runtime)
         case "invoke_action": return invokeAction(request, runtime: runtime)
+        case "record_start", "record_mark", "record_stop", "record_status":
+            return recording(request, runtime: runtime)
         case "ping":        return RemoteResponse(id: request.id, ok: true)
         default:
             return RemoteResponse(id: request.id, ok: false, error: "unknown cmd: \(request.cmd)")
@@ -1166,6 +1232,51 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
     private func quit(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
         runtime.enqueueEvent(.key(KeyEvent(key: .character("c"), modifiers: [.ctrl], source: .remote)))
         return RemoteResponse(id: request.id, ok: true)
+    }
+
+    // MARK: Recording
+
+    /// Every request is served before the frame loop drains the events
+    /// queued, and an app draws its first frame before it answers anything:
+    /// a mark is made after every key sent before it has been drawn and
+    /// recorded, so the screen at a mark is the one the actions before it
+    /// left.
+    private func recording(_ request: RemoteRequest, runtime: any RemoteControlRuntime) -> RemoteResponse {
+        func failure(_ message: String) -> RemoteResponse {
+            RemoteResponse(id: request.id, ok: false, error: message)
+        }
+        guard let runtime = runtime as? any RecordingRuntime else { return failure("this app cannot record") }
+        let recorder = runtime.frameRecorder
+        if let holdMs = request.holdMs, holdMs < 0 { return failure("hold_ms is a duration, at least 0") }
+        switch request.cmd {
+        case "record_start":
+            guard let path = request.path, !path.isEmpty else { return failure("record_start requires `path`") }
+            let screen = runtime.drawnScreen()
+            do {
+                try recorder.start(path: path, appName: runtime.recordingAppName, current: screen?.buffer,
+                                   windowBackground: screen?.windowBackground, frame: screen?.frame ?? 0,
+                                   label: request.label, holdMs: request.holdMs)
+            } catch {
+                return failure(error.description)
+            }
+        case "record_mark":
+            guard recorder.isActive else { return failure((recorder.failure ?? .notRecording).description) }
+            guard let label = request.label, !label.isEmpty else { return failure("record_mark requires `label`") }
+            recorder.mark(label: label, holdMs: request.holdMs)
+        case "record_stop":
+            guard recorder.isActive else { return failure((recorder.failure ?? .notRecording).description) }
+            recorder.stop()
+        default:
+            break
+        }
+        // A write that failed stopped the recording on the way.
+        if request.cmd != "record_status", let writeFailure = recorder.failure {
+            return failure(writeFailure.description)
+        }
+        let recordsAMoment = request.cmd == "record_start" || request.cmd == "record_mark"
+        var result = RemoteResult(frame: recordsAMoment ? recorder.lastFrameNumber : nil)
+        result.recording = recorder.info
+        return RemoteResponse(id: request.id, ok: true, result: result)
     }
 
     // MARK: Action graph (remote control + scope dispatch)

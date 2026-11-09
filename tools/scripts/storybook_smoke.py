@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui import Client, CellSlice, Probe, vt  # noqa: E402
 from terminalui.process import usable_cpus  # noqa: E402
+from terminalui.recording import Recording  # noqa: E402
 from terminalui.runner import BOOT_TIMEOUT, AppExitedBadly, spawn_and_connect  # noqa: E402
 
 
@@ -3063,6 +3064,29 @@ def storybook_records_from_launch(app: Client) -> None:
     assert_true(shown == title, f"the dump's title is '{shown}':\n{dump.stdout}")
 
 
+def storybook_records_over_the_socket(app: Client) -> None:
+    """A client records the app over its control socket: started on the
+    page it is on, then a mark after going to each of two pages. Each mark
+    is answered once the keys before it are drawn, so the screen
+    `swtui record dump --at` shows for it is that page."""
+    pages = ("Toggle", "Button")
+    with tempfile.TemporaryDirectory(prefix="terminalui-recording-") as scratch:
+        with Recording(app, Path(scratch) / "walk.tuirec", label="start") as rec:
+            for page in pages:
+                app.goto_page(page)
+                rec.hold(0.4, label=page)
+        assert_true(rec.info is not None and not rec.info.active and rec.info.marks == 1 + len(pages),
+                    f"the recording ended as {rec.info}")
+        x, y, width, _ = Client._STORYBOOK_TITLE_RECT
+        for page in pages:
+            dump = subprocess.run([str(app.build_dir / "swtui"), "record", "dump", str(rec.path), "--at", page],
+                                  capture_output=True, text=True, timeout=BOOT_TIMEOUT)
+            assert_true(dump.returncode == 0, f"swtui record dump --at {page} failed: {dump.stderr}")
+            rows = dump.stdout.splitlines()
+            shown = rows[y][x:x + width].strip() if len(rows) > y else ""
+            assert_true(shown == page, f"the screen at the mark {page} has the title '{shown}':\n{dump.stdout}")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3230,6 +3254,7 @@ CASES: list[SmokeCase] = [
               project_files=((".terminalui/terminalui.toml", "[socket]\nenabled = false\n"),)),
     SmokeCase("storybook.records_from_launch", "Storybook", storybook_records_from_launch,
               project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
+    SmokeCase("storybook.records_over_the_socket", "Storybook", storybook_records_over_the_socket),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),

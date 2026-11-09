@@ -135,6 +135,31 @@ class Probe:
 
 
 @dataclass(frozen=True)
+class RecordingInfo:
+    """How the app's recording stands, as the recording verbs answer.
+    ``frame`` is set by a start or a mark: the number of the frame the
+    recording's screen is at, the last it recorded."""
+    path: Optional[str]
+    frames: int
+    marks: int
+    duration_ms: int
+    active: bool
+    frame: Optional[int] = None
+
+    @staticmethod
+    def from_result(result: Mapping[str, Any]) -> "RecordingInfo":
+        recording = result.get("recording") or {}
+        return RecordingInfo(
+            path=recording.get("path"),
+            frames=int(recording.get("frames", 0)),
+            marks=int(recording.get("marks", 0)),
+            duration_ms=int(recording.get("duration_ms", 0)),
+            active=bool(recording.get("active", False)),
+            frame=result.get("frame"),
+        )
+
+
+@dataclass(frozen=True)
 class Response:
     id: int
     ok: bool
@@ -909,6 +934,32 @@ class Client:
         """
         response = self._call("invoke_action", action_id=action_id)
         return bool(response.result.get("fired", False))
+
+    # -- recording --
+
+    def record_start(self, path: str | os.PathLike[str], label: Optional[str] = None,
+                     hold_ms: Optional[int] = None) -> RecordingInfo:
+        """Start recording what the app draws into the ``.tuirec`` file at
+        ``path``, which must not exist yet, from the screen as it is now; a
+        ``label`` marks that first frame. Made absolute here: the app opens
+        it from its own working directory. ``terminalui.recording`` wraps
+        the recording verbs for a driver."""
+        return RecordingInfo.from_result(self._call(
+            "record_start", path=str(Path(path).absolute()), label=label, hold_ms=hold_ms).result)
+
+    def record_mark(self, label: str, hold_ms: Optional[int] = None) -> RecordingInfo:
+        """Name this moment of the recording. Answered after every input
+        sent before it is drawn, so the screen at the mark is the one that
+        input left; ``hold_ms`` is how long a picture shows it."""
+        return RecordingInfo.from_result(self._call("record_mark", label=label, hold_ms=hold_ms).result)
+
+    def record_stop(self) -> RecordingInfo:
+        """End the recording, its log whole."""
+        return RecordingInfo.from_result(self._call("record_stop").result)
+
+    def record_status(self) -> RecordingInfo:
+        """The recording being written, or the last one."""
+        return RecordingInfo.from_result(self._call("record_status").result)
 
     # -- internal --
 
