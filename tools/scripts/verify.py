@@ -32,6 +32,7 @@ stop-hook surfaces it to the conversation.
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -157,7 +158,13 @@ def wants_release(arguments: list[str]) -> bool:
 # building into a directory of its own so Linux and macOS artefacts never mix.
 TSAN_SCRATCH_PATH = ".build-tsan"
 LINUX_IMAGE = "swift:6.2"
-LINUX_SCRATCH_PATH = ".build-linux"
+# Linux runs natively for this machine: Docker on an Apple-silicon Mac runs
+# an x86_64 image under emulation, whose own SIGSEGV handling kept an app the
+# smoke suite crashes on purpose alive. CI's Linux leg is x86_64 on real
+# hardware, so between the two both architectures run natively. Each gets a
+# build directory of its own, as Linux and macOS do.
+LINUX_PLATFORM = "linux/arm64" if platform.machine() in ("arm64", "aarch64") else "linux/amd64"
+LINUX_SCRATCH_PATH = f".build-linux-{LINUX_PLATFORM.split('/')[1]}"
 # A sanitized build and suite run several times slower than a plain one, and
 # the Linux leg builds everything from cold the first time.
 RELEASE_BUILD_TIMEOUT_SECONDS = 900
@@ -172,7 +179,7 @@ def release_steps() -> list[tuple[str, list[str], int]]:
     and not on CI's slower three-core runner; running these before a tag is
     pushed is what keeps a release's CI green."""
     sanitized = f"{TSAN_SCRATCH_PATH}/debug"
-    linux = ["docker", "run", "--rm", "-v", f"{REPO_ROOT}:/app", "-w", "/app",
+    linux = ["docker", "run", "--rm", "--platform", LINUX_PLATFORM, "-v", f"{REPO_ROOT}:/app", "-w", "/app",
              "-e", "TUI_WARNINGS_AS_ERRORS=1", LINUX_IMAGE]
     return [
         # As CI builds it: with warnings as errors, stated here rather than
@@ -190,7 +197,9 @@ def release_steps() -> list[tuple[str, list[str], int]]:
         ("linux build", linux + ["swift", "build", "--build-tests", "--scratch-path", LINUX_SCRATCH_PATH],
          LINUX_TIMEOUT_SECONDS),
         ("linux test", linux + ["swift", "test", "--scratch-path", LINUX_SCRATCH_PATH], LINUX_TIMEOUT_SECONDS),
-        ("linux smoke", ["tools/scripts/linux_harness.sh", "storybook_smoke.py"], LINUX_TIMEOUT_SECONDS),
+        ("linux smoke", ["env", f"TERMINALUI_LINUX_PLATFORM={LINUX_PLATFORM}",
+                         f"TERMINALUI_LINUX_SCRATCH={LINUX_SCRATCH_PATH}",
+                         "tools/scripts/linux_harness.sh", "storybook_smoke.py"], LINUX_TIMEOUT_SECONDS),
     ]
 
 

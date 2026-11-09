@@ -74,6 +74,13 @@ def release_runs_what_ci_runs_beyond_the_gate() -> None:
     assert ran("linux_harness.sh", "storybook_smoke.py"), commands
 
 
+def linux_runs_natively_for_this_machine() -> None:
+    commands = [" ".join(command) for _, command, _ in verify.release_steps()]
+    docker = [command for command in commands if "docker" in command or "linux_harness" in command]
+    assert docker and all(verify.LINUX_PLATFORM in command for command in docker), docker
+    assert all(verify.LINUX_SCRATCH_PATH in command for command in docker), docker
+
+
 def an_everyday_gate_runs_none_of_it() -> None:
     assert not verify.wants_release(["--always"])
     assert verify.wants_release(["--release"])
@@ -118,6 +125,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("a known issue does not fail a release step, but an issue does",
      a_known_issue_does_not_fail_a_release_step_but_an_issue_does),
     ("main runs the release steps after the gate", main_runs_the_release_steps_after_the_gate),
+    ("linux runs natively for this machine", linux_runs_natively_for_this_machine),
     ("--release runs the gate whatever the tree holds", release_runs_the_gate_whatever_the_tree_holds),
     ("--release runs what CI runs beyond the gate", release_runs_what_ci_runs_beyond_the_gate),
     ("an everyday gate runs none of it", an_everyday_gate_runs_none_of_it),

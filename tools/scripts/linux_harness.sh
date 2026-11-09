@@ -21,9 +21,15 @@ set -euo pipefail
 
 SCRIPT="${1:-storybook_walk.py}"
 IMAGE="swift:6.2"  # Package.swift requires 6.2; swift:6.0 rejects the manifest.
-SCRATCH=".build-linux"
+# A platform to run (verify.py --release asks for the host's own, since an
+# emulated one keeps a crashed app alive), and a build directory to match.
+SCRATCH="${TERMINALUI_LINUX_SCRATCH:-.build-linux}"
+PLATFORM_FLAG=()
+if [[ -n "${TERMINALUI_LINUX_PLATFORM:-}" ]]; then
+    PLATFORM_FLAG=(--platform "$TERMINALUI_LINUX_PLATFORM")
+fi
 
-exec docker run --rm -v "$(pwd)":/app -w /app "$IMAGE" bash -c "
+exec docker run --rm "${PLATFORM_FLAG[@]}" -v "$(pwd)":/app -w /app "$IMAGE" bash -c "
     set -e
     # One command each: \`set -e\` lets a failure inside an && list pass, so a
     # mirror that did not answer left the run to die later on a python3 that
