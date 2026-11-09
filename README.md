@@ -296,6 +296,26 @@ never collide. Per-frame tracing — a screenshot and a trace log for every
 frame — is off until you turn it on: `swift run swtui enable trace`, capped
 with `swift run swtui set frame_limit 200`.
 
+A debug build can also **record what it draws**, and play it back anywhere.
+Turn it on for a whole run with `swift run swtui enable record`, or start and
+mark a recording from outside while you, a script or an agent drives the app:
+
+```bash
+swift run swtui record start session.tuirec   # from the screen the app shows now
+swift run swtui ctl send-key down
+swift run swtui record mark after-down --hold 400ms
+swift run swtui record stop
+swift run swtui record dump session.tuirec --at after-down   # that screen, as text
+swift run swtui record render session.tuirec --format cast -o session.cast
+asciinema play session.cast
+```
+
+A recording keeps only the rows each frame changed, and a mark is answered
+once every key sent before it has been drawn, so a scripted recording comes
+out the same every time, and the same on macOS and Linux. The recorder is
+compiled out of release builds. Rendering recordings to SVG, PNG and GIF is
+on its way, so the framework can make the pictures in its own docs.
+
 ## How rendering works
 
 A `content()` body builds an immutable view value. The framework reconciles it
@@ -362,7 +382,9 @@ graph TD
 
 `TerminalUIConfig` (the TOML parser, the one spelling of a key combination,
 the diagnostics configuration) is a target the others build on, not a
-product: nothing outside the package imports it.
+product: nothing outside the package imports it. So are `TerminalUIRecording`
+and `TerminalUIRaster`, which only `swtui` uses to render recordings: an app
+that depends on `TerminalUI` never builds them.
 
 `import TerminalInk` in a script-sized CLI costs you the color layer and
 nothing else; `TerminalUIIO` exists so apps without image needs never carry
