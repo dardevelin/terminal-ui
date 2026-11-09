@@ -6,6 +6,20 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.3.0] — 2026-11-09 — Wide characters, drawn where they belong
+
+A minor release: an app written for 2.2 compiles unchanged. CJK text and
+emoji reach the terminal in the columns the framework gave them — every
+character after one used to land a column late — and a combining mark joins
+the letter before it instead of replacing it; text input, tables, the status
+bar, forms and the other views that measured text by characters now measure
+it in columns. A `ForEach` whose rows only moved is laid out again, and the
+repeat in a tree that contains itself is a leaf. In debug builds an app can
+record what it draws — from launch, or started and marked over its socket —
+and `swtui record render` turns a recording into an asciinema cast. One
+addition to the public API: `Cell.isContinuation`, true for the right half
+of a double-width glyph.
+
 ### Added
 
 - **A debug build records what it draws.** With `enabled = true` under
@@ -1308,7 +1322,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dardevelin/terminal-ui/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dardevelin/terminal-ui/compare/v2.0.0...v2.0.1
