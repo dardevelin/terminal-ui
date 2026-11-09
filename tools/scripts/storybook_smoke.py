@@ -1637,6 +1637,60 @@ def storybook_a_click_places_the_caret_in_a_text_area(app: Client) -> None:
                 f"typing should land where the click was:\n{app.preview_text()}")
 
 
+def _accent_cells(app: Client, since: int) -> set[tuple[int, int]]:
+    """The cells, as (x, y), the app's output after byte ``since`` prints
+    on the accent's background — the caret's. A terminal model places the
+    output; SGR moves no cursor, so the glyph after it lands where the
+    model's cursor is."""
+    size = app.cells()
+    screen = vt.Screen(size.width, size.height)
+    output = app.pty_output()
+    screen.feed(output[:since])
+    cells: set[tuple[int, int]] = set()
+    first, *rest = output[since:].split(ACCENT_BACKGROUND)
+    screen.feed(first)
+    for piece in rest:
+        cells.add((screen.col, screen.row))
+        screen.feed(piece)
+    return cells
+
+
+def storybook_a_click_on_a_wrapped_prompt_row_places_the_caret_there(app: Client) -> None:
+    """PromptInput page: a sentence whose first row is full, so the wrap
+    drops the space after it, then a click on the third letter of the word
+    that starts its second row: the caret is drawn on that letter and
+    typing goes in before it. The prompt counted the dropped space as
+    drawn: the click landed one character early per wrap, and the caret
+    was drawn one column late."""
+    app.goto_page("PromptInput")
+    app.mouse_click(*_find(app, "Ask anything"))
+
+    def first_row() -> tuple[int, int]:
+        """Where the prompt's text starts: the preview centres the prompt,
+        so it moves as the prompt grows."""
+        x, y = _find(app, "❯ x")
+        return x + len("❯ "), y
+
+    # A word as wide as the prompt's rows fills the first, whatever the
+    # terminal's size: a word with no space breaks at the row's width.
+    app.send_text("x" * 200)
+    x, y = first_row()
+    row = app.text().split("\n")[y][x:]
+    width = len(row) - len(row.lstrip("x"))
+    app.send_key("enter")
+    app.send_text("x" * width + " every quick brown fox")
+    x, y = first_row()
+    second = app.text().split("\n")[y + 1][x:]
+    assert_true(second.startswith("every"), f"the second row should start with 'every':\n{app.preview_text()}")
+    since = len(app.pty_output())
+    app.mouse_click(x + 2, y + 1)
+    assert_true(app.wait_until(lambda client: (x + 2, y + 1) in _accent_cells(client, since), timeout=2.0),
+                f"the caret should be drawn on the cell clicked, ({x + 2}, {y + 1}); "
+                f"drawn at {_accent_cells(app, since)}:\n{app.preview_text()}")
+    app.send_text("X")
+    assert_true("evXery" in app.preview_text(), f"typing should land where the click was:\n{app.preview_text()}")
+
+
 def storybook_a_click_places_the_cursor_in_a_text_input(app: Client) -> None:
     """TextInput page: with text in the field, a click in its middle puts
     the cursor there."""
@@ -3234,6 +3288,8 @@ CASES: list[SmokeCase] = [
               storybook_a_right_click_opens_a_context_menu),
     SmokeCase("storybook.a_click_places_the_caret_in_a_text_area", "Storybook",
               storybook_a_click_places_the_caret_in_a_text_area),
+    SmokeCase("storybook.a_click_on_a_wrapped_prompt_row_places_the_caret_there", "Storybook",
+              storybook_a_click_on_a_wrapped_prompt_row_places_the_caret_there),
     SmokeCase("storybook.a_click_places_the_cursor_in_a_text_input", "Storybook",
               storybook_a_click_places_the_cursor_in_a_text_input),
     SmokeCase("coder.a_click_places_the_cursor_in_the_composer", "Coder",

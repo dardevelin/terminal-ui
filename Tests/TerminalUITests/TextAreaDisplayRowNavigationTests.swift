@@ -8,11 +8,10 @@ import Testing
 // the next LOGICAL line, skipping wrapped chunks) is covered in
 // `TextAreaWrapTests`.
 //
-// Cursor projection (logical row, col) ↔ (display row, col within
-// chunk) is the heart of the navigation logic — same shape as
-// PromptInput's `projectCursor`. Selection drawing across wrap
-// boundaries reuses the same projection so highlights span chunks
-// correctly.
+// Cursor projection (logical row, col) ↔ (display row, column) is the
+// heart of the navigation logic — `WrappedLine`, which PromptInput draws
+// and moves through too. Selection drawing across wrap boundaries reuses
+// the same projection so highlights span chunks correctly.
 
 @Suite("TextArea — display-row arrow mode + scroll + selection across wraps")
 @MainActor
@@ -23,36 +22,27 @@ struct TextAreaDisplayRowNavigationTests {
     @Test("cursor at logical (0, 25) on a wrapped line projects to chunk 1")
     func cursorProjectsToCorrectChunk() {
         // "type a very long line and see if it will properly wrap" wraps
-        // at width 20 to: ["type a very long", "line and see if it", "will properly wrap"]
-        // (or similar — TextLayout.wrapWords picks word boundaries).
-        // Cursor at logical col 25 should land on chunk[1].
+        // at width 20 to: ["type a very long ", "line and see if it ", "will properly wrap"].
         let line = "type a very long line and see if it will properly wrap"
-        let (chunkIdx, colInChunk) = TextArea.projectCursor(
-            logicalLine: line, logicalCol: 25, wrapWidth: 20
-        )
-        #expect(chunkIdx >= 1, "logical col 25 should land past chunk 0; got chunk \(chunkIdx)")
-        #expect(colInChunk >= 0)
+        let caret = WrappedLine(line, width: 20).caret(at: 25)
+        #expect(caret.row == 1)
+        #expect(caret.column == 8)
     }
 
     @Test("cursor at logical col 0 projects to chunk 0 col 0")
     func cursorAtStart() {
-        let line = "type a very long line"
-        let (chunkIdx, colInChunk) = TextArea.projectCursor(
-            logicalLine: line, logicalCol: 0, wrapWidth: 10
-        )
-        #expect(chunkIdx == 0)
-        #expect(colInChunk == 0)
+        let caret = WrappedLine("type a very long line", width: 10).caret(at: 0)
+        #expect(caret.row == 0)
+        #expect(caret.column == 0)
     }
 
     @Test("cursor at end of logical line projects to last chunk's end")
     func cursorAtEnd() {
         let line = "type a very long line"
-        let (chunkIdx, colInChunk) = TextArea.projectCursor(
-            logicalLine: line, logicalCol: line.count, wrapWidth: 10
-        )
+        let caret = WrappedLine(line, width: 10).caret(at: line.count)
         let chunks = TextLayout.wrapWords(line, width: 10)
-        #expect(chunkIdx == chunks.count - 1)
-        #expect(colInChunk == chunks.last?.count ?? 0)
+        #expect(caret.row == chunks.count - 1)
+        #expect(caret.column == chunks.last?.count ?? 0)
     }
 
     // MARK: - Arrow mode .display
@@ -60,41 +50,20 @@ struct TextAreaDisplayRowNavigationTests {
     @Test(".display arrow Down on wrapped line advances to next chunk of same logical line")
     func displayArrowDownAdvancesChunk() {
         let line = "type a very long line and see if it will properly wrap"
-        let chunks = TextLayout.wrapWords(line, width: 15)
-        guard chunks.count >= 2 else {
-            Issue.record("test setup needs ≥2 chunks; got \(chunks.count)")
-            return
-        }
-        // Cursor on chunk 0 col 5. Down in .display mode should land
-        // on chunk 1 at col 5 (or chunk 1's last col if shorter).
-        let (newChunk, newCol) = TextArea.displayArrowDown(
-            currentChunk: 0, currentCol: 5,
-            chunksOfCurrentLine: chunks,
-            chunksOfNextLine: nil,
-            desiredCol: 5
-        )
-        #expect(newChunk == 1, "Down on chunk 0 should land on chunk 1; got \(newChunk)")
-        #expect(newCol <= chunks[1].count, "col must be within chunk 1; got \(newCol)")
+        let text = WrappedText(lines: [line], width: 15)
+        let moved = text.caret(movedBy: 1, from: 5, line: 0, column: 5)
+        let start = text.line(0).rows[1].lowerBound
+        #expect(moved?.line == 0)
+        #expect(moved?.index == start + 5, "Down from column 5 lands on column 5 of the next row")
     }
 
     @Test(".display Down on last chunk crosses to next logical line's chunk 0")
     func displayArrowDownCrossesLogicalBoundary() {
-        let lineA = "short"
-        let lineB = "another short"
-        let chunksA = TextLayout.wrapWords(lineA, width: 20)
-        let chunksB = TextLayout.wrapWords(lineB, width: 20)
-        let (newChunk, _) = TextArea.displayArrowDown(
-            currentChunk: chunksA.count - 1, currentCol: 3,
-            chunksOfCurrentLine: chunksA,
-            chunksOfNextLine: chunksB,
-            desiredCol: 3
-        )
-        // crossing logical → returns sentinel (-1, _) meaning "advance
-        // logical row, project at col" OR returns (0, 3) and the
-        // caller manages the row jump. We document the contract via
-        // sentinel: chunk == -1 signals "cross boundary".
-        #expect(newChunk == -1 || newChunk == 0,
-                "expected sentinel or chunk 0 of next line; got \(newChunk)")
+        let text = WrappedText(lines: ["short", "another short"], width: 20)
+        let moved = text.caret(movedBy: 1, from: 3, line: 0, column: 3)
+        #expect(moved?.line == 1)
+        #expect(moved?.index == 3)
+        #expect(text.caret(movedBy: 1, from: 3, line: 1, column: 3) == nil, "no row below the last")
     }
 
     // MARK: - Display-row scrolling
