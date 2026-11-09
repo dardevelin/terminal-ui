@@ -261,6 +261,9 @@ public struct OutputBuffer {
 
     // MARK: - Internal
 
+    /// The bytes written since the last `reset()` — what `flush` would send.
+    var writtenBytes: [UInt8] { Array(bytes[0..<count]) }
+
     private mutating func ensureCapacity(_ needed: Int) {
         let required = count + needed
         if required <= bytes.count { return }

@@ -27,6 +27,24 @@ All notable changes to TerminalUI are documented here. Format based on
   Right, Enter, Space and a click open and close nothing, and Left selects
   its parent, as from any leaf. The earlier occurrence opens and closes as
   before.
+- **Text after a wide character is drawn where it belongs.** A CJK
+  ideograph or an emoji takes two columns, and the buffer held it in two
+  cells, but every frame sent the terminal both: the glyph, which moves the
+  cursor two columns, and then the space in its second cell. Everything
+  after it on the row landed one column late per wide glyph, and pieces of
+  the shifted row stayed on screen after the view that drew them had gone.
+  A wide glyph's second cell is now its continuation
+  (`Cell.isContinuation`), which output never sends. A frame that changes a
+  wide glyph rewrites it whole; a write over either half of one blanks the
+  other, as a terminal does; a wide glyph with no room for its second
+  column, at the right edge or a clip, is drawn as a space. A combining
+  mark that arrives in a span of its own is drawn on the letter before it,
+  where it used to replace that letter, and a zero-width character with
+  nothing to join is dropped. Views that measured text in characters
+  rather than columns measure it in columns: a `TextInput`'s scrolling
+  window, prompt and placeholder, a `TextArea`'s wrapping, `Table` cells,
+  `StatusBar` sections, `BarChart` labels, a `ProgressBar`'s label, `Form`
+  labels, the segmented `Picker`, and the padding of a plain `Text`.
 
 ## [2.2.0] — 2026-11-08 — Layout and identity, as SwiftUI's
 

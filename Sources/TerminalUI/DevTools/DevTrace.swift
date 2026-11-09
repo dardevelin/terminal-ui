@@ -321,10 +321,7 @@ public final class DevTracer: Sendable {
         output += "---\n"
 
         for y in 0..<buffer.height {
-            for x in 0..<buffer.width {
-                let cell = buffer[x, y]
-                output += String(cell.character)
-            }
+            output += buffer.screenText(row: y)
             output += "\n"
         }
 

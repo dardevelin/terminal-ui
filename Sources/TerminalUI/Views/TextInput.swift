@@ -239,7 +239,7 @@ public struct TextInput: TerminalView {
                 // The whole post-prompt rect is available for value + cursor.
                 // `composeSpans` reserves its own cell for the cursor glyph;
                 // rect-clip keeps any residual writes inside the rect.
-                let available = max(1, width - prompt.count)
+                let available = max(1, width - prompt.displayWidth)
                 let composed = composeSpans(
                     value: value,
                     cursor: resolvedCursor,
@@ -483,7 +483,8 @@ public struct TextInput: TerminalView {
             // When field is empty, cursor at left then placeholder clipped to fit.
             let caret = spans.count
             spans.append(TextSpan("│"))
-            let clipped = String(placeholder.prefix(max(0, maxValueWidth - 1)))
+            let room = maxValueWidth - 1
+            let clipped = room > 0 ? LineBreakMode.byClipping.apply(to: placeholder, width: room) : ""
             spans.append(TextSpan(clipped, foreground: theme.foregroundFaint))
             return (spans, caret, 0)
         }
@@ -559,18 +560,20 @@ public struct TextInput: TerminalView {
         }
     }
 
-    /// Slide a fixed-width window of `room` chars over `value` so
-    /// the cursor stays visible. Returns the visible substring, the
-    /// cursor's offset within it, and the (possibly updated)
-    /// `windowStart` so the caller can persist it across renders.
+    /// Slide a window `room` cells wide over `value` so the cursor stays
+    /// visible. Returns the visible substring, the cursor's offset within
+    /// it, and the (possibly updated) `windowStart` so the caller can
+    /// persist it across renders. `cursor`, the offset and `windowStart`
+    /// count characters; the window is measured in cells, so a run of
+    /// double-width glyphs shows half as many characters as ASCII does.
     ///
     /// Behaviour: "scroll only when the cursor would clip" —
     ///   * Value fits in room → window covers the whole value.
     ///   * Cursor < windowStart → slide windowStart to cursor.
-    ///   * Cursor > windowStart + room - 1 → slide windowStart so
-    ///     cursor sits at the right edge.
-    ///   * Cursor inside [windowStart, windowStart + room - 1] →
-    ///     leave windowStart alone. Cursor moves WITHIN the window.
+    ///   * The character at the cursor would end past the window's right
+    ///     edge → slide windowStart right until it ends on it.
+    ///   * Otherwise leave windowStart alone. Cursor moves WITHIN the
+    ///     window.
     ///
     /// `windowStart == -1` is the uninitialised sentinel: first
     /// observation pins to the tail (legacy "scroll the tail into
@@ -583,18 +586,33 @@ public struct TextInput: TerminalView {
         -> (visible: String, cursorOffset: Int, windowStart: Int)
     {
         // Whole value fits — no window math needed.
-        if value.count <= room {
+        if value.displayWidth <= room {
             return (value, cursor, 0)
         }
+        let characters = Array(value)
+        let widths = characters.map(\.displayWidth)
 
-        let maxStart = value.count - room
+        // The first start whose tail fits: the window at its rightmost.
+        var maxStart = characters.count
+        var tail = 0
+        while maxStart > 0, tail + widths[maxStart - 1] <= room {
+            maxStart -= 1
+            tail += widths[maxStart]
+        }
         var start: Int
 
         if windowStart < 0 {
             // First render — pin to tail when cursor is at end (the
             // typical typing case), otherwise centre on cursor as a
             // sane default for non-typing first observation.
-            start = (cursor >= value.count) ? maxStart : max(0, min(maxStart, cursor - room / 2))
+            start = cursor
+            if cursor < characters.count {
+                var behind = 0
+                while start > 0, behind + widths[start - 1] <= room / 2 {
+                    start -= 1
+                    behind += widths[start]
+                }
+            }
         } else {
             start = windowStart
         }
@@ -604,24 +622,31 @@ public struct TextInput: TerminalView {
         if cursor < start {
             // Clip-left → slide window left so cursor sits at offset 0.
             start = cursor
-        } else if cursor > start + room - 1 {
-            // Clip-right → slide window right so cursor sits at the
-            // right edge. Formula `cursor - room + 1` puts the cursor
-            // at offset `room - 1`. When `cursor == value.count`
-            // (typing past the last char), the start clamps to
-            // `maxStart` and the cursor lands at offset `room` — the
+        } else {
+            // Clip-right → slide window right until the character under
+            // the cursor ends at the right edge. When `cursor ==
+            // value.count` (typing past the last char) the start clamps
+            // to `maxStart` and the cursor lands after the tail — the
             // legacy "after-tail cursor" rendering that
             // `appendWithCursor` expects.
-            start = cursor - room + 1
+            let mustShow = min(cursor + 1, characters.count)
+            var shown = start < mustShow ? widths[start..<mustShow].reduce(0, +) : 0
+            while start < cursor, shown > room {
+                shown -= widths[start]
+                start += 1
+            }
         }
         // Clamp into [0, maxStart].
         start = max(0, min(maxStart, start))
 
-        let startIdx = value.index(value.startIndex, offsetBy: start)
-        let endIdx = value.index(value.startIndex, offsetBy: start + room)
-        return (String(value[startIdx..<endIdx]), cursor - start, start)
+        var end = start
+        var used = 0
+        while end < characters.count, used + widths[end] <= room {
+            used += widths[end]
+            end += 1
+        }
+        return (String(characters[start..<end]), cursor - start, start)
     }
-
     /// Emit `text` as a span, inserting the cursor glyph `│` at
     /// `cursorIndex` (an offset within `text`). Splits the run when
     /// the cursor is mid-buffer; appends the glyph at the tail

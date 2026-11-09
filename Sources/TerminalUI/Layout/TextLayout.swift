@@ -177,7 +177,7 @@ extension TextLayout {
 
     /// The leading `width` cells of `spans`, cutting the final span mid-run
     /// when the boundary falls inside it.
-    private static func prefix(_ spans: [TextSpan], width: Int) -> [TextSpan] {
+    static func prefix(_ spans: [TextSpan], width: Int) -> [TextSpan] {
         guard width > 0 else { return [] }
         var out: [TextSpan] = []
         var used = 0

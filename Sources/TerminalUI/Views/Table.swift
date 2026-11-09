@@ -222,8 +222,10 @@ public struct Table<Data: RandomAccessCollection>: TerminalView
     }
 
     func alignText(_ text: String, width: Int, alignment: TableColumn<Data.Element>.ColumnAlignment) -> String {
-        let truncated = text.count > width ? String(text.prefix(width - 1)) + "…" : text
-        let pad = max(0, width - truncated.count)
+        // Measured in cells: a value of double-width glyphs is half as
+        // many characters as the columns it fills.
+        let truncated = width > 0 ? LineBreakMode.byTruncatingTail.apply(to: text, width: width) : ""
+        let pad = max(0, width - truncated.displayWidth)
 
         switch alignment {
         case .left:
