@@ -10,6 +10,7 @@ private let recordUsage = """
            swtui record start <path> [--label LABEL [--hold DURATION]]
            swtui record mark <label> [--hold DURATION]
            swtui record stop | status
+           swtui record render <log.tuirec> --format cast -o OUT
     start, mark, stop and status reach a running debug build as swtui ctl does:
     --pid N, --socket PATH or --dir PATH, or the one app running from this checkout.
     """
@@ -18,6 +19,10 @@ private let recordUsage = """
 /// `.tuirec` log shows, as text: after its last frame, as it was when the
 /// mark `LABEL` was made, or after the frame the app counted as `N`.
 func recordCommand(args: [String]) {
+    if args.first == "render" {
+        renderCommand(args: Array(args.dropFirst()))
+        return
+    }
     if let verb = args.first, controlVerbs.contains(verb) {
         recordControlCommand(verb: verb, args: Array(args.dropFirst()))
         return

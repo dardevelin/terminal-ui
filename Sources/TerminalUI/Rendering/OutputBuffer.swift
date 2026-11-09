@@ -262,7 +262,9 @@ public struct OutputBuffer {
     // MARK: - Internal
 
     /// The bytes written since the last `reset()` — what `flush` would send.
-    var writtenBytes: [UInt8] { Array(bytes[0..<count]) }
+    /// Package-wide so swtui's cast encoder writes a recording's frames as
+    /// the bytes the runtime would have sent for them.
+    package var writtenBytes: [UInt8] { Array(bytes[0..<count]) }
 
     private mutating func ensureCapacity(_ needed: Int) {
         let required = count + needed

@@ -107,10 +107,20 @@ let package = Package(
             path: "Sources/TerminalUIRaster",
             swiftSettings: strictSettings
         ),
+        // TerminalUIRecording — turns a `.tuirec` recording into pictures:
+        // its reader, the presentation clock, palettes and cell metrics, and
+        // the encoders. In no product: swtui is its only client, so a
+        // consumer building TerminalUI compiles none of it.
+        .target(
+            name: "TerminalUIRecording",
+            dependencies: ["TerminalUI", "TerminalUIConfig"],
+            path: "Sources/TerminalUIRecording",
+            swiftSettings: strictSettings
+        ),
         // Developer CLI tool for managing .terminalui/ config
         .executableTarget(
             name: "swtui",
-            dependencies: ["TerminalUIConfig", "TerminalInk", "TerminalLog", "TerminalUI"],
+            dependencies: ["TerminalUIConfig", "TerminalInk", "TerminalLog", "TerminalUI", "TerminalUIRecording"],
             path: "Sources/swtui",
             swiftSettings: strictSettings
         ),
@@ -199,6 +209,12 @@ let package = Package(
             path: "Tests/TerminalUIRasterTests",
             // Goldens read through `#filePath`, as TerminalUIIOTests' are.
             exclude: ["Fixtures"],
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalUIRecordingTests",
+            dependencies: ["TerminalUIRecording", "TerminalUI", "TerminalUIConfig"],
+            path: "Tests/TerminalUIRecordingTests",
             swiftSettings: strictSettings
         ),
         .testTarget(
