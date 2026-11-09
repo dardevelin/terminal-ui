@@ -295,7 +295,9 @@ struct GlyphGeometryTests {
         var checked = 0
         for line in try String(contentsOf: list, encoding: .utf8).split(separator: "\n")
         where !line.hasPrefix("#") && !line.trimmingCharacters(in: .whitespaces).isEmpty {
-            let fields = line.split(separator: " ", maxSplits: 3)
+            // By scalar: a space before a combining mark in the glyph column,
+            // such as U+FE0F, is one Character with it.
+            let fields = line.unicodeScalars.split(separator: " ", maxSplits: 3).map { String(String.UnicodeScalarView($0)) }
             try #require(fields.count == 4, "\(line)")
             let bounds = fields[0].split(separator: ".", omittingEmptySubsequences: true)
                 .map { UInt32($0.dropFirst(2), radix: 16) }

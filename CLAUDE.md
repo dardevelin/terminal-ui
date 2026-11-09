@@ -367,6 +367,8 @@ swift run swtui record render <log> --format cast -o OUT     # an asciicast v2 f
 #   [--at LABEL | --from L --to L] [--clock script|draw] [--quantum 40ms] [--palette catppuccin-mocha|xterm]
 swift run swtui record render <log> --format svg --at LABEL -o OUT   # one screen as an SVG still
 #   [--frame N] [--font-size 15] [--line-height 1.2] [--padding 12] [--scale 1|2] [--palette …]
+swift run swtui record render <log> --format svg -o OUT   # no --at/--frame: a CSS-animated SVG
+#   [--from L --to L] [--loop-pause 1.5s] [--svg-embed-font] (bundled JetBrains Mono, ~740 KB)
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit

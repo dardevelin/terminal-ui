@@ -2,14 +2,14 @@
 <title>blocks</title>
 <desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
 <defs>
-<symbol id="u2580" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="9"/></symbol>
-<symbol id="u2584" viewBox="0 0 9 18"><rect x="0" y="9" width="9" height="9"/></symbol>
-<symbol id="u2588" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18"/></symbol>
+<symbol id="u2580" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="0" width="9" height="9"/></symbol>
+<symbol id="u2584" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="9" width="9" height="9"/></symbol>
+<symbol id="u2588" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="0" width="9" height="18"/></symbol>
 <symbol id="u258C" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="18"/></symbol>
 <symbol id="u2590" viewBox="0 0 9 18"><rect x="5" y="0" width="4" height="18"/></symbol>
-<symbol id="u2591" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.25"/></symbol>
-<symbol id="u2592" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.5"/></symbol>
-<symbol id="u2593" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.75"/></symbol>
+<symbol id="u2591" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="0" width="9" height="18" fill-opacity="0.25"/></symbol>
+<symbol id="u2592" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="0" width="9" height="18" fill-opacity="0.5"/></symbol>
+<symbol id="u2593" viewBox="0 0 9 18" preserveAspectRatio="none"><rect x="0" y="0" width="9" height="18" fill-opacity="0.75"/></symbol>
 <symbol id="u2596" viewBox="0 0 9 18"><rect x="0" y="9" width="5" height="9"/></symbol>
 <symbol id="u2597" viewBox="0 0 9 18"><rect x="5" y="9" width="4" height="9"/></symbol>
 <symbol id="u2598" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="9"/></symbol>

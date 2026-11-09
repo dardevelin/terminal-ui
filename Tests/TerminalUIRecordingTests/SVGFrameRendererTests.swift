@@ -86,6 +86,23 @@ struct SVGFrameRendererTests {
         #expect(try render("borders").components(separatedBy: #"<symbol id="u2500""#).count == 2)
     }
 
+    @Test func aRunOfAGlyphThatSpansItsCellIsOneStretchedShape() throws {
+        let borders = try render("borders")
+        // `──` between the corners: one use two cells wide, its symbol
+        // stretched on one axis; `│`, which does not reach the cell's
+        // sides, and the corners stay one use a cell.
+        #expect(borders.contains(##"<use href="#u2500" x="21" y="12" width="18" height="18" fill="#94e2d5"/>"##))
+        #expect(borders.contains(#"<symbol id="u2500" viewBox="0 0 9 18" preserveAspectRatio="none">"#))
+        #expect(borders.contains(#"<symbol id="u2502" viewBox="0 0 9 18"><"#))
+        #expect(!borders.contains(##"<use href="#u2500" x="30""##))
+        // A full block and a shade reach both sides too; the quadrant `▖`
+        // does not.
+        let blocks = try render("blocks")
+        #expect(blocks.contains(#"<symbol id="u2588" viewBox="0 0 9 18" preserveAspectRatio="none">"#))
+        #expect(blocks.contains(#"<symbol id="u2592" viewBox="0 0 9 18" preserveAspectRatio="none">"#))
+        #expect(!blocks.contains(#"<symbol id="u2596" viewBox="0 0 9 18" preserveAspectRatio"#))
+    }
+
     @Test func aWideGlyphSpansTwoCellsAndItsContinuationNothing() throws {
         let wide = try render("wide")
         #expect(wide.contains(##"<text x="12" y="26" textLength="18" lengthAdjust="spacing" fill="#f9e2af">界</text>"##))

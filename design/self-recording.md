@@ -326,7 +326,12 @@ and can land any time after 9. Until step 13, the vhs pipeline keeps working.
 7. Repository size: about 1.1 MB of font plus logs; budgets enforced.
 8. Licence notices must stay in sync with the font (hash-pinned).
 9. SVG on Pages and DocC: settled by the step 6 spike; the fallback is the last
-   frame, and Pages can return to the GIF.
+   frame, and Pages can return to the GIF. Spike: headless Chrome, driven in
+   real time over CDP, played the step-end groups as a file and in an `<img>`,
+   looping, and showed the last frame under reduced motion; in a DocC
+   `@Image` the SVG drew but mostly stayed on its first frame where a GIF
+   animated, so DocC keeps PNG and GIF and the SVG serves the plain Pages
+   landing.
 10. The recorder shows what the framework meant to draw; step 1's byte replay
     checks what reached the terminal, on every page, in CI.
 11. Timer-driven segments vary by one quantum; the debug overlay's live numbers

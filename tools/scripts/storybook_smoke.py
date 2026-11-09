@@ -3224,6 +3224,50 @@ def storybook_recording_renders_a_mark_as_an_svg_still(app: Client) -> None:
     assert_true("@keyframes" not in document and "<animate" not in document, "a still holds an animation")
 
 
+def storybook_recording_renders_an_animated_svg(app: Client) -> None:
+    """A walk over two pages, each held at a mark, rendered with `swtui
+    record render --format svg` and neither `--at` nor `--frame`, is an XML
+    document that plays: a group per frame the picture presents — as many
+    as the cast of the same log has output events, since both follow one
+    timeline — each after the first shown by its own `@keyframes`, and a
+    `prefers-reduced-motion` rule that stops them, leaving the last frame."""
+    import json
+    import xml.etree.ElementTree as ElementTree
+
+    namespace = "{http://www.w3.org/2000/svg}"
+    with tempfile.TemporaryDirectory(prefix="terminalui-svg-") as scratch:
+        with Recording(app, Path(scratch) / "walk.tuirec", label="start") as rec:
+            app.goto_page("Toggle")
+            rec.hold(0.4, label="Toggle")
+            app.goto_page("Text")
+            rec.hold(0.4, label="Text")
+        rendered = {}
+        for name, extra in [("walk.svg", ["--format", "svg", "--loop-pause", "2s"]), ("walk.cast", ["--format", "cast"])]:
+            output = Path(scratch) / name
+            render = subprocess.run([str(app.build_dir / "swtui"), "record", "render", str(rec.path), *extra,
+                                     "-o", str(output)], capture_output=True, text=True, timeout=BOOT_TIMEOUT)
+            assert_true(render.returncode == 0, f"swtui record render {' '.join(extra)} failed: {render.stderr}")
+            rendered[name] = output.read_text()
+    document = rendered["walk.svg"]
+    root = ElementTree.fromstring(document)
+    assert_true(root.tag == f"{namespace}svg", f"the document's root is {root.tag}")
+
+    events = [json.loads(line) for line in rendered["walk.cast"].splitlines()[1:]]
+    presented = sum(1 for event in events if event[1] == "o")
+    groups = [group.get("id") for group in root.iter(f"{namespace}g") if re.fullmatch(r"f\d+", group.get("id") or "")]
+    assert_true(groups == [f"f{index}" for index in range(presented)],
+                f"{len(groups)} frame groups for {presented} presented frames: {groups}")
+    assert_true(presented >= 3, f"the walk presents {presented} frames: the start and two pages at least")
+    style = "".join(element.text or "" for element in root.iter(f"{namespace}style"))
+    keyframes = re.findall(r"@keyframes (k\d+)\{0%\{visibility:hidden\}\d+\.\d{3}%\{visibility:visible\}\}", style)
+    animated = re.findall(r"#(f\d+)\{animation:(k\d+) (\d+)ms step-end infinite\}", style)
+    assert_true(len(keyframes) >= 2 and [name for _, name, _ in animated] == keyframes,
+                f"keyframes {keyframes} and the groups they play {animated}")
+    assert_true(all(group in groups[1:] for group, _, _ in animated), f"a rule animates no later frame: {animated}")
+    assert_true(len({total for _, _, total in animated}) == 1, "the groups loop over different lengths")
+    assert_true("@media (prefers-reduced-motion: reduce)" in style, "no reduced-motion rule")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3399,6 +3443,8 @@ CASES: list[SmokeCase] = [
               project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
     SmokeCase("storybook.recording_renders_a_mark_as_an_svg_still", "Storybook",
               storybook_recording_renders_a_mark_as_an_svg_still),
+    SmokeCase("storybook.recording_renders_an_animated_svg", "Storybook",
+              storybook_recording_renders_an_animated_svg),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),

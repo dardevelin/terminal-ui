@@ -64,6 +64,16 @@ package struct DeviceGlyph: Hashable, Sendable {
     package var height: Int
     package var marks: [Mark]
 
+    /// Every mark a rect from the cell's left edge to its right: a row of
+    /// such glyphs side by side draws the same as one stretched across
+    /// them — `─`, `═`, `█`, `▀`, the shades.
+    package var spansWidth: Bool {
+        !marks.isEmpty && marks.allSatisfy { mark in
+            guard case .rect(let x, _, let rectWidth, _) = mark.figure else { return false }
+            return x == 0 && rectWidth == width
+        }
+    }
+
     package init(_ shape: GlyphShape, cellWidth: Int, cellHeight: Int) {
         let resolver = Resolver(cellWidth: cellWidth, cellHeight: cellHeight,
                                 strokes: StrokeWidths(cellWidth: cellWidth))
