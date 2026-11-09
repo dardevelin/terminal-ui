@@ -1,0 +1,13 @@
+{"tuirec":1,"cols":20,"rows":3,"cursor":"hidden","app":"typing","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"rgb:cba6f7","bg":null,"bold":true}
+{"t":0,"frame":1,"rows":[[0,[[1,"$ "],[0,"swift run Demo    "]]],[1,[[0,"                    "]]],[2,[[0,"                    "]]]]}
+{"t":1000,"mark":"start","hold":500}
+{"style":2,"fg":"green","bg":null,"italic":true}
+{"style":3,"fg":"blue","bg":"rgb:313244","bold":true,"italic":true}
+{"t":2000,"frame":2,"rows":[[1,[[2,"Building…"],[0,"   "],[3,"done"],[0,"    "]]]]}
+{"t":3000,"mark":"built","hold":400}
+{"style":4,"fg":"yellow","bg":null,"underline":true}
+{"t":4000,"frame":3,"rows":[[2,[[4,"Ready"],[0," ⣿⡇ "],[1,"❯"],[0,"          "]]]]}
+{"t":5000,"mark":"ready","hold":800}
+{"t":6000,"end":true,"frames":3,"marks":3}

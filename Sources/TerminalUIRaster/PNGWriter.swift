@@ -124,47 +124,70 @@ private enum ScanlineFilter: UInt8, CaseIterable {
     case paeth = 4
 
     /// Appends `row`'s filter byte and filtered bytes; a tie goes to the
-    /// lower filter type.
+    /// lower filter type. The search is most of a truecolour PNG's
+    /// encoding time, so it runs over the rows' storage directly, as
+    /// LZ77's match search does: an array's checked subscript costs a
+    /// call a byte in an unoptimised build, and swtui is run as one.
     static func appendBest(_ row: [UInt8], previous: [UInt8], bytesPerPixel: Int, to scanlines: inout [UInt8]) {
-        func cost(_ output: [UInt8]) -> Int {
-            output.reduce(0) { $0 + Int(Int8(truncatingIfNeeded: $1).magnitude) }
-        }
-        var best = (filter: none, output: none.apply(row, previous: previous, bytesPerPixel: bytesPerPixel))
-        var bestCost = cost(best.output)
-        for filter in allCases.dropFirst() {
-            let output = filter.apply(row, previous: previous, bytesPerPixel: bytesPerPixel)
-            let outputCost = cost(output)
-            if outputCost < bestCost { (best, bestCost) = ((filter, output), outputCost) }
+        let count = row.count
+        var best = (filter: none, cost: Int.max)
+        var bestOutput: [UInt8] = []
+        var output = [UInt8](repeating: 0, count: count)
+        for filter in allCases {
+            let cost = row.withUnsafeBufferPointer { row in
+                previous.withUnsafeBufferPointer { previous in
+                    output.withUnsafeMutableBufferPointer { output in
+                        filter.apply(row, previous: previous, bytesPerPixel: bytesPerPixel, into: output)
+                    }
+                }
+            }
+            if cost < best.cost {
+                best = (filter, cost)
+                bestOutput = output
+            }
         }
         scanlines.append(best.filter.rawValue)
-        scanlines += best.output
+        scanlines += bestOutput
     }
 
     /// §9.2: each byte less its prediction from the byte a pixel to the
     /// left (`a`), the byte above (`b`) and the one above that (`c`),
-    /// modulo 256, with bytes outside the image taken as 0.
-    private func apply(_ row: [UInt8], previous: [UInt8], bytesPerPixel: Int) -> [UInt8] {
-        row.indices.map { index in
+    /// modulo 256, with bytes outside the image taken as 0. Returns the
+    /// output's cost: the sum of its bytes' magnitudes, read as signed.
+    private func apply(_ row: UnsafeBufferPointer<UInt8>, previous: UnsafeBufferPointer<UInt8>, bytesPerPixel: Int,
+                       into output: UnsafeMutableBufferPointer<UInt8>) -> Int {
+        var cost = 0
+        // A while loop, not a range's iterator, which an unoptimised build
+        // calls through generic metadata for every byte.
+        var index = 0
+        while index < row.count {
+            defer { index += 1 }
             let left = index >= bytesPerPixel ? Int(row[index - bytesPerPixel]) : 0
             let above = Int(previous[index])
-            let aboveLeft = index >= bytesPerPixel ? Int(previous[index - bytesPerPixel]) : 0
-            let prediction = switch self {
-            case .none: 0
-            case .sub: left
-            case .up: above
-            case .average: (left + above) / 2
-            case .paeth: Self.paeth(left, above, aboveLeft)
+            let prediction: Int
+            switch self {
+            case .none: prediction = 0
+            case .sub: prediction = left
+            case .up: prediction = above
+            case .average: prediction = (left + above) / 2
+            case .paeth: prediction = Self.paeth(left, above, index >= bytesPerPixel ? Int(previous[index - bytesPerPixel]) : 0)
             }
-            return UInt8(truncatingIfNeeded: Int(row[index]) - prediction)
+            let byte = UInt8(truncatingIfNeeded: Int(row[index]) - prediction)
+            output[index] = byte
+            cost += byte < Self.signBit ? Int(byte) : Self.byteRange - Int(byte)
         }
+        return cost
     }
+
+    private static let signBit: UInt8 = 0x80
+    private static let byteRange = 0x100
 
     /// §9.4: whichever of a, b, c is nearest a + b − c, ties in that order.
     private static func paeth(_ left: Int, _ above: Int, _ aboveLeft: Int) -> Int {
         let estimate = left + above - aboveLeft
-        let toLeft = abs(estimate - left)
-        let toAbove = abs(estimate - above)
-        let toAboveLeft = abs(estimate - aboveLeft)
+        let toLeft = estimate >= left ? estimate - left : left - estimate
+        let toAbove = estimate >= above ? estimate - above : above - estimate
+        let toAboveLeft = estimate >= aboveLeft ? estimate - aboveLeft : aboveLeft - estimate
         if toLeft <= toAbove && toLeft <= toAboveLeft { return left }
         return toAbove <= toAboveLeft ? above : aboveLeft
     }

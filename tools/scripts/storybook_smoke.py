@@ -3268,6 +3268,71 @@ def storybook_recording_renders_an_animated_svg(app: Client) -> None:
     assert_true("@media (prefers-reduced-motion: reduce)" in style, "no reduced-motion rule")
 
 
+# A debug swtui draws a 140 × 40 screen at 2× in a few seconds; a Thread
+# Sanitizer build, which the CI runs this suite against too, takes several
+# times as long.
+RENDER_TIMEOUT = 120
+
+
+def storybook_recording_renders_a_mark_as_a_png_and_a_gif(app: Client) -> None:
+    """The BrailleCanvas page, recorded with a mark and rendered with
+    `swtui record render --format png --at` at 1× and 2×, is a PNG of the
+    page's cells and the padding at the docs' cell size — 9 × 18 pixels at
+    15 px, 12 of padding, all times the scale — with a braille cell's first
+    dot drawn where the shape geometry puts it (a quarter of the cell
+    across, an eighth down) and the cell's corner left in its background.
+    Rendered with `--format gif`, it is a looping GIF of the screen at the
+    start and the page, whose last frame is the still but for edges
+    shaded in 16 steps."""
+    from terminalui import images
+
+    page = "BrailleCanvas"
+    cell_width, cell_height, padding = 9, 18, 12
+    with tempfile.TemporaryDirectory(prefix="terminalui-raster-") as scratch:
+        # Both screens held, as the README's walk holds its pages: the
+        # frames drawn on the way to the page show when the first hold
+        # ends, at one instant, so the GIF is the two screens.
+        with Recording(app, Path(scratch) / "page.tuirec") as rec:
+            rec.hold(0.4, label="start")
+            app.goto_page(page)
+            rec.hold(0.4, label=page)
+        cells = app.cells()
+
+        def render(*arguments: str) -> bytes:
+            output = Path(scratch) / "picture"
+            result = subprocess.run([str(app.build_dir / "swtui"), "record", "render", str(rec.path), *arguments,
+                                     "-o", str(output)], capture_output=True, text=True, timeout=RENDER_TIMEOUT)
+            assert_true(result.returncode == 0, f"swtui record render {' '.join(arguments)} failed: {result.stderr}")
+            return output.read_bytes()
+
+        stills = {scale: images.decode_png(render("--format", "png", "--at", page, "--scale", str(scale)))[1]
+                  for scale in (1, 2)}
+        animation = images.decode_gif(render("--format", "gif"))
+
+    # A braille cell with dot 1 (bit 0 of its offset from U+2800), in a row
+    # of one-cell characters, so its index in the row is its column.
+    braille = [(x, y) for y, row in enumerate(cells.rows) if len(row) == cells.width
+               for x, character in enumerate(row) if 0x2800 <= ord(character) <= 0x28FF and (ord(character) - 0x2800) & 1]
+    assert_true(braille, f"the {page} page shows no braille with its first dot")
+    column, row = braille[0]
+    for scale, pixels in stills.items():
+        width, height = cell_width * scale, cell_height * scale
+        size = (len(pixels[0]), len(pixels))
+        expected = (cells.width * width + 2 * padding * scale, cells.height * height + 2 * padding * scale)
+        assert_true(size == expected, f"the {scale}× PNG is {size[0]}×{size[1]}, not {expected[0]}×{expected[1]}")
+        left, top = padding * scale + column * width, padding * scale + row * height
+        dot, corner = pixels[top + height // 8][left + width // 4], pixels[top][left]
+        assert_true(dot != corner, f"at {scale}×, the braille dot at cell ({column}, {row}) is the cell's"
+                                   f" background {corner}")
+
+    assert_true(animation.loop_count == 0, f"the GIF loops {animation.loop_count} times, not forever")
+    assert_true(len(animation.screens) >= 2, f"the GIF holds {len(animation.screens)} frames")
+    still, last = stills[1], animation.screens[-1]
+    worst = max(abs(a - b) for y, line in enumerate(last) for x, pixel in enumerate(line)
+                for a, b in zip(pixel, still[y][x][:3]))
+    assert_true(worst <= 255 // 30 + 1, f"the GIF's last frame is {worst} from the PNG still somewhere")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3445,6 +3510,8 @@ CASES: list[SmokeCase] = [
               storybook_recording_renders_a_mark_as_an_svg_still),
     SmokeCase("storybook.recording_renders_an_animated_svg", "Storybook",
               storybook_recording_renders_an_animated_svg),
+    SmokeCase("storybook.recording_renders_a_mark_as_a_png_and_a_gif", "Storybook",
+              storybook_recording_renders_a_mark_as_a_png_and_a_gif),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),

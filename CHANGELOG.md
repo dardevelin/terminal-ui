@@ -31,6 +31,21 @@ All notable changes to TerminalUI are documented here. Format based on
   about 575 KB. `--from` and `--to` play the part between two marks, and
   `--svg-embed-font` carries the bundled JetBrains Mono, Regular and Bold,
   inside the file (about 740 KB more), stills included.
+- **`swtui record render --format png` and `--format gif` draw a recording
+  as pixels.** A PNG is one screen (`--at` or `--frame`), at `--scale 2`
+  drawn at twice the size rather than enlarged; a GIF is the recording's
+  timeline, looping, its last frame held `--loop-pause` (1.5s) longer. The
+  cells, baseline and shapes are the SVG's, the shapes landing on the same
+  pixels, and the text is drawn from JetBrains Mono, bundled under
+  `tools/fonts/`, by a TrueType rasterizer written for this in integers, so
+  the same log gives the same file on macOS and Linux. `--font PATH`,
+  `--font-bold`, `--font-italic`, `--font-bold-italic` and `--fallback-font`
+  take other TrueType files. A character no font has is drawn as a box and
+  warned about with its code point and frames, or, with `--missing-glyph
+  fail`, refuses the picture. A GIF's colours stay exact, its anti-aliased
+  edges shaded in up to 16 steps, and only a frame of more than 255 colours
+  is approximated, with a warning that names it. Defaults for every render
+  flag can be set in a `[render]` section of `.terminalui/terminalui.toml`.
 
 ### Fixed
 
