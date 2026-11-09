@@ -20,6 +20,17 @@ All notable changes to TerminalUI are documented here. Format based on
   Linux. `tools/font-glyphs.txt` lists every other character outside ASCII
   the framework draws, with why a font may draw it, and a new check holds
   the list to the sources.
+- **Without `--at` or `--frame`, `swtui record render --format svg` plays
+  the recording.** The SVG animates by CSS alone, so it plays as a file and
+  inside an `<img>`: each frame is a layer that redraws only the rows that
+  changed, shown at its time by a `step-end` keyframe, and the last frame
+  holds for `--loop-pause` (1.5 s) before it loops. A viewer that asks for
+  reduced motion, or plays no animation, sees the last frame. A row drawn
+  the same in several frames is written once, and a run of box-drawing
+  lines or blocks is one shape, so a 40-page walk of the Storybook comes to
+  about 575 KB. `--from` and `--to` play the part between two marks, and
+  `--svg-embed-font` carries the bundled JetBrains Mono, Regular and Bold,
+  inside the file (about 740 KB more), stills included.
 
 ### Fixed
 

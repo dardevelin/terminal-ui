@@ -1,0 +1,11 @@
+{"tuirec":1,"cols":12,"rows":3,"cursor":"hidden","app":"animation","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"rgb:cba6f7","bg":null,"bold":true}
+{"style":2,"fg":"green","bg":"rgb:313244"}
+{"t":0,"frame":1,"rows":[[0,[[1,"Tasks"],[0,"       "]]],[1,[[2,"▸ one"],[0,"       "]]],[2,[[0,"  two       "]]]]}
+{"t":1000,"mark":"start","hold":1000}
+{"t":10000,"frame":2,"rows":[[1,[[0,"  one       "]]],[2,[[2,"▸ two"],[0,"       "]]]]}
+{"t":11000,"mark":"down","hold":1000}
+{"t":20000,"frame":3,"rows":[[1,[[2,"▸ one"],[0,"       "]]],[2,[[0,"  two       "]]]]}
+{"t":21000,"mark":"up","hold":1000}
+{"t":30000,"end":true,"frames":3,"marks":3}

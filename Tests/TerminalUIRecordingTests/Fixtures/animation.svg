@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="78" viewBox="0 0 132 78" font-family='"JetBrains Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace' font-size="15" xml:space="preserve">
+<title>animation</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font. It plays as an animation; where animation is off or motion is reduced, it shows its last frame.</desc>
+<style>
+@keyframes k1{0%{visibility:hidden}22.222%{visibility:visible}}
+#f1{animation:k1 4500ms step-end infinite}
+@keyframes k2{0%{visibility:hidden}44.444%{visibility:visible}}
+#f2{animation:k2 4500ms step-end infinite}
+@media (prefers-reduced-motion: reduce){g{animation:none!important}}
+</style>
+<defs>
+<symbol id="u25B8" viewBox="0 0 9 18"><polygon points="2.25,6.375 7.125,9 2.25,11.625"/></symbol>
+<g id="r0">
+<text x="12" y="14" textLength="45" lengthAdjust="spacing" fill="#cba6f7" font-weight="700">Tasks</text>
+</g>
+<g id="r1">
+<g shape-rendering="crispEdges">
+<rect x="12" y="0" width="45" height="18" fill="#313244"/>
+</g>
+<text x="30" y="14" textLength="27" lengthAdjust="spacing" fill="#a6e3a1">one</text>
+<use href="#u25B8" x="12" y="0" width="9" height="18" fill="#a6e3a1"/>
+</g>
+<g id="r2">
+<text x="30" y="14" textLength="27" lengthAdjust="spacing" fill="#cdd6f4">two</text>
+</g>
+<g id="r3">
+<text x="30" y="14" textLength="27" lengthAdjust="spacing" fill="#cdd6f4">one</text>
+</g>
+<g id="r4">
+<g shape-rendering="crispEdges">
+<rect x="12" y="0" width="45" height="18" fill="#313244"/>
+</g>
+<text x="30" y="14" textLength="27" lengthAdjust="spacing" fill="#a6e3a1">two</text>
+<use href="#u25B8" x="12" y="0" width="9" height="18" fill="#a6e3a1"/>
+</g>
+</defs>
+<rect width="132" height="78" fill="#1e1e2e"/>
+<g id="f0">
+<use href="#r0" y="12"/>
+<use href="#r1" y="30"/>
+<use href="#r2" y="48"/>
+</g>
+<g id="f1">
+<rect x="0" y="30" width="132" height="36" fill="#1e1e2e" shape-rendering="crispEdges"/>
+<use href="#r3" y="30"/>
+<use href="#r4" y="48"/>
+</g>
+<g id="f2">
+<rect x="0" y="30" width="132" height="36" fill="#1e1e2e" shape-rendering="crispEdges"/>
+<use href="#r1" y="30"/>
+<use href="#r2" y="48"/>
+</g>
+</svg>

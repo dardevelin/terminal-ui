@@ -60,6 +60,7 @@ U+238B ⎋ font A key's symbol in a shortcut's label (KeyChord, the tutorial's h
 U+0085 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
 U+2028 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
 U+2029 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
+U+FE0F ️ font Not drawn alone: UnicodeWidth matches the emoji presentation selector to give the emoji before it two columns; it has no glyph of its own.
 
 # Input decoding: Option's characters on a Mac keyboard, matched, never drawn.
 U+00A1 ¡ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
