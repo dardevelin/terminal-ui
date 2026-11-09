@@ -8,13 +8,19 @@ case can require the two to agree.
 
 What it models, and nothing more:
 
-- Printable text, advancing by each code point's column width: 2 for East
-  Asian Wide and Fullwidth (UAX #11) and for the plane-1 emoji blocks the
-  framework draws two wide, 0 for combining and enclosing marks and the
-  zero-width format characters, 1 for everything else. A zero-width code
+- Printable text, advancing by each code point's column width
+  (``terminalui.width``): 2 for East Asian Wide and Fullwidth (UAX #11) and
+  the regional indicators, 0 for combining and enclosing marks and the
+  ignorable format characters, 1 for everything else. A zero-width code
   point joins the glyph before it, as does whatever follows a ZWJ, an emoji
   skin-tone modifier, and the second of a pair of regional indicators —
   a grapheme-aware terminal draws each of those clusters as one glyph.
+- U+FE0F straight after a one-column glyph widens it to two, as kitty,
+  Ghostty, iTerm2 and most others do with an emoji presentation sequence
+  (UTS #51 ED-9a). ``unicodedata`` has no Emoji property, so the model
+  widens after any code point, where the framework widens only an emoji
+  (Emoji=Yes): the two differ on a VS16 after a non-emoji, which UTS #51
+  calls no sequence at all. A glyph in the last column stays one wide.
 - Auto-wrap (DECAWM) with the pending wrap of the last column, as xterm
   does: a glyph printed there leaves the cursor on it until the next one.
 - A glyph printed over either half of a wide glyph blanks the other half.
@@ -33,8 +39,9 @@ buffer in, so ``Screen.text()`` compares with ``Client.text()`` directly.
 from __future__ import annotations
 
 import codecs
-import unicodedata
 from typing import Optional
+
+from .width import column_width, is_regional_indicator
 
 ESC = "\x1b"
 BEL = "\x07"
@@ -44,33 +51,15 @@ LINE_FEEDS = ("\n", "\x0b", "\x0c")
 CARRIAGE_RETURN = "\r"
 DELETE = "\x7f"
 ZWJ = "‍"
+EMOJI_PRESENTATION_SELECTOR = "\ufe0f"
 # HT moves to the next multiple of eight, xterm's default tab stops.
 TAB_STOP = 8
-# Code points with no width that `unicodedata.category` files under Cf with
-# others that have one (U+00AD SOFT HYPHEN is drawn): zero-width space and
-# joiners, the directional marks, word joiner and invisible operators, BOM.
-ZERO_WIDTH_FORMAT = frozenset(
-    [chr(cp) for cp in range(0x200B, 0x2010)] + [chr(cp) for cp in range(0x2060, 0x2065)] + ["﻿"])
-# The framework draws every code point in these plane-1 blocks two wide
-# (`Character.displayWidth`), whether or not UAX #11 calls it Wide.
-WIDE_EMOJI_BLOCKS = ((0x1F000, 0x1F2FF), (0x1F300, 0x1FAFF))
 EMOJI_MODIFIERS = range(0x1F3FB, 0x1F400)
-REGIONAL_INDICATORS = range(0x1F1E6, 0x1F200)
 # DEC private modes that switch to the alternate screen buffer.
 ALTERNATE_SCREEN_MODES = ("47", "1047", "1049")
 # ECMA-48 §5.4: a control sequence's parameter bytes are 0x30–0x3F, its
 # intermediates 0x20–0x2F and its final byte 0x40–0x7E.
 CSI_FINAL = range(0x40, 0x7F)
-
-
-def column_width(char: str) -> int:
-    """Columns a single code point takes on a terminal: 0, 1 or 2."""
-    code = ord(char)
-    if char in ZERO_WIDTH_FORMAT or unicodedata.category(char) in ("Mn", "Me"):
-        return 0
-    if any(low <= code <= high for low, high in WIDE_EMOJI_BLOCKS):
-        return 2
-    return 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
 
 
 class Screen:
@@ -258,11 +247,12 @@ class Screen:
 
     def _print(self, char: str) -> None:
         code = ord(char)
+        regional_indicator = is_regional_indicator(code)
         joins = self._joins_next or (code in EMOJI_MODIFIERS) or \
-            (code in REGIONAL_INDICATORS and self._regional_indicator_open)
+            (regional_indicator and self._regional_indicator_open)
         width = 0 if joins else column_width(char)
         self._joins_next = char == ZWJ
-        if code in REGIONAL_INDICATORS:
+        if regional_indicator:
             self._regional_indicator_open = not joins
         elif width:
             self._regional_indicator_open = False
@@ -293,7 +283,16 @@ class Screen:
         if base > 0 and line[base] is None:
             base -= 1
         if base >= 0 and line[base] is not None:
+            widens = char == EMOJI_PRESENTATION_SELECTOR and len(line[base]) == 1 \
+                and base == self.col - 1 and not self._pending_wrap
             line[base] += char
+            if widens:
+                self._erase_cell(self.col)
+                line[self.col] = None
+                if self.col + 1 >= self.columns:
+                    self._pending_wrap = True
+                else:
+                    self.col += 1
 
     def _erase_cell(self, col: int) -> None:
         """Blank the cell a glyph is about to cover, and whatever half of a

@@ -90,6 +90,19 @@ All notable changes to TerminalUI are documented here. Format based on
   window, prompt and placeholder, a `TextArea`'s wrapping, `Table` cells,
   `StatusBar` sections, `BarChart` labels, a `ProgressBar`'s label, `Form`
   labels, the segmented `Picker`, and the padding of a plain `Text`.
+- **An emoji below U+10000 takes the two columns a terminal gives it.**
+  `Character.displayWidth` counted ⭐, ⌚, ⌛, ☔, ♈–♓, ⚡, ⛔, ✅, ❌ and the
+  rest of the Emoji_Presentation characters in plane 0 as one column, where
+  xterm, VTE, kitty, iTerm2, WezTerm and Ghostty draw them in two, so
+  everything after one on its row was drawn a column late. The widths now
+  come from a table generated from Unicode 17.0's EastAsianWidth.txt
+  (UAX #11: W and F are two columns, marks and ignorable format characters
+  none, ambiguous width one), which
+  `tools/scripts/generate_width_table.py` rebuilds from a copy of the file.
+  A text-default emoji followed by U+FE0F (❤️, ⚠️, a keycap) is two
+  columns, as most terminals draw an emoji presentation sequence; a symbol
+  in plane 1 that is text by default (🌡, 🖥) is one, as a terminal draws it,
+  where every code point from U+1F000 to U+1FAFF used to be two.
 
 ## [2.2.0] — 2026-11-08 — Layout and identity, as SwiftUI's
 
