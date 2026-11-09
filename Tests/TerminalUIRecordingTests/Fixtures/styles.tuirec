@@ -1,0 +1,9 @@
+{"tuirec":1,"cols":16,"rows":2,"cursor":"hidden","app":"styles <&>","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"rgb:cba6f7","bg":null,"bold":true}
+{"style":2,"fg":null,"bg":null,"italic":true}
+{"style":3,"fg":"red","bg":"idx:24","underline":true}
+{"style":4,"fg":null,"bg":"rgb:101020"}
+{"t":0,"frame":1,"windowBg":"rgb:101020","rows":[[0,[[1,"Bold"],[0," "],[2,"it"],[0," "],[3,"under"],[0,"   "]]],[1,[[0,"a<b&c>\"d'"],[4,"  "],[0,"     "]]]]}
+{"t":1000,"mark":"styled","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}

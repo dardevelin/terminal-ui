@@ -11,7 +11,7 @@ private let recordUsage = """
            swtui record start <path> [--label LABEL [--hold DURATION]]
            swtui record mark <label> [--hold DURATION]
            swtui record stop | status
-           swtui record render <log.tuirec> --format cast -o OUT
+           swtui record render <log.tuirec> --format cast|svg -o OUT
     start, mark, stop and status reach a running debug build as swtui ctl does:
     --pid N, --socket PATH or --dir PATH, or the one app running from this checkout.
     """

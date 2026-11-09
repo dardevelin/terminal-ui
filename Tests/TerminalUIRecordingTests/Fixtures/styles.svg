@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="60" viewBox="0 0 168 60">
+<title>styles &lt;&amp;&gt;</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
+<rect width="168" height="60" fill="#101020"/>
+<g shape-rendering="crispEdges">
+<rect x="84" y="12" width="45" height="18" fill="#005f87"/>
+</g>
+<g font-family='"JetBrains Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace' font-size="15" xml:space="preserve">
+<text x="12" y="26" textLength="36" lengthAdjust="spacing" fill="#cba6f7" font-weight="700">Bold</text>
+<text x="57" y="26" textLength="18" lengthAdjust="spacing" fill="#cdd6f4" font-style="italic">it</text>
+<text x="84" y="26" textLength="45" lengthAdjust="spacing" fill="#f38ba8">under</text>
+<text x="12" y="44" textLength="81" lengthAdjust="spacing" fill="#cdd6f4">a&lt;b&amp;c&gt;&quot;d&apos;</text>
+</g>
+<g shape-rendering="crispEdges">
+<rect x="84" y="28" width="45" height="1" fill="#f38ba8"/>
+</g>
+</svg>

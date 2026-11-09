@@ -1,0 +1,6 @@
+{"tuirec":1,"cols":12,"rows":2,"cursor":"hidden","app":"chrome","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"magenta","bg":null}
+{"t":0,"frame":1,"rows":[[0,[[0,"▸▾▲▼◀▶◂●■"],[1,"❯ x"]]],[1,[[0,"☐ a ☑ b"],[1,"     "]]]]}
+{"t":1000,"mark":"chrome","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}

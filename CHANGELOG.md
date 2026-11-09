@@ -82,17 +82,28 @@ of a double-width glyph.
   `mark`, `hold` and `live` — and `spawn_and_connect(inherit_terminal=False)`,
   which runs an app as one being recorded: in an xterm with 24-bit colour,
   whatever terminal the harness runs in.
-- **`swtui record render` turns a recording into an asciicast.**
-  `swtui record render <log> --format cast -o OUT` writes an asciicast v2
-  file that asciinema plays: each frame as the bytes the framework itself
-  would send a terminal for it, marks as markers and resizes as resize
-  events, with a theme from `--palette` (`catppuccin-mocha`, the default,
-  or `xterm`). A log with marks plays as its driver scripted it — each mark
-  held for its hold, live segments at their real pace rounded to
-  `--quantum` (40 ms by default, 20 at least) — and one without plays in
-  real time with every pause cut to 2 s; `--clock script|draw` chooses.
-  `--at LABEL` renders the screen at a mark, `--from L --to L` the part
-  between two. The same log gives the same file on macOS and Linux.
+- **`swtui record render` turns a recording into an asciicast or an SVG
+  still.** `swtui record render <log> --format cast -o OUT` writes an
+  asciicast v2 file that asciinema plays: each frame as the bytes the
+  framework itself would send a terminal for it, marks as markers and
+  resizes as resize events, with a theme from `--palette`
+  (`catppuccin-mocha`, the default, or `xterm`). A log with marks plays as
+  its driver scripted it — each mark held for its hold, live segments at
+  their real pace rounded to `--quantum` (40 ms by default, 20 at least) —
+  and one without plays in real time with every pause cut to 2 s;
+  `--clock script|draw` chooses. `--at LABEL` renders the screen at a mark,
+  `--from L --to L` the part between two. `--format svg` with `--at LABEL`
+  or `--frame N` draws one screen as an SVG, sized by `--font-size` (15),
+  `--line-height` (1.2), `--padding` (12) and `--scale` (1 or 2): every run
+  of text pinned to its cells, so a fallback font cannot shift the grid,
+  and box drawing, block elements, braille and the framework's own marks —
+  its triangles, radio dot, prompt chevron and check boxes — drawn as
+  shapes rather than from a font, so borders join from cell to cell and
+  braille dots sit where they were set. Bold is a heavier weight, never a
+  brighter colour. The same log gives the same file on macOS and Linux.
+  `tools/font-glyphs.txt` lists every other character outside ASCII the
+  framework draws, with why a font may draw it, and a new check holds the
+  list to the sources.
 
 ### Fixed
 

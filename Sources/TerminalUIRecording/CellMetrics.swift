@@ -53,3 +53,35 @@ package struct CellMetrics: Hashable, Sendable {
     package var cellWidth: Int { advance.scaled(pixelFontSize) }
     package var cellHeight: Int { lineHeight.scaled(pixelFontSize) }
 }
+
+extension Proportion {
+    /// A decimal as a command line or a settings file writes it — `1.2`,
+    /// `0.6`, `2` — as the exact ratio it names, `12/10`; nil for anything
+    /// else, a sign or an exponent included.
+    package init?(decimal text: String) {
+        let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+        let isDigits = { (part: Substring) in !part.isEmpty && part.allSatisfy(\.isASCIIDigit) }
+        guard (1...2).contains(parts.count), parts.allSatisfy(isDigits),
+              parts.count == 1 || parts[1].count <= DecimalLimits.fractionDigits,
+              let whole = Int(parts[0]), whole <= DecimalLimits.largestWhole else { return nil }
+        var denominator = 1
+        var numerator = whole
+        if parts.count == 2, let fraction = Int(parts[1]) {
+            for _ in parts[1] { denominator *= DecimalLimits.radix }
+            numerator = whole * denominator + fraction
+        }
+        self.init(numerator, denominator)
+    }
+}
+
+private enum DecimalLimits {
+    static let radix = 10
+    /// Six places and a whole part under a million keep every product
+    /// ``Proportion/scaled(_:)`` forms far inside an `Int`.
+    static let fractionDigits = 6
+    static let largestWhole = 999_999
+}
+
+extension Character {
+    fileprivate var isASCIIDigit: Bool { isASCII && isNumber }
+}

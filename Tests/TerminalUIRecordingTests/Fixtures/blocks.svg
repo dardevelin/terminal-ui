@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="60" viewBox="0 0 96 60">
+<title>blocks</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
+<defs>
+<symbol id="u2580" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="9"/></symbol>
+<symbol id="u2584" viewBox="0 0 9 18"><rect x="0" y="9" width="9" height="9"/></symbol>
+<symbol id="u2588" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18"/></symbol>
+<symbol id="u258C" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="18"/></symbol>
+<symbol id="u2590" viewBox="0 0 9 18"><rect x="5" y="0" width="4" height="18"/></symbol>
+<symbol id="u2591" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.25"/></symbol>
+<symbol id="u2592" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.5"/></symbol>
+<symbol id="u2593" viewBox="0 0 9 18"><rect x="0" y="0" width="9" height="18" fill-opacity="0.75"/></symbol>
+<symbol id="u2596" viewBox="0 0 9 18"><rect x="0" y="9" width="5" height="9"/></symbol>
+<symbol id="u2597" viewBox="0 0 9 18"><rect x="5" y="9" width="4" height="9"/></symbol>
+<symbol id="u2598" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="9"/></symbol>
+<symbol id="u2599" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="18"/><rect x="5" y="9" width="4" height="9"/></symbol>
+<symbol id="u259A" viewBox="0 0 9 18"><rect x="0" y="0" width="5" height="9"/><rect x="5" y="9" width="4" height="9"/></symbol>
+<symbol id="u259D" viewBox="0 0 9 18"><rect x="5" y="0" width="4" height="9"/></symbol>
+<symbol id="u259E" viewBox="0 0 9 18"><rect x="5" y="0" width="4" height="9"/><rect x="0" y="9" width="5" height="9"/></symbol>
+<symbol id="u259F" viewBox="0 0 9 18"><rect x="5" y="0" width="4" height="18"/><rect x="0" y="9" width="5" height="9"/></symbol>
+</defs>
+<rect width="96" height="60" fill="#1e1e2e"/>
+<g shape-rendering="crispEdges">
+<rect x="12" y="12" width="72" height="18" fill="#303030"/>
+<rect x="12" y="30" width="72" height="18" fill="#89b4fa"/>
+</g>
+<g>
+<use href="#u2580" x="12" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2584" x="21" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2588" x="30" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u258C" x="39" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2590" x="48" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2591" x="57" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2592" x="66" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2593" x="75" y="12" width="9" height="18" fill="#94e2d5"/>
+<use href="#u2596" x="12" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u2597" x="21" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u2598" x="30" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u259D" x="39" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u259A" x="48" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u259E" x="57" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u2599" x="66" y="30" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u259F" x="75" y="30" width="9" height="18" fill="#a6e3a1"/>
+</g>
+</svg>

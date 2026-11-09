@@ -140,9 +140,16 @@ keeps real µs and `PresentationClock` derives the picture's timeline.
   block elements U+2580–259F (shades as 0.25/0.5/0.75 opacity), braille
   U+2800–28FF (2×4 dots), and the framework's chrome ▸ ▾ ▲ ▼ ● ❯ ☐ ☑. In a
   raster, strokes snap to whole pixels and are at least 1 px; dots and arcs are
-  anti-aliased. `tools/font-glyphs.txt` lists every non-ASCII literal in
-  `Sources/TerminalUI` and the tutorial steps, and a test holds each to being a
-  shape or in the bundled font's cmap.
+  anti-aliased. Primitives are rects, light or heavy lines (a double line is
+  two light ones, ending where the lines across them begin), dashes, rounded
+  corners, discs and polygons, in forty-eighths of the cell, of its width
+  (what must stay round or square) and whole strokes; `DeviceGlyph` resolves
+  them to device pixels for SVG and raster alike, so both snap the same way.
+  `tools/font-glyphs.txt` lists every non-ASCII literal in
+  `Sources/TerminalUI` and the tutorial steps as `shape` or `font` with why;
+  `check_font_glyphs.py` holds the list to the sources, a test holds each
+  entry to the geometry, and from step 8 each `font` entry the framework
+  actually draws (not the input-only ones) is held to the bundled font's cmap.
 - `RecordingPalette { name, foreground, background, ansi[16] }`: the default
   foreground is the palette's; the default background is the recorded
   `windowBg`, else the palette's; the 16 names and `ansi256(0…15)` index the

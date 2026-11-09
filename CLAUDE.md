@@ -136,8 +136,11 @@ project files set on the `SmokeCase`; only what takes several apps, `swtui`
 or verify.py itself is an integration script. Ahead of
 the build, the macOS leg runs `tool_tests.py` — every `tools/tests/test_*.py`,
 the tests of the checks and of the runner's exit verdict
-(`tools/terminalui/verdict.py`) — then the escape-hatch, colour-literal and
-tracker-id checks, and after the release build `check_api_compat.py`: Swift's
+(`tools/terminalui/verdict.py`) — then the escape-hatch, colour-literal,
+font-glyph and tracker-id checks (`check_font_glyphs.py`: every non-ASCII
+literal in `Sources/TerminalUI` is a shape `GlyphGeometry` draws in a recording's
+pictures, or listed in `tools/font-glyphs.txt` with why a font may draw it),
+and after the release build `check_api_compat.py`: Swift's
 API digester against the release `tools/api-breakage-allowlist.txt` names as
 its baseline, failing on any break the list does not accept with why, and on
 any listed break that no longer occurs. After a major release is tagged, the
@@ -362,6 +365,8 @@ swift run swtui record start <path> [--label L [--hold 1.5s]]  # record a runnin
 swift run swtui record mark <label> [--hold 400ms] | stop | status
 swift run swtui record render <log> --format cast -o OUT     # an asciicast v2 file
 #   [--at LABEL | --from L --to L] [--clock script|draw] [--quantum 40ms] [--palette catppuccin-mocha|xterm]
+swift run swtui record render <log> --format svg --at LABEL -o OUT   # one screen as an SVG still
+#   [--frame N] [--font-size 15] [--line-height 1.2] [--padding 12] [--scale 1|2] [--palette …]
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit

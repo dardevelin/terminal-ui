@@ -8,7 +8,7 @@ same bridge our smoke tests use. Steps:
    was asked for with ``--always`` (a merge, whose changes are committed).
 2. Tear down any leftover debug apps + stale sockets.
 3. Repository checks: the tooling's own tests (``tool_tests.py``), then the
-   escape-hatch, colour-literal and tracker-id checks they test.
+   escape-hatch, colour-literal, font-glyph and tracker-id checks they test.
 4. ``swift build --build-tests`` with warnings as errors — the library, the
    examples and the tests (release build is deferred to CI).
 5. ``check_api_compat.py`` — the public API against the last release, then
@@ -164,6 +164,8 @@ REPOSITORY_CHECKS = (
      "a concurrency escape hatch is not listed with its guard"),
     ("colour literals", "tools/scripts/check_colour_literals.py",
      "drawing code names a colour the list does not"),
+    ("font glyphs", "tools/scripts/check_font_glyphs.py",
+     "the framework draws a character that is neither a shape nor listed"),
     ("tracker ids", "tools/scripts/check_tracker_ids.py",
      "a tracker id is in the repository"),
 )

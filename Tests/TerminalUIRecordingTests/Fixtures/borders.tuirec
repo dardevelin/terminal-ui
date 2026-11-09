@@ -1,0 +1,7 @@
+{"tuirec":1,"cols":11,"rows":4,"cursor":"hidden","app":"borders","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"cyan","bg":null}
+{"style":2,"fg":"rgb:f38ba8","bg":null,"bold":true}
+{"t":0,"frame":1,"rows":[[0,[[1,"╭──╮"],[2,"┏━━┓"],[0,"╔═╗"]]],[1,[[1,"│ab│"],[2,"┃cd┃"],[0,"║x║"]]],[2,[[1,"╰──╯"],[2,"┗━━┛"],[0,"╚═╝"]]],[3,[[0,"├┼┤╱╲╳┄┆╟╪╬"]]]]}
+{"t":1000,"mark":"box","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}

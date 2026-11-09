@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="60" viewBox="0 0 132 60">
+<title>chrome</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
+<defs>
+<symbol id="u25A0" viewBox="0 0 9 18"><rect x="1" y="6" width="7" height="6"/></symbol>
+<symbol id="u25B2" viewBox="0 0 9 18"><polygon points="0.5625,12.375 4.5,5.25 8.4375,12.375"/></symbol>
+<symbol id="u25B6" viewBox="0 0 9 18"><polygon points="1.125,5.0625 8.25,9 1.125,12.9375"/></symbol>
+<symbol id="u25B8" viewBox="0 0 9 18"><polygon points="2.25,6.375 7.125,9 2.25,11.625"/></symbol>
+<symbol id="u25BC" viewBox="0 0 9 18"><polygon points="0.5625,5.625 8.4375,5.625 4.5,12.75"/></symbol>
+<symbol id="u25BE" viewBox="0 0 9 18"><polygon points="1.875,6.75 7.125,6.75 4.5,11.625"/></symbol>
+<symbol id="u25C0" viewBox="0 0 9 18"><polygon points="7.875,5.0625 0.75,9 7.875,12.9375"/></symbol>
+<symbol id="u25C2" viewBox="0 0 9 18"><polygon points="6.75,6.375 1.875,9 6.75,11.625"/></symbol>
+<symbol id="u25CF" viewBox="0 0 9 18"><circle cx="4.5" cy="9" r="3.375"/></symbol>
+<symbol id="u2610" viewBox="0 0 9 18"><rect x="1" y="5" width="7" height="1"/><rect x="7" y="5" width="1" height="8"/><rect x="1" y="12" width="7" height="1"/><rect x="1" y="5" width="1" height="8"/></symbol>
+<symbol id="u2611" viewBox="0 0 9 18"><rect x="1" y="5" width="7" height="1"/><rect x="7" y="5" width="1" height="8"/><rect x="1" y="12" width="7" height="1"/><rect x="1" y="5" width="1" height="8"/><polygon points="2.4375,8.4375 3.75,9.75 6.5625,6.9375 6.5625,8.25 3.75,11.0625 2.4375,9.75"/></symbol>
+<symbol id="u276F" viewBox="0 0 9 18"><polygon points="1.875,5.25 3.9375,5.25 7.3125,9 3.9375,12.75 1.875,12.75 5.25,9"/></symbol>
+</defs>
+<rect width="132" height="60" fill="#1e1e2e"/>
+<g font-family='"JetBrains Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace' font-size="15" xml:space="preserve">
+<text x="111" y="26" textLength="9" lengthAdjust="spacing" fill="#f5c2e7">x</text>
+<text x="30" y="44" textLength="9" lengthAdjust="spacing" fill="#cdd6f4">a</text>
+<text x="66" y="44" textLength="9" lengthAdjust="spacing" fill="#cdd6f4">b</text>
+</g>
+<g>
+<use href="#u25B8" x="12" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25BE" x="21" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25B2" x="30" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25BC" x="39" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25C0" x="48" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25B6" x="57" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25C2" x="66" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25CF" x="75" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u25A0" x="84" y="12" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u276F" x="93" y="12" width="9" height="18" fill="#f5c2e7"/>
+<use href="#u2610" x="12" y="30" width="9" height="18" fill="#cdd6f4"/>
+<use href="#u2611" x="48" y="30" width="9" height="18" fill="#cdd6f4"/>
+</g>
+</svg>

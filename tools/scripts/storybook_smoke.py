@@ -3185,6 +3185,43 @@ def storybook_recording_renders_as_a_cast_that_replays_to_the_screen(app: Client
         f"  {index}: cells {cells.rows[index]!r}\n      cast  {screen.lines()[index]!r}" for index in differing))
 
 
+def storybook_recording_renders_a_mark_as_an_svg_still(app: Client) -> None:
+    """The BrailleCanvas page, its chart braille and its code pane in a
+    rounded border, recorded with a mark and rendered with `swtui record
+    render --format svg --at`, is an XML document that draws the braille and
+    the border as shapes — `<use>` of a symbol per glyph, no braille or box
+    drawing inside any `<text>` — sets the page's title as text, and is a
+    still, with no animation."""
+    import xml.etree.ElementTree as ElementTree
+
+    page = "BrailleCanvas"
+    namespace = "{http://www.w3.org/2000/svg}"
+    with tempfile.TemporaryDirectory(prefix="terminalui-svg-") as scratch:
+        with Recording(app, Path(scratch) / "page.tuirec", label="start") as rec:
+            app.goto_page(page)
+            rec.hold(0.4, label=page)
+        svg = Path(scratch) / "page.svg"
+        render = subprocess.run([str(app.build_dir / "swtui"), "record", "render", str(rec.path),
+                                 "--format", "svg", "--at", page, "-o", str(svg)],
+                                capture_output=True, text=True, timeout=BOOT_TIMEOUT)
+        assert_true(render.returncode == 0, f"swtui record render --format svg failed: {render.stderr}")
+        document = svg.read_text()
+        root = ElementTree.fromstring(document)
+
+    assert_true(root.tag == f"{namespace}svg", f"the document's root is {root.tag}")
+    texts = ["".join(text.itertext()) for text in root.iter(f"{namespace}text")]
+    assert_true(any(page in text for text in texts), f"no <text> holds the title {page}: {texts[:12]}")
+    shaped = [text for text in texts if any(0x2500 <= ord(c) <= 0x259F or 0x2800 <= ord(c) <= 0x28FF for c in text)]
+    assert_true(not shaped, f"box drawing or braille set as text: {shaped[:5]}")
+    used = {use.get("href", "") for use in root.iter(f"{namespace}use")}
+    assert_true(any(re.fullmatch(r"#u28[0-9A-F]{2}", href) for href in used),
+                f"no braille glyph is drawn as a shape: {sorted(used)[:12]}")
+    assert_true("#u256D" in used and "#u2500" in used, f"the rounded border is not drawn as shapes: {sorted(used)}")
+    symbols = {symbol.get("id") for symbol in root.iter(f"{namespace}symbol")}
+    assert_true({href[1:] for href in used} <= symbols, "a <use> names a symbol the document lacks")
+    assert_true("@keyframes" not in document and "<animate" not in document, "a still holds an animation")
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3358,6 +3395,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.recording_renders_as_a_cast_that_replays_to_the_screen", "Storybook",
               storybook_recording_renders_as_a_cast_that_replays_to_the_screen,
               project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
+    SmokeCase("storybook.recording_renders_a_mark_as_an_svg_still", "Storybook",
+              storybook_recording_renders_a_mark_as_an_svg_still),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),
