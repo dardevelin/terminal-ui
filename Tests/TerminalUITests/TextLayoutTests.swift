@@ -119,3 +119,47 @@ struct TextLayoutTests {
         }
     }
 }
+
+// An editor needs to know where each wrapped row sits in its line, not only
+// what it shows: the spaces a wrap drops lie between two rows, and every
+// column after them belongs to a character further along than the rows'
+// lengths add up to.
+
+@Suite("WrappedLine — the caret positions a wrapped line maps to cells")
+struct WrappedLineTests {
+
+    @Test func rowsSkipTheWhitespaceAWrapDrops() {
+        let line = WrappedLine("alpha beta  gamma", width: 10)
+        #expect(line.rows == [0..<10, 12..<17])
+        #expect(line.rows.indices.map(line.text(ofRow:)) == TextLayout.wrapWords("alpha beta  gamma", width: 10))
+    }
+
+    @Test func aCaretInDroppedWhitespaceIsDrawnWhereTheNextRowStarts() {
+        let line = WrappedLine("alpha beta  gamma", width: 10)
+        for index in 10...12 {
+            #expect(line.caret(at: index) == WrappedLine.Caret(row: 1, column: 0, offset: 0), "\(index)")
+        }
+        #expect(line.caret(at: 13) == WrappedLine.Caret(row: 1, column: 1, offset: 1))
+        #expect(line.caret(at: 17) == WrappedLine.Caret(row: 1, column: 5, offset: 5), "the line's end")
+    }
+
+    @Test func aColumnIsTheGlyphDrawnOverIt() {
+        // 中 0–1, 文 2–3, a 4
+        let line = WrappedLine("中文a", width: 10)
+        #expect((0...5).map { line.index(row: 0, column: $0) } == [0, 0, 1, 1, 2, 3])
+        #expect(line.caret(at: 2).column == 4)
+    }
+
+    @Test func pastTheEndOfAWrappedRowIsItsLastCharacter() {
+        let line = WrappedLine("alpha beta gamma", width: 10)
+        #expect(line.index(row: 0, column: 40) == 9, "the row's end is drawn on the next row")
+        #expect(line.index(row: 1, column: 40) == 16, "the line's end")
+    }
+
+    @Test func whitespaceDroppedAtTheLinesEndIsDrawnAtTheLastRowsEnd() {
+        let line = WrappedLine("hello world  ", width: 11)
+        #expect(line.rows == [0..<11])
+        #expect(line.caret(at: 13) == WrappedLine.Caret(row: 0, column: 11, offset: 11))
+        #expect(line.index(row: 0, column: 40) == 13, "past the end is the line's end")
+    }
+}

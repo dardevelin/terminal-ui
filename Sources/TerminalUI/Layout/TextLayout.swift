@@ -36,69 +36,8 @@ public enum TextLayout {
     /// one space per wrap boundary may be dropped; the non-space
     /// character sequence always reproduces the source.
     public static func wrapWords(_ line: String, width: Int) -> [String] {
-        guard width > 0 else { return [line] }
-        if line.isEmpty { return [""] }
-        // Pure-character path for spaceless input (URLs, identifiers,
-        // paste-bombed tokens). Reassembles exactly.
-        if !line.contains(" ") {
-            return charStrideChunks(line, width: width)
-        }
-
-        var chunks: [String] = []
-        var current = ""
-        var currentWidth = 0
-        var i = line.startIndex
-        while i < line.endIndex {
-            // Tokenise: a maximal run of non-space OR a maximal run
-            // of space. Spaces are kept as their own tokens so
-            // trailing/leading spaces inside the line are preserved
-            // when they fit, and dropped only at wrap boundaries.
-            let isSpace = line[i] == " "
-            var j = i
-            while j < line.endIndex && (line[j] == " ") == isSpace {
-                j = line.index(after: j)
-            }
-            let token = String(line[i..<j])
-            let tokenWidth = token.displayWidth
-            i = j
-
-            // Long word: flush current and hard-break at char level.
-            // displayWidth means CJK / emoji measure correctly.
-            if tokenWidth > width {
-                if !current.isEmpty {
-                    chunks.append(current)
-                    current = ""
-                    currentWidth = 0
-                }
-                chunks.append(contentsOf: charStrideChunks(token, width: width))
-                continue
-            }
-
-            if currentWidth + tokenWidth <= width {
-                current += token
-                currentWidth += tokenWidth
-            } else {
-                if !current.isEmpty {
-                    chunks.append(current)
-                    current = ""
-                    currentWidth = 0
-                }
-                if token.first == " " {
-                    // Pure-space token at a wrap boundary — drop it
-                    // so the new chunk starts cleanly.
-                    continue
-                }
-                current = token
-                currentWidth = tokenWidth
-            }
-        }
-        if !current.isEmpty {
-            chunks.append(current)
-        }
-        if chunks.isEmpty {
-            chunks.append("")
-        }
-        return chunks
+        let characters = Array(line)
+        return wordWrapRows(characters, width: width).map { String(characters[$0]) }
     }
 
     /// Slice `s` into chunks each ≤`width` cells. Used as a fallback
@@ -109,23 +48,87 @@ public enum TextLayout {
     /// to the next chunk rather than overflowing.
     public static func charStrideChunks(_ s: String, width: Int) -> [String] {
         guard width > 0 else { return [s] }
-        var out: [String] = []
-        var current = ""
+        let characters = Array(s)
+        return strideRows(characters.map(\.displayWidth), in: 0..<characters.count, width: width)
+            .map { String(characters[$0]) }
+    }
+
+    /// The characters each row of ``wrapWords(_:width:)`` holds, as offsets
+    /// into `characters` — the wrap itself, which `wrapWords` turns into
+    /// strings. An editor keeps the offsets: they say which character a
+    /// row's cell shows, and where whitespace the wrap dropped lies, between
+    /// one row's end and the next row's start.
+    static func wordWrapRows(_ characters: [Character], width: Int) -> [Range<Int>] {
+        guard width > 0 else { return [0..<characters.count] }
+        guard !characters.isEmpty else { return [0..<0] }
+        let widths = characters.map(\.displayWidth)
+        // Pure-character path for spaceless input (URLs, identifiers,
+        // paste-bombed tokens). Reassembles exactly.
+        guard characters.contains(" ") else {
+            return strideRows(widths, in: 0..<characters.count, width: width)
+        }
+
+        var rows: [Range<Int>] = []
+        var current = 0..<0
         var currentWidth = 0
-        for ch in s {
-            let w = ch.displayWidth
-            if currentWidth + w > width && !current.isEmpty {
-                out.append(current)
-                current = ""
-                currentWidth = 0
+        var tokenStart = 0
+        while tokenStart < characters.count {
+            // Tokenise: a maximal run of non-space OR a maximal run
+            // of space. Spaces are kept as their own tokens so
+            // trailing/leading spaces inside the line are preserved
+            // when they fit, and dropped only at wrap boundaries.
+            let isSpace = characters[tokenStart] == " "
+            var tokenEnd = tokenStart
+            var tokenWidth = 0
+            while tokenEnd < characters.count && (characters[tokenEnd] == " ") == isSpace {
+                tokenWidth += widths[tokenEnd]
+                tokenEnd += 1
             }
-            current.append(ch)
-            currentWidth += w
+            let token = tokenStart..<tokenEnd
+            tokenStart = tokenEnd
+
+            // Long word: flush current and hard-break at char level.
+            // displayWidth means CJK / emoji measure correctly.
+            if tokenWidth > width {
+                if !current.isEmpty { rows.append(current) }
+                rows.append(contentsOf: strideRows(widths, in: token, width: width))
+                current = token.upperBound..<token.upperBound
+                currentWidth = 0
+                continue
+            }
+
+            if currentWidth + tokenWidth <= width {
+                current = (current.isEmpty ? token.lowerBound : current.lowerBound)..<token.upperBound
+                currentWidth += tokenWidth
+            } else {
+                if !current.isEmpty { rows.append(current) }
+                // Pure-space token at a wrap boundary — drop it so the
+                // new row starts cleanly.
+                current = isSpace ? token.upperBound..<token.upperBound : token
+                currentWidth = isSpace ? 0 : tokenWidth
+            }
         }
-        if !current.isEmpty {
-            out.append(current)
+        if !current.isEmpty { rows.append(current) }
+        return rows.isEmpty ? [0..<0] : rows
+    }
+
+    /// `range` of characters, `widths` cells each, cut into rows of at most
+    /// `width` cells — a row takes one character whatever its width, so a
+    /// glyph wider than the row still shows.
+    private static func strideRows(_ widths: [Int], in range: Range<Int>, width: Int) -> [Range<Int>] {
+        var rows: [Range<Int>] = []
+        var rowStart = range.lowerBound
+        var rowWidth = 0
+        for index in range {
+            if rowWidth + widths[index] > width && index > rowStart {
+                rows.append(rowStart..<index)
+                rowStart = index
+                rowWidth = 0
+            }
+            rowWidth += widths[index]
         }
-        return out.isEmpty ? [""] : out
+        if rowStart < range.upperBound { rows.append(rowStart..<range.upperBound) }
+        return rows.isEmpty ? [range] : rows
     }
 }
 

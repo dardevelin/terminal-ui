@@ -78,9 +78,9 @@ struct WideCharacterLayoutTests {
 
     @Test("a text area wraps a line by the cells it takes")
     func textAreaWrapsInCells() {
-        let chunks = TextArea.displayChunks(of: "中文中文中文中文中文", wrapWidth: 15)
-        #expect(chunks.count == 2)
-        #expect(chunks.allSatisfy { $0.displayWidth <= 15 })
+        let line = WrappedLine("中文中文中文中文中文", width: 15)
+        #expect(line.rows.count == 2)
+        #expect(line.rows.indices.allSatisfy { line.text(ofRow: $0).displayWidth <= 15 })
     }
 
     @Test("a table cell truncates and pads to its column's cells")
