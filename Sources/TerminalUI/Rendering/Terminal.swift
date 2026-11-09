@@ -480,9 +480,14 @@ public enum Terminal {
     /// ``exitAlternateScreen()`` restores it exactly — the standard
     /// full-screen TUI convention.
     public static func enterAlternateScreen() {
-        // alternateScreen on + cursorVisible off
-        writeRaw("\u{1B}[?1049h\u{1B}[?25l")
+        writeRaw(alternateScreenEntry)
     }
+
+    /// DECSET 1049 (alternate screen, saving the cursor) then DECRST 25
+    /// (cursor hidden), as xterm ctlseqs lists them: what a full-screen app
+    /// sends before its first frame — here and at the head of a recording
+    /// rendered as an asciicast.
+    package static let alternateScreenEntry: StaticString = "\u{1B}[?1049h\u{1B}[?25l"
 
     /// Leave the alternate screen, restoring the user's shell content
     /// and cursor. Also force-disables mouse tracking both before and
@@ -707,7 +712,7 @@ public enum Terminal {
     /// its grid — or, for `nil` or a colour with no value of its own, the
     /// terminal's own put back. ST ends it: BEL would ring on terminals
     /// that do not know the command.
-    static func windowBackgroundSequence(_ color: Color?) -> String {
+    package static func windowBackgroundSequence(_ color: Color?) -> String {
         guard let rgb = color?.nominalRGB else { return windowBackgroundReset }
         let hex = { (channel: UInt8) in (channel < 0x10 ? "0" : "") + String(channel, radix: 16) }
         return "\u{1B}]11;rgb:\(hex(rgb.red))/\(hex(rgb.green))/\(hex(rgb.blue))\u{1B}\\"

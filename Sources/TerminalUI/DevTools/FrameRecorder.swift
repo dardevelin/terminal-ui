@@ -332,33 +332,4 @@ extension Style {
     }
 }
 
-extension Color {
-    /// The 16 palette colours by the names the log spells them with, which
-    /// are their case names.
-    fileprivate static let recordedNames: [(color: Color, name: String)] = [
-        (.black, "black"), (.red, "red"), (.green, "green"), (.yellow, "yellow"),
-        (.blue, "blue"), (.magenta, "magenta"), (.cyan, "cyan"), (.white, "white"),
-        (.gray, "gray"), (.brightRed, "brightRed"), (.brightGreen, "brightGreen"),
-        (.brightYellow, "brightYellow"), (.brightBlue, "brightBlue"),
-        (.brightMagenta, "brightMagenta"), (.brightCyan, "brightCyan"), (.brightWhite, "brightWhite"),
-    ]
-
-    /// How the log spells this colour: nil for the terminal's own, a palette
-    /// name, `idx:N`, or `rgb:rrggbb`. Kept as encoded, not resolved: which
-    /// red `.red` is belongs to the palette a picture is rendered with.
-    fileprivate var recordedSpelling: String? {
-        switch self {
-        case .default: return nil
-        case .ansi256(let index): return "idx:\(index)"
-        case .rgb(let red, let green, let blue):
-            return "rgb:" + [red, green, blue].map { component in
-                let hex = String(component, radix: 16)
-                return hex.count == 1 ? "0" + hex : hex
-            }.joined()
-        default:
-            return Self.recordedNames.first { $0.color == self }?.name
-        }
-    }
-}
-
 #endif

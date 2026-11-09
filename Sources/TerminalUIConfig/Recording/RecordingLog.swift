@@ -224,28 +224,36 @@ private func nullable(_ text: String?) -> String {
     text.map(quoted) ?? "null"
 }
 
-/// A JSON string (RFC 8259 §7): the quotation mark, the reverse solidus and
-/// the controls U+0000–U+001F escaped, the five with a short escape by it,
-/// the rest as `\u00XX` in lowercase hex; everything else as it is, in UTF-8.
 private func quoted(_ text: String) -> String {
-    var out = "\""
-    for scalar in text.unicodeScalars {
-        switch scalar.value {
-        case UInt32(JSONByte.quote): out += "\\\""
-        case UInt32(JSONByte.reverseSolidus): out += "\\\\"
-        case UInt32(JSONByte.backspace): out += "\\b"
-        case UInt32(JSONByte.formFeed): out += "\\f"
-        case UInt32(JSONByte.newline): out += "\\n"
-        case UInt32(JSONByte.carriageReturn): out += "\\r"
-        case UInt32(JSONByte.tab): out += "\\t"
-        case 0..<UInt32(JSONByte.space):
-            let hex = String(scalar.value, radix: 16)
-            out += "\\u" + String(repeating: "0", count: 4 - hex.count) + hex
-        default:
-            out.unicodeScalars.append(scalar)
+    RecordingLog.jsonString(text)
+}
+
+extension RecordingLog {
+    /// A JSON string (RFC 8259 §7): the quotation mark, the reverse solidus
+    /// and the controls U+0000–U+001F escaped, the five with a short escape
+    /// by it, the rest as `\u00XX` in lowercase hex; everything else as it
+    /// is, in UTF-8. The log's own, and what the files rendered from a log
+    /// spell their strings with, so theirs are as byte-stable as its are.
+    package static func jsonString(_ text: String) -> String {
+        var out = "\""
+        for scalar in text.unicodeScalars {
+            switch scalar.value {
+            case UInt32(JSONByte.quote): out += "\\\""
+            case UInt32(JSONByte.reverseSolidus): out += "\\\\"
+            case UInt32(JSONByte.backspace): out += "\\b"
+            case UInt32(JSONByte.formFeed): out += "\\f"
+            case UInt32(JSONByte.newline): out += "\\n"
+            case UInt32(JSONByte.carriageReturn): out += "\\r"
+            case UInt32(JSONByte.tab): out += "\\t"
+            case 0..<UInt32(JSONByte.space):
+                let hex = String(scalar.value, radix: 16)
+                out += "\\u" + String(repeating: "0", count: 4 - hex.count) + hex
+            default:
+                out.unicodeScalars.append(scalar)
+            }
         }
+        return out + "\""
     }
-    return out + "\""
 }
 
 // MARK: - Reading

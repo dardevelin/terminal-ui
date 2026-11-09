@@ -191,7 +191,7 @@ PTY it holds a crashed process open for 30s offering a debugger.
 - **0 errors, 0 warnings, always.** DX is paramount.
 - All debug/diagnostic machinery is `#if DEBUG`-gated — zero release overhead.
 
-## Package layout (6 library targets — a deliberate layering)
+## Package layout (7 library targets — a deliberate layering)
 
 The package ships four public libraries so consumers pull only what they need.
 This layering is the modularity strategy — not backend abstraction.
@@ -204,10 +204,12 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol (no decoder ships), a half-block renderer, a pure-Swift inflate. Apps without image needs don't pay for it. |
 | `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`. The encoders the recording renderer writes stills and animations with (`design/self-recording.md`). |
+| `TerminalUIRecording` | TerminalUI, Config | Internal, swtui-only; not a product. Renders a `.tuirec` recording: `RecordingReader`, `PresentationClock`, `RecordingPalette`, `CellMetrics`, `CastEncoder`. |
 
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
-`TerminalLogTests`, `TerminalUIIOTests`, `TerminalUIRasterTests`). The raster
+`TerminalLogTests`, `TerminalUIIOTests`, `TerminalUIRasterTests`,
+`TerminalUIRecordingTests`). The raster
 goldens under `Tests/TerminalUIRasterTests/Fixtures/` are checked twice: byte
 for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
 decoder of its own) by `tools/tests/test_raster_encoders.py`. A change that
@@ -351,6 +353,8 @@ swift run swtui bind toggle_inspector F5      # remap a debug keybinding
 swift run swtui record dump <log> [--at LABEL | --frame N]   # a recorded screen as text
 swift run swtui record start <path> [--label L [--hold 1.5s]]  # record a running app, as ctl reaches it
 swift run swtui record mark <label> [--hold 400ms] | stop | status
+swift run swtui record render <log> --format cast -o OUT     # an asciicast v2 file
+#   [--at LABEL | --from L --to L] [--clock script|draw] [--quantum 40ms] [--palette catppuccin-mocha|xterm]
 
 # Remote control of a running debug build, via its socket:
 swift run swtui ctl ping | focus | tree | frame | screenshot | quit

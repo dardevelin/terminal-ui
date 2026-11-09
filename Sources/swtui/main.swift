@@ -325,6 +325,7 @@ func printUsage() {
         ("keys [--check <file>]", "List the text-editing commands and keys, or check a keys.toml"),
         ("record dump <log>",    "Print a .tuirec recording's screen (--at LABEL, --frame N)"),
         ("record start <path>",  "Record a running debug build; then record mark, stop, status"),
+        ("record render <log>",  "Render a recording: --format cast -o OUT (--at, --from/--to, --palette)"),
         ("help",                 "Show this help"),
     ]
     for (cmd, desc) in rows {

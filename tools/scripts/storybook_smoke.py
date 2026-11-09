@@ -1280,7 +1280,7 @@ def storybook_every_page_reaches_the_terminal_as_drawn(app: Client) -> None:
         if app.wait_until(agrees, timeout=2.0):
             continue
         drawn, shown = app.cells().rows, screen.lines()
-        row = next((index for index, (cells, line) in enumerate(zip(drawn, shown)) if cells != line), None)
+        row = next((index for index, (row_cells, line) in enumerate(zip(drawn, shown)) if row_cells != line), None)
         differing.append(f"{title}: row {row}\n  cells:    {drawn[row]!r}\n  terminal: {shown[row]!r}"
                          if row is not None else title)
     assert_true(not differing, "pages the terminal shows differently from their cells:\n"
@@ -3087,6 +3087,50 @@ def storybook_records_over_the_socket(app: Client) -> None:
             assert_true(shown == page, f"the screen at the mark {page} has the title '{shown}':\n{dump.stdout}")
 
 
+def storybook_recording_renders_as_a_cast_that_replays_to_the_screen(app: Client) -> None:
+    """A session recorded from launch over two pages, rendered with
+    `swtui record render --format cast`, is an asciicast v2 file whose output
+    events, fed to a terminal model in order, leave the screen the app's own
+    cells showed when it stopped. Each event is the framework's own render of
+    a frame, so the cast replays what the app drew, wide glyphs included:
+    the Text page draws them."""
+    import json
+    import signal
+
+    app.goto_page("Toggle")
+    app.goto_page("Text")
+    title = app.storybook_page_title()
+    assert_true(title == "Text", f"the page shows '{title}'")
+    cells = app.cells()
+    app.expected_exit_signal = signal.SIGTERM
+    os.kill(app.pid, signal.SIGTERM)
+    assert_true(app.wait_for_exit(BOOT_TIMEOUT) is not None, "the app was still running after SIGTERM")
+
+    log = Path(app.project_dir) / ".terminalui" / "recordings" / f"Storybook-{app.pid}.tuirec"
+    cast = Path(app.project_dir) / "session.cast"
+    render = subprocess.run([str(app.build_dir / "swtui"), "record", "render", str(log),
+                             "--format", "cast", "-o", str(cast)],
+                            capture_output=True, text=True, timeout=BOOT_TIMEOUT)
+    assert_true(render.returncode == 0, f"swtui record render failed: {render.stderr}")
+
+    header, *events = [json.loads(line) for line in cast.read_text().splitlines()]
+    size = (header.get("version"), header.get("width"), header.get("height"))
+    assert_true(size == (2, cells.width, cells.height), f"the header is {header}")
+    palette = header.get("theme", {}).get("palette", "").split(":")
+    assert_true(len(palette) == 16, f"the theme is {header.get('theme')}")
+    times = [event[0] for event in events]
+    assert_true(times == sorted(times), "the events are not in order of time")
+    outputs = [event[2] for event in events if event[1] == "o"]
+    assert_true(len(outputs) > 1, f"the cast holds {len(outputs)} output events")
+
+    screen = vt.Screen(cells.width, cells.height)
+    for data in outputs:
+        screen.feed(data.encode())
+    differing = [index for index, (drawn, shown) in enumerate(zip(cells.rows, screen.lines())) if drawn != shown]
+    assert_true(not differing, "rows the cast replays differently from the app's cells:\n" + "\n".join(
+        f"  {index}: cells {cells.rows[index]!r}\n      cast  {screen.lines()[index]!r}" for index in differing))
+
+
 # ---------------------------------------------------------------------------
 # Suite
 # ---------------------------------------------------------------------------
@@ -3255,6 +3299,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.records_from_launch", "Storybook", storybook_records_from_launch,
               project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
     SmokeCase("storybook.records_over_the_socket", "Storybook", storybook_records_over_the_socket),
+    SmokeCase("storybook.recording_renders_as_a_cast_that_replays_to_the_screen", "Storybook",
+              storybook_recording_renders_as_a_cast_that_replays_to_the_screen,
+              project_files=((".terminalui/terminalui.toml", "[record]\nenabled = true\n"),)),
     SmokeCase("coder.renders", "Coder", coder_renders),
     SmokeCase("coder.a_short_sidebar_sets_the_name_in_one_row", "Coder",
               coder_a_short_sidebar_sets_the_name_in_one_row),
