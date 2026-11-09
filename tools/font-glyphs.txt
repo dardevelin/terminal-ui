@@ -1,0 +1,114 @@
+# Every character outside ASCII the framework draws, from a string or character
+# literal in Sources/TerminalUI (the tutorial's steps included), and how a picture
+# of a recording draws it. tools/scripts/check_font_glyphs.py fails when the
+# sources and this list disagree; GlyphGeometryTests holds each `shape` entry to
+# being one, and each `font` entry to not being one.
+#
+# `shape`: GlyphGeometry draws it, the same in every format, never from a font.
+# `font`: the configured font draws it, so it must be one every monospaced font has,
+# or not be drawn at all; say which. Before adding a `font` entry for a mark of the
+# framework's own, consider a shape: a fallback font draws at another size.
+#
+# Format: <U+XXXX or U+XXXX..U+YYYY> <glyph or first..last> <shape|font> <why>
+
+# Whole blocks drawn from geometry.
+U+2500..U+257F ─..╿ shape Box Drawing, the whole block: lines that reach the cell's edges and join the next cell's.
+U+2580..U+259F ▀..▟ shape Block Elements, the whole block: eighths, halves, quadrants and shades.
+U+2800..U+28FF ⠀..⣿ shape Braille Patterns, the whole block: 2×4 dots, as BrailleCanvas and the spinners draw them.
+
+# The framework's chrome, drawn from geometry about the cell's centre.
+U+25A0 ■ shape HeatMap's cell mark.
+U+25B2 ▲ shape The list's and scroll view's more-above marker.
+U+25B6 ▶ shape The scroll view's right edge marker.
+U+25B8 ▸ shape A collapsed disclosure, a tree row, the selection marker.
+U+25BC ▼ shape The list's and scroll view's more-below marker.
+U+25BE ▾ shape An expanded disclosure and the picker's menu mark.
+U+25C0 ◀ shape The scroll view's left edge marker.
+U+25C2 ◂ shape The stepper's decrement mark.
+U+25CF ● shape The slider's thumb and DotMatrixText's dot.
+U+2610 ☐ shape The tutorial's unchecked task.
+U+2611 ☑ shape The tutorial's checked task.
+U+276F ❯ shape PromptInput's prompt.
+
+# Text the font draws.
+U+00D7 × font Latin-1, which every face of the stack has: a grow factor in the debug panel, a size in a message.
+U+2014 — font General Punctuation, which every face of the font stack has: text, not structure. An em dash in labels and placeholders.
+U+2022 • font General Punctuation, which every face of the font stack has: text, not structure. Markdown's list bullet and the picker's selected mark.
+U+2026 … font General Punctuation, which every face of the font stack has: text, not structure. Truncation's ellipsis, which ends a run of text.
+U+2194 ↔ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.
+U+2195 ↕ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.
+
+# Key symbols in shortcut labels.
+U+2190 ← font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2191 ↑ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2192 → font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2193 ↓ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2196 ↖ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2198 ↘ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+21B5 ↵ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+21DE ⇞ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+21DF ⇟ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+21E5 ⇥ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+21E7 ⇧ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2303 ⌃ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2325 ⌥ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+2326 ⌦ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+232B ⌫ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+U+238B ⎋ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
+
+# Never drawn. A line break has no glyph, so its glyph column is `-`.
+U+0085 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
+U+2028 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
+U+2029 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
+
+# Input decoding: Option's characters on a Mac keyboard, matched, never drawn.
+U+00A1 ¡ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00A2 ¢ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00A3 £ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00A7 § font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00A9 © font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00AA ª font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00AC ¬ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00AE ® font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00B5 µ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00B6 ¶ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00B8 ¸ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00BA º font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00C2 Â font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00C5 Å font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00C7 Ç font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00CD Í font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00CE Î font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00CF Ï font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00D2 Ò font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00D3 Ó font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00D4 Ô font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00D8 Ø font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00DF ß font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00E5 å font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00E7 ç font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00F8 ø font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+0131 ı font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+0152 Œ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+0153 œ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+0192 ƒ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+02C7 ˇ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+02D9 ˙ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+02DA ˚ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+02DB ˛ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+02DD ˝ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+03A9 Ω font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+03C0 π font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+201E „ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2020 † font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2030 ‰ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2122 ™ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2202 ∂ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2206 ∆ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+220F ∏ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2211 ∑ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+221A √ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+221E ∞ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+222B ∫ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+2248 ≈ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+25CA ◊ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.

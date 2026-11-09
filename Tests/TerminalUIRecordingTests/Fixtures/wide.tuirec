@@ -1,0 +1,6 @@
+{"tuirec":1,"cols":10,"rows":1,"cursor":"hidden","app":"wide","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":null,"bg":null}
+{"style":1,"fg":"yellow","bg":"rgb:313244"}
+{"t":0,"frame":1,"rows":[[0,[[1,"界 面 "],[0,"é→ok"]]]]}
+{"t":1000,"mark":"cjk","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}

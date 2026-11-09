@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="114" height="42" viewBox="0 0 114 42">
+<title>sparkline</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
+<defs>
+<symbol id="u2801" viewBox="0 0 9 18"><circle cx="2.25" cy="2.25" r="1.5"/></symbol>
+<symbol id="u2847" viewBox="0 0 9 18"><circle cx="2.25" cy="2.25" r="1.5"/><circle cx="2.25" cy="6.75" r="1.5"/><circle cx="2.25" cy="11.25" r="1.5"/><circle cx="2.25" cy="15.75" r="1.5"/></symbol>
+<symbol id="u28B8" viewBox="0 0 9 18"><circle cx="6.75" cy="2.25" r="1.5"/><circle cx="6.75" cy="6.75" r="1.5"/><circle cx="6.75" cy="11.25" r="1.5"/><circle cx="6.75" cy="15.75" r="1.5"/></symbol>
+<symbol id="u28C0" viewBox="0 0 9 18"><circle cx="2.25" cy="15.75" r="1.5"/><circle cx="6.75" cy="15.75" r="1.5"/></symbol>
+<symbol id="u28E4" viewBox="0 0 9 18"><circle cx="2.25" cy="11.25" r="1.5"/><circle cx="6.75" cy="11.25" r="1.5"/><circle cx="2.25" cy="15.75" r="1.5"/><circle cx="6.75" cy="15.75" r="1.5"/></symbol>
+<symbol id="u28F6" viewBox="0 0 9 18"><circle cx="2.25" cy="6.75" r="1.5"/><circle cx="2.25" cy="11.25" r="1.5"/><circle cx="6.75" cy="6.75" r="1.5"/><circle cx="6.75" cy="11.25" r="1.5"/><circle cx="2.25" cy="15.75" r="1.5"/><circle cx="6.75" cy="15.75" r="1.5"/></symbol>
+<symbol id="u28FF" viewBox="0 0 9 18"><circle cx="2.25" cy="2.25" r="1.5"/><circle cx="2.25" cy="6.75" r="1.5"/><circle cx="2.25" cy="11.25" r="1.5"/><circle cx="6.75" cy="2.25" r="1.5"/><circle cx="6.75" cy="6.75" r="1.5"/><circle cx="6.75" cy="11.25" r="1.5"/><circle cx="2.25" cy="15.75" r="1.5"/><circle cx="6.75" cy="15.75" r="1.5"/></symbol>
+</defs>
+<rect width="114" height="42" fill="#1e1e2e"/>
+<g font-family='"JetBrains Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace' font-size="15" xml:space="preserve">
+<text x="84" y="26" textLength="18" lengthAdjust="spacing" fill="#cdd6f4">ok</text>
+</g>
+<g>
+<use href="#u28C0" x="12" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u28E4" x="21" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u28F6" x="30" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u28FF" x="39" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u2847" x="48" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u2801" x="57" y="12" width="9" height="18" fill="#a6e3a1"/>
+<use href="#u28B8" x="66" y="12" width="9" height="18" fill="#a6e3a1"/>
+</g>
+</svg>

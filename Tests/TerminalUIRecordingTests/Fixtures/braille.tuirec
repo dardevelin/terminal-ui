@@ -1,0 +1,6 @@
+{"tuirec":1,"cols":10,"rows":1,"cursor":"hidden","app":"sparkline","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":"green","bg":null}
+{"style":1,"fg":null,"bg":null}
+{"t":0,"frame":1,"rows":[[0,[[0,"⣀⣤⣶⣿⡇⠁⢸"],[1," ok"]]]]}
+{"t":1000,"mark":"spark","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="114" height="42" viewBox="0 0 114 42">
+<title>wide</title>
+<desc>A terminal screen recorded by TerminalUI. Bold text is drawn in a heavier weight, not a brighter colour. Box drawing, block elements, braille and the framework&apos;s marks are drawn as shapes, not from a font.</desc>
+<rect width="114" height="42" fill="#1e1e2e"/>
+<g shape-rendering="crispEdges">
+<rect x="12" y="12" width="36" height="18" fill="#313244"/>
+</g>
+<g font-family='"JetBrains Mono","SF Mono",Menlo,Consolas,"DejaVu Sans Mono","Liberation Mono",monospace' font-size="15" xml:space="preserve">
+<text x="12" y="26" textLength="18" lengthAdjust="spacing" fill="#f9e2af">界</text>
+<text x="30" y="26" textLength="18" lengthAdjust="spacing" fill="#f9e2af">面</text>
+<text x="48" y="26" textLength="9" lengthAdjust="spacing" fill="#cdd6f4">é</text>
+<text x="57" y="26" textLength="9" lengthAdjust="spacing" fill="#cdd6f4">→</text>
+<text x="66" y="26" textLength="18" lengthAdjust="spacing" fill="#cdd6f4">ok</text>
+</g>
+</svg>

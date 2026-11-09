@@ -105,6 +105,10 @@ jobs:
       # else draws a theme role.
       - name: Colour literals are listed
         run: python3 tools/scripts/check_colour_literals.py
+      # Every character outside ASCII the framework draws is a shape a
+      # recording's picture draws itself, or listed with why a font may.
+      - name: Font glyphs are listed
+        run: python3 tools/scripts/check_font_glyphs.py
       - name: No tracker ids in the repository
         run: python3 tools/scripts/check_tracker_ids.py
 

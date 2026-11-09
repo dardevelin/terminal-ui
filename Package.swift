@@ -215,6 +215,8 @@ let package = Package(
             name: "TerminalUIRecordingTests",
             dependencies: ["TerminalUIRecording", "TerminalUI", "TerminalUIConfig"],
             path: "Tests/TerminalUIRecordingTests",
+            // Hand-written logs and their SVG goldens, read through `#filePath`.
+            exclude: ["Fixtures"],
             swiftSettings: strictSettings
         ),
         .testTarget(

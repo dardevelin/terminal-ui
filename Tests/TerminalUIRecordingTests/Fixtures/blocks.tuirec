@@ -1,0 +1,6 @@
+{"tuirec":1,"cols":8,"rows":2,"cursor":"hidden","app":"blocks","env":{"TERM":"xterm-256color"}}
+{"style":0,"fg":"cyan","bg":"idx:236"}
+{"style":1,"fg":"rgb:a6e3a1","bg":"blue"}
+{"t":0,"frame":1,"rows":[[0,[[0,"▀▄█▌▐░▒▓"]]],[1,[[1,"▖▗▘▝▚▞▙▟"]]]]}
+{"t":1000,"mark":"art","hold":500}
+{"t":2000,"end":true,"frames":1,"marks":1}
