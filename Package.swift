@@ -98,8 +98,9 @@ let package = Package(
             path: "Sources/TerminalUIIO",
             swiftSettings: strictSettings
         ),
-        // TerminalUIRaster — PNG and GIF encoders and the canvas the
-        // recording renderer draws into. Pure Swift, integer only, so a
+        // TerminalUIRaster — PNG and GIF encoders, the canvas the
+        // recording renderer draws into, and a TrueType parser and
+        // coverage rasterizer for its text. Pure Swift, integer only, so a
         // picture is the same bytes on every system. In no product: only
         // swtui's renderer uses it, and its API is `package`.
         .target(
@@ -197,7 +198,8 @@ let package = Package(
             // is checked against.
             dependencies: ["TerminalUIRaster", "TerminalUIIO"],
             path: "Tests/TerminalUIRasterTests",
-            // Goldens read through `#filePath`, as TerminalUIIOTests' are.
+            // Goldens read through `#filePath`, as TerminalUIIOTests' are,
+            // and so is the bundled font under tools/fonts/.
             exclude: ["Fixtures"],
             swiftSettings: strictSettings
         ),

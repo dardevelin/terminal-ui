@@ -17,7 +17,12 @@ The root also holds the FOSS shell: `README.md`, `CHANGELOG.md`, `NOTICE`,
 `assets/` (logo), `logo-concepts/`, and the licence files. Licensing is
 **tri-licensed at the user's option**: `LICENSE-APACHE` (Apache-2.0),
 `LICENSE-MIT`, `LICENSE-EUPL` (EUPL-1.2) — keep `NOTICE` and the README licence
-section in sync when any of them change.
+section in sync when any of them change. The one exception is third-party:
+JetBrains Mono in `tools/fonts/JetBrainsMono/` (SIL OFL 1.1, its `OFL.txt`
+beside it), which developer tooling draws documentation media with and no
+product contains. Its README pins each file's SHA-256 (`test_bundled_font.py`
+checks them); replacing or adding a font means updating that README, NOTICE's
+third-party section and the README licence sentence together.
 
 `reference/` (studied prior art — ratatui, SwiftTUI, asciinema, vhs) is
 gitignored: separately-cloned repos kept locally, not part of the project. So
@@ -203,7 +208,7 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol (no decoder ships), a half-block renderer, a pure-Swift inflate. Apps without image needs don't pay for it. |
-| `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`. The encoders the recording renderer writes stills and animations with (`design/self-recording.md`). |
+| `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`; `TrueTypeFont` (a `glyf` parser), `CoverageRasterizer` (signed-area coverage in 24.8 fixed point, no hinting) and `BuiltinGlyphSource`. The encoders and glyphs the recording renderer draws stills and animations with (`design/self-recording.md`). |
 
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
@@ -213,7 +218,9 @@ for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
 decoder of its own) by `tools/tests/test_raster_encoders.py`. A change that
 means to alter the encoding rewrites them with `TERMINALUI_UPDATE_GOLDENS=1
 swift test --filter TerminalUIRasterTests`, and the Python test then says
-whether they still decode to the same pictures.
+whether they still decode to the same pictures. The glyph goldens there
+(`glyph-*.pgm`, viewable in any image viewer) are drawn from the bundled
+JetBrains Mono, which the tests read from `tools/fonts/JetBrainsMono/`.
 
 ## Core architecture
 
