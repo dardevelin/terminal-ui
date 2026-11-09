@@ -277,6 +277,7 @@ def spawn_and_connect(target: str,
         client.attach_pty(master)
         client.pid = proc.pid
         client.sanitizer = verdict.sanitizer_of(exe)
+        client.build_dir = resolved_build_dir
         client.pty_output = _output
         client.hang_up = _hang_up
 
