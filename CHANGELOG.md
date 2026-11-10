@@ -15,6 +15,13 @@ All notable changes to TerminalUI are documented here. Format based on
   so a status line fed by a task read its old text until a key was
   pressed. A `List` given a `visibleCount` kept its old rows the same way.
   A new closure now forgets the old one's build.
+- **A stack nested in a stack gives a greedy child the height left.** A
+  `List` sized by its container, under a heading in a `VStack` that sat in
+  another, was measured with its stack as content and drew no rows, and a
+  `Spacer` in an inner `VStack` pushed nothing that followed the outer
+  one's end. As in SwiftUI, a stack holding a view that takes the height
+  it is offered now takes it too; a `Spacer` in an `HStack` still leaves
+  the row one line tall. The same rule across the width already held.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 
