@@ -6,6 +6,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.3.2] — 2026-11-10 — Keys and taps where they are meant
+
+A patch release over 2.3.1: an app written for 2.3 compiles unchanged.
+A key typed as a presentation closes reaches the view focus returns to, a
+handled Escape no longer quits, a tap drawn over a focusable view takes
+the click, and a status line fed by a task shows what the task last said.
+One behaviour moves with the Escape fix: an app whose `onEvent` returns
+`true` for Escape no longer quits on it, as it asked; Ctrl+C still does.
+
 ### Fixed
 
 - **A `WidthReader` shows what its view's state now says, however the
@@ -1433,7 +1442,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0
