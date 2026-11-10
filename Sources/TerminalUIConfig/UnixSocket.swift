@@ -24,14 +24,29 @@ package enum UnixSocket {
         }
     }
 
+    /// What a socket's path is bound under until it listens: appended to the
+    /// path, in the same directory, so the `rename(2)` that publishes it is
+    /// atomic.
+    package static let unpublishedSuffix = ".unpublished"
+
     /// A non-blocking socket listening at `path`, in place of whatever was
     /// there.
+    ///
+    /// `bind(2)` makes the socket's file and `listen(2)` lets it accept, so
+    /// a socket bound at its path is there, refusing, until it listens — and
+    /// a client that finds it then, as `swtui ctl` does an app just started,
+    /// is refused. The socket is bound under an unpublished name and renamed
+    /// over `path` once it listens: POSIX `rename(2)` replaces the target
+    /// atomically, so whoever finds `path` finds a socket that accepts. The
+    /// path, with the suffix, must still fit a socket address.
     package static func listening(at path: String, backlog: Int32) throws(Failure) -> Int32 {
-        unlink(path)
-        let fd = try opened(at: path) { bind($0, $1, $2) }
-        guard listen(fd, backlog) == 0 else {
+        let unpublished = path + unpublishedSuffix
+        unlink(unpublished)
+        let fd = try opened(at: unpublished) { bind($0, $1, $2) }
+        guard listen(fd, backlog) == 0, rename(unpublished, path) == 0 else {
             let error = errno
             close(fd)
+            unlink(unpublished)
             throw .system(error)
         }
         _ = fcntl(fd, F_SETFL, O_NONBLOCK)
