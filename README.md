@@ -362,7 +362,7 @@ graph TD
     CLI["a plain CLI that wants<br/>styled output or logging"] --> Log
     Dev["you, or an agent,<br/>driving a debug build"] --> SW
 
-    IO["TerminalUIIO<br/><i>image buffer, half-block rendering</i>"] --> TUI
+    IO["TerminalUIIO<br/><i>PNG and JPEG decoding, half-block rendering</i>"] --> TUI
     SW["swtui<br/><i>diagnostics and remote control</i>"] --> TUI
     TUI["TerminalUI<br/><i>the full TUI runtime</i>"] --> Ink
     TUI --> Log
@@ -377,7 +377,7 @@ graph TD
 | `TerminalUI` | Ink, Log | The full TUI runtime described above |
 | `TerminalInk` | — | Styled output alone: color model, terminal capability detection, ANSI SGR. For CLIs that want styled stdout/stderr without a render runtime |
 | `TerminalLog` | TerminalInk | Structured logging with leveled colored prefixes; strips ANSI when output is not a TTY |
-| `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol, a half-block renderer, and a pure-Swift inflate. No image decoder ships yet — bring your own |
+| `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, pure-Swift PNG and JPEG decoders behind a decoder protocol you can conform your own to, a half-block renderer, and a pure-Swift inflate |
 | `swtui` | TerminalUI | The [debug tools](#debug-tools-and-agent-driven-development)' command line: `swift run swtui ctl …` from your own package drives the debug build you are running |
 
 `TerminalUIConfig` (the TOML parser, the one spelling of a key combination,

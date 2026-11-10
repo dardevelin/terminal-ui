@@ -216,7 +216,7 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalLog` | TerminalInk | Structured logging: leveled colored prefixes, console + file sinks, ANSI auto-stripping for non-TTY. |
 | `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
-| `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol (no decoder ships), a half-block renderer, a pure-Swift inflate. Apps without image needs don't pay for it. |
+| `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol with pure-Swift `PNGDecoder` (every colour type, Adam7, `tRNS`) and `JPEGDecoder` (baseline and extended sequential; progressive, arithmetic and CMYK refused by name), each with a `maximumPixelCount`, a half-block renderer, a pure-Swift inflate (`Inflate.decode(_:outputLimit:)` bounds what it expands to). Apps without image needs don't pay for it. |
 | `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `BlendCanvas` (pixels kept as foreground over background at a coverage), `IndexedPaletteBuilder`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`; `TrueTypeFont` (a `glyf` parser), `CoverageRasterizer` (signed-area coverage in 24.8 fixed point, no hinting) and `BuiltinGlyphSource`. The encoders and glyphs the recording renderer draws stills and animations with (`design/self-recording.md`). |
 | `TerminalUIRecording` | TerminalUI, Config, Raster | Internal, swtui-only; not a product. Renders a `.tuirec` recording: `RecordingReader`, `PresentationClock`, `RecordingPalette`, `CellMetrics`, `CastEncoder`, `SVGFrameRenderer` and `SVGAnimationRenderer`, and the raster pictures — `RasterFrameComposer` (a screen into pixels) and `RasterAnimator` (a timeline into a GIF). |
 
@@ -235,6 +235,15 @@ decoded the same way, the GIF's last frame compared with the still of its
 screen. The glyph goldens there
 (`glyph-*.pgm`, viewable in any image viewer) are drawn from the bundled
 JetBrains Mono, which the tests read from `tools/fonts/JetBrainsMono/`.
+
+The image decoders' fixtures are checked against readings that are not
+their own. `Tests/TerminalUIIOTests/Fixtures/png/` is written by
+`tools/scripts/make_png_fixtures.py`, which computes each `.rgba` from its
+pixel model, never by decoding, and ImageMagick (`magick NAME.png -depth 8
+rgba:-`) gives the same bytes for all 41. `Fixtures/jpeg/` is libjpeg-turbo's
+`cjpeg` output (`tools/scripts/make_jpeg_fixtures.py`, macOS), each beside
+macOS ImageIO's decode and `djpeg`'s: the tests hold `JPEGDecoder` within 3
+levels of djpeg's everywhere and to ImageIO's on average.
 
 ## Core architecture
 

@@ -46,6 +46,38 @@ All notable changes to TerminalUI are documented here. Format based on
   edges shaded in up to 16 steps, and only a frame of more than 255 colours
   is approximated, with a warning that names it. Defaults for every render
   flag can be set in a `[render]` section of `.terminalui/terminalui.toml`.
+- **TerminalUIIO decodes PNG and JPEG, in Swift alone.** `PNGDecoder` reads
+  every image the PNG specification defines — greyscale, truecolour,
+  indexed and the alpha types at each depth they allow, `tRNS`
+  transparency, all five row filters and Adam7 interlacing — and checks
+  every chunk's CRC, the chunks' order and the image data's Adler-32.
+  `JPEGDecoder` reads baseline and extended sequential JPEG: greyscale,
+  JFIF's YCbCr and RGB, any sampling factors that divide the largest, with
+  chroma upsampled as libjpeg does, restart intervals and one scan a
+  component; it refuses progressive, lossless, hierarchical and
+  arithmetic-coded JPEG, 12-bit samples and CMYK with a reason that names
+  them. Both are `ImageDecoder`s, decode the same bytes to the same pixels
+  on macOS and Linux, and throw rather than trap on any input: every
+  truncation of the test images, and half a million corrupted copies of
+  them, end in an error or a picture. Each refuses an image of more than its
+  `maximumPixelCount` (2^26 unless given one) before allocating for it. A
+  512 × 512 photo decodes in about 5 ms as a 4:2:0 JPEG and 16 ms as a PNG
+  in a release build.
+- **`Inflate.decode(_:outputLimit:)` stops a stream at a bound**, throwing
+  `BoundedInflateError.outputLimitExceeded(limit:)` rather than inflating
+  a stream built to fill memory, and `.malformed(_:)` with the
+  `InflateError` of one that is not deflate.
+
+### Changed
+
+- **`Inflate` decodes thirty to a hundred times as fast**: 1.5 MB of a
+  photo's deflated pixels in 8 ms rather than 1.2 s, in a release build. A
+  Huffman code is looked up from the next nine bits in one step, and a
+  longer one counted out a bit at a time as zlib's puff does, where every
+  symbol used to be searched at every bit; back-references copy from the
+  output itself, with no second window. Code lengths that over-subscribe a
+  code, a block that declares more codes than deflate has or none to end
+  it, are refused as zlib refuses them.
 
 ## [2.3.2] — 2026-11-10 — Keys and taps where they are meant
 
