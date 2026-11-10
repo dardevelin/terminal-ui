@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""A recording must describe the terminal it is made in: vhs's.
+"""A recording must describe the terminal it is made in: vhs's; and a
+showcase GIF must be the chapter whole, at the speed it plays.
 
 vhs runs its shell under ttyd and draws it with xterm.js, but the shell
 inherits everything the terminal ``record_media.py`` was started from put in
@@ -15,7 +16,10 @@ Exit 0 on all green, 1 on any failure.
 
 from __future__ import annotations
 
+import os
+import re
 import sys
+import tempfile
 from pathlib import Path
 from typing import Callable
 
@@ -53,10 +57,66 @@ def colour_is_what_vhs_draws() -> None:
     assert record_media.recording_environment({"COLORTERM": "no"})["COLORTERM"] == "truecolor"
 
 
+SHOWCASE_SOURCES = {"3d": "SceneChapter.swift", "canvas": "CanvasChapter.swift"}
+CHAPTER_DURATION = re.compile(r"static let duration = ([0-9.]+)")
+TAPE_SLEEP = re.compile(r"^Show\nSleep ([0-9.]+)s$", re.MULTILINE)
+# What the tape may leave off a chapter, or run past it, in the chapter's
+# own seconds: under a frame or two.
+CHAPTER_SLACK = 0.25
+
+
+def showcase_tape(chapter: str) -> str:
+    return (record_media.REPO_ROOT / "assets" / f"{chapter}.tape").read_text()
+
+
+def each_showcase_tape_records_its_chapter_whole() -> None:
+    for chapter, source in SHOWCASE_SOURCES.items():
+        tape = showcase_tape(chapter)
+        pace = record_media.showcase_pace(tape)
+        assert 0 < pace <= 1, (chapter, pace)
+        assert f"TERMINALUI_SHOWCASE={chapter} " in tape, chapter
+        swift = (record_media.REPO_ROOT / "Examples" / "Showcase" / source).read_text()
+        duration = float(CHAPTER_DURATION.search(swift).group(1))
+        recorded = float(TAPE_SLEEP.search(tape).group(1)) * pace
+        assert abs(recorded - duration) <= CHAPTER_SLACK, (chapter, recorded, duration)
+
+
+def captured(times: list[float]) -> Path:
+    folder = Path(tempfile.mkdtemp())
+    for index, moment in enumerate(times):
+        frame = folder / f"frame-text-{index + 1:05d}.png"
+        frame.write_bytes(b"")
+        os.utime(frame, (moment, moment))
+    return folder
+
+
+def a_frame_lasts_as_long_as_it_was_on_screen_at_the_apps_pace() -> None:
+    folder = captured([100.0, 100.1, 100.15, 100.25])
+    timed = record_media.showcase_frames(folder, 0.25)
+    assert [path.name for path, _ in timed] == sorted(path.name for path in folder.iterdir()), timed
+    assert [round(seconds, 4) for _, seconds in timed] == [0.025, 0.0125, 0.025, 0.025], timed
+
+
+def a_recorder_that_fell_behind_is_refused() -> None:
+    # At a quarter speed the app draws a frame every fifth of a second; a
+    # capture that waited longer missed one.
+    folder = captured([100.0, 100.1, 100.35])
+    try:
+        record_media.showcase_frames(folder, 0.25)
+    except SystemExit as refusal:
+        assert "fell behind" in str(refusal), refusal
+    else:
+        raise AssertionError("a recording that missed a frame was accepted")
+
+
 CASES: list[tuple[str, Callable[[], None]]] = [
     ("the host terminal is not passed on", the_host_terminal_is_not_passed_on),
     ("everything else is kept", everything_else_is_kept),
     ("colour is what vhs draws", colour_is_what_vhs_draws),
+    ("each showcase tape records its chapter whole", each_showcase_tape_records_its_chapter_whole),
+    ("a frame lasts as long as it was on screen, at the app's pace",
+     a_frame_lasts_as_long_as_it_was_on_screen_at_the_apps_pace),
+    ("a recorder that fell behind is refused", a_recorder_that_fell_behind_is_refused),
 ]
 
 

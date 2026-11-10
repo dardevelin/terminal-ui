@@ -16,6 +16,9 @@ is now made here, from the tutorial's own code steps and the tapes under
 - **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``, once
   ``check_vhs_compat.py`` has shown vhs draws every Storybook page as the
   framework does.
+- **Showcase GIFs**: ``assets/3d.tape`` and ``assets/canvas.tape``, the
+  ``Showcase`` example's chapters, from vhs's frames (see
+  ``record_showcase``).
 
 The steps are built as one package of executables in
 ``.build-recordings/tutorial``, as ``tools/terminalui/tutorial.py`` writes
@@ -23,7 +26,7 @@ it, against this checkout.
 
 Run::
 
-    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|all] [--only STEP|CHAPTER]
+    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|showcase|all] [--only STEP|CHAPTER]
 
 Needs vhs (with ttyd and ffmpeg) and ImageMagick.
 """
@@ -32,8 +35,11 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
+import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -183,6 +189,106 @@ def make_card(chapter: int) -> None:
          "-compose", "Over", "-composite", str(card)])
 
 
+# The Showcase example's chapters, each recorded as its own GIF.
+#
+# vhs's GIF will not do for them. Its browser terminal takes up to a quarter
+# of a second to capture a frame of a thousand colours, so at the app's own
+# pace it falls behind, drops frames and plays the rest too fast; and its
+# encoder dithers, which turned twenty seconds of 3D into 11 MB. So each tape
+# plays the app at the pace its TERMINALUI_SHOWCASE_PACE names, an eighth of
+# its speed, and keeps vhs's frames rather than a GIF, and the GIF is made
+# here: each frame held for as long as it was on screen, scaled back to life,
+# sampled at the chapter's frame rate, in one palette with no dither.
+SHOWCASE_FRAMES = WORK / "showcase"
+
+
+@dataclass(frozen=True)
+class ShowcaseEncoding:
+    """How a chapter's GIF is sampled. GIF delays are whole hundredths of a
+    second, so a frame rate is 100 over a whole number: twenty a second is
+    five hundredths, 16⅔ six."""
+    frame_rate: str
+    colours: int
+
+
+# The 3D chapter changes nearly every pixel on nearly every frame, and at
+# twenty frames a second in 256 colours it came to 4.4 MB; the canvas
+# changes a few columns at a time, and keeps both.
+SHOWCASE_CHAPTERS = {
+    "3d": ShowcaseEncoding(frame_rate="50/3", colours=192),
+    "canvas": ShowcaseEncoding(frame_rate="20", colours=256),
+}
+# The app draws twenty frames to a second of its own time.
+SHOWCASE_APP_FRAME_RATE = 20
+PACE = re.compile(r"TERMINALUI_SHOWCASE_PACE=([0-9.]+)")
+
+
+def showcase_pace(tape: str) -> float:
+    match = PACE.search(tape)
+    if not match:
+        raise SystemExit("a showcase tape must set TERMINALUI_SHOWCASE_PACE")
+    return float(match.group(1))
+
+
+def showcase_frames(frames: Path, pace: float) -> list[tuple[Path, float]]:
+    """vhs's frames of the screen, each with the seconds it stood for, in
+    the app's own time. vhs writes each as it captures it, so a frame's time
+    is its file's; the cursor is a layer of its own, and the app hides it."""
+    captured = sorted(frames.glob("frame-text-*.png"))
+    if len(captured) < 2:
+        raise SystemExit(f"vhs captured no frames into {frames}")
+    times = [path.stat().st_mtime for path in captured]
+    gaps = [later - earlier for earlier, later in zip(times, times[1:])]
+    # A frame the app drew and vhs never captured is a jump in the motion.
+    longest, drawn = max(gaps), 1 / (SHOWCASE_APP_FRAME_RATE * pace)
+    if longest > drawn:
+        raise SystemExit(f"vhs fell behind: {longest:.3f}s between captures, longer than the "
+                         f"{drawn:.3f}s between the app's frames; record at a slower pace")
+    return [(path, gap * pace) for path, gap in zip(captured, gaps + [gaps[-1]])]
+
+
+def showcase_gif(frames: list[tuple[Path, float]], encoding: ShowcaseEncoding, output: Path) -> None:
+    listing = SHOWCASE_FRAMES / f"{output.stem}.txt"
+    lines = []
+    for path, seconds in frames:
+        lines += [f"file '{path}'", f"duration {seconds:.4f}"]
+    # The concat demuxer takes the last frame's duration only from a repeat.
+    lines.append(f"file '{frames[-1][0]}'")
+    listing.write_text("\n".join(lines) + "\n")
+    run(["ffmpeg", "-loglevel", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(listing),
+         "-vf", f"fps={encoding.frame_rate},split[frames][again];"
+                f"[frames]palettegen=max_colors={encoding.colours}[palette];"
+                f"[again][palette]paletteuse=dither=none:diff_mode=rectangle",
+         str(output)])
+
+
+def record_showcase(only: str | None) -> None:
+    run(["swift", "build", "-c", "release", "--scratch-path", str(WORK / "app"), "--product", "Showcase"])
+    for chapter, encoding in SHOWCASE_CHAPTERS.items():
+        if only not in (None, chapter):
+            continue
+        tape = REPO_ROOT / "assets" / f"{chapter}.tape"
+        frames = SHOWCASE_FRAMES / chapter
+        # vhs writes its frames only into a folder it makes itself, in one
+        # that is already there.
+        shutil.rmtree(frames, ignore_errors=True)
+        frames.parent.mkdir(parents=True, exist_ok=True)
+        run_vhs(tape)
+        output = REPO_ROOT / "assets" / f"{chapter}.gif"
+        showcase_gif(showcase_frames(frames, showcase_pace(tape.read_text())), encoding, output)
+        print(f"{output.relative_to(REPO_ROOT)}: {output.stat().st_size / 1e6:.2f} MB", flush=True)
+        shutil.copyfile(output, SHOWCASE_DOCS[chapter])
+
+
+# Where the documentation shows each chapter: a catalog's own Resources, as
+# the tutorials keep theirs, since an article can show only what its
+# catalog holds.
+SHOWCASE_DOCS = {
+    "3d": REPO_ROOT / "Sources" / "TerminalUI3D" / "TerminalUI3D.docc" / "Resources" / "showcase-3d.gif",
+    "canvas": RESOURCES / "showcase-canvas.gif",
+}
+
+
 def wanted(step: Step, only: str | None) -> bool:
     return only in (None, step.name, str(step.chapter))
 
@@ -190,8 +296,8 @@ def wanted(step: Step, only: str | None) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("what", nargs="?", default="all",
-                        choices=["previews", "gifs", "cards", "readme", "all"])
-    parser.add_argument("--only", help="one step (tasks2-03-01) or chapter number")
+                        choices=["previews", "gifs", "cards", "readme", "showcase", "all"])
+    parser.add_argument("--only", help="one step (tasks2-03-01), chapter number, or showcase chapter (3d)")
     parser.add_argument("--no-build", action="store_true", help="reuse the last build of the steps")
     args = parser.parse_args()
 
@@ -218,6 +324,8 @@ def main() -> int:
         run([sys.executable, "tools/scripts/check_vhs_compat.py", str(WORK / "app" / "debug")])
         run_vhs("assets/demo.tape")
         run_vhs("assets/debug.tape")
+    if args.what in ("showcase", "all"):
+        record_showcase(args.only)
     return 0
 
 
