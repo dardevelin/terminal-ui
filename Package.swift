@@ -249,6 +249,14 @@ let package = Package(
             swiftSettings: strictSettings,
             linkerSettings: mapsLocationPlist
         ),
+        // Full-screen chapters that play on their own, recorded for the
+        // README: `swift run Showcase [3d|canvas]`.
+        .executableTarget(
+            name: "Showcase",
+            dependencies: ["TerminalUI", "TerminalUI3D"],
+            path: "Examples/Showcase",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],
@@ -301,6 +309,14 @@ let package = Package(
             // cells, as its own canvas tests do.
             dependencies: ["TerminalUI3D", "TerminalUI"],
             path: "Tests/TerminalUI3DTests",
+            swiftSettings: strictSettings
+        ),
+        // The Showcase's choreography, which a recording plays once and a
+        // frame cut short would spoil: what can be checked without a screen.
+        .testTarget(
+            name: "ShowcaseTests",
+            dependencies: ["Showcase", "TerminalUI3D"],
+            path: "Tests/ShowcaseTests",
             swiftSettings: strictSettings
         ),
         .testTarget(

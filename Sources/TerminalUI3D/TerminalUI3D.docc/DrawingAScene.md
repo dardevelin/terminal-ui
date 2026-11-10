@@ -10,6 +10,11 @@ the lights they are lit by, and the camera they are seen from. A
 ``SceneView`` draws one, filling the space it is offered, as a `Canvas`
 does.
 
+![Lettering extruded with Text3D turns into view on a Turntable; a torus turns as a shaded image, then in braille and character shading; a CameraTour flies over a fogged terrain with labelled peaks.](showcase-3d.gif)
+
+What the picture shows is the `Showcase` example's 3D chapter, every frame
+of it a `SceneView` in a `TimelineView`: `swift run Showcase 3d`.
+
 ## Getting a scene on screen
 
 Build a ``Scene3D``, add a mesh to it, and hand it to a ``SceneView``. Take

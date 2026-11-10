@@ -7,7 +7,13 @@ second, at the top of each minute — SwiftUI's `TimelineView`.
 
 A ``TimelineView`` builds its content from a context whose
 ``TimelineViewDefaultContext/date`` is the schedule's latest date. Build what
-that moment shows from it, and the view keeps it current:
+that moment shows from it, and the view keeps it current.
+
+![A canvas built afresh from each date of an animation schedule: a chart traced by a sweep, a clock whose second hand sweeps, and meters easing to new readings on a schedule of their own.](showcase-canvas.gif)
+
+Every frame of the picture is the timeline's content built again from the
+date, which the `Showcase` example's canvas chapter turns into a sweep, a
+clock and eased meters: `swift run Showcase canvas`. In brief:
 
 ```swift
 TimelineView(.animation) { context in

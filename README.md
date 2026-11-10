@@ -39,13 +39,30 @@ input, resize handling, and frame-capped rendering.
   <img src="assets/demo.gif" alt="A walk through the Storybook example app"/>
 </p>
 
-<p align="center">
-  <img src="assets/maps.gif" alt="The Maps example: a town in braille, searched, seen from the air and as terrain, then driven through a corner"/><br/>
-  <sub><a href="#maps"><code>TerminalUIMaps</code></a>: a moving map drawn in text, on a sample town that needs no network.</sub>
-</p>
 <p align="center"><sub>The <code>Storybook</code> example app — one page per public
 API. Recorded with <a href="https://github.com/charmbracelet/vhs">vhs</a>;
 the script is <code>assets/demo.tape</code>.</sub></p>
+
+## Showcase
+
+Full-screen pieces, each about one thing: the `Showcase` example plays the
+first two on its own (`swift run Showcase 3d`, `swift run Showcase canvas`),
+and the third is the `Maps` example (`swift run Maps`).
+
+<p align="center">
+  <img src="assets/3d.gif" alt="TerminalUI3D: an extruded TERMINALUI wordmark turns into view, a torus turns as a shaded image with its highlight sliding, then in braille and character shading, then the camera flies over a fogged terrain with labelled peaks"/>
+</p>
+<p align="center"><sub><b>3D, drawn in text</b> — <code>TerminalUI3D</code>: <code>Text3D</code> on a <code>Turntable</code>, a torus in three shading styles, a <code>CameraTour</code> over fog and labels.</sub></p>
+
+<p align="center">
+  <img src="assets/canvas.gif" alt="One Canvas redrawn by a TimelineView: a sweep chart with a gradient fill under braille curves, a clock keeping the time, and meters easing to new readings"/>
+</p>
+<p align="center"><sub><b>Canvas and time</b> — one <code>Canvas</code> in a <code>TimelineView</code>: gradient fills in half cells, curves and a clock in braille, labels in text.</sub></p>
+
+<p align="center">
+  <img src="assets/maps.gif" alt="The Maps example: a town in braille, searched, seen from the air and as terrain, then driven through a corner"/>
+</p>
+<p align="center"><sub><b>Maps, drawn in text</b> — <a href="#maps"><code>TerminalUIMaps</code></a>: a town zoomed from street plan to buildings, a search and its place card, satellite and terrain, then a drive turning through a corner — on a sample town that needs no network.</sub></p>
 
 ## Design
 
@@ -101,9 +118,9 @@ animated version of this table.
 | **Content & data** | [`Text`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/text) · [`MarkdownView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/markdownview) · [`CodeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/codeview) · [`ForEach`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/foreach) · [`List`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/list) · [`Table`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/table) · [`TabView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tabview) · [`TreeView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/treeview) · [`DiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/diffview) · [`HunkDiffView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/hunkdiffview) · [`BufferView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/bufferview) · [`ProgressBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/progressbar) · [`Gauge`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/gauge) · [`Spinner`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spinner) · [`StatusBar`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/statusbar) |
 | **Input & forms** | [`Button`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/button) · [`TextInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textinput) · [`TextArea`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/textarea) · [`Toggle`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/toggle) · [`Picker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/picker) · [`Slider`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/slider) · [`Stepper`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/stepper) · [`PromptInput`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/promptinput) · [`Form`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/form) · [`Section`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/section) · [`LabeledContent`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/labeledcontent) · [`NavigationStack`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationstack) · [`NavigationLink`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/navigationlink) |
 | **Charts** | [`BarChart`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/barchart) · [`Sparkline`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/sparkline) · [`HeatMap`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/heatmap) · [`BrailleCanvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/braillecanvas) · [`DotMatrixText`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotmatrixtext) · [`DotFont`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotfont) · [`MorseTicker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/morseticker) |
-| **Drawing & time** | [`Canvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/canvas) — paths, fills and text on half cells, braille dots and whole cells · [`TimelineView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/timelineview) — redrawn every frame, or at a schedule's dates |
+| **Drawing & time** | [`Canvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/canvas) — paths, fills and text on half cells, braille dots and whole cells · [`TimelineView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/timelineview) — redrawn every frame, or at a schedule's dates · [see it](#showcase) |
 | **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.inspector`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.contextMenu`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
-| **3D** (`TerminalUI3D`) | [`SceneView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/sceneview) — a lit, shaded [`Scene3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/scene3d) drawn as an image, braille or characters · [`Mesh`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/mesh) · [`Text3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/text3d) · [`Turntable`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/turntable) · [`CameraTour`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/cameratour) |
+| **3D** (`TerminalUI3D`) | [`SceneView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/sceneview) — a lit, shaded [`Scene3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/scene3d) drawn as an image, braille or characters · [`Mesh`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/mesh) · [`Text3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/text3d) · [`Turntable`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/turntable) · [`CameraTour`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/cameratour) · [see it](#showcase) |
 | **Maps** (`TerminalUIMaps`) | [`MapView`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/mapview) — vector and picture tiles in braille and half blocks, panned, zoomed and turned · [`MapTileStore`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/maptilestore) · [`PlaceSearch`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/placesearch) · [`RouteProvider`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/routeprovider) · [`NavigationController`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcontroller) · [`NavigationCamera`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcamera) · [`RegionDownloader`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/regiondownloader) |
 | **Gestures** | [`TapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tapgesture) · [`SpatialTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spatialtapgesture) · [`DragGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/draggesture) · [`.onScrollWheel`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onHover`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) |
 
@@ -234,6 +251,7 @@ struct CounterApp: TerminalAppProtocol {
 | `swift run Chat` | A chat interface: scrollback, prompt input, timed replies |
 | `swift run Coder` | An agent-chat app in the shape of Crush: transcript, tool cards, diffs, sidebar |
 | `swift run Maps` | A maps app on TerminalUIMaps: search, place cards, directions, map types, street view, offline regions and a replayed drive — on a fictional town, with no network, unless `--backend osm` is given |
+| `swift run Showcase` | Full-screen chapters that play on their own: 3D, and Canvas with TimelineView |
 
 ## Maps
 

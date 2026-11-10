@@ -58,6 +58,8 @@ swift run Maps --location gpx:Examples/Maps/Tracks/millbrook-drive.gpx  # replay
 #   --location gpsd[:HOST:PORT] | nmea:tcp:HOST:PORT | nmea:udp[:PORT] | here | corelocation
 #   (corelocation needs TERMINALUI_MAPS_LOCATION_PLIST=1, which embeds an Info.plist); --replay-speed N
 TERMINALUI_MAPS_LIVE=1 swift test --filter TerminalUIMapsTests  # also reach the real servers; off by default
+swift run Showcase [3d|canvas]  # full-screen chapters that play on their own; the README's
+                             # 3d.gif and canvas.gif (record_media.py showcase records them)
 swift run swtui help         # developer CLI for the .terminalui/ diagnostic system
 
 # Single-purpose examples. These double as fixtures for the behavioural
@@ -232,7 +234,9 @@ This layering is the modularity strategy — not backend abstraction.
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
 `TerminalLogTests`, `TerminalUIIOTests`, `TerminalUI3DTests`, `TerminalUIMapsTests`, `TerminalUIRasterTests`,
-`TerminalUIRecordingTests`). The raster
+`TerminalUIRecordingTests`), and `ShowcaseTests` holds the Showcase example's
+choreography to what a recording needs, such as the torus clear of every edge
+through a whole turn. The raster
 goldens under `Tests/TerminalUIRasterTests/Fixtures/` are checked twice: byte
 for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
 decoder of its own) by `tools/tests/test_raster_encoders.py`. A change that

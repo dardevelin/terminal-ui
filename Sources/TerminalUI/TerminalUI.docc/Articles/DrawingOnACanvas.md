@@ -8,7 +8,12 @@ SwiftUI's `Canvas`, on a terminal.
 A ``Canvas`` hands its renderer a ``GraphicsContext`` and its size in cells.
 The renderer draws ``Path``s and text into the context, and no views are
 built for what it draws, so a canvas of thousands of segments costs only the
-drawing:
+drawing.
+
+![One canvas, redrawn by a timeline: a sweep chart whose gradient fill sits in half cells under curves stroked in braille, a clock keeping the time, and meters easing to new readings, all labelled in text.](showcase-canvas.gif)
+
+The picture is one ``Canvas`` in a ``TimelineView``, the `Showcase`
+example's second chapter: `swift run Showcase canvas`. A smaller one:
 
 ```swift
 struct RouteMap: TerminalView {

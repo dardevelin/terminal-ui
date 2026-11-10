@@ -48,6 +48,18 @@ All notable changes to TerminalUI are documented here. Format based on
   cards, directions through many stops, map types, street view, offline
   regions, a backend picker and a replayed drive, on the sample town until
   `--backend osm` or `--location` says otherwise.
+- **The README shows 3D and the Canvas in motion, each in a GIF of its
+  own.** `Examples/Showcase` plays full-screen chapters on its own, built
+  from a `TimelineView` and the motion helpers alone: the TerminalUI
+  wordmark in `Text3D` turning into view, a torus as an image and in two
+  other shading styles, a `CameraTour` over a fogged, labelled terrain;
+  then one `Canvas` holding a sweep chart, a clock and eased meters. Choose
+  a chapter with `swift run Showcase 3d` or `TERMINALUI_SHOWCASE=canvas`;
+  by hand, the arrows step between them and space pauses, which costs
+  nothing. `python3 tools/scripts/record_media.py showcase` records
+  `assets/3d.gif` and `assets/canvas.gif` from `assets/3d.tape` and
+  `assets/canvas.tape`, and the articles on drawing a scene, a canvas and a
+  schedule show them too.
 
 ## [2.5.0] — 2026-11-10 — 3D, drawn in text
 
