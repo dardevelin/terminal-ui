@@ -81,8 +81,9 @@ struct MapTypeModelTests {
     }
 }
 
+// Off the main actor: nothing here needs it, and under Thread Sanitizer
+// these tests' tiles take long enough to starve the tests that do.
 @Suite("The renderer's layers")
-@MainActor
 struct MapLayerRenderingTests {
     private let width = 40
     private let height = 12
@@ -105,6 +106,9 @@ struct MapLayerRenderingTests {
         return tiles
     }
 
+    /// Drawn on the main actor, which a canvas draws on; the tiles are made
+    /// off it.
+    @MainActor
     private func draw(basemap: [TileID: RenderTile], layers: MapFrameLayers,
                       theme: any Theme = MapTestTheme()) -> CellBuffer {
         drawMap(width: width, height: height, theme: theme) { context, size in
@@ -118,8 +122,8 @@ struct MapLayerRenderingTests {
     @Test func terrainDrawsContoursAndShadesTheGround() async throws {
         let basemap = try await tiles(from: SampleTileSource())
         let terrain = try await tiles(from: SampleTerrainSource())
-        let plain = draw(basemap: basemap, layers: MapFrameLayers())
-        let relief = draw(basemap: basemap,
+        let plain = await draw(basemap: basemap, layers: MapFrameLayers())
+        let relief = await draw(basemap: basemap,
                           layers: MapFrameLayers(terrain: MapLayerTiles(zoomRange: 0...16) { terrain[$0] }))
         let colours = ReliefColours(MapTestTheme())
         var contourCells = 0, shadedCells = 0
@@ -136,7 +140,7 @@ struct MapLayerRenderingTests {
         #expect(shadedCells > 0, "slopes are shaded")
     }
 
-    @Test func theLayersTurnWithTheCamerasBearing() async throws {
+    @Test @MainActor func theLayersTurnWithTheCamerasBearing() async throws {
         let imagery = try await tiles(from: SampleImagerySource())
         let terrain = try await tiles(from: SampleTerrainSource())
         func frame(bearing: Double, layers: MapFrameLayers) -> CellBuffer {
@@ -165,7 +169,7 @@ struct MapLayerRenderingTests {
     @Test func satelliteDrawsThePictureAndNoneOfTheBasemap() async throws {
         let basemap = try await tiles(from: SampleTileSource())
         let imagery = try await tiles(from: SampleImagerySource())
-        let buffer = draw(basemap: basemap,
+        let buffer = await draw(basemap: basemap,
                           layers: MapFrameLayers(basemap: .hidden,
                                                  imagery: MapLayerTiles(zoomRange: 0...16) { imagery[$0] }))
         let text = (0..<height).map { buffer.row($0) }.joined()
@@ -178,7 +182,7 @@ struct MapLayerRenderingTests {
         let basemap = try await tiles(from: SampleTileSource())
         let imagery = try await tiles(from: SampleImagerySource())
         let theme = MapTestTheme()
-        let buffer = draw(basemap: basemap,
+        let buffer = await draw(basemap: basemap,
                           layers: MapFrameLayers(basemap: .linesAndLabels,
                                                  imagery: MapLayerTiles(zoomRange: 0...16) { imagery[$0] }))
         let text = (0..<height).map { buffer.row($0) }.joined()
