@@ -6,8 +6,9 @@ and the framework's own marks as shapes (``GlyphGeometry``), and everything
 else with a font, where a missing glyph falls back to another font at
 another size or to an empty box. ``tools/font-glyphs.txt`` lists each
 non-ASCII character in a string or character literal of ``Sources/TerminalUI``
-(the tutorial's steps, under ``TerminalUI.docc/Resources``, included) and of
-``Sources/TerminalUI3D``, whose scenes draw their own glyphs on the screen:
+(the tutorial's steps, under ``TerminalUI.docc/Resources``, included), of
+``Sources/TerminalUI3D`` and of ``Sources/TerminalUIMaps``, whose scenes and
+maps draw their own glyphs on the screen:
 either ``shape``, drawn from geometry, or ``font``, with why a font may draw
 it. This check fails on a character no entry covers and on an entry no
 source holds any more, so the list is always the true inventory;
@@ -34,7 +35,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIST = Path("tools") / "font-glyphs.txt"
-SOURCES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUI3D")
+SOURCES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUI3D", Path("Sources") / "TerminalUIMaps")
 KINDS = ("shape", "font")
 
 # `\u{…}`, one to eight hex digits (The Swift Programming Language,

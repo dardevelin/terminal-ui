@@ -33,7 +33,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIST = Path("tools") / "colour-literals.txt"
-LIBRARIES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUIIO", Path("Sources") / "TerminalUI3D")
+LIBRARIES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUIIO", Path("Sources") / "TerminalUI3D",
+             Path("Sources") / "TerminalUIMaps")
 
 # Where colours are defined or debugged rather than drawn for an app.
 NOT_DRAWING = ("Style", "DevTools", "TerminalUI.docc")

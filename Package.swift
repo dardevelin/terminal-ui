@@ -28,6 +28,21 @@ let docsDependency: [Package.Dependency] = ProcessInfo.processInfo
     ? [.package(url: "https://github.com/swiftlang/swift-docc-plugin", from: "1.3.0")]
     : []
 
+// Location Services prompts only a process that has an Info.plist with a
+// usage description, and names it by its bundle identifier. A SwiftPM
+// executable is given one by the linker embedding the file as the
+// `__TEXT,__info_plist` section (ld's `-sectcreate`), which `locationd`
+// reads as the bundle's — design/maps.md, "Location". An unsafe flag, so
+// opt-in like the strict gate: a consumer never builds the Maps example,
+// and nobody else's build sees it.
+//
+//     TERMINALUI_MAPS_LOCATION_PLIST=1 swift run Maps --location corelocation
+let mapsLocationPlist: [LinkerSetting] = ProcessInfo.processInfo
+    .environment["TERMINALUI_MAPS_LOCATION_PLIST"] == "1"
+    ? [.unsafeFlags(["-Xlinker", "-sectcreate", "-Xlinker", "__TEXT", "-Xlinker", "__info_plist",
+                     "-Xlinker", Context.packageDirectory + "/Examples/Maps/Support/Info.plist"])]
+    : []
+
 let strictSettings: [SwiftSetting] = [
     // Strict concurrency — full actor isolation, Sendable enforcement
     .enableExperimentalFeature("StrictConcurrency"),
@@ -58,6 +73,10 @@ let package = Package(
         // TerminalUI3D: meshes, a scene, and a software rasterizer that
         // draws it in text through a Canvas. Opt-in, as TerminalUIIO is.
         .library(name: "TerminalUI3D", targets: ["TerminalUI3D"]),
+        // TerminalUIMaps: maps drawn in text — vector and picture tiles,
+        // search, routes, places, live location and navigation, behind
+        // protocols an app fills with the backends it chooses. Opt-in.
+        .library(name: "TerminalUIMaps", targets: ["TerminalUIMaps"]),
         // swtui: the diagnostic CLI. A product so an app's own package can
         // `swift run swtui ctl …` against the debug build it is running —
         // as a bare target it ran only from this checkout.
@@ -129,6 +148,18 @@ let package = Package(
             name: "TerminalUIRecording",
             dependencies: ["TerminalUI", "TerminalUIConfig", "TerminalUIRaster"],
             path: "Sources/TerminalUIRecording",
+            swiftSettings: strictSettings
+        ),
+        // TerminalUIMaps — geo and the Web Mercator camera, a Mapbox Vector
+        // Tile decoder, the OpenMapTiles style roles, a renderer that draws
+        // tiles into a Canvas, MapView, and the protocols the tile, search,
+        // route, place, imagery and location backends meet. TerminalUIIO
+        // for its Inflate and ImageBuffer, TerminalUIRaster for CRC-32 and
+        // the deflate that gzips the sample town's tiles. Opt-in.
+        .target(
+            name: "TerminalUIMaps",
+            dependencies: ["TerminalUI", "TerminalUIIO", "TerminalUIRaster"],
+            path: "Sources/TerminalUIMaps",
             swiftSettings: strictSettings
         ),
         // Developer CLI tool for managing .terminalui/ config
@@ -206,6 +237,18 @@ let package = Package(
             path: "Examples/SceneBenchmark",
             swiftSettings: strictSettings
         ),
+        // TerminalUIMaps on a full-screen map. Opens on the sample town, so
+        // a first launch and the smoke harness need no network.
+        .executableTarget(
+            name: "Maps",
+            dependencies: ["TerminalUI", "TerminalUIMaps"],
+            path: "Examples/Maps",
+            // The demo's GPX tracks, and the Info.plist a Location Services
+            // build embeds: data, not sources or resources.
+            exclude: ["Tracks", "Support"],
+            swiftSettings: strictSettings,
+            linkerSettings: mapsLocationPlist
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],
@@ -239,6 +282,16 @@ let package = Package(
             dependencies: ["TerminalUIRecording", "TerminalUI", "TerminalUIConfig", "TerminalUIRaster"],
             path: "Tests/TerminalUIRecordingTests",
             // Hand-written logs and their SVG goldens, read through `#filePath`.
+            exclude: ["Fixtures"],
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalUIMapsTests",
+            // TerminalUI to draw a map into a canvas's planes and read the
+            // cells, as its own canvas tests do.
+            dependencies: ["TerminalUIMaps", "TerminalUI", "TerminalUIIO", "TerminalUIRaster"],
+            path: "Tests/TerminalUIMapsTests",
+            // Real tiles and responses, read through `#filePath`.
             exclude: ["Fixtures"],
             swiftSettings: strictSettings
         ),

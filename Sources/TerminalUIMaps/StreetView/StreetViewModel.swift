@@ -1,0 +1,151 @@
+import Foundation
+import Observation
+import TerminalUIIO
+
+/// Street view's state, testable without a screen: the image shown, its
+/// photo, the images either side along its street, and where a look or a
+/// step has got to.
+///
+/// ``look(at:)`` finds the image nearest a place; ``step(_:)`` walks to the
+/// next or previous along the street. Each starts a task and returns it,
+/// so a test awaits the answer rather than a clock; an answer that a later
+/// look or step has overtaken is dropped.
+///
+/// ```swift
+/// let street = StreetViewModel(imagery: PanoramaxImagery())
+/// street.look(at: place.coordinate)
+/// StreetViewPanel(model: street)
+/// ```
+@MainActor
+@Observable
+public final class StreetViewModel {
+    /// Where a look or a step has got to.
+    public enum Status: Sendable, Equatable {
+        case idle
+        case searching
+        case loadingPhoto
+        case showing
+        case nothingNearby
+        case failed(String)
+    }
+
+    /// Which way along the street to step.
+    public enum Step: Sendable {
+        case forward
+        case back
+    }
+
+    @ObservationIgnored public private(set) var imagery: any StreetImagery
+    /// The service's name, observed, for the panel's heading.
+    public private(set) var imageryName: String
+    public private(set) var image: StreetImage?
+    public private(set) var photo: ImageBuffer?
+    public private(set) var neighbours = StreetImageNeighbours.none
+    public private(set) var status = Status.idle
+    /// The compass bearing a step walks where images have no sequence of
+    /// their own: the image's heading when it has one, else as turned.
+    public private(set) var walkingBearing = CompassBearing.north
+
+    /// How far from the place a look searches, in metres: a street's width
+    /// and a little more, so the photo is of the street asked about.
+    public static let searchRadius = 60.0
+    /// How far ``turn(by:)`` turns at a press: an eighth of the compass.
+    public static let turnStep = 45.0
+
+    @ObservationIgnored private var generation = 0
+
+    public init(imagery: any StreetImagery) {
+        self.imagery = imagery
+        imageryName = imagery.name
+    }
+
+    /// Use another service; what was shown is cleared.
+    public func setImagery(_ newImagery: any StreetImagery) {
+        imagery = newImagery
+        imageryName = newImagery.name
+        generation += 1
+        image = nil
+        photo = nil
+        neighbours = .none
+        status = .idle
+    }
+
+    /// Show the image nearest `coordinate`.
+    @discardableResult
+    public func look(at coordinate: GeoCoordinate) -> Task<Void, Never> {
+        generation += 1
+        let generation = generation, imagery = imagery
+        status = .searching
+        return Task { [weak self] in
+            do {
+                let found = try await imagery.images(near: coordinate, within: Self.searchRadius)
+                guard let self, self.generation == generation else { return }
+                guard let nearest = found.first else {
+                    self.image = nil
+                    self.photo = nil
+                    self.neighbours = .none
+                    self.status = .nothingNearby
+                    return
+                }
+                await self.show(nearest, generation: generation)
+            } catch {
+                guard let self, self.generation == generation else { return }
+                self.status = .failed(String(describing: error))
+            }
+        }
+    }
+
+    /// Walk to the next or the previous image along the street; nothing
+    /// where there is none that way.
+    @discardableResult
+    public func step(_ direction: Step) -> Task<Void, Never>? {
+        let target = direction == .forward ? neighbours.next : neighbours.previous
+        guard let target else { return nil }
+        if direction == .back, image?.heading == nil {
+            // Walking back on a bearing faces the other way.
+            walkingBearing = CompassBearing.normalised(walkingBearing + CompassBearing.south)
+        }
+        generation += 1
+        let generation = generation
+        return Task { [weak self] in await self?.show(target, generation: generation) }
+    }
+
+    /// Turn the bearing steps walk, for imagery without sequences: the
+    /// neighbours are asked again on the new bearing.
+    @discardableResult
+    public func turn(by degrees: Double) -> Task<Void, Never>? {
+        walkingBearing = CompassBearing.normalised(walkingBearing + degrees)
+        guard let image else { return nil }
+        generation += 1
+        let generation = generation, imagery = imagery, bearing = walkingBearing
+        return Task { [weak self] in
+            let found = (try? await imagery.neighbours(of: image, along: bearing)) ?? .none
+            guard let self, self.generation == generation else { return }
+            self.neighbours = found
+        }
+    }
+
+    /// Show `image`: its photo, then its neighbours.
+    private func show(_ shown: StreetImage, generation: Int) async {
+        image = shown
+        photo = nil
+        neighbours = .none
+        status = .loadingPhoto
+        if let heading = shown.heading { walkingBearing = CompassBearing.normalised(heading) }
+        let imagery = imagery, bearing = walkingBearing
+        do {
+            async let photo = imagery.photo(of: shown)
+            async let neighbours = imagery.neighbours(of: shown, along: bearing)
+            let loaded = try await photo
+            guard self.generation == generation else { return }
+            self.photo = loaded
+            status = .showing
+            let around = (try? await neighbours) ?? .none
+            guard self.generation == generation else { return }
+            self.neighbours = around
+        } catch {
+            guard self.generation == generation else { return }
+            status = .failed(String(describing: error))
+        }
+    }
+}

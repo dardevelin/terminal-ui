@@ -135,7 +135,8 @@ package struct GlyphShape: Hashable, Sendable {
 /// every engine and in every format: box drawing (U+2500–257F), block
 /// elements (U+2580–259F), braille (U+2800–28FF) and the chrome the
 /// framework draws — its disclosure and scroll triangles, radio dot, prompt
-/// chevron and check boxes.
+/// chevron and check boxes — and the glyphs a map marks its points of
+/// interest with.
 ///
 /// A font draws these at its own size and weight, and where it lacks them a
 /// fallback font does, at another: borders gap between rows, block art
@@ -460,8 +461,9 @@ private enum Braille {
 // MARK: - Chrome
 
 /// The framework's own marks outside those blocks: Geometric Shapes
-/// (U+25A0–25FF), Miscellaneous Symbols' ballot boxes (U+2610–2611) and
-/// Dingbats' heavy angle (U+276F). Drawn about the cell's centre in
+/// (U+25A0–25FF), Miscellaneous Technical's house (U+2302), Miscellaneous
+/// Symbols' star and ballot boxes (U+2605, U+2610–2611) and Dingbats'
+/// heavy cross and heavy angle (U+271A, U+276F). Drawn about the cell's centre in
 /// ``CellCoordinate/width`` units, so each keeps its proportions.
 private enum Chrome {
     static func polygon(_ points: [(Int, Int)]) -> GlyphShape {
@@ -480,8 +482,16 @@ private enum Chrome {
 
     static let ballotHalfSide = 18
 
+    /// A house's outline: walls, floor and a pitched roof, in light lines.
+    static let house: [GlyphPrimitive] = {
+        let corners = [(-16, 18), (16, 18), (16, -2), (0, -18), (-16, -2)].map { CellPoint.fromCentre($0.0, $0.1) }
+        return corners.indices.map { GlyphPrimitive(.line(corners[$0], corners[($0 + 1) % corners.count], .light)) }
+    }()
+
     static let shapes: [UInt32: GlyphShape] = [
+        0x2302: GlyphShape(house),                                        // ⌂
         0x25A0: GlyphShape([square(halfSide: 18)]),                       // ■
+        0x25AA: GlyphShape([square(halfSide: 11)]),                       // ▪
         0x25B2: polygon([(-21, 18), (0, -20), (21, 18)]),                 // ▲
         0x25B6: polygon([(-18, -21), (20, 0), (-18, 21)]),                // ▶
         0x25B8: polygon([(-12, -14), (14, 0), (-12, 14)]),                // ▸
@@ -489,10 +499,15 @@ private enum Chrome {
         0x25BE: polygon([(-14, -12), (14, -12), (0, 14)]),                // ▾
         0x25C0: polygon([(18, -21), (-20, 0), (18, 21)]),                 // ◀
         0x25C2: polygon([(12, -14), (-14, 0), (12, 14)]),                 // ◂
+        0x25C6: polygon([(0, -20), (18, 0), (0, 20), (-18, 0)]),          // ◆
         0x25CF: GlyphShape([GlyphPrimitive(.circle(centre: .fromCentre(0, 0), radius: CellCoordinate(width: 18)))]), // ●
+        0x2605: polygon([(0, -20), (5, -6), (19, -6), (8, 2), (12, 16), (0, 8), (-12, 16), (-8, 2), (-19, -6),
+                         (-5, -6)]),                                      // ★
         0x2610: GlyphShape(box(halfSide: ballotHalfSide)),                // ☐
         0x2611: GlyphShape(box(halfSide: ballotHalfSide) + polygon(       // ☑
             [(-11, -3), (-4, 4), (11, -11), (11, -4), (-4, 11), (-11, 4)]).primitives),
+        0x271A: polygon([(-6, -20), (6, -20), (6, -6), (20, -6), (20, 6), (6, 6), (6, 20), (-6, 20), (-6, 6),
+                         (-20, 6), (-20, -6), (-6, -6)]),                 // ✚
         0x276F: polygon([(-14, -20), (-3, -20), (15, 0), (-3, 20), (-14, 20), (4, 0)]), // ❯
     ]
 
