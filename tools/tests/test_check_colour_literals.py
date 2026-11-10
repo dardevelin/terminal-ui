@@ -61,8 +61,9 @@ def every_spelling_of_a_literal_is_one() -> None:
 
 def every_library_that_draws_is_checked() -> None:
     root = tree({"TerminalUIIO/Placeholder.swift": "Text(\"no image\").foreground(.gray)\n",
-                 "TerminalUI/Rendering/Blend.swift": "let ground = cell.background ?? .rgb(0, 0, 0)\n"})
-    assert len(checker.findings(root)) == 2, checker.findings(root)
+                 "TerminalUI/Rendering/Blend.swift": "let ground = cell.background ?? .rgb(0, 0, 0)\n",
+                 "TerminalUI3D/Render/Shade.swift": "let edge = palette.colour(at: index) ?? .white\n"})
+    assert len(checker.findings(root)) == 3, checker.findings(root)
 
 
 def a_listed_literal_may_appear_as_often_as_its_entry_says() -> None:

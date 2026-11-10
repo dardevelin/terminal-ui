@@ -11,8 +11,8 @@ it appears there and why. This check fails on a literal its file's entries
 do not name, and on a listed one that appears more or fewer times than its
 entry says, so the list is always the true inventory.
 
-Drawing code is every library that draws, ``TerminalUI`` and
-``TerminalUIIO``, except the colour model and the stock theme (``Style/``),
+Drawing code is every library that draws, ``TerminalUI``, ``TerminalUIIO``
+and ``TerminalUI3D``, except the colour model and the stock theme (``Style/``),
 the debug tools, which draw for the developer rather than the app, and the
 tutorial's code. A colour in a ``case`` pattern matches one rather than
 drawing it, and one in a string or a comment is text.
@@ -33,7 +33,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIST = Path("tools") / "colour-literals.txt"
-LIBRARIES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUIIO")
+LIBRARIES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUIIO", Path("Sources") / "TerminalUI3D")
 
 # Where colours are defined or debugged rather than drawn for an app.
 NOT_DRAWING = ("Style", "DevTools", "TerminalUI.docc")

@@ -122,6 +122,14 @@ extension Color {
         return (lightness, greenRed, blueYellow)
     }
 
+    /// The sRGB colour at a place in Oklab, each channel clamped into gamut —
+    /// the inverse of ``oklab(red:green:blue:)``, for a caller that shades a
+    /// colour by moving it there: the 3D renderer's lit and fogged tones.
+    package static func fromOklab(lightness: Double, greenRed: Double, blueYellow: Double) -> Color {
+        let (red, green, blue) = Oklab.toRGB((lightness, greenRed, blueYellow))
+        return .rgb(red, green, blue)
+    }
+
     /// This color as an exact sRGB triple, or `nil` when it has none.
     ///
     /// Named palette entries resolve to xterm's defaults — a stand-in, since
