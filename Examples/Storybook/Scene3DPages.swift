@@ -11,9 +11,12 @@ enum Scene3DSubject {
     case torus, lettering, terrain
 }
 
-/// The styles the pages cycle through, in order.
-let scene3DStyles: [ShadingStyle] = [.image(), .image(.dots), .halfBlock, .braille(), .hybrid(), .characterRamp(),
-                                      .braille(.edges)]
+/// The styles the pages cycle through, in order, and the name each is
+/// shown by.
+let scene3DStyles: [(name: String, style: ShadingStyle)] = [
+    ("image", .image()), ("image dots", .image(.dots)), ("half-block", .halfBlock), ("braille", .braille()),
+    ("hybrid", .hybrid()), ("ramp", .characterRamp()), ("braille edges", .braille(.edges)),
+]
 
 /// The themes the pages cycle through: the app's own, and two whose
 /// backgrounds the renderer can mix fog and edges toward.
@@ -95,7 +98,7 @@ struct Scene3DPage: TerminalView {
                     return .handled
                 }
             Text("s/←→ style · t theme · space pause").foreground(.gray)
-            Scene3DPreview(subject: subject, shading: style, paused: state.scene3DPaused,
+            Scene3DPreview(subject: subject, shading: style.style, paused: state.scene3DPaused,
                            paintsBackground: look != .app)
                 .frame(height: Scene3DPreview.height(in: terminalSize.rows))
         }
@@ -114,8 +117,8 @@ struct Scene3DPreview: TerminalView {
         max(leastHeight, windowRows - chromeRows)
     }
 
-    /// Twenty frames a second, as the Codex CLI's animation runs: smooth to
-    /// the eye, and a third of the bytes of sixty over a slow link.
+    /// Twenty frames a second: smooth to the eye, and a third of the bytes
+    /// of sixty over a slow link.
     static let frameInterval = 1.0 / 20.0
 
     let subject: Scene3DSubject
@@ -129,7 +132,7 @@ struct Scene3DPreview: TerminalView {
         let subject = subject, shading = shading, paintsBackground = paintsBackground
         return TimelineView(.animation(minimumInterval: Scene3DPreview.frameInterval, paused: paused)) { context in
             let seconds = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 3600)
-            Canvas3D(shading: shading) { scene, _ in
+            SceneView(shading: shading) { scene in
                 if paintsBackground { scene.background = theme.background }
                 switch subject {
                 case .torus: Scene3DPreview.torus(&scene, at: seconds, theme: theme)

@@ -17,8 +17,10 @@ public struct Material: Sendable, Equatable {
     /// The surface's colour: one, or the stops of a gradient a vertex's
     /// tint places it along, 0 at the first and 1 at the last.
     public var colours: [Color]
-    /// How bright the shine of the lights is on it, 0 for none: about 0.2
-    /// for stone, 0.8 for glazed paint.
+    /// How bright the shine of the lights is on it seen straight on, 0 for
+    /// none at all: about 0.2 for stone, 0.8 for glazed paint. Any shine
+    /// brightens toward full as the light grazes the surface toward the
+    /// eye, as a real surface's does.
     public var specular: Double
     /// How tight that shine is: the Blinn–Phong exponent, higher for a
     /// smaller, sharper highlight.

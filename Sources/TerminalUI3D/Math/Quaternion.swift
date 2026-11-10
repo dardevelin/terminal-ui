@@ -64,18 +64,25 @@ public struct Quaternion: Sendable, Hashable {
         return Quaternion(x: x / length, y: y / length, z: z / length, w: w / length)
     }
 
-    /// The opposite rotation.
+    /// The opposite rotation: the conjugate over the squared length, which
+    /// for a unit quaternion is the conjugate alone. A zero quaternion has
+    /// none, and turns nothing.
     public var inverse: Quaternion {
-        Quaternion(x: -x, y: -y, z: -z, w: w)
+        let lengthSquared = x * x + y * y + z * z + w * w
+        guard lengthSquared > 0 else { return .identity }
+        return Quaternion(x: -x / lengthSquared, y: -y / lengthSquared, z: -z / lengthSquared,
+                          w: w / lengthSquared)
     }
 
-    /// `vector` turned by this rotation.
+    /// `vector` turned by this rotation. The quaternion is taken at length
+    /// 1, as ``matrix`` takes it, so the two always agree.
     public func rotate(_ vector: Vector3) -> Vector3 {
         // v' = v + 2w(q × v) + 2q × (q × v), for q the vector part: the
         // sandwich product q v q⁻¹ expanded for a unit quaternion.
-        let axis = Vector3(x, y, z)
+        let unit = normalized
+        let axis = Vector3(unit.x, unit.y, unit.z)
         let twice = axis.cross(vector) * 2
-        return vector + twice * w + axis.cross(twice)
+        return vector + twice * unit.w + axis.cross(twice)
     }
 
     /// The rotation as a transform.

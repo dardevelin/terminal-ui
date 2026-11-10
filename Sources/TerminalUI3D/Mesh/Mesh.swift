@@ -71,7 +71,7 @@ public struct Mesh: Sendable, Equatable {
 
     /// Each vertex's normal as the area-weighted average of the normals of
     /// the triangles it is a corner of.
-    public func computedNormals() -> [Vector3] {
+    func computedNormals() -> [Vector3] {
         var sums = Array(repeating: Vector3.zero, count: positions.count)
         for triangle in triangles {
             guard positions.indices.contains(triangle.first), positions.indices.contains(triangle.second),

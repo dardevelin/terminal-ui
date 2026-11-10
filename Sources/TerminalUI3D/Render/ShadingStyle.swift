@@ -1,19 +1,25 @@
+import TerminalUI
+
 /// Characters from emptiest to fullest, which a shaded cell is drawn with
 /// by how much it stands out from the background.
 public struct CharacterRamp: Sendable, Equatable {
     /// The characters, emptiest first; the first is drawn where a cell is
-    /// as dim as the background. Each must take one column.
+    /// as dim as the background. Each takes one column.
     public let characters: [Character]
 
-    /// A ramp of `characters`, emptiest first. Fewer than two stand for
-    /// the standard ramp.
+    /// A ramp of `characters`, emptiest first. A character that does not
+    /// take exactly one column — a wide one, a control — is left out, since
+    /// a cell holds one column; fewer than two left stand for the standard
+    /// ramp.
     public init(_ characters: String) {
-        let unique = Array(characters)
-        self.characters = unique.count >= 2 ? unique : CharacterRamp.standard.characters
+        let usable = characters.filter { $0.displayWidth == 1 }
+        self.characters = usable.count >= 2 ? Array(usable) : Array(Self.standardCharacters)
     }
 
+    private static let standardCharacters = " .:-=+*#%@"
+
     /// ` .:-=+*#%@` — the ten steps of the classic spinning ASCII donut.
-    public static let standard = CharacterRamp(" .:-=+*#%@")
+    public static let standard = CharacterRamp(standardCharacters)
     /// Seventy steps (Paul Bourke, "Character representation of grey scale
     /// images", 1997): finer shading where cells are many.
     public static let detailed = CharacterRamp(
@@ -21,6 +27,7 @@ public struct CharacterRamp: Sendable, Equatable {
     /// Five steps of block shading, ` ░▒▓█`.
     public static let blocks = CharacterRamp(" \u{2591}\u{2592}\u{2593}\u{2588}")
 }
+
 
 /// How a ``SceneView`` turns its rendered scene into cells.
 ///
@@ -33,10 +40,10 @@ public struct CharacterRamp: Sendable, Equatable {
 ///   bare is mixed toward the background, anti-aliasing the outline — or,
 ///   over a terminal ground no program can know, the cell keeps the edge's
 ///   shape in braille dots, a dot for each sample covered, in their mean
-///   colour.
+///   colour. `.image(.dots)` draws braille dots throughout.
 /// - ``characterRamp(_:)``: a character per cell from a ramp, by how much
 ///   it stands out from the background, in its shaded colour — the
-///   classic donut, legible in any colour depth.
+///   classic spinning donut, legible in any colour depth.
 /// - ``halfBlock``: two true-colour pixels per cell, each the average of
 ///   its four samples' colours in linear light, the part the shape leaves
 ///   bare mixed toward the background — anti-aliased wherever the
@@ -47,11 +54,12 @@ public struct CharacterRamp: Sendable, Equatable {
 ///   ramp or edge character over it in a colour pushed away from it: the
 ///   most contrast a cell can carry.
 ///
-/// Outlines draw the silhouette and the creases — where depth or the
-/// surface's direction jumps — with edge characters (`|` `-` `/` `\`) in
-/// the character styles, and darker or brighter samples in the others. The
-/// character styles draw them by default; the image styles leave form to
-/// the light.
+/// Outlines mark the silhouette and the creases — where depth or the
+/// surface's direction jumps between neighbouring samples. The character
+/// styles draw them with edge characters (`|` `-` `_` `/` `\`), dithered
+/// braille sets every dot along them, and the image styles darken the
+/// creases. The character and braille styles draw them by default; the
+/// image styles leave form to the light.
 ///
 /// ```swift
 /// SceneView(scene)                       // .image()
@@ -65,8 +73,7 @@ public struct ShadingStyle: Sendable, Equatable {
         /// program can know.
         case solid
         /// Braille dots throughout, a dot for each sample covered, in the
-        /// mean of their colours, on whatever lies beneath the view — the
-        /// Codex CLI's look.
+        /// mean of their colours, on whatever lies beneath the view.
         case dots
     }
 
@@ -76,7 +83,7 @@ public struct ShadingStyle: Sendable, Equatable {
         case dithered
         /// Every covered dot: the silhouette.
         case silhouette
-        /// The outline and creases only: a wireframe-like drawing.
+        /// The outline and creases only: a drawing in lines.
         case edges
     }
 
@@ -90,9 +97,10 @@ public struct ShadingStyle: Sendable, Equatable {
 
     let kind: Kind
     /// Whether silhouettes and creases are drawn.
-    public private(set) var drawsOutlines = true
+    private(set) var drawsOutlines = true
 
-    /// An image in braille dots and averaged colour: the default.
+    /// An image: two pixels a cell in averaged colour, or with
+    /// ``ImageFill/dots``, braille dots in it. The default.
     public static func image(_ fill: ImageFill = .solid) -> ShadingStyle {
         ShadingStyle(kind: .image(fill), drawsOutlines: false)
     }
@@ -122,20 +130,14 @@ public struct ShadingStyle: Sendable, Equatable {
         return style
     }
 
-    /// A short name for the style — `image`, `ramp`, `half-block`,
-    /// `braille`, `hybrid` — for a control that switches between them.
-    public var name: String {
+    /// Whether the samples' edges are needed: for outlines, and for the
+    /// braille style that draws nothing else. A braille silhouette sets
+    /// every dot an outline could.
+    var needsEdges: Bool {
         switch kind {
-        case .image(let fill): fill == .solid ? "image" : "image dots"
-        case .characterRamp: "ramp"
-        case .halfBlock: "half-block"
-        case .braille(let fill):
-            switch fill {
-            case .dithered: "braille"
-            case .silhouette: "braille silhouette"
-            case .edges: "braille edges"
-            }
-        case .hybrid: "hybrid"
+        case .braille(.edges): true
+        case .braille(.silhouette): false
+        default: drawsOutlines
         }
     }
 }

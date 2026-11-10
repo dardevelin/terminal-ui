@@ -90,15 +90,18 @@ func measure(_ shading: ShadingStyle, scene: (Int) -> Scene3D) -> (mean: Double,
     return (milliseconds(total) / Double(frameCount), milliseconds(worst))
 }
 
-let styles: [ShadingStyle] = [.image(), .image(.dots), .halfBlock, .braille(), .hybrid(), .characterRamp()]
+let styles: [(name: String, style: ShadingStyle)] = [
+    ("image", .image()), ("image dots", .image(.dots)), ("half-block", .halfBlock), ("braille", .braille()),
+    ("hybrid", .hybrid()), ("ramp", .characterRamp()),
+]
 print("\(columns) × \(rows) cells, \(frameCount) frames each; a 60 fps frame has \(String(format: "%.1f", 1000 / framesPerSecond)) ms")
 print("torus + Text3D: \(torus.triangles.count + wordmark.mesh.triangles.count) triangles; "
       + "height field: \(ground.triangles.count) triangles")
-for style in styles {
+for (name, style) in styles {
     let both = measure(style, scene: torusAndText)
     let land = measure(style, scene: terrain)
     // No `%@`: a Swift string is not a C variadic argument on Linux.
-    let name = style.name.padding(toLength: 11, withPad: " ", startingAt: 0)
-    print(name + String(format: "  torus + text %.2f ms (worst %.2f)   height field %.2f ms (worst %.2f)",
+    let padded = name.padding(toLength: 11, withPad: " ", startingAt: 0)
+    print(padded + String(format: "  torus + text %.2f ms (worst %.2f)   height field %.2f ms (worst %.2f)",
                         both.mean, both.worst, land.mean, land.worst))
 }

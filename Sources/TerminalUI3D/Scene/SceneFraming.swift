@@ -20,7 +20,9 @@ public struct SceneFraming: Sendable, Equatable {
 
     /// The camera kept looking the way it looks, but aimed at the middle of
     /// the scene's models and moved in or out until they just fit, `padding`
-    /// cells inside the view's edges. Across, a sphere round every model
+    /// rows inside the view's top and bottom and twice as many columns
+    /// inside its sides — the same distance on cells about twice as tall as
+    /// they are wide. Across, a sphere round every model
     /// must fit, so a model turning about the camera's up keeps its size
     /// from frame to frame; up and down, only the models' boxes, which such
     /// a turn leaves alone — so a wide thing turning, a wordmark, fills the
@@ -35,7 +37,7 @@ public struct SceneFraming: Sendable, Equatable {
 
     /// The camera that shows `scene` as this framing does, in a view of
     /// `columns` × `rows` cells.
-    public func camera(for scene: Scene3D, columns: Int, rows: Int) -> Camera3D {
+    func camera(for scene: Scene3D, columns: Int, rows: Int) -> Camera3D {
         guard case .fit(let padding) = kind, columns > 0, rows > 0,
               let sphere = Self.boundingSphere(of: scene.models) else { return scene.camera }
         var camera = scene.camera

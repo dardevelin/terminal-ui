@@ -1,19 +1,13 @@
 import Foundation
 
-/// Curves that take time, 0 to 1, to progress, 0 to 1, starting and
-/// stopping gently: the difference between a model that is moved and one
-/// that seems to have weight.
-public enum Easing {
-    /// 3t² − 2t³: no jump in speed at either end.
-    public static func smoothstep(_ time: Double) -> Double {
-        let clamped = min(1, max(0, time))
-        return clamped * clamped * (3 - 2 * clamped)
-    }
-
-    /// 6t⁵ − 15t⁴ + 10t³ (Perlin, "Improving Noise", SIGGRAPH 2002): no jump
-    /// in speed or in acceleration at either end, so a turn winds up and
-    /// settles as a weighted thing does.
-    public static func smootherstep(_ time: Double) -> Double {
+/// The curve the motion helpers ease by: 6t⁵ − 15t⁴ + 10t³ (Perlin,
+/// "Improving Noise", SIGGRAPH 2002), with no jump in speed or in
+/// acceleration at either end, so a turn winds up and settles as a weighted
+/// thing does. TerminalUI's `AnimationCurve.easeInOut`, 3t² − 2t³, has no
+/// jump in speed but one in acceleration, which reads as a jolt at the
+/// start of a turn.
+enum Easing {
+    static func smootherstep(_ time: Double) -> Double {
         let clamped = min(1, max(0, time))
         return clamped * clamped * clamped * (clamped * (clamped * 6 - 15) + 10)
     }
@@ -25,23 +19,27 @@ public enum Easing {
 /// diagram spun at a constant rate. Lit from a fixed direction, its
 /// highlight slides across the surface as it turns.
 ///
-/// The timing is the Codex CLI's empty-state animation's: a turn every
-/// 3.6 s, 82% of it moving, a wobble of about 6° and a roll of about 2.5°.
+/// By default a turn takes 3.6 s, 82% of it moving, with a wobble of about
+/// 6° and a roll of about 2.5°.
 ///
 /// ```swift
 /// TimelineView(.animation) { context in
 ///     let seconds = context.date.timeIntervalSinceReferenceDate
-///     var scene = Scene3D()
-///     scene.add(.torus(), transform: Turntable().rotation(at: seconds).matrix)
-///     SceneView(scene).framing(.fit())
+///     SceneView { scene in
+///         scene.add(.torus(), transform: Turntable().rotation(at: seconds).matrix)
+///     }
+///     .framing(.fit())
 /// }
 /// ```
 public struct Turntable: Sendable, Equatable {
+    // The default timing is the Codex CLI's empty-state animation's, which
+    // reads as an object handled rather than a diagram spun.
     /// What the model turns about.
     public var axis: Vector3
     /// Seconds from the start of one turn to the start of the next.
     public var period: Double
-    /// The share of each period spent turning; the rest it holds still.
+    /// The share of each period spent turning, above 0 and at most 1; the
+    /// rest it holds still.
     public var turningShare: Double
     /// How far, in radians, the model tips back and forth as it turns.
     public var wobble: Double
@@ -74,13 +72,17 @@ public struct Turntable: Sendable, Equatable {
         guard period > 0, seconds.isFinite else { return 0 }
         let turns = (seconds / period).rounded(.down)
         let within = seconds / period - turns
-        let eased = Easing.smootherstep(within / max(turningShare, .ulpOfOne))
-        return (turns + eased) * 2 * .pi
+        // A share past 1 would never finish a turn before the next began,
+        // and the model would jump back at each period's start.
+        let share = min(1, max(turningShare, .ulpOfOne))
+        return (turns + Easing.smootherstep(within / share)) * 2 * .pi
     }
 
     /// The model's orientation at `seconds`.
     public func rotation(at seconds: Double) -> Quaternion {
-        let angle = angle(at: seconds)
+        // Whole turns change nothing, and dropping them keeps the sine and
+        // cosine of the angle exact at a date's worth of seconds.
+        let angle = angle(at: seconds).truncatingRemainder(dividingBy: 2 * .pi)
         let unit = axis.normalized == .zero ? Vector3.unitY : axis.normalized
         // Tip about an axis square to the turn, and roll about a third.
         let tipAxis = abs(unit.x) < Self.parallelLimit ? unit.cross(.unitX).normalized : unit.cross(.unitZ).normalized
@@ -148,13 +150,19 @@ public struct CameraTour: Sendable, Equatable {
         }
     }
 
-    /// Where the camera is at `seconds` into the tour.
+    /// Where the camera is at `seconds` into the tour: before it starts, at
+    /// the first stop, and after a tour that does not loop ends, at the last.
     public func camera(at seconds: Double) -> Camera3D {
         guard let first = stops.first else { return Camera3D() }
         let total = duration
         guard stops.count > 1, total > 0, seconds.isFinite else { return first.camera }
-        var time = loops ? seconds.truncatingRemainder(dividingBy: total) : min(seconds, total)
-        if time < 0 { time += total }
+        var time: Double
+        if loops {
+            time = seconds.truncatingRemainder(dividingBy: total)
+            if time < 0 { time += total }
+        } else {
+            time = min(max(0, seconds), total)
+        }
         for (index, stop) in stops.enumerated() {
             if time < stop.hold { return stop.camera }
             time -= stop.hold

@@ -39,7 +39,6 @@ struct MotionAndFramingTests {
         #expect(Easing.smootherstep(-3) == 0 && Easing.smootherstep(4) == 1)
         // Its slope at the ends is nothing: a hundredth in, it has barely moved.
         #expect(Easing.smootherstep(0.01) < 1e-4)
-        #expect(Easing.smoothstep(0.25) == 0.15625)
     }
 
     @Test func aTurntableTurnsWholeTurnsAndRestsBetween() {
@@ -75,6 +74,28 @@ struct MotionAndFramingTests {
         #expect(tour.camera(at: 6.5).position == Vector3(0, 0, 10), "and round again")
         let once = CameraTour(tour.stops, loops: false)
         #expect(once.camera(at: 50).position == Vector3(10, 0, 0))
+        #expect(once.camera(at: -1).position == Vector3(0, 0, 10), "before it starts, at the first stop")
+        #expect(tour.camera(at: -1).position == tour.camera(at: 5).position, "a loop runs back as well")
+    }
+
+    @Test func aTurntableTurningAllPeriodLongStillFinishesEachTurn() {
+        // A share past the whole period would leave each turn unfinished,
+        // and the model jumping back as the next began.
+        let table = Turntable(period: 2, turningShare: 1.5, wobble: 0, roll: 0)
+        #expect(abs(table.angle(at: 1.999_999) - 2 * .pi) < 1e-6)
+        #expect(abs(table.angle(at: 2) - 2 * .pi) < 1e-12)
+    }
+
+    @Test func aTurntableIsAsExactADateOfSecondsIn() {
+        // A date's seconds since 2001 are about 8 × 10⁸: hundreds of
+        // millions of whole turns, which the rotation must not round over.
+        let table = Turntable()
+        let seconds = 800_000_000.0 + 1.3
+        // Whole pairs of turns, since the roll swings back over two.
+        let pairs = (seconds / (2 * table.period)).rounded(.down)
+        let early = table.rotation(at: seconds - pairs * 2 * table.period).rotate(Vector3(0.3, 0.2, 1))
+        let late = table.rotation(at: seconds).rotate(Vector3(0.3, 0.2, 1))
+        #expect((early - late).length < 1e-6, "\(early) \(late)")
     }
 
     @Test func fitFillsTheViewWithTheSceneAndKeepsItRound() throws {
@@ -165,6 +186,11 @@ struct MotionAndFramingTests {
             }
         }
         #expect(buffer.drawnCells > 50)
+    }
+
+    @Test func aRampKeepsOnlyCharactersOfOneColumn() {
+        #expect(CharacterRamp(" .\u{4E00}#").characters == [" ", ".", "#"], "a wide character is left out")
+        #expect(CharacterRamp("\u{4E00}x") == .standard, "fewer than two left: the standard ramp")
     }
 
     @Test func averagingIsDoneInLinearLight() {

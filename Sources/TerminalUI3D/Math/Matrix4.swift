@@ -98,7 +98,7 @@ public struct Matrix4: Sendable, Hashable {
     }
 
     /// A turn of `angle` radians about `axis`, anticlockwise looking down
-    /// the axis toward the origin (Rodrigues' rotation formula).
+    /// the axis toward the origin. A zero axis turns nothing.
     public static func rotation(about axis: Vector3, angle: Double) -> Matrix4 {
         Quaternion(axis: axis, angle: angle).matrix
     }
@@ -108,12 +108,14 @@ public struct Matrix4: Sendable, Hashable {
     /// down −z with `up` as near to +y as it can be (`gluLookAt`).
     public static func lookAt(eye: Vector3, target: Vector3, up: Vector3) -> Matrix4 {
         let forward = (target - eye).normalized
-        var side = forward.cross(up).normalized
-        if side == .zero {
-            // Looking straight along `up`: any side will do, so take one
-            // that is perpendicular to the view.
-            side = forward.cross(abs(forward.x) < Self.parallelLimit ? Vector3.unitX : Vector3.unitZ).normalized
+        var side = forward.cross(up)
+        if side.length < Self.parallelTolerance * max(1, up.length) {
+            // Looking along `up`, or so nearly that the side it gives is
+            // rounding error: any side will do, so take one that is
+            // perpendicular to the view.
+            side = forward.cross(abs(forward.x) < Self.parallelLimit ? Vector3.unitX : Vector3.unitZ)
         }
+        side = side.normalized
         let trueUp = side.cross(forward)
         return Matrix4(Vector4(side.x, trueUp.x, -forward.x, 0),
                        Vector4(side.y, trueUp.y, -forward.y, 0),
@@ -123,6 +125,9 @@ public struct Matrix4: Sendable, Hashable {
 
     /// The component below which a direction has turned away from an axis.
     private static let parallelLimit = 0.9
+    /// The sine of the angle below which a view and its up are taken as
+    /// parallel: well under a millionth of a degree.
+    private static let parallelTolerance = 1e-8
 
     /// A perspective projection (`gluPerspective`): `fieldOfView` radians
     /// top to bottom, `aspect` its width over its height, seeing from

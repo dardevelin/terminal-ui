@@ -9,39 +9,51 @@ final class SceneRendererBox {
 
 /// A view that draws a ``Scene3D``, as SceneKit's `SceneView` does.
 ///
-/// Like a ``Canvas`` it is greedy, filling what it is offered: give it a
-/// flexible slot or a `.frame`. To animate it, build the scene from a
-/// ``TimelineView``'s date:
+/// Give it a scene, or build one in a closure, as RealityKit's
+/// `RealityView` does:
+///
+/// ```swift
+/// SceneView(scene)
+///
+/// SceneView(shading: .hybrid()) { scene in
+///     scene.add(.torus(), materials: [Material(theme.accent)])
+///     scene.add(Label3D("north", at: Vector3(0, 0, -2)))
+/// }
+/// .framing(.fit())
+/// ```
+///
+/// Like a `Canvas` it is greedy, filling what it is offered: give it a
+/// flexible slot or a `.frame`. The scene is drawn when the view is built
+/// again, and when the closure's reads of an `@Observable` model change —
+/// tracked as a body's reads are. To animate it, build it in a
+/// `TimelineView`, from the timeline's date:
 ///
 /// ```swift
 /// TimelineView(.animation) { context in
-///     let angle = context.date.timeIntervalSinceReferenceDate
-///     var scene = Scene3D(camera: Camera3D(position: Vector3(0, 1.5, 4)))
-///     scene.add(.torus(), transform: Quaternion(axis: Vector3(1, 1, 0), angle: angle).matrix,
-///               materials: [Material(theme.accent)])
-///     SceneView(scene).framing(.fit())
+///     let seconds = context.date.timeIntervalSinceReferenceDate
+///     SceneView { scene in
+///         scene.add(.torus(), transform: Turntable().rotation(at: seconds).matrix,
+///                   materials: [Material(theme.accent)])
+///     }
+///     .framing(.fit())
 /// }
 /// ```
 public struct SceneView: TerminalView {
-    /// What is drawn.
-    public let scene: Scene3D
-    /// How the rendered scene becomes cells.
-    public let shading: ShadingStyle
-    /// How the scene is placed in the view.
-    public private(set) var sceneFraming: SceneFraming = .camera
+    private let content: (inout Scene3D) -> Void
+    private let shading: ShadingStyle
+    private var sceneFraming: SceneFraming = .camera
     @TerminalState private var box = SceneRendererBox()
 
-    /// A view of `scene` in `shading`.
+    /// A view of `scene`, drawn in `shading`.
     public init(_ scene: Scene3D, shading: ShadingStyle = .image()) {
-        self.scene = scene
-        self.shading = shading
+        self.init(shading: shading) { $0 = scene }
     }
 
-    /// A view of `scene` seen through `camera`, in `shading`.
-    public init(scene: Scene3D, camera: Camera3D, shading: ShadingStyle = .image()) {
-        var placed = scene
-        placed.camera = camera
-        self.init(placed, shading: shading)
+    /// A view of the scene `content` fills in, starting from an empty one
+    /// with the standard lights and camera, drawn in `shading`.
+    public init(shading: ShadingStyle = .image(), content: @escaping (inout Scene3D) -> Void) {
+        self.shading = shading
+        self.content = content
     }
 
     /// This view, placing its scene by `framing`: `.fit()` aims the camera
@@ -54,55 +66,10 @@ public struct SceneView: TerminalView {
 
     @_documentation(visibility: internal)
     public var body: some TerminalView {
-        let renderer = box.renderer, scene = scene, shading = shading, framing = sceneFraming
-        return Canvas { context, size in
-            renderer.draw(scene, in: context, size: size, shading: shading, framing: framing)
-        }
-    }
-}
-
-/// A canvas you build a 3D scene in, given its size in cells — the scene's
-/// counterpart of ``Canvas``.
-///
-/// What the builder reads from an `@Observable` model is tracked as a
-/// canvas's renderer's reads are: change it and the scene is built and drawn
-/// again.
-///
-/// ```swift
-/// Canvas3D { scene, size in
-///     scene.camera = .orbit(around: .zero, distance: 8, azimuth: model.heading, elevation: 0.5)
-///     scene.add(terrain, materials: [Material(gradient: [theme.info, theme.success, theme.foreground])])
-///     scene.add(Label3D("summit", at: model.summit))
-/// }
-/// ```
-public struct Canvas3D: TerminalView {
-    /// How the rendered scene becomes cells.
-    public let shading: ShadingStyle
-    /// Fills in the scene, given the canvas's size in cells.
-    public let builder: (inout Scene3D, CanvasSize) -> Void
-    /// How the scene is placed in the canvas.
-    public private(set) var sceneFraming: SceneFraming = .camera
-    @TerminalState private var box = SceneRendererBox()
-
-    /// A canvas whose scene `builder` fills in, drawn in `shading`.
-    public init(shading: ShadingStyle = .image(), builder: @escaping (inout Scene3D, CanvasSize) -> Void) {
-        self.shading = shading
-        self.builder = builder
-    }
-
-    /// This canvas, placing its scene by `framing`.
-    public func framing(_ framing: SceneFraming) -> Canvas3D {
-        var framed = self
-        framed.sceneFraming = framing
-        return framed
-    }
-
-    @_documentation(visibility: internal)
-    public var body: some TerminalView {
-        let renderer = box.renderer, builder = builder, shading = shading, framing = sceneFraming
+        let renderer = box.renderer, content = content, shading = shading, framing = sceneFraming
         return Canvas { context, size in
             var scene = Scene3D()
-            builder(&scene, size)
+            content(&scene)
             renderer.draw(scene, in: context, size: size, shading: shading, framing: framing)
         }
     }

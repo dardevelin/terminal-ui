@@ -52,11 +52,13 @@ final class SceneRasterizer {
     private var clipped: [ClipVertex] = []
 
     /// Ready a frame of `width` × `height` samples, covered by nothing.
-    func begin(width: Int, height: Int) {
+    /// Every sample starts at the camera's `far` distance, so the depth test
+    /// cuts away what lies beyond it, a sample at a time.
+    func begin(width: Int, height: Int, far: Double) {
         self.width = width
         self.height = height
         let count = width * height
-        depth.reset(count: count, to: .infinity)
+        depth.reset(count: count, to: far > 0 ? Float(far) : .infinity)
         normalX.reset(count: count, to: 0)
         normalY.reset(count: count, to: 0)
         normalZ.reset(count: count, to: 0)
@@ -70,14 +72,15 @@ final class SceneRasterizer {
     /// - Parameters:
     ///   - modelView: The model's transform followed by the camera's view.
     ///   - projection: The camera's projection.
-    ///   - materialBase: Where the model's materials start in the frame's
-    ///     list of them.
-    ///   - doubleSided: For each of the model's materials, whether its
+    ///   - materials: Where the model's materials lie in the frame's list of
+    ///     them; never empty.
+    ///   - doubleSided: For each of the frame's materials, whether its
     ///     triangles are drawn from behind.
-    func draw(_ model: Model3D, modelView: Matrix4, projection: Matrix4, materialBase: Int,
+    func draw(_ model: Model3D, modelView: Matrix4, projection: Matrix4, materials: Range<Int>,
               doubleSided: [Bool]) {
         let mesh = model.mesh
-        guard !mesh.triangles.isEmpty, width > 0, height > 0 else { return }
+        guard !mesh.triangles.isEmpty, width > 0, height > 0, !materials.isEmpty,
+              materials.upperBound <= doubleSided.count, materials.upperBound <= Int(Self.uncovered) else { return }
         let normalTransform = modelView.normalMatrix
         let hasNormals = mesh.normals.count == mesh.positions.count
         let hasTints = mesh.tints.count == mesh.positions.count
@@ -89,15 +92,13 @@ final class SceneRasterizer {
             vertices.append(ClipVertex(position: projection * viewPosition, normal: normal,
                                        tint: hasTints ? mesh.tints[index] : 0, depth: -viewPosition.z))
         }
-        let materialCount = max(1, doubleSided.count)
         for triangle in mesh.triangles {
             guard vertices.indices.contains(triangle.first), vertices.indices.contains(triangle.second),
                   vertices.indices.contains(triangle.third) else { continue }
-            let localMaterial = min(max(0, triangle.material), materialCount - 1)
-            let sided = doubleSided.isEmpty ? false : doubleSided[localMaterial]
-            let materialIndex = UInt16(clamping: materialBase + localMaterial)
+            // A triangle naming a material past the model's last takes the last.
+            let material = materials.lowerBound + min(max(0, triangle.material), materials.count - 1)
             drawTriangle(vertices[triangle.first], vertices[triangle.second], vertices[triangle.third],
-                         material: materialIndex, doubleSided: sided)
+                         material: UInt16(material), doubleSided: doubleSided[material])
         }
     }
 

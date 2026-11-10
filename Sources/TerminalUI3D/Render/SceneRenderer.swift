@@ -3,24 +3,8 @@ import TerminalUI
 
 /// Draws a ``Scene3D`` into a canvas, and keeps what it draws with — its
 /// sample buffers, its shaded palettes — from frame to frame, so a frame
-/// allocates nothing per sample.
-///
-/// ``SceneView`` holds one for you. Hold your own to draw a scene inside a
-/// ``Canvas`` of your own, under or over your other drawing:
-///
-/// ```swift
-/// struct Globe: TerminalView {
-///     @TerminalState private var renderer = SceneRenderer()
-///     let scene: Scene3D
-///
-///     var body: some TerminalView {
-///         Canvas { [renderer] context, size in
-///             context.draw(scene, in: size, with: renderer, shading: .halfBlock)
-///             context.draw("north", at: CanvasPoint(x: size.width / 2, y: 0), anchor: .top)
-///         }
-///     }
-/// }
-/// ```
+/// allocates nothing per sample. A ``SceneView`` holds one for as long as it
+/// is on screen.
 ///
 /// The scene is rendered at braille resolution — two samples across a cell
 /// and four down, about square on a terminal's cells — with a depth buffer,
@@ -29,9 +13,9 @@ import TerminalUI
 /// silhouette and creases are found where coverage, depth or the surface's
 /// direction jumps between neighbours; and the ``ShadingStyle`` turns the
 /// samples into cells.
-public final class SceneRenderer {
+final class SceneRenderer {
     let rasterizer = SceneRasterizer()
-    private let tone = SampleBuffer<Float>(0)
+    let tone = SampleBuffer<Float>(0)
     private let fog = SampleBuffer<Float>(0)
     /// ``EdgeKind`` bits per sample.
     private let edges = SampleBuffer<UInt8>(0)
@@ -60,15 +44,12 @@ public final class SceneRenderer {
     private var lastSampleWidth = 0
     private var lastSampleHeight = 0
 
-    /// A renderer with nothing drawn yet.
-    public init() {}
-
     // MARK: - Drawing
 
     /// Draw `scene` into `context`, over a canvas of `size` cells, in
     /// `shading`, placed by `framing`.
-    public func draw(_ scene: Scene3D, in context: GraphicsContext, size: CanvasSize,
-                     shading: ShadingStyle = .image(), framing: SceneFraming = .camera) {
+    func draw(_ scene: Scene3D, in context: GraphicsContext, size: CanvasSize,
+              shading: ShadingStyle = .image(), framing: SceneFraming = .camera) {
         let columns = Int(size.width.rounded(.down)), rows = Int(size.height.rounded(.down))
         guard columns > 0, rows > 0 else { return }
         let sampleWidth = columns * Grid.columnsPerCell, sampleHeight = rows * Grid.rowsPerCell
@@ -84,8 +65,8 @@ public final class SceneRenderer {
             (LinearLight.fromByte[Int($0.red)], LinearLight.fromByte[Int($0.green)], LinearLight.fromByte[Int($0.blue)])
         }
 
-        rasterizer.begin(width: sampleWidth, height: sampleHeight)
         let camera = framing.camera(for: scene, columns: columns, rows: rows)
+        rasterizer.begin(width: sampleWidth, height: sampleHeight, far: camera.far)
         let view = camera.viewMatrix
         let aspect = Double(sampleWidth) / Double(sampleHeight)
         let projection = camera.projection.matrix(aspect: aspect, near: camera.near, far: camera.far)
@@ -97,14 +78,16 @@ public final class SceneRenderer {
         var materialBase = 0
         for model in scene.models {
             let count = max(1, model.materials.count)
+            // Past the most materials a sample can name, the rest of the
+            // scene's models have no palette to be drawn in.
+            guard materialBase + count <= doubleSided.count else { break }
             rasterizer.draw(model, modelView: view * model.transform, projection: projection,
-                            materialBase: materialBase,
-                            doubleSided: Array(doubleSided[materialBase..<(materialBase + count)]))
+                            materials: materialBase..<(materialBase + count), doubleSided: doubleSided)
             materialBase += count
         }
 
         light(scene, view: view, projection: projection, perspective: camera.projection.isPerspective)
-        if shading.drawsOutlines || shading.kind == .braille(.edges) {
+        if shading.needsEdges {
             findEdges()
         } else {
             edges.reset(count: sampleWidth * sampleHeight, to: 0)
@@ -125,7 +108,7 @@ public final class SceneRenderer {
         case .halfBlock:
             resolveHalfBlocks(columns: columns, rows: rows, into: context)
         case .braille(let fill):
-            resolveBraille(fill, columns: columns, rows: rows, into: context)
+            resolveBraille(fill, columns: columns, rows: rows, outlines: shading.drawsOutlines, into: context)
         case .hybrid(let ramp):
             resolveHybrid(ramp, columns: columns, rows: rows, outlines: shading.drawsOutlines, into: context)
         }
@@ -135,8 +118,8 @@ public final class SceneRenderer {
     /// Where `point` in the scene fell on the last frame drawn, in cells
     /// from the canvas's top-left corner, and how far in front of the camera
     /// it is — or nil when it is behind the camera or no frame has been
-    /// drawn. A caller places its own marks over the scene with it.
-    public func project(_ point: Vector3) -> (position: CanvasPoint, depth: Double)? {
+    /// drawn. Labels are placed with it.
+    func project(_ point: Vector3) -> (position: CanvasPoint, depth: Double)? {
         guard lastSampleWidth > 0, lastSampleHeight > 0 else { return nil }
         let clip = lastViewProjection * Vector4(point, 1)
         guard clip.w > 0 else { return nil }
@@ -178,7 +161,7 @@ public final class SceneRenderer {
             paletteGround = ground
         }
         doubleSided = frameMaterials.map(\.isDoubleSided)
-        specular = frameMaterials.map { Float($0.specular) }
+        specular = frameMaterials.map { Float(min(1, max(0, $0.specular))) }
         shininess = frameMaterials.map { Float(max(1, $0.shininess)) }
         emission = frameMaterials.map { Float($0.emission) }
     }
@@ -261,8 +244,16 @@ public final class SceneRenderer {
                         // Computer Synthesized Pictures", SIGGRAPH 1977): a
                         // true power, so a high exponent gives a small
                         // highlight that visibly travels as the model turns.
+                        // Its strength is Schlick's Fresnel ("An Inexpensive
+                        // BRDF Model for Physically-based Rendering",
+                        // Eurographics 1994), F₀ + (1 − F₀)(1 − h·v)⁵ with the
+                        // material's specular as F₀: a surface shines more
+                        // as the light grazes it toward the eye.
                         if alignment > 0 {
-                            lit += shine * pow(alignment, exponent) * light.intensity
+                            let grazing = 1 - max(0, halfX * viewX + halfY * viewY + halfZ * viewZ)
+                            let squared = grazing * grazing
+                            let fresnel = shine + (1 - shine) * squared * squared * grazing
+                            lit += fresnel * pow(alignment, exponent) * light.intensity
                         }
                     }
                 }
@@ -702,7 +693,7 @@ public final class SceneRenderer {
     private static let brailleBits: [UInt32] = [0x01, 0x08, 0x02, 0x10, 0x04, 0x20, 0x40, 0x80]
     private static let brailleBase: UInt32 = 0x2800
 
-    private func resolveBraille(_ fill: ShadingStyle.BrailleFill, columns: Int, rows: Int,
+    private func resolveBraille(_ fill: ShadingStyle.BrailleFill, columns: Int, rows: Int, outlines: Bool,
                                 into context: GraphicsContext) {
         let width = rasterizer.width
         let materials = rasterizer.material.pointer
@@ -727,10 +718,14 @@ public final class SceneRenderer {
                     case .edges:
                         lit = flags[index] != 0
                     case .dithered:
-                        let samplePalette = palettes[Int(material)]
-                        let sampleIndex = samplePalette.index(tone: tonePointer[index], tint: tintPointer[index],
-                                                              fog: fogPointer[index])
-                        lit = samplePalette.contrast(at: sampleIndex) > Self.ditherThresholds[dot]
+                        if outlines, flags[index] != 0 {
+                            lit = true
+                        } else {
+                            let samplePalette = palettes[Int(material)]
+                            let sampleIndex = samplePalette.index(tone: tonePointer[index],
+                                                                  tint: tintPointer[index], fog: fogPointer[index])
+                            lit = samplePalette.contrast(at: sampleIndex) > Self.ditherThresholds[dot]
+                        }
                     }
                     if lit { pattern |= Self.brailleBits[dot] }
                 }
@@ -804,22 +799,6 @@ public final class SceneRenderer {
             }
         }
         return false
-    }
-}
-
-extension GraphicsContext {
-    /// Draw `scene` over a canvas of `size` with `renderer`, in `shading`.
-    /// The renderer keeps its buffers for the next frame: hold it as long as
-    /// the canvas.
-    ///
-    /// ```swift
-    /// Canvas { [renderer] context, size in
-    ///     context.draw(scene, in: size, with: renderer, shading: .halfBlock)
-    /// }
-    /// ```
-    public func draw(_ scene: Scene3D, in size: CanvasSize, with renderer: SceneRenderer,
-                     shading: ShadingStyle = .image(), framing: SceneFraming = .camera) {
-        renderer.draw(scene, in: self, size: size, shading: shading, framing: framing)
     }
 }
 

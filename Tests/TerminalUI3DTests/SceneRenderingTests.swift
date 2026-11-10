@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 @testable import TerminalUI
-import TerminalUI3D
+@testable import TerminalUI3D
 
 // A scene drawn into cells: what covers which cell, in which colour, and
 // with which glyph, for each shading style.
@@ -205,6 +205,68 @@ struct SceneRenderingTests {
         scene.background = theme.background
         let buffer = draw(scene, .characterRamp())
         #expect(buffer[0, 0].style.background == theme.background)
+    }
+
+    @Test func nothingBeyondTheFarPlaneIsDrawn() {
+        // A floor running from just in front of the camera far into the
+        // distance: one triangle that crosses the far plane.
+        let floor = Mesh(positions: [Vector3(-20, -1, -1), Vector3(20, -1, -1), Vector3(0, -1, -60)],
+                         triangles: [Mesh.Triangle(0, 1, 2)])
+        func floorScene(far: Double) -> Scene3D {
+            var scene = Scene3D(camera: Camera3D(position: .zero, target: Vector3(0, 0, -1), far: far))
+            scene.add(floor, materials: [Material(theme.accent, isDoubleSided: true)])
+            return scene
+        }
+        // Row 11 of 20 sees the floor between about 9 and 17 units away.
+        #expect(topColour(draw(floorScene(far: 100), .halfBlock)[20, 11]) != nil)
+        #expect(topColour(draw(floorScene(far: 6), .halfBlock)[20, 11]) == nil)
+        #expect(topColour(draw(floorScene(far: 6), .halfBlock)[20, 19]) != nil, "what is nearer stays")
+    }
+
+    @Test func aShineGrowsTowardFullAsTheLightGrazes() throws {
+        // A floor seen almost edge on, lit from almost edge on opposite: the
+        // half vector is the floor's normal, so Blinn–Phong's alignment is
+        // full and only the Fresnel term decides the shine. An orthographic
+        // camera, so every sample sees along the same direction.
+        let grazing = 0.1
+        func centreTone(specular: Double) throws -> Float {
+            var scene = Scene3D(camera: Camera3D(position: Vector3(-10 * cos(grazing), 10 * sin(grazing), 0),
+                                                 projection: .orthographic(height: 1)))
+            scene.lights = [.directional(toward: Vector3(cos(grazing), sin(grazing), 0))]
+            scene.add(.box(width: 40, height: 0.01, depth: 40), transform: .translation(Vector3(0, -0.005, 0)),
+                      materials: [Material(theme.accent, specular: specular, shininess: 1)])
+            let renderer = SceneRenderer()
+            let raster = CanvasRaster()
+            raster.begin(width: 40, height: 20, inheritedGround: nil)
+            var environment = EnvironmentValues()
+            environment.theme = theme
+            renderer.draw(scene, in: GraphicsContext(raster: raster, environment: environment),
+                          size: CanvasSize(width: 40, height: 20), shading: .halfBlock)
+            let width = renderer.rasterizer.width, height = renderer.rasterizer.height
+            let centre = height / 2 * width + width / 2
+            try #require(renderer.rasterizer.material[centre] != SceneRasterizer.uncovered)
+            return renderer.tone[centre]
+        }
+        let diffuse = Float(sin(grazing))
+        #expect(abs(try centreTone(specular: 0) - diffuse) < 0.01, "no shine at all")
+        // Schlick: 0.1 + 0.9 × (1 − sin 0.1)⁵ ≈ 0.63, not the 0.1 of the
+        // material's straight-on shine.
+        let shine = try centreTone(specular: 0.1) - diffuse
+        #expect(shine > 0.55 && shine < 0.7, "\(shine)")
+    }
+
+    @Test func outlinesSetTheBrailleDotsAlongTheSilhouette() {
+        // Lit so dimly that dithering alone sets few dots.
+        var dim = scene(.sphere(), materials: [Material(theme.accent, specular: 0)], distance: 3.5)
+        dim.lights = [.ambient(0.08)]
+        func dots(_ shading: ShadingStyle) -> Int {
+            draw(dim, shading).allCells.reduce(0) { total, cell in
+                let scalar = cell.character.unicodeScalars.first!.value
+                guard (0x2800...0x28FF).contains(scalar) else { return total }
+                return total + (scalar - 0x2800).nonzeroBitCount
+            }
+        }
+        #expect(dots(.braille()) > dots(.braille().outlines(false)) + 20)
     }
 }
 

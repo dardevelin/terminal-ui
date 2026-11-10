@@ -86,6 +86,27 @@ struct MathTests {
         #expect(close(projection.transformPoint(Vector3(2, 1, -40)).onScreen, Vector3(1, 1, 0)))
     }
 
+    @Test func aQuaternionNotOfUnitLengthStillTurnsAndUndoes() {
+        // Twice a quarter turn's components: the same rotation, scaled.
+        let unit = Quaternion(axis: .unitZ, angle: .pi / 2)
+        let doubled = Quaternion(x: unit.x * 2, y: unit.y * 2, z: unit.z * 2, w: unit.w * 2)
+        #expect(close(doubled.rotate(.unitX), .unitY))
+        #expect(close(doubled.rotate(.unitX), doubled.matrix.transformPoint(.unitX)))
+        let product = doubled * doubled.inverse
+        #expect(abs(product.w - 1) < 1e-12 && abs(product.x) + abs(product.y) + abs(product.z) < 1e-12)
+    }
+
+    @Test func lookingAlmostAlongUpStillGivesASquareView() {
+        // So nearly vertical that the length of the view's cross product with
+        // up underflows to nothing, though the product itself is not zero:
+        // the side the view takes must still be a unit one.
+        let view = Matrix4.lookAt(eye: Vector3(1e-200, 10, 0), target: .zero, up: .unitY)
+        let side = Vector3(view.column0.x, view.column1.x, view.column2.x)
+        let up = Vector3(view.column0.y, view.column1.y, view.column2.y)
+        #expect(abs(side.length - 1) < 1e-9 && abs(up.length - 1) < 1e-9 && abs(side.dot(up)) < 1e-9)
+        #expect(close(view.transformPoint(.zero), Vector3(0, 0, -10), within: 1e-9))
+    }
+
     @Test func anOrbitingCameraKeepsItsDistance() {
         let camera = Camera3D.orbit(around: Vector3(1, 0, 0), distance: 4, azimuth: 1.2, elevation: 0.5)
         #expect(abs((camera.position - Vector3(1, 0, 0)).length - 4) < 1e-12)

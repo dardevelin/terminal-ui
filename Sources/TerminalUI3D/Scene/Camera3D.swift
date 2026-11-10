@@ -26,7 +26,7 @@ public struct Projection3D: Sendable, Equatable {
 
     /// The projection into OpenGL's clip space for a view `aspect` times
     /// wider than it is tall, seeing from `near` to `far`.
-    public func matrix(aspect: Double, near: Double, far: Double) -> Matrix4 {
+    func matrix(aspect: Double, near: Double, far: Double) -> Matrix4 {
         switch kind {
         case .perspective(let fieldOfView):
             return .perspective(fieldOfView: fieldOfView, aspect: aspect, near: near, far: far)
