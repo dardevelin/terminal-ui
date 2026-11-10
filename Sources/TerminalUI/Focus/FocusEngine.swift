@@ -262,6 +262,12 @@ public final class FocusEngine: @unchecked Sendable {
         if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
             wheelHandlers[node.id] = wheelHandler
         }
+        if let pasteHandler = node._pasteHandler, pasteHandlers[node.id] == nil {
+            pasteHandlers[node.id] = pasteHandler
+        }
+        if let hoverHandler = node._hoverHandler, hoverHandlers[node.id] == nil {
+            hoverHandlers[node.id] = hoverHandler
+        }
     }
 
     // MARK: - Keyboard Focus Traversal

@@ -49,6 +49,14 @@ All notable changes to TerminalUI are documented here. Format based on
   AsyncState among the examples — no longer quits on it; Ctrl+C still
   does. `invoke_action app.dismissOrQuit` from a control client, which no
   `onEvent` sees, still quits with nothing presented.
+- **A paste reaches a field whose body the last frame did not run.** A
+  frame clears every handler and puts back what the graph update
+  registers; key, click, tap, drag and wheel handlers ride on their
+  view's node, so one whose body was skipped is put back too, but
+  `.onPaste` and `.onHover` did not. After a frame drawn only for a
+  change elsewhere — a task's, a timer's — a focused field dropped a
+  paste until a key was pressed, and a view stopped being told of the
+  pointer. Both now ride on the node.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

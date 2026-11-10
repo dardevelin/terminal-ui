@@ -260,6 +260,11 @@ public class AttributeNode: @unchecked Sendable {
     public var _clickHandler: ((Int, Int) -> Void)?
     /// The tap gesture this view waits for.
     var _tapHandler: TapGesture?
+    /// What this view does with a bracketed paste, from `.onPaste`.
+    var _pasteHandler: ((String) -> Void)?
+    /// What this view does as the pointer enters and leaves it, from
+    /// `.onHover`.
+    var _hoverHandler: ((Bool) -> Void)?
 
     /// Drops every handler stamped on the node, for a view disabled since
     /// they were.
@@ -269,6 +274,8 @@ public class AttributeNode: @unchecked Sendable {
         _tapHandler = nil
         _dragHandler = nil
         _wheelHandler = nil
+        _pasteHandler = nil
+        _hoverHandler = nil
     }
     /// The drag gesture this view follows.
     var _dragHandler: DragGesture?
