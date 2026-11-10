@@ -52,6 +52,8 @@ swift run -c release SceneBenchmark  # what a 200×60 TerminalUI3D frame costs, 
 swift run GitClient          # example: git client TUI
 swift run Chat               # example: chat TUI
 swift run Coder              # agent-chat TUI — the Crush-parity forcing function
+swift run Showcase [3d|canvas]  # full-screen chapters that play on their own; the README's
+                             # 3d.gif and canvas.gif (record_media.py showcase records them)
 swift run swtui help         # developer CLI for the .terminalui/ diagnostic system
 
 # Single-purpose examples. These double as fixtures for the behavioural

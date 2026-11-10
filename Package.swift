@@ -206,6 +206,14 @@ let package = Package(
             path: "Examples/SceneBenchmark",
             swiftSettings: strictSettings
         ),
+        // Full-screen chapters that play on their own, recorded for the
+        // README: `swift run Showcase [3d|canvas]`.
+        .executableTarget(
+            name: "Showcase",
+            dependencies: ["TerminalUI", "TerminalUI3D"],
+            path: "Examples/Showcase",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],

@@ -1335,6 +1335,53 @@ def storybook_scene_pause_holds_the_frame(app: Client) -> None:
     assert_true(app.wait_until(lambda client: scene_rows(client) != held), "the scene did not turn again")
 
 
+# The Showcase example's chapters, the caption each draws along its bottom
+# row, and how long a chapter has to come out of its opening fade and draw
+# something: well inside its first scene, which only a regression misses.
+SHOWCASE_CHAPTERS = (("3d", "TerminalUI3D"), ("canvas", "Canvas"))
+SHOWCASE_EVENTUAL_SECONDS = 10.0
+SHOWCASE_DRAWN_CELLS = 40
+
+
+def showcase_scene(app: Client) -> str:
+    """The Showcase's screen above its caption row."""
+    return "\n".join(app.text().rstrip("\n").split("\n")[:-1])
+
+
+def showcase_draws(app: Client) -> bool:
+    return sum(1 for character in showcase_scene(app) if not character.isspace()) > SHOWCASE_DRAWN_CELLS
+
+
+def showcase_chapter_plays_on_its_own(caption: str) -> Callable[[Client], None]:
+    def case(app: Client) -> None:
+        """The chapter TERMINALUI_SHOWCASE names starts at launch and
+        animates with no key pressed: it draws, and what it draws changes."""
+        assert_true(app.wait_until(lambda client: caption in client.text(), timeout=SHOWCASE_EVENTUAL_SECONDS),
+                    f"the chapter never showed {caption!r}:\n{app.text()}")
+        assert_true(app.wait_until(showcase_draws, timeout=SHOWCASE_EVENTUAL_SECONDS),
+                    f"the chapter drew nothing:\n{app.text()}")
+        drawn = showcase_scene(app)
+        assert_true(app.wait_until(lambda client: showcase_scene(client) != drawn,
+                                   timeout=SHOWCASE_EVENTUAL_SECONDS),
+                    f"the chapter did not move on its own:\n{drawn}")
+    return case
+
+
+def showcase_paused_costs_nothing(app: Client) -> None:
+    """Space holds the chapter at the frame it showed, and a held chapter
+    asks for no frames: the app animates through its TimelineView alone, no
+    timer of its own."""
+    assert_true(app.wait_until(showcase_draws, timeout=SHOWCASE_EVENTUAL_SECONDS),
+                f"the chapter drew nothing:\n{app.text()}")
+    app.send_key(" ")
+    held = showcase_scene(app)
+    idle_costs_nothing(app)
+    assert_true(showcase_scene(app) == held, "a paused chapter moved")
+    app.send_key(" ")
+    assert_true(app.wait_until(lambda client: showcase_scene(client) != held, timeout=SHOWCASE_EVENTUAL_SECONDS),
+                "the chapter did not play again")
+
+
 # The README's recording: assets/demo.tape's 1020x700 window at font size 15,
 # less its padding, holds 97 columns and 37 rows.
 RECORDING_COLUMNS, RECORDING_ROWS = 97, 37
@@ -3625,6 +3672,11 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.scene_pages_draw_and_turn", "Storybook", storybook_scene_pages_draw_and_turn),
     SmokeCase("storybook.scene_switches_shading_style", "Storybook", storybook_scene_switches_shading_style),
     SmokeCase("storybook.scene_pause_holds_the_frame", "Storybook", storybook_scene_pause_holds_the_frame),
+    *(SmokeCase(f"showcase.{chapter}_plays_on_its_own", "Showcase", showcase_chapter_plays_on_its_own(caption),
+                env=(("TERMINALUI_SHOWCASE", chapter),))
+      for chapter, caption in SHOWCASE_CHAPTERS),
+    SmokeCase("showcase.paused_costs_nothing", "Showcase", showcase_paused_costs_nothing,
+              env=(("TERMINALUI_SHOWCASE", "canvas"),)),
     SmokeCase("storybook.every_page_fits_the_recording_window", "Storybook",
               storybook_every_page_fits_the_recording_window),
     SmokeCase("storybook.every_page_reaches_the_terminal_as_drawn", "Storybook",
