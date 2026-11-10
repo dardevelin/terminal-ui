@@ -473,7 +473,7 @@ image code, `TerminalUI3D` so apps without 3D never carry a rasterizer, and
 
 ## Status
 
-v2.6.1. 2685 tests in 468 suites, run on macOS and Linux, plus a PTY-driven
+v2.6.1. 2690 tests in 469 suites, run on macOS and Linux, plus a PTY-driven
 harness that walks every Storybook page, runs 193 behavioural cases against
 the example apps and drives every tutorial step through what its page
 says, and a Thread Sanitizer build of the tests and the cases. Builds with
