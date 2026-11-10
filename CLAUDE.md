@@ -114,6 +114,12 @@ python3 tools/scripts/verify.py --always
 # held here and not on its three-core runner; a tag waits for this, and is
 # pushed once.
 python3 tools/scripts/verify.py --release
+# Then CI itself, on the release branch, before the tag. The gate runs this
+# Mac's toolchain and SDK; CI's macOS runner selects its newest Xcode, which
+# can be older (2.6.0 shipped MapKit calls that compiled against the macOS 27
+# SDK and not CI's), and its slower Linux runner times out type-checking an
+# expression this machine checks in time. Only CI's own run shows either.
+git push origin release-X.Y.Z && gh workflow run ci.yml --ref release-X.Y.Z
 
 # Automation (verify.py, an agent at work) builds apart from .build/. SwiftPM
 # locks a build directory for the length of a build or test, so sharing .build

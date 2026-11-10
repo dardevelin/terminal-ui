@@ -6,6 +6,35 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.6.1] — 2026-11-10 — Maps that build where CI does
+
+A patch release over 2.6.0: an app written for 2.6 compiles unchanged.
+TerminalUIMaps now builds with the Swift 6.2 toolchains and SDKs before
+macOS 27, and asks OSRM for routes the way its API writes them under every
+Foundation. An app's debug socket no longer cuts a large reply short.
+
+### Fixed
+
+- **TerminalUIMaps builds with Xcode 26 and Swift 6.2.** Its Look Around
+  and place-details calls awaited MapKit's `scene`, `snapshot` and
+  `mapItem` from the main actor, which compiles only against the macOS 27
+  SDK, whose completions are marked to arrive there; under an earlier SDK
+  the await sent a MapKit object that is not `Sendable` off the main actor,
+  and the library did not build. Each is now read in its completion
+  handler, and only what is `Sendable` — whether a scene is there, the
+  photo's pixels, the place's details — is handed back.
+- **OSRM is asked for a route with its coordinates as its API writes
+  them.** The `;` between coordinates was built with
+  `appendingPathComponent`, which percent-encodes it under one Foundation
+  and not another; the path is now set as it stands, `;` and `,` being
+  allowed in a URL path unencoded.
+- **A large reply from an app's debug socket arrives whole.** A write to
+  a Unix socket that macOS refused with `ENOBUFS` — the kernel briefly
+  short of buffers, under memory pressure or for a write far larger than
+  the socket's buffer — dropped the client, so `swtui ctl` or a test's
+  client got half a reply. The server now waits for room as it does for a
+  full buffer, and never offers more than its send buffer in one write.
+
 ## [2.6.0] — 2026-11-10 — Maps, drawn in text
 
 A minor release over 2.5.0: an app written for 2.5 compiles unchanged.
@@ -1678,7 +1707,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.6.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.6.1...HEAD
+[2.6.1]: https://github.com/dardevelin/terminal-ui/compare/v2.6.0...v2.6.1
 [2.6.0]: https://github.com/dardevelin/terminal-ui/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/dardevelin/terminal-ui/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...v2.4.0

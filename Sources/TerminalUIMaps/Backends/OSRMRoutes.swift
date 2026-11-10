@@ -79,8 +79,15 @@ public struct OSRMRoutes: RouteProvider {
         case .cycling: "bike"
         }
         let points = waypoints.map { "\($0.longitude),\($0.latitude)" }.joined(separator: ";")
-        let path = baseURL.appendingPathComponent("route/v1/\(profile)/\(points)")
-        var components = URLComponents(url: path, resolvingAgainstBaseURL: false)
+        // Set as already encoded: the coordinates are digits, points, minus
+        // signs, commas and semicolons, every one allowed in a path as it
+        // stands (RFC 3986 §3.3, `,` and `;` are sub-delims), and OSRM reads
+        // the `;` literally. `appendingPathComponent` encoded the `;` as
+        // `%3B` under one Foundation and not another.
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false)
+        let basePath = components?.percentEncodedPath ?? ""
+        let separator = basePath.hasSuffix("/") ? "" : "/"
+        components?.percentEncodedPath = basePath + separator + "route/v1/\(profile)/\(points)"
         var items = [URLQueryItem(name: "overview", value: "full"),
                      URLQueryItem(name: "geometries", value: "geojson"),
                      URLQueryItem(name: "steps", value: "true")]

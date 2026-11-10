@@ -28,7 +28,12 @@ struct NMEATests {
         let fix = try #require(decoded)
         #expect(abs(fix.coordinate.latitude - -(37 + 51.65 / 60)) < 1e-9)
         #expect(abs(fix.coordinate.longitude - (145 + 7.36 / 60)) < 1e-9)
-        #expect(abs((fix.speed ?? 0) - 10 * 1_852 / 3_600) < 1e-9)
+        // A knot is a nautical mile, 1852 m, an hour. Named, so the type
+        // checker is not left to try every literal type in one expression:
+        // Linux's took longer than it allows on CI's runner.
+        let metresPerSecondInAKnot: Double = 1_852.0 / 3_600.0
+        let expectedSpeed: Double = 10 * metresPerSecondInAKnot
+        #expect(abs((fix.speed ?? 0) - expectedSpeed) < 1e-9)
         #expect(fix.course == 360)
         #expect(fix.timestamp == XSDDateTime.parse("1998-09-13T08:18:36.5Z"))
         #expect(fix.horizontalAccuracy == nil, "RMC carries no dilution")
@@ -103,7 +108,15 @@ struct GPSDTests {
         } catch let error as LocationError {
             #expect(error == .connection("the server closed the connection"))
         }
-        #expect(fixes.map(\.coordinate.latitude) == [51.5, 51.5001])
+        // A live stream keeps only the newest fix — a navigator wants where
+        // the traveller is now, not a backlog — so a reader slower than the
+        // daemon, as one under Thread Sanitizer is, may miss the first. What
+        // the stream promises is that the newest arrives, and that what
+        // arrives came in the order it was sent.
+        let latitudes = fixes.map(\.coordinate.latitude)
+        #expect(latitudes.last == 51.5001, "the newest fix arrives: \(latitudes)")
+        #expect(latitudes == latitudes.sorted() && Set(latitudes).isSubset(of: [51.5, 51.5001]),
+                "only fixes that were sent, in order: \(latitudes)")
         #expect(await server.received.hasPrefix(GPSDProtocol.watchCommand))
     }
 

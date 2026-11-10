@@ -543,13 +543,15 @@ public final class RemoteControlServer: @unchecked Sendable {
     private func flush(_ fd: Int32) -> Bool {
         guard var connection = clients[fd] else { return false }
         while !connection.unsent.isEmpty {
-            let bytesWritten = connection.unsent.withUnsafeBytes { socketWrite(fd, $0.baseAddress!, $0.count) }
-            let error = errno
-            if bytesWritten > 0 {
-                connection.unsent = connection.unsent.dropFirst(bytesWritten)
-            } else if bytesWritten < 0, error == EINTR {
+            let bytesWritten = connection.unsent.withUnsafeBytes {
+                socketWrite(fd, $0.baseAddress!, ReplyWrite.largestWrite(of: $0.count))
+            }
+            switch ReplyWrite(bytesWritten: bytesWritten, error: errno) {
+            case .wrote(let count):
+                connection.unsent = connection.unsent.dropFirst(count)
+            case .tryAgain:
                 continue
-            } else if bytesWritten < 0, error == EAGAIN {
+            case .waitForRoom:
                 if let writeWatch = connection.writeWatch {
                     writeWatch.rearm()
                 } else {
@@ -557,7 +559,7 @@ public final class RemoteControlServer: @unchecked Sendable {
                 }
                 clients[fd] = connection
                 return false
-            } else {
+            case .dropClient:
                 disconnect(fd)
                 return false
             }
@@ -1520,4 +1522,38 @@ func posixRead(_ fd: Int32, _ buf: UnsafeMutableRawPointer, _ count: Int) -> Int
     #endif
 }
 
+
+/// What one write of a reply to a client's socket means.
+///
+/// A full buffer (`EAGAIN`, `EWOULDBLOCK`) waits for the client to read. So
+/// does `ENOBUFS`: macOS returns it for a write to a Unix socket when the
+/// kernel is briefly short of the buffers to hold it — under memory
+/// pressure, or for a write far larger than the socket's buffer — and
+/// treating it as a failure dropped a client midway through a large reply.
+/// `EINTR` is tried again at once; anything else is a connection gone.
+enum ReplyWrite: Equatable {
+    case wrote(Int)
+    case tryAgain
+    case waitForRoom
+    case dropClient
+
+    init(bytesWritten: Int, error: Int32) {
+        if bytesWritten > 0 {
+            self = .wrote(bytesWritten)
+        } else if bytesWritten < 0, error == EINTR {
+            self = .tryAgain
+        } else if bytesWritten < 0, error == EAGAIN || error == EWOULDBLOCK || error == ENOBUFS {
+            self = .waitForRoom
+        } else {
+            self = .dropClient
+        }
+    }
+
+    /// At most a send buffer's worth a write: what the socket can take at
+    /// once, so a large reply is never offered whole to a kernel that may
+    /// refuse it for want of buffers.
+    static func largestWrite(of count: Int) -> Int {
+        min(count, Int(RemoteControlServer.sendBufferBytes))
+    }
+}
 #endif

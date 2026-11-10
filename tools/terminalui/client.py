@@ -284,6 +284,17 @@ class Client:
                 time.sleep(0.05)
         raise RemoteError(f"connect to {self._path} failed: {last_err}")
 
+    @property
+    def read_timeout(self) -> float:
+        """How long a reply may take before the client calls the app stuck."""
+        return self._read_timeout
+
+    @read_timeout.setter
+    def read_timeout(self, seconds: float) -> None:
+        self._read_timeout = seconds
+        if self._sock is not None:
+            self._sock.settimeout(seconds)
+
     def close(self) -> None:
         if self._sock is not None:
             try:

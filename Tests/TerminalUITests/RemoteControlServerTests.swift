@@ -72,7 +72,11 @@ struct RemoteControlBackpressureTests {
         #expect(!waitedForTheClient, "a pump waited for the client to read")
         release.signal()
         await watchdog.value
-        let deadline = ContinuousClock.now + .seconds(10)
+        // The reply goes out as the client reads, in its own time: on CI's
+        // three-core runner under Thread Sanitizer, beside every other test,
+        // ten seconds was not always enough for 2 MB. Only a regression
+        // reaches the eventual limit.
+        let deadline = ContinuousClock.now + eventualLimit
         while !finished.flag.load(ordering: .acquiring), ContinuousClock.now < deadline {
             server.pump()
             try? await Task.sleep(for: .milliseconds(1))
@@ -129,6 +133,37 @@ struct DebugSocketWarningTests {
         let warnings = probe.warnings.withLock { $0 }
         #expect(warnings.contains { $0.code == .debugSocketUnavailable && $0.message.contains("longer than") },
                 "got \(warnings)")
+    }
+}
+
+// What a write to a client's socket means. A full buffer waits for room;
+// so does a kernel briefly short of buffers (ENOBUFS), which macOS returns
+// for a large write to a Unix socket under memory pressure and which used
+// to drop the client mid-reply. Only a real failure drops it.
+@Suite("A reply's write")
+struct ReplyWriteTests {
+    @Test(arguments: [EAGAIN, EWOULDBLOCK, ENOBUFS])
+    func aTransientShortageWaitsForRoom(error: Int32) {
+        #expect(ReplyWrite(bytesWritten: -1, error: error) == .waitForRoom)
+    }
+
+    @Test func anInterruptedWriteIsTriedAgain() {
+        #expect(ReplyWrite(bytesWritten: -1, error: EINTR) == .tryAgain)
+    }
+
+    @Test(arguments: [EPIPE, ECONNRESET, EBADF])
+    func aBrokenConnectionIsDropped(error: Int32) {
+        #expect(ReplyWrite(bytesWritten: -1, error: error) == .dropClient)
+    }
+
+    @Test func bytesTakenAreWritten() {
+        #expect(ReplyWrite(bytesWritten: 512, error: 0) == .wrote(512))
+    }
+
+    @Test func aWriteIsNeverLargerThanTheSendBuffer() {
+        #expect(ReplyWrite.largestWrite(of: 4 * Int(RemoteControlServer.sendBufferBytes))
+                == Int(RemoteControlServer.sendBufferBytes))
+        #expect(ReplyWrite.largestWrite(of: 100) == 100)
     }
 }
 

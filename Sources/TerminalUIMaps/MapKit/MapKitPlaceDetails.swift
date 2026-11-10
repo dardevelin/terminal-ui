@@ -37,8 +37,7 @@ public struct MapKitPlaceDetails: PlaceDetails {
     @MainActor
     private static func lookUp(_ place: Place) async throws -> PlaceInformation? {
         if case .mapKit(let raw) = place.identifier, let identifier = MKMapItem.Identifier(rawValue: raw) {
-            let item = try await MKMapItemRequest(mapItemIdentifier: identifier).mapItem
-            return information(item, fallbackName: place.name)
+            return try await information(of: identifier, fallbackName: place.name)
         }
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = place.name
@@ -54,14 +53,38 @@ public struct MapKitPlaceDetails: PlaceDetails {
         return nearest.map { information($0.item, fallbackName: place.name) }
     }
 
+    /// The details of the item `identifier` names, read where MapKit hands
+    /// the item over, so only the details — which are `Sendable` — leave.
+    ///
+    /// Awaiting `MKMapItemRequest.mapItem` from the main actor compiles only
+    /// against an SDK that delivers the item there: the macOS 27 SDK marks
+    /// the completion `NS_SWIFT_UI_ACTOR`, earlier SDKs do not, and with
+    /// them the await sends the non-`Sendable` request off the main actor.
+    /// The completion handler, with nothing but the details resumed, builds
+    /// against both.
     @MainActor
+    private static func information(of identifier: MKMapItem.Identifier,
+                                    fallbackName: String) async throws -> PlaceInformation {
+        try await withCheckedThrowingContinuation { continuation in
+            let request = MKMapItemRequest(mapItemIdentifier: identifier)
+            request.getMapItem { item, error in
+                // The request is held until it answers.
+                _ = request
+                guard let item else {
+                    continuation.resume(throwing: error ?? MapServiceError.invalidResponse("Apple returned no place"))
+                    return
+                }
+                continuation.resume(returning: information(item, fallbackName: fallbackName))
+            }
+        }
+    }
+
     private static func location(of item: MKMapItem) -> CLLocation {
         if #available(macOS 26, *) { return item.location }
         let coordinate = item.placemark.coordinate
         return CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
     }
 
-    @MainActor
     static func information(_ item: MKMapItem, fallbackName: String) -> PlaceInformation {
         var address: PostalAddress?
         if #available(macOS 26, *) {
