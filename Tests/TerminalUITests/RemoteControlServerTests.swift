@@ -72,7 +72,11 @@ struct RemoteControlBackpressureTests {
         #expect(!waitedForTheClient, "a pump waited for the client to read")
         release.signal()
         await watchdog.value
-        let deadline = ContinuousClock.now + .seconds(10)
+        // The reply goes out as the client reads, in its own time: on CI's
+        // three-core runner under Thread Sanitizer, beside every other test,
+        // ten seconds was not always enough for 2 MB. Only a regression
+        // reaches the eventual limit.
+        let deadline = ContinuousClock.now + eventualLimit
         while !finished.flag.load(ordering: .acquiring), ContinuousClock.now < deadline {
             server.pump()
             try? await Task.sleep(for: .milliseconds(1))
