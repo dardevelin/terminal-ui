@@ -5,37 +5,63 @@
 public struct Maneuver: Sendable, Hashable, Codable {
     /// The kind of manoeuvre: OSRM's `maneuver.type`.
     public enum Kind: String, Sendable, Hashable, Codable, CaseIterable {
+        /// Setting off: the first step of a route.
         case depart
+        /// A turn at a junction.
         case turn
+        /// No turn, but the road changes its name.
         case newName = "new name"
+        /// Carrying on along the road, perhaps with a bend.
         case `continue`
+        /// Joining a road, as from a slip road onto a motorway.
         case merge
+        /// Taking a ramp onto a motorway or expressway.
         case onRamp = "on ramp"
+        /// Taking a ramp off a motorway or expressway.
         case offRamp = "off ramp"
+        /// Keeping to one branch where the road divides.
         case fork
+        /// Turning where the road ends at a T-junction.
         case endOfRoad = "end of road"
+        /// Entering a roundabout.
         case roundabout
+        /// Entering a large rotary, often one with a name of its own.
         case rotary
+        /// A turn at a small roundabout taken like a junction.
         case roundaboutTurn = "roundabout turn"
+        /// Leaving a roundabout.
         case exitRoundabout = "exit roundabout"
+        /// Leaving a rotary.
         case exitRotary = "exit rotary"
+        /// A change worth telling with no turn, such as a change of travel mode.
         case notification
+        /// Reaching the destination: the last step of a route.
         case arrive
     }
 
     /// Which way it goes: OSRM's `maneuver.modifier`.
     public enum Direction: String, Sendable, Hashable, Codable, CaseIterable {
+        /// Turning round, back the way the traveller came.
         case uturn
+        /// A sharp turn to the right.
         case sharpRight = "sharp right"
+        /// A plain turn to the right.
         case right
+        /// A slight bend to the right.
         case slightRight = "slight right"
+        /// Straight on.
         case straight
+        /// A slight bend to the left.
         case slightLeft = "slight left"
+        /// A plain turn to the left.
         case left
+        /// A sharp turn to the left.
         case sharpLeft = "sharp left"
     }
 
+    /// The kind of manoeuvre.
     public var kind: Kind
+    /// Which way it goes; nil where the router gives none, as for a departure.
     public var direction: Direction?
     /// The bearing the traveller arrives on, degrees clockwise from north.
     public var bearingBefore: Double?
@@ -44,6 +70,7 @@ public struct Maneuver: Sendable, Hashable, Codable {
     /// The exit to take at a roundabout, counted from 1.
     public var exit: Int?
 
+    /// A manoeuvre of the given kind, with whatever direction, bearings and exit are known.
     public init(kind: Kind, direction: Direction? = nil, bearingBefore: Double? = nil,
                 bearingAfter: Double? = nil, exit: Int? = nil) {
         self.kind = kind

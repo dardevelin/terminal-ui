@@ -17,6 +17,7 @@ public enum LocationSource: String, Sendable, Hashable, Codable {
 /// One position report: where, how sure, which way and how fast, and when
 /// — the fields CoreLocation's `CLLocation` and gpsd's TPV report share.
 public struct LocationFix: Sendable, Hashable {
+    /// Where the source reports the position to be.
     public var coordinate: GeoCoordinate
     /// The radius, in metres, the true position is likely within; nil
     /// where the source does not say.
@@ -26,9 +27,13 @@ public struct LocationFix: Sendable, Hashable {
     public var course: Double?
     /// Metres a second over the ground; nil when unknown.
     public var speed: Double?
+    /// When the position was measured.
     public var timestamp: Date
+    /// Which kind of provider reported the fix.
     public var source: LocationSource
 
+    /// A fix at `coordinate`, measured at `timestamp`, with whichever of
+    /// accuracy, course and speed the source gives.
     public init(coordinate: GeoCoordinate, horizontalAccuracy: Double? = nil, course: Double? = nil,
                 speed: Double? = nil, timestamp: Date, source: LocationSource) {
         self.coordinate = coordinate
@@ -65,6 +70,7 @@ public enum LocationError: Error, Sendable, Equatable, CustomStringConvertible {
     /// This build or system cannot offer the provider.
     case unavailable(String)
 
+    /// The reason, as the provider worded it.
     public var description: String {
         switch self {
         case .connection(let reason): reason
@@ -77,14 +83,18 @@ public enum LocationError: Error, Sendable, Equatable, CustomStringConvertible {
 
 /// "I am here": the one position it is given, once.
 public struct ManualLocationProvider: LocationProvider {
+    /// The point every fix reports.
     public let coordinate: GeoCoordinate
     private let now: @Sendable () -> Date
 
+    /// A provider that reports `coordinate`, stamped with the time `now`
+    /// gives when the stream starts.
     public init(coordinate: GeoCoordinate, now: @escaping @Sendable () -> Date = { Date() }) {
         self.coordinate = coordinate
         self.now = now
     }
 
+    /// "here".
     public var name: String { "here" }
 
     /// The single fix, then the end of the stream. Its accuracy is nil — a

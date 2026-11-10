@@ -13,6 +13,7 @@ import TerminalUIIO
 /// behind on the bearing the reader walks.
 /// Apple's terms cover showing the photo with its credit, not keeping it.
 public struct LookAroundImagery: StreetImagery {
+    /// The provider's name, as the street view credits it.
     public let name = "Apple Look Around"
     /// How far a step along a street goes: about the spacing of Apple's
     /// captures in a city.
@@ -21,19 +22,23 @@ public struct LookAroundImagery: StreetImagery {
     /// pixels across, and a smaller snapshot is quicker.
     public static let snapshotSize = CGSize(width: 480, height: 270)
 
+    /// Look Around through Apple's Maps service; it needs no key.
     public init() {}
 
+    /// The scene at `coordinate`, if Apple has one there, as the one image; `metres` is not used, as Apple finds the nearest scene itself.
     public func images(near coordinate: GeoCoordinate, within metres: Double) async throws -> [StreetImage] {
         guard try await LookAroundImagery.hasScene(at: coordinate) else { return [] }
         return [LookAroundImagery.image(at: coordinate)]
     }
 
+    /// The scenes ``stepMetres`` ahead on `bearing` and behind it, each nil where Apple has none.
     public func neighbours(of image: StreetImage, along bearing: Double) async throws -> StreetImageNeighbours {
         async let ahead = scene(from: image, bearing: bearing)
         async let behind = scene(from: image, bearing: bearing + CompassBearing.south)
         return StreetImageNeighbours(previous: try await behind, next: try await ahead)
     }
 
+    /// A snapshot of the scene at the image's coordinate, ``snapshotSize`` in size.
     public func photo(of image: StreetImage) async throws -> ImageBuffer {
         try await LookAroundImagery.snapshot(at: image.coordinate)
     }

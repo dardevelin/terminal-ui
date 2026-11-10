@@ -210,15 +210,18 @@ public struct NMEALocationProvider: LocationProvider {
         case udp(port: UInt16)
     }
 
+    /// Where the provider reads its sentences from.
     public let endpoint: Endpoint
 
     /// The port NMEA-over-IP commonly uses, 10110 (IANA "nmea-0183").
     public static let defaultPort: UInt16 = 10110
 
+    /// A provider of the sentences arriving from `endpoint`.
     public init(endpoint: Endpoint) {
         self.endpoint = endpoint
     }
 
+    /// "NMEA", the transport and the address: "NMEA udp :10110".
     public var name: String {
         switch endpoint {
         case .tcp(let host, let port): "NMEA tcp \(host):\(port)"
@@ -226,6 +229,9 @@ public struct NMEALocationProvider: LocationProvider {
         }
     }
 
+    /// Fixes as the RMC and GGA sentences with a valid checksum and a
+    /// position arrive; a TCP stream fails when the connection is refused
+    /// or lost.
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
         LineSocket.stream(endpoint, greeting: nil, state: NMEADecoder()) { decoder, line in
             decoder.decode(line)

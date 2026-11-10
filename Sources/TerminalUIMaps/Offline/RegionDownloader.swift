@@ -2,10 +2,16 @@ import Foundation
 
 /// A region to download.
 public struct RegionDownloadRequest: Sendable, Equatable {
+    /// The pack's name, which also names its directory in the store; a
+    /// request of an existing pack's name resumes or refreshes that pack.
     public var name: String
+    /// The box whose tiles are downloaded.
     public var bounds: GeoRect
+    /// The zooms to download, narrowed to those the source has.
     public var zoomRange: ClosedRange<Int>
 
+    /// A request for the tiles of `bounds` at `zoomRange`, kept as the
+    /// pack called `name`.
     public init(name: String, bounds: GeoRect, zoomRange: ClosedRange<Int>) {
         self.name = name
         self.bounds = bounds
@@ -27,10 +33,13 @@ public struct DownloadProgress: Sendable, Equatable {
     /// Bytes on disk for the tiles dealt with.
     public var bytes = 0
 
+    /// No tiles dealt with yet, of `total`.
     public init(total: Int) {
         self.total = total
     }
 
+    /// The share of tiles dealt with, from 0 to 1; 1 for a region of no
+    /// tiles.
     public var fractionCompleted: Double { total == 0 ? 1 : Double(completed) / Double(total) }
 }
 

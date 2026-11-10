@@ -23,12 +23,19 @@ public protocol PlaceDetails: Sendable {
 
 /// One kind of thing a ``PlaceDetails`` backend can say about a place.
 public enum PlaceDetailField: String, Sendable, Hashable, CaseIterable, Codable {
+    /// What the place is.
     case category
+    /// Its street address.
     case address
+    /// When it is open.
     case openingHours
+    /// Its phone number.
     case phone
+    /// Its website.
     case website
+    /// What it serves.
     case cuisine
+    /// Whether a wheelchair gets in.
     case wheelchair
 
     /// What a card calls it, in a sentence.
@@ -48,21 +55,29 @@ public enum PlaceDetailField: String, Sendable, Hashable, CaseIterable, Codable 
 /// What a backend knows of a place. A field is nil, or empty, where the
 /// backend has nothing for this place.
 public struct PlaceInformation: Sendable, Hashable {
+    /// The place's name, as the backend has it.
     public var name: String
     /// What it is, in plain words: "restaurant", "pharmacy".
     public var category: String?
+    /// Its street address.
     public var address: PostalAddress?
+    /// When it is open.
     public var openingHours: OpeningHours?
+    /// Its phone number, as the source writes it.
     public var phone: String?
+    /// Its website.
     public var website: URL?
     /// What it serves, as OpenStreetMap's `cuisine` lists it: "french",
     /// "coffee shop".
     public var cuisine: [String]
+    /// Whether a wheelchair gets in.
     public var wheelchair: WheelchairAccess?
     /// The place's own time zone, which its hours are in, where the
     /// backend gives one.
     public var timeZone: TimeZone?
 
+    /// Information of `name` and whatever else the backend has, the rest
+    /// left nil or empty.
     public init(name: String, category: String? = nil, address: PostalAddress? = nil,
                 openingHours: OpeningHours? = nil, phone: String? = nil, website: URL? = nil,
                 cuisine: [String] = [], wheelchair: WheelchairAccess? = nil, timeZone: TimeZone? = nil) {
@@ -93,15 +108,21 @@ public struct PlaceInformation: Sendable, Hashable {
 
 /// A street address, as much of it as the source has.
 public struct PostalAddress: Sendable, Hashable, Codable {
+    /// The number on the street: "9", "12bis".
     public var houseNumber: String?
+    /// The street's name.
     public var street: String?
+    /// The postal code.
     public var postcode: String?
+    /// The city, town or village.
     public var city: String?
+    /// The country, as the source names it.
     public var country: String?
     /// The whole address on one line as the source formats it, where it
     /// gives one and not its parts (Apple's `MKAddress`).
     public var formatted: String?
 
+    /// An address of the parts given, the rest nil.
     public init(houseNumber: String? = nil, street: String? = nil, postcode: String? = nil, city: String? = nil,
                 country: String? = nil, formatted: String? = nil) {
         self.houseNumber = houseNumber
@@ -130,6 +151,7 @@ public enum WheelchairAccess: String, Sendable, Hashable, Codable {
     case yes
     /// The entrance or some rooms need help.
     case limited
+    /// No way in for a wheelchair.
     case no
     /// Built for wheelchair users.
     case designated
@@ -146,9 +168,13 @@ public enum WheelchairAccess: String, Sendable, Hashable, Codable {
 
 /// An OpenStreetMap element: a node, a way or a relation, and its number.
 public struct OSMElement: Sendable, Hashable, Codable, CustomStringConvertible {
+    /// Which of OpenStreetMap's three element types it is.
     public enum Kind: String, Sendable, Hashable, Codable {
+        /// A single point.
         case node
+        /// An ordered list of nodes: a street, a building's outline.
         case way
+        /// A group of elements: a route, a building with courtyards.
         case relation
 
         /// Nominatim's one-letter prefix for an `osm_ids` entry.
@@ -161,9 +187,12 @@ public struct OSMElement: Sendable, Hashable, Codable, CustomStringConvertible {
         }
     }
 
+    /// The element's type.
     public var kind: Kind
+    /// The element's id among those of its type.
     public var number: UInt64
 
+    /// The element of `kind` numbered `number`.
     public init(_ kind: Kind, _ number: UInt64) {
         self.kind = kind
         self.number = number
@@ -193,16 +222,20 @@ public struct OSMElement: Sendable, Hashable, Codable, CustomStringConvertible {
     /// `node(1528685379)`, as an Overpass QL query selects it.
     var overpassSelector: String { "\(kind.rawValue)(\(number))" }
 
+    /// `node/1528685379`, as openstreetmap.org's element pages are named.
     public var description: String { "\(kind.rawValue)/\(number)" }
 }
 
 /// What identifies a place to the backend it came from, beyond its name and
 /// position.
 public enum PlaceIdentifier: Sendable, Hashable, Codable {
+    /// An OpenStreetMap element.
     case openStreetMap(OSMElement)
     /// Apple's `MKMapItem.Identifier`, as its raw string.
     case mapKit(String)
 
+    /// The OpenStreetMap element, or nil for an identifier of another
+    /// backend.
     public var osmElement: OSMElement? {
         if case .openStreetMap(let element) = self { return element }
         return nil
@@ -214,7 +247,8 @@ public enum PlaceIdentifier: Sendable, Hashable, Codable {
 /// a ``PlaceDetails`` backend after it.
 public enum FeatureIdentifiers: String, Sendable, Hashable, Codable {
     /// planetiler's OpenMapTiles ids, as OpenFreeMap and a pack downloaded
-    /// from it have (``OSMElement/init(openMapTilesFeatureID:)``).
+    /// from it have: a node's, way's or relation's number times ten, plus
+    /// 1, 2 or 3.
     case openMapTiles
     /// Ids that mean nothing outside the tile.
     case opaque

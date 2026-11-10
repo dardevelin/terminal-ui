@@ -32,6 +32,8 @@ public struct OpeningHours: Sendable, Hashable {
     /// Whether a rule for public or school holidays was set aside.
     public let ignoresHolidays: Bool
 
+    /// Hours read from an `opening_hours` value; one in a form this does
+    /// not read keeps its text and has no schedule.
     public init(_ text: String) {
         self.text = text
         var parser = OpeningHoursParser(text)
@@ -58,7 +60,20 @@ public struct OpeningHours: Sendable, Hashable {
 
 /// A day of the week, Monday first as `opening_hours` orders them.
 public enum Weekday: Int, Sendable, Hashable, CaseIterable, Comparable {
-    case monday, tuesday, wednesday, thursday, friday, saturday, sunday
+    /// Monday, `Mo`.
+    case monday
+    /// Tuesday, `Tu`.
+    case tuesday
+    /// Wednesday, `We`.
+    case wednesday
+    /// Thursday, `Th`.
+    case thursday
+    /// Friday, `Fr`.
+    case friday
+    /// Saturday, `Sa`.
+    case saturday
+    /// Sunday, `Su`.
+    case sunday
 
     /// The tag's two-letter name.
     public var abbreviation: String {
@@ -89,6 +104,7 @@ public enum Weekday: Int, Sendable, Hashable, CaseIterable, Comparable {
     /// Calendar's 2 (Monday) to this enum's 0: add five, mod seven.
     private static let mondayOffset = 5
 
+    /// Whether `left` comes before `right` in a week that starts on Monday.
     public static func < (left: Weekday, right: Weekday) -> Bool { left.rawValue < right.rawValue }
 }
 
@@ -96,10 +112,14 @@ public enum Weekday: Int, Sendable, Hashable, CaseIterable, Comparable {
 /// open, in minutes from that day's midnight. A span may run past 1440,
 /// into the next day, as `Fr 18:00-02:00` does.
 public struct WeeklySchedule: Sendable, Hashable {
+    /// Each weekday's open spans, in minutes from its midnight; a day it
+    /// is closed has no entry.
     public var spans: [Weekday: [Range<Int>]]
 
+    /// The minutes in a day, 1440, where a span of the next day begins.
     public static let minutesPerDay = 1_440
 
+    /// A schedule of `spans`, a day given no spans dropped as closed.
     public init(spans: [Weekday: [Range<Int>]]) {
         self.spans = spans.filter { !$0.value.isEmpty }
     }
@@ -172,6 +192,7 @@ public enum OpeningStatus: Sendable, Hashable {
     /// next seven days.
     case closed(until: Date?)
 
+    /// Whether the place is open: always open, or open until some date.
     public var isOpen: Bool {
         switch self {
         case .alwaysOpen, .open: true

@@ -3,12 +3,16 @@ import TerminalUI
 /// A point of interest the map drew — a café, a shop, a station — as a
 /// tap on it hands it to ``MapView/onPointOfInterestTap(perform:)``.
 public struct MapPointOfInterest: Sendable, Hashable {
+    /// The name the map gave it.
     public var name: String
+    /// The kind of place it is, which picks its glyph and colour.
     public var category: PointOfInterestCategory
     /// OpenMapTiles' `class` and `subclass`: "shop" and "jewelry",
     /// "restaurant" and "restaurant".
     public var featureClass: String
+    /// OpenMapTiles' `subclass`, the finer kind; nil where the tile gives none.
     public var subclass: String?
+    /// Where the point is.
     public var coordinate: GeoCoordinate
     /// The vector tile feature's id, which some sources tie to the map
     /// data's own (``FeatureIdentifiers``).

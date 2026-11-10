@@ -2,18 +2,24 @@ import Foundation
 
 /// The tiles of a downloaded region pack, served from disk.
 public struct OfflineTileSource: EncodedTileSource {
+    /// The pack whose tiles are served.
     public let pack: RegionPack
 
+    /// A source serving the tiles `pack` holds on disk.
     public init(pack: RegionPack) {
         self.pack = pack
     }
 
+    /// The pack's name, attribution, zooms and bounds, as its manifest
+    /// records them; nothing is fetched.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: pack.manifest.name, attribution: pack.manifest.attribution,
                        zoomRange: pack.manifest.zoomRange, bounds: pack.manifest.bounds,
                        featureIdentifiers: pack.manifest.featureIdentifiers ?? .opaque)
     }
 
+    /// The tile's bytes as the pack stored them, or nil where the tile
+    /// lies outside the pack's bounds or zooms or was never downloaded.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard pack.covers(id) else { return nil }
         let url = pack.tileURL(for: id)
@@ -26,6 +32,7 @@ public struct OfflineTileSource: EncodedTileSource {
 /// `transportation_name` layers in the OpenMapTiles schema. The index is
 /// built from every tile on disk the first time it is searched.
 public actor OfflineSearch: PlaceSearch {
+    /// The pack whose tiles are searched.
     public let pack: RegionPack
     private var matcher: PlaceMatcher?
 
@@ -37,10 +44,14 @@ public actor OfflineSearch: PlaceSearch {
     /// across tile edges, not two streets of one name in different towns.
     static let deduplicationZoom = 12
 
+    /// A search over the names in `pack`'s tiles; nothing is read until
+    /// the first search.
     public init(pack: RegionPack) {
         self.pack = pack
     }
 
+    /// Places whose names match `query`, best match first and, among
+    /// equal matches, nearest `region`'s centre first.
     public func search(_ query: String, near region: GeoRect?) async throws -> [Place] {
         let matcher = try self.matcher ?? PlaceMatcher(places: OfflineSearch.index(pack))
         self.matcher = matcher

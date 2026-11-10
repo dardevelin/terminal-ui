@@ -21,12 +21,17 @@ struct SpeedZoom: Sendable, Equatable {
 /// The profile comes from the route's ``TravelMode`` and can be switched
 /// while navigating: the camera takes the new one at its next frame.
 public struct TravelProfile: Sendable, Equatable, Identifiable {
+    /// The kinds of traveller a profile is made for.
     public enum Kind: String, Sendable, Equatable, CaseIterable {
+        /// A car, routed for driving.
         case car
+        /// A bicycle, routed for cycling.
         case bicycle
+        /// Someone on foot, routed for walking.
         case foot
     }
 
+    /// Which kind of traveller this profile is for.
     public internal(set) var kind: Kind
     /// The zoom at each speed, slowest first. Each table keeps about the
     /// same twenty-odd seconds of road ahead of the traveller on a
@@ -48,6 +53,7 @@ public struct TravelProfile: Sendable, Equatable, Identifiable {
     /// traveller could take, and so might take for theirs.
     var branchRoles: Set<MapRole>
 
+    /// The profile's kind, which identifies it: there is one profile of each.
     public var id: Kind { kind }
 
     /// The mode a router is asked for this profile's routes in.

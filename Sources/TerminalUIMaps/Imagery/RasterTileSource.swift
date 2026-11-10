@@ -5,7 +5,8 @@ import TerminalUIIO
 public enum RasterEncoding: String, Sendable, Codable, Equatable {
     /// A picture, PNG or JPEG: imagery, drawn as it is.
     case picture
-    /// Heights in Mapzen's Terrarium encoding (``Terrarium``), in a PNG.
+    /// Heights in Mapzen's Terrarium encoding, in a PNG: metres as
+    /// red × 256 + green + blue ÷ 256 − 32768.
     case terrarium
 
     /// The tile the bytes hold, decoded in pure Swift, so every system
@@ -39,20 +40,25 @@ public enum RasterEncoding: String, Sendable, Codable, Equatable {
 /// The template names `{z}`, `{x}` and `{y}` in whatever order the server
 /// wants them — EOX's WMTS puts the row before the column. A 404 or 204 is
 /// a tile the server has none of (USGS answers 404 outside the United
-/// States), not an error. Tiles decode with the pure-Swift ``PNGDecoder``
-/// and ``JPEGDecoder``.
+/// States), not an error. Tiles decode with TerminalUIIO's pure-Swift
+/// `PNGDecoder` and `JPEGDecoder`.
 ///
 /// ```swift
 /// let imagery = RasterTileSource.sentinel2Cloudless2016()
 /// let store = MapTileStore(source: imagery)
 /// ```
 public struct RasterTileSource: EncodedTileSource {
+    /// The tile URL, with `{z}`, `{x}` and `{y}` where the zoom, column and
+    /// row go.
     public let template: String
+    /// What the tiles' bytes hold: a picture or heights.
     public let encoding: RasterEncoding
     private let sourceInfo: TileSourceInfo
     private let transport: any HTTPTransport
     private let userAgent: String
 
+    /// A source fetching `template`'s tiles at `zoomRange` within `bounds`,
+    /// naming the application `userAgent` on every request.
     public init(name: String, attribution: String, template: String, encoding: RasterEncoding,
                 zoomRange: ClosedRange<Int>, bounds: GeoRect = TileSourceInfo.world,
                 transport: any HTTPTransport = URLSessionTransport(), userAgent: String) {
@@ -63,6 +69,7 @@ public struct RasterTileSource: EncodedTileSource {
         self.userAgent = userAgent
     }
 
+    /// The name, attribution, zooms and bounds the source was made with.
     public func info() async throws -> TileSourceInfo { sourceInfo }
 
     /// The URL of a tile: the template with its zoom, column and row.
@@ -73,6 +80,8 @@ public struct RasterTileSource: EncodedTileSource {
             .replacingOccurrences(of: "{y}", with: String(tile.y)))
     }
 
+    /// The tile's bytes as served, or nil outside the source's zooms and
+    /// bounds or where the server has no tile.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard id.isValid, sourceInfo.zoomRange.contains(id.zoom), id.bounds.intersects(sourceInfo.bounds) else {
             return nil
@@ -86,6 +95,7 @@ public struct RasterTileSource: EncodedTileSource {
         }
     }
 
+    /// The tile decoded as its ``encoding`` says, or nil where there is none.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let bytes = try await tileData(id) else { return nil }
         return try encoding.decode(bytes)

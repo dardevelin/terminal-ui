@@ -12,8 +12,10 @@ public enum MapType: String, Sendable, CaseIterable, Identifiable, Codable {
     /// The map over shaded relief and contour lines.
     case terrain
 
+    /// The type's raw value, which identifies it.
     public var id: String { rawValue }
 
+    /// The type's name as a picker shows it: "Satellite".
     public var title: String {
         switch self {
         case .explore: "Explore"
@@ -32,12 +34,14 @@ public struct ImageryOption: Sendable, Identifiable {
     public var name: String
     /// What it is, in a line: its coverage and detail.
     public var detail: String
+    /// Where the imagery's tiles come from.
     public var source: any MapTileSource
     /// The same imagery with its provider's roads and names drawn in,
     /// which a hybrid map shows in place of drawing the basemap's over it —
     /// the only hybrid a picture basemap can have.
     public var hybridSource: (any MapTileSource)?
 
+    /// An imagery option drawn from `source`, with its own hybrid source if the provider has one.
     public init(id: String, name: String, detail: String, source: any MapTileSource,
                 hybridSource: (any MapTileSource)? = nil) {
         self.id = id
@@ -50,11 +54,16 @@ public struct ImageryOption: Sendable, Identifiable {
 
 /// A source of heights a backend offers.
 public struct TerrainOption: Sendable {
+    /// Tells options apart, so choosing one again keeps its store.
     public var id: String
+    /// What the reader is shown: "AWS Terrain Tiles".
     public var name: String
+    /// What it is, in a line: what the terrain map draws from it.
     public var detail: String
+    /// Where the elevation tiles come from.
     public var source: any MapTileSource
 
+    /// A terrain option drawn from `source`.
     public init(id: String, name: String, detail: String, source: any MapTileSource) {
         self.id = id
         self.name = name
@@ -67,11 +76,13 @@ public struct TerrainOption: Sendable {
 public struct MapTypeOffer: Sendable {
     /// The imagery it offers, the default first; none where it has none.
     public var imagery: [ImageryOption]
+    /// The heights it offers; nil where it has none, so the terrain type is unavailable.
     public var terrain: TerrainOption?
     /// Whether the basemap is vector, so its roads and names can be drawn
     /// over imagery; a picture basemap (MapKit's) cannot.
     public var basemapIsVector: Bool
 
+    /// An offer of this imagery and terrain over a vector or a picture basemap.
     public init(imagery: [ImageryOption], terrain: TerrainOption?, basemapIsVector: Bool) {
         self.imagery = imagery
         self.terrain = terrain
@@ -87,6 +98,17 @@ public struct MapTypeOffer: Sendable {
                      terrain: TerrainOption.open(transport: transport, userAgent: userAgent),
                      basemapIsVector: basemapIsVector)
     }
+}
+
+extension MapTypeOffer {
+    /// The sample town's own imagery and ground, which need no network:
+    /// every map type of ``SampleTileSource``'s map.
+    public static let sample = MapTypeOffer(
+        imagery: [ImageryOption(id: "sample", name: "\(SampleTown.name) from the air",
+                                detail: "sample imagery of the town; no network", source: SampleImagerySource())],
+        terrain: TerrainOption(id: "sample", name: "\(SampleTown.name)'s ground",
+                               detail: "sample heights: shaded relief, contours", source: SampleTerrainSource()),
+        basemapIsVector: true)
 }
 
 extension ImageryOption {
@@ -116,12 +138,17 @@ extension TerrainOption {
 /// it, and in a line what it draws from — or why not, so the picker says
 /// so rather than the map coming up blank.
 public struct MapTypeOption: Sendable, Equatable, Identifiable {
+    /// The map type the row offers.
     public var type: MapType
+    /// Whether this backend can draw the type.
     public var isAvailable: Bool
+    /// What the type draws from, or why it is unavailable, in a line.
     public var detail: String
 
+    /// The map type's id, which identifies the row.
     public var id: String { type.id }
 
+    /// A picker row for `type`.
     public init(type: MapType, isAvailable: Bool, detail: String) {
         self.type = type
         self.isAvailable = isAvailable
@@ -145,11 +172,15 @@ public struct MapTypeOption: Sendable, Equatable, Identifiable {
 @MainActor
 @Observable
 public final class MapTypeModel {
+    /// The map type shown.
     public private(set) var mapType: MapType = .explore
+    /// What the current backend can draw each map type with.
     public private(set) var offer: MapTypeOffer
     /// Which of the offer's imagery is used.
     public private(set) var imageryIndex = 0
+    /// The store of imagery tiles; nil until a satellite or hybrid map is first shown.
     public private(set) var imageryStore: MapTileStore?
+    /// The store of elevation tiles; nil until a terrain map is first shown.
     public private(set) var terrainStore: MapTileStore?
 
     /// Which source each store was given, by the option's id and whether
@@ -171,6 +202,7 @@ public final class MapTypeModel {
     /// Every type, available or not, and why.
     public var options: [MapTypeOption] { MapType.allCases.map(option(for:)) }
 
+    /// The picker row for `type`: whether this backend can draw it, and from what or why not.
     public func option(for type: MapType) -> MapTypeOption {
         switch type {
         case .explore:

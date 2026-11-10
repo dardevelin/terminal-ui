@@ -10,12 +10,7 @@ extension Backend {
         let open = MapTypeOffer.open(userAgent: Backend.userAgent)
         switch preset {
         case .sample:
-            return MapTypeOffer(
-                imagery: [ImageryOption(id: "sample", name: "Millbrook from the air",
-                                        detail: "sample imagery of the town; no network", source: SampleImagerySource())],
-                terrain: TerrainOption(id: "sample", name: "Millbrook's ground",
-                                       detail: "sample heights: shaded relief, contours", source: SampleTerrainSource()),
-                basemapIsVector: true)
+            return .sample
         case .openStreetMap:
             var offer = open
             offer.imagery = offer.imagery.map { option in

@@ -9,6 +9,7 @@ import Foundation
 /// is a parameter with no default, and requests are paced by a limiter
 /// that by default allows one a second. Search on Enter, not per keystroke.
 public struct NominatimSearch: PlaceSearch {
+    /// The OpenStreetMap Foundation's public Nominatim instance.
     public static let publicURL = URL(string: "https://nominatim.openstreetmap.org")!
 
     /// The policy's ceiling: one request a second.
@@ -49,6 +50,8 @@ public struct NominatimSearch: PlaceSearch {
         self.limit = limit
     }
 
+    /// Up to the search's limit of places matching `query`, Nominatim's best
+    /// first, preferring those inside `region`; none for a blank query.
     public func search(_ query: String, near region: GeoRect?) async throws -> [Place] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }

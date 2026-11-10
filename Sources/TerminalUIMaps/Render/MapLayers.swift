@@ -25,6 +25,8 @@ public struct TerrainStyle: Sendable, Equatable {
     /// Both, at a strength that leaves the map's own colours readable.
     public static let standard = TerrainStyle(showsHillshade: true, showsContours: true, shadeStrength: 0.55)
 
+    /// A style that shades slopes, draws contours, or both, at `shadeStrength`
+    /// from 0 to 1.
     public init(showsHillshade: Bool, showsContours: Bool, shadeStrength: Double) {
         self.showsHillshade = showsHillshade
         self.showsContours = showsContours
@@ -47,9 +49,12 @@ public struct MapLayers: Sendable, Equatable {
     /// Heights, drawn as hillshade over the areas and contours beneath the
     /// lines.
     public var terrain: MapTileStore?
+    /// How much of the vector basemap is drawn.
     public var basemap: BasemapDetail
+    /// How the terrain layer draws its heights, where there is one.
     public var terrainStyle: TerrainStyle
 
+    /// The layers given; with none, the full basemap alone.
     public init(imagery: MapTileStore? = nil, terrain: MapTileStore? = nil, basemap: BasemapDetail = .full,
                 terrainStyle: TerrainStyle = .standard) {
         self.imagery = imagery
@@ -61,6 +66,8 @@ public struct MapLayers: Sendable, Equatable {
     /// The basemap alone: the Explore map.
     public static let explore = MapLayers()
 
+    /// Whether two sets of layers are the same: the same stores, by
+    /// identity, drawn the same way.
     public static func == (left: MapLayers, right: MapLayers) -> Bool {
         left.imagery === right.imagery && left.terrain === right.terrain && left.basemap == right.basemap
             && left.terrainStyle == right.terrainStyle

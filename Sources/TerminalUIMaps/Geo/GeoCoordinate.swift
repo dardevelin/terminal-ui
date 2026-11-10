@@ -1,9 +1,12 @@
 /// A point on the WGS 84 ellipsoid, in degrees: latitude positive north,
 /// longitude positive east.
 public struct GeoCoordinate: Sendable, Hashable, Codable {
+    /// Degrees north of the equator, −90 ... 90; negative south.
     public var latitude: Double
+    /// Degrees east of the prime meridian; negative west.
     public var longitude: Double
 
+    /// The point at `latitude` and `longitude`, in degrees, taken as given.
     public init(latitude: Double, longitude: Double) {
         self.latitude = latitude
         self.longitude = longitude
@@ -28,8 +31,6 @@ enum Degrees {
     static let halfTurn = 180.0
 }
 
-/// A latitude/longitude box. It does not cross the antimeridian: `west` is
-/// at most `east`.
 extension GeoCoordinate {
     /// The great-circle distance to `other`, in metres, on a sphere of the
     /// Earth's mean radius (IUGG): within half a percent of the ellipsoid's.
@@ -44,10 +45,16 @@ extension GeoCoordinate {
     }
 }
 
+/// A latitude/longitude box. It does not cross the antimeridian: `west` is
+/// at most `east`.
 public struct GeoRect: Sendable, Hashable, Codable {
+    /// The southern edge's latitude, in degrees.
     public var south: Double
+    /// The western edge's longitude, in degrees.
     public var west: Double
+    /// The northern edge's latitude, in degrees.
     public var north: Double
+    /// The eastern edge's longitude, in degrees.
     public var east: Double
 
     /// The box spanned by two corners, whichever way round they are given.
@@ -71,20 +78,26 @@ public struct GeoRect: Sendable, Hashable, Codable {
         self = box
     }
 
+    /// The south-west corner.
     public var southWest: GeoCoordinate { GeoCoordinate(latitude: south, longitude: west) }
+    /// The north-east corner.
     public var northEast: GeoCoordinate { GeoCoordinate(latitude: north, longitude: east) }
+    /// The point midway between the edges, in degrees of each.
     public var center: GeoCoordinate {
         GeoCoordinate(latitude: (south + north) / 2, longitude: (west + east) / 2)
     }
 
+    /// Whether `coordinate` lies inside the box or on its edge.
     public func contains(_ coordinate: GeoCoordinate) -> Bool {
         (south...north).contains(coordinate.latitude) && (west...east).contains(coordinate.longitude)
     }
 
+    /// Whether the two boxes overlap or touch.
     public func intersects(_ other: GeoRect) -> Bool {
         south <= other.north && other.south <= north && west <= other.east && other.west <= east
     }
 
+    /// The smallest box holding both.
     public func union(_ other: GeoRect) -> GeoRect {
         GeoRect(south: min(south, other.south), west: min(west, other.west),
                 north: max(north, other.north), east: max(east, other.east))

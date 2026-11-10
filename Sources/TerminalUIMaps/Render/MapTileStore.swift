@@ -23,7 +23,7 @@ import TerminalUI
 @Observable
 public final class MapTileStore {
     /// Where the tiles come from. Not observed itself: a new source
-    /// changes ``info`` and ``revision``, which are.
+    /// changes ``info`` and the tiles drawn, which are.
     @ObservationIgnored public private(set) var source: any MapTileSource
     /// The source's name, zooms and attribution, once it has said.
     public private(set) var info: TileSourceInfo?
@@ -114,7 +114,7 @@ public final class MapTileStore {
         if info == nil { describeSource() }
     }
 
-    /// The tile, decoded, if the store has it. Reads ``revision``, so what
+    /// The tile, decoded, if the store has it. Reads `revision`, so what
     /// asks is drawn again when a tile lands.
     func tile(_ id: TileID) -> RenderTile? {
         _ = revision

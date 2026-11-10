@@ -11,6 +11,7 @@ public struct SampleTileSource: EncodedTileSource {
 
     private let gzipped: Bool
 
+    /// The sample town's tiles, served uncompressed.
     public init() {
         self.init(gzipped: false)
     }
@@ -21,11 +22,14 @@ public struct SampleTileSource: EncodedTileSource {
         self.gzipped = gzipped
     }
 
+    /// "Sample": every zoom, over the town's bounds.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: "Sample", attribution: SampleTown.attribution,
                        zoomRange: SampleTileSource.zoomRange, bounds: SampleTown.bounds)
     }
 
+    /// The town's features cut to the tile and encoded as a Mapbox vector
+    /// tile, or nil for a tile the town does not reach.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard let tile = SampleTileSource.tile(for: id) else { return nil }
         let bytes = VectorTileEncoder.encode(tile)
@@ -131,8 +135,11 @@ public struct SampleTileSource: EncodedTileSource {
 public struct SampleSearch: PlaceSearch {
     private let matcher = PlaceMatcher(places: SampleTown.places)
 
+    /// A search over the sample town.
     public init() {}
 
+    /// The town's places and streets whose names match `query`, best match
+    /// first and, among equals, nearest `region` first.
     public func search(_ query: String, near region: GeoRect?) async throws -> [Place] {
         matcher.search(query, near: region)
     }

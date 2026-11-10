@@ -13,12 +13,19 @@ import Foundation
 /// | `nmea:udp:PORT` | ``NMEALocationProvider`` listening for datagrams |
 /// | `corelocation` | ``CoreLocationProvider`` (macOS) |
 public enum LocationSpec: Sendable, Hashable, CustomStringConvertible {
+    /// No location.
     case none
+    /// A fixed point the app supplies.
     case here
+    /// A replay of the GPX file at `path`.
     case gpx(path: String)
+    /// The gpsd daemon at `host` and `port`.
     case gpsd(host: String, port: UInt16)
+    /// NMEA sentences from the TCP server at `host` and `port`.
     case nmeaTCP(host: String, port: UInt16)
+    /// NMEA datagrams arriving on UDP `port`.
     case nmeaUDP(port: UInt16)
+    /// Apple's Location Services.
     case coreLocation
 
     /// The provider a spelling names, or nil for one this does not read.
@@ -68,6 +75,7 @@ public enum LocationSpec: Sendable, Hashable, CustomStringConvertible {
         return host.isEmpty ? nil : (host, port)
     }
 
+    /// The spelling ``init(_:)`` reads back as the same provider.
     public var description: String {
         switch self {
         case .none: "none"

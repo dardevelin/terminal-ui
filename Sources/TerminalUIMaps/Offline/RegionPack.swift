@@ -5,15 +5,22 @@ public struct RegionPackManifest: Sendable, Codable, Equatable {
     /// The layout this code writes; a pack of another is not read.
     public static let currentFormat = 1
 
+    /// The layout the pack was written in, ``currentFormat`` for one this
+    /// code can read.
     public var format: Int
+    /// The name the pack was downloaded as.
     public var name: String
+    /// The box the pack's tiles cover.
     public var bounds: GeoRect
+    /// The shallowest zoom the pack holds.
     public var minimumZoom: Int
+    /// The deepest zoom the pack holds.
     public var maximumZoom: Int
     /// The tile source's name.
     public var source: String
     /// The credit the source's data requires.
     public var attribution: String
+    /// When the pack was first downloaded; a resume or refresh keeps it.
     public var created: Date
     /// Tiles on disk.
     public var tileCount: Int
@@ -31,8 +38,11 @@ public struct RegionPackManifest: Sendable, Codable, Equatable {
     /// from a pack written before it was kept, which reads as opaque.
     public var featureIdentifiers: FeatureIdentifiers?
 
+    /// The zooms the pack holds, from ``minimumZoom`` to ``maximumZoom``.
     public var zoomRange: ClosedRange<Int> { minimumZoom...max(minimumZoom, maximumZoom) }
 
+    /// A manifest in the current format, with no layers and opaque feature
+    /// ids.
     public init(name: String, bounds: GeoRect, zoomRange: ClosedRange<Int>, source: String, attribution: String,
                 created: Date, tileCount: Int = 0, byteCount: Int = 0, isComplete: Bool = false) {
         self.format = RegionPackManifest.currentFormat
@@ -52,13 +62,17 @@ public struct RegionPackManifest: Sendable, Codable, Equatable {
 /// A downloaded region on disk: a directory holding `manifest.json` and
 /// `tiles/<z>/<x>/<y>.mvt`, each tile the source's bytes as fetched.
 public struct RegionPack: Sendable, Equatable {
+    /// The pack's directory.
     public let directory: URL
+    /// What the pack holds.
     public let manifest: RegionPackManifest
 
     static let manifestFileName = "manifest.json"
     static let tilesDirectoryName = "tiles"
     static let tileExtension = "mvt"
 
+    /// The pack in `directory` described by `manifest`, taken as given:
+    /// nothing is read or written.
     public init(directory: URL, manifest: RegionPackManifest) {
         self.directory = directory
         self.manifest = manifest
@@ -149,8 +163,10 @@ public enum RegionPackError: Error, Sendable, Equatable {
 
 /// The directory packs live in, one subdirectory each.
 public struct RegionPackStore: Sendable {
+    /// The directory holding the packs.
     public let directory: URL
 
+    /// A store of the packs in `directory`, which need not exist yet.
     public init(directory: URL = RegionPackStore.defaultDirectory()) {
         self.directory = directory
     }

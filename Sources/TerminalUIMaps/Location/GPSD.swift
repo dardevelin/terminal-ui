@@ -53,7 +53,9 @@ private func both(_ first: Double?, _ second: Double?) -> (Double, Double)? {
 
 /// Fixes from a gpsd daemon over TCP.
 public struct GPSDLocationProvider: LocationProvider {
+    /// The host the daemon runs on.
     public let host: String
+    /// The TCP port the daemon listens on.
     public let port: UInt16
 
     /// The daemon's registered port (IANA "gpsd", 2947/tcp).
@@ -61,13 +63,18 @@ public struct GPSDLocationProvider: LocationProvider {
     /// The daemon on this machine.
     public static let defaultHost = GPSDProtocol.defaultHost
 
+    /// A provider of the daemon at `host` and `port`, this machine's on
+    /// gpsd's registered port unless others are given.
     public init(host: String = GPSDLocationProvider.defaultHost, port: UInt16 = GPSDLocationProvider.defaultPort) {
         self.host = host
         self.port = port
     }
 
+    /// "gpsd" and the daemon's address: "gpsd localhost:2947".
     public var name: String { "gpsd \(host):\(port)" }
 
+    /// The daemon's TPV reports with a 2D or 3D position, as they arrive;
+    /// the stream fails when the connection is refused or lost.
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
         LineSocket.stream(.tcp(host: host, port: port), greeting: GPSDProtocol.watchCommand, state: ()) { _, line in
             GPSDProtocol.fix(fromLine: line)

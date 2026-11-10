@@ -3,11 +3,15 @@ import Observation
 
 /// Where a navigation is: the session's state, as the app shows it.
 public enum NavigationStatus: Sendable, Equatable {
+    /// Not navigating: nothing started, or stopped.
     case idle
+    /// Following a route, taking fixes.
     case navigating
+    /// Started but not taking fixes until resumed.
     case paused
     /// Off the route, a new one being asked for.
     case rerouting
+    /// The traveller reached the destination.
     case arrived
 }
 
@@ -20,7 +24,9 @@ public enum NavigationStatus: Sendable, Equatable {
 /// reads what happened in ``history``.
 @MainActor @Observable
 public final class NavigationController {
+    /// The session being followed; nil when not navigating.
     public private(set) var session: NavigationSession?
+    /// Where navigation is, as the app shows it.
     public private(set) var status = NavigationStatus.idle
     /// The stops being navigated through; a reroute visits those not yet
     /// reached.
@@ -44,6 +50,7 @@ public final class NavigationController {
     /// another is tried.
     public static let rerouteRetryInterval: TimeInterval = 10
 
+    /// A controller with nothing to navigate, idle until started.
     public nonisolated init() {}
 
     /// Begin navigating `route`, which goes through `plan`'s stops, asking
@@ -73,6 +80,7 @@ public final class NavigationController {
         if status == .paused { status = .navigating }
     }
 
+    /// End navigation: the session is dropped and the status goes back to idle.
     public func stop() {
         generation += 1
         session = nil
@@ -80,6 +88,7 @@ public final class NavigationController {
         router = nil
     }
 
+    /// Whether a navigation has been started and not stopped: true while paused, rerouting or arrived.
     public var isActive: Bool { session != nil && status != .idle }
 
     /// Take one fix: match it, and reroute if it left the route. Returns

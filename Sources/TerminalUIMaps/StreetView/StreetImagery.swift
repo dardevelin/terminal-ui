@@ -23,6 +23,8 @@ public struct StreetImage: Sendable, Hashable, Identifiable {
     /// Where the service serves the photo, sized for a terminal.
     public var photoURL: URL?
 
+    /// An image as a service lists it; the fields a service does not give
+    /// stay nil.
     public init(id: String, coordinate: GeoCoordinate, heading: Double? = nil, captured: Date? = nil,
                 licence: String, attribution: String, sequence: String? = nil, photoURL: URL? = nil) {
         self.id = id
@@ -38,14 +40,18 @@ public struct StreetImage: Sendable, Hashable, Identifiable {
 
 /// The images either side of one along its street.
 public struct StreetImageNeighbours: Sendable, Equatable {
+    /// The image before it along the street; nil at the start of its run.
     public var previous: StreetImage?
+    /// The image after it along the street; nil at the end of its run.
     public var next: StreetImage?
 
+    /// The neighbours given; either left out is none.
     public init(previous: StreetImage? = nil, next: StreetImage? = nil) {
         self.previous = previous
         self.next = next
     }
 
+    /// No image either side.
     public static let none = StreetImageNeighbours()
 }
 
@@ -84,6 +90,7 @@ public enum StreetImageryError: Error, Sendable, Equatable, CustomStringConverti
     /// Nothing was found near the place.
     case nothingNearby
 
+    /// The reason in words, for a status line.
     public var description: String {
         switch self {
         case .missingToken(let what): "no \(what): set it in the environment"

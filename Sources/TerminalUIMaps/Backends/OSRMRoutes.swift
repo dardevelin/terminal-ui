@@ -32,6 +32,8 @@ public struct OSRMRoutes: RouteProvider {
         self.supportedModes = supportedModes
     }
 
+    /// The route from `origin` to `destination` in one request, or an
+    /// error for a mode the server is not said to support.
     public func route(from origin: GeoCoordinate, to destination: GeoCoordinate,
                       mode: TravelMode) async throws -> Route {
         try await route(through: [origin, destination], mode: mode)

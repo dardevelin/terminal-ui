@@ -21,26 +21,39 @@ import TerminalUIIO
 public final class StreetViewModel {
     /// Where a look or a step has got to.
     public enum Status: Sendable, Equatable {
+        /// Nothing asked yet, or the service just changed.
         case idle
+        /// Looking for the image nearest a place.
         case searching
+        /// An image found, its photo on its way.
         case loadingPhoto
+        /// The image's photo is shown.
         case showing
+        /// The service has no image near the place.
         case nothingNearby
+        /// The look or step failed, for the reason given.
         case failed(String)
     }
 
     /// Which way along the street to step.
     public enum Step: Sendable {
+        /// To the next image along the street.
         case forward
+        /// To the previous image along the street.
         case back
     }
 
+    /// The service images come from; ``setImagery(_:)`` changes it.
     @ObservationIgnored public private(set) var imagery: any StreetImagery
     /// The service's name, observed, for the panel's heading.
     public private(set) var imageryName: String
+    /// The image shown; nil before a look finds one.
     public private(set) var image: StreetImage?
+    /// The shown image's photo; nil while it loads.
     public private(set) var photo: ImageBuffer?
+    /// The images either side of the shown one, once they are known.
     public private(set) var neighbours = StreetImageNeighbours.none
+    /// Where the latest look or step has got to.
     public private(set) var status = Status.idle
     /// The compass bearing a step walks where images have no sequence of
     /// their own: the image's heading when it has one, else as turned.
@@ -56,6 +69,7 @@ public final class StreetViewModel {
     /// The look, step or turn under way, cancelled by the next.
     @ObservationIgnored private var current: Task<Void, Never>?
 
+    /// A street view showing nothing yet, with images from `imagery`.
     public init(imagery: any StreetImagery) {
         self.imagery = imagery
         imageryName = imagery.name

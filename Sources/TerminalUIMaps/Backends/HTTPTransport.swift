@@ -5,9 +5,12 @@ import FoundationNetworking
 
 /// An HTTP GET a backend makes.
 public struct HTTPRequest: Sendable, Hashable {
+    /// The address to fetch.
     public var url: URL
+    /// Header fields to send, keyed by field name.
     public var headers: [String: String]
 
+    /// A GET of `url` with the given header fields.
     public init(url: URL, headers: [String: String] = [:]) {
         self.url = url
         self.headers = headers
@@ -16,9 +19,12 @@ public struct HTTPRequest: Sendable, Hashable {
 
 /// What came back.
 public struct HTTPResponse: Sendable, Hashable {
+    /// The HTTP status code the server answered with.
     public var statusCode: Int
+    /// The response body's bytes, empty when there was none.
     public var body: [UInt8]
 
+    /// A response with the given status and body.
     public init(statusCode: Int, body: [UInt8]) {
         self.statusCode = statusCode
         self.body = body
@@ -28,6 +34,8 @@ public struct HTTPResponse: Sendable, Hashable {
 /// How backends reach the network: injected, so tests answer from a stub
 /// and make no network calls.
 public protocol HTTPTransport: Sendable {
+    /// Performs the request and returns what the server answered, whatever
+    /// its status; throws only when no answer came.
     func get(_ request: HTTPRequest) async throws -> HTTPResponse
 }
 
@@ -50,10 +58,13 @@ public struct URLSessionTransport: HTTPTransport {
     /// short enough that a tile which will not come is given up on.
     public static let defaultTimeout: TimeInterval = 30
 
+    /// A transport over `session`, the shared one unless another is given.
     public init(session: URLSession = .shared) {
         self.session = session
     }
 
+    /// Fetches the request through the session, waiting at most
+    /// ``defaultTimeout`` for the server; any status is returned, not thrown.
     public func get(_ request: HTTPRequest) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url, timeoutInterval: URLSessionTransport.defaultTimeout)
         for (field, value) in request.headers {

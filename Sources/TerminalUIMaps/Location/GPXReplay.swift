@@ -73,10 +73,13 @@ struct TrackTimeline: Sendable, Equatable {
 /// time reads as if the drive were now.
 public struct GPXReplayProvider: LocationProvider {
     let timeline: TrackTimeline
+    /// How many times faster than recorded the track plays: 1 is real time.
     public let speed: Double
+    /// How much of the track's time passes between one fix and the next.
     public let interval: Duration
     /// The accuracy every fix claims, in metres: a good receiver's.
     public let accuracy: Double
+    /// The name the replay was given, "replay" unless another was.
     public let name: String
     private let sleep: @Sendable (Duration) async throws -> Void
     private let startDate: Date?
@@ -107,6 +110,9 @@ public struct GPXReplayProvider: LocationProvider {
         self.startDate = startDate
     }
 
+    /// A fix every ``interval`` of the track's time from its start to its
+    /// end, then the end of the stream; it fails at once for a track with
+    /// no points.
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
         let timeline = timeline, speed = speed, interval = interval, accuracy = accuracy
         let sleep = sleep, startDate = startDate

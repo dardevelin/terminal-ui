@@ -68,6 +68,7 @@ def a_hand_written_initializer_still_needs_words() -> None:
 
 def every_published_module_is_checked() -> None:
     assert "TerminalUI3D" in checker.TARGETS, checker.TARGETS
+    assert "TerminalUIMaps" in checker.TARGETS, checker.TARGETS
     [finding] = checker.naked_pages([page("SceneView/init(_:)", "Initializer", module="TerminalUI3D")],
                                     "TerminalUI3D")
     assert finding == "TerminalUI3D/SceneView/init(_:) (Initializer)", finding

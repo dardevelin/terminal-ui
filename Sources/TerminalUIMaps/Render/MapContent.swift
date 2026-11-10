@@ -26,15 +26,18 @@ public struct MapElement: Sendable, Equatable {
 /// their course less the camera's bearing — or a dot when they have no
 /// course. SwiftUI MapKit's `UserAnnotation`.
 public struct TravellerMarker: MapContent, Sendable, Equatable {
+    /// Where the traveller is.
     public var coordinate: GeoCoordinate
     /// Degrees clockwise from north; nil standing still.
     public var course: Double?
 
+    /// The traveller at `coordinate`, heading on `course` where they move.
     public init(coordinate: GeoCoordinate, course: Double? = nil) {
         self.coordinate = coordinate
         self.course = course
     }
 
+    /// The traveller's arrow or dot, as one element.
     public var mapElements: [MapElement] { [.traveller(self)] }
 
     /// The arrows of the eight directions, clockwise from up: the screen's,
@@ -62,14 +65,18 @@ public struct TravellerMarker: MapContent, Sendable, Equatable {
 /// }
 /// ```
 public struct Marker: MapContent, Sendable, Equatable {
+    /// The text beside the pin.
     public var title: String
+    /// Where the pin stands.
     public var coordinate: GeoCoordinate
 
+    /// A pin titled `title` at `coordinate`.
     public init(_ title: String, coordinate: GeoCoordinate) {
         self.title = title
         self.coordinate = coordinate
     }
 
+    /// The pin and its title, as one element.
     public var mapElements: [MapElement] { [.marker(self)] }
 }
 
@@ -95,15 +102,19 @@ public struct MapPolyline: MapContent, Sendable, Equatable {
         case connector
     }
 
+    /// The points the line runs through, in order.
     public var coordinates: [GeoCoordinate]
     /// How many braille dots wide it is drawn.
     public var lineWidth: Double
+    /// How the line reads against the others.
     public var style: Style
 
     /// The width a polyline is drawn at unless given one: wider than any
     /// road but the biggest, so a route reads over the streets it follows.
     public static let defaultLineWidth = 2.0
 
+    /// A line through `coordinates`, `lineWidth` braille dots wide, drawn in
+    /// `style`.
     public init(coordinates: [GeoCoordinate], lineWidth: Double = MapPolyline.defaultLineWidth,
                 style: Style = .route) {
         self.coordinates = coordinates
@@ -116,13 +127,16 @@ public struct MapPolyline: MapContent, Sendable, Equatable {
         self.init(coordinates: route.coordinates, lineWidth: lineWidth)
     }
 
+    /// The line, as one element.
     public var mapElements: [MapElement] { [.polyline(self)] }
 }
 
 /// Content made of other content, as a ``MapContentBuilder`` gathers it.
 public struct MapContentGroup: MapContent, Sendable, Equatable {
+    /// The items gathered, in the order they are drawn.
     public var mapElements: [MapElement]
 
+    /// A group of `elements`; none by default.
     public init(_ elements: [MapElement] = []) {
         mapElements = elements
     }
@@ -132,22 +146,28 @@ public struct MapContentGroup: MapContent, Sendable, Equatable {
 /// `switch` and `for` — SwiftUI MapKit's `MapContentBuilder`.
 @resultBuilder
 public enum MapContentBuilder {
+    /// One marker, polyline or group of content, as a group.
     public static func buildExpression(_ content: some MapContent) -> MapContentGroup {
         MapContentGroup(content.mapElements)
     }
 
+    /// The content listed in a closure, in order.
     public static func buildBlock(_ components: MapContentGroup...) -> MapContentGroup {
         MapContentGroup(components.flatMap(\.mapElements))
     }
 
+    /// The content of an `if` without an `else`; nothing when it is false.
     public static func buildOptional(_ component: MapContentGroup?) -> MapContentGroup {
         component ?? MapContentGroup()
     }
 
+    /// The content of an `if`'s first branch or a `switch`'s case.
     public static func buildEither(first component: MapContentGroup) -> MapContentGroup { component }
 
+    /// The content of an `if`'s `else` or a `switch`'s later case.
     public static func buildEither(second component: MapContentGroup) -> MapContentGroup { component }
 
+    /// The content a `for` loop gives, every pass's in order.
     public static func buildArray(_ components: [MapContentGroup]) -> MapContentGroup {
         MapContentGroup(components.flatMap(\.mapElements))
     }

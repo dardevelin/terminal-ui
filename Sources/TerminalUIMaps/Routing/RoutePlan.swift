@@ -2,9 +2,12 @@
 public struct Waypoint: Sendable, Hashable, Codable, Identifiable {
     /// Unique within its plan, and kept as the stop moves in it.
     public var id: Int
+    /// What the stop is called in the panel: a place's name or an address.
     public var name: String
+    /// Where the stop is.
     public var coordinate: GeoCoordinate
 
+    /// A stop with the given id, name and position.
     public init(id: Int, name: String, coordinate: GeoCoordinate) {
         self.id = id
         self.name = name
@@ -16,10 +19,13 @@ public struct Waypoint: Sendable, Hashable, Codable, Identifiable {
 /// first the start, the last the destination. A value, edited by the
 /// panel and the map alike, and routed with ``RouteProvider/route(through:mode:)``.
 public struct RoutePlan: Sendable, Hashable, Codable {
+    /// The stops in the order they are visited.
     public private(set) var waypoints: [Waypoint] = []
+    /// How the route between the stops is travelled.
     public var mode: TravelMode
     private var nextID = 0
 
+    /// An empty plan, travelled by `mode`.
     public init(mode: TravelMode = .driving) {
         self.mode = mode
     }
@@ -33,6 +39,7 @@ public struct RoutePlan: Sendable, Hashable, Codable {
     /// Whether there is a start and an end to route between.
     public var isRoutable: Bool { waypoints.count >= 2 }
 
+    /// Each stop's position, in the order they are visited.
     public var coordinates: [GeoCoordinate] { waypoints.map(\.coordinate) }
 
     /// Add a stop at the end; returns its id.
@@ -71,6 +78,7 @@ public struct RoutePlan: Sendable, Hashable, Codable {
         waypoints.reverse()
     }
 
+    /// Remove every stop, leaving the travel mode as it is.
     public mutating func removeAll() {
         waypoints.removeAll()
     }

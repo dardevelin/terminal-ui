@@ -9,14 +9,19 @@ import Foundation
 /// out, as real ones do, so a card shows what is missing. The town is on
 /// Null Island, and its hours are in UTC.
 public struct SamplePlaceDetails: PlaceDetails {
+    /// "Sample".
     public let sourceName = "Sample"
+    /// Every field: the sample town makes up all of them.
     public let fields = Set(PlaceDetailField.allCases)
 
+    /// The sample town's details.
     public init() {}
 
     /// The town's clock.
     static let timeZone = TimeZone(identifier: "UTC") ?? .current
 
+    /// The made-up details of the business named like `place`, or nil for a
+    /// place the town has none for.
     public func details(for place: Place) async throws -> PlaceInformation? {
         Self.details(named: place.name)
     }

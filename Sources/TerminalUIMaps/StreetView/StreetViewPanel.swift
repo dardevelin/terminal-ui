@@ -11,9 +11,13 @@ import TerminalUIIO
 /// StreetPhotoView(photo: street.photo, maximumRows: 18)
 /// ```
 public struct StreetPhotoView: TerminalView {
+    /// The photo drawn; nil draws nothing.
     public let photo: ImageBuffer?
+    /// The most rows the photo takes, at least one; nil lets it take the
+    /// height its proportions give.
     public let maximumRows: Int?
 
+    /// A view of `photo`, at most `maximumRows` rows tall where given.
     public init(photo: ImageBuffer?, maximumRows: Int? = nil) {
         self.photo = photo
         self.maximumRows = maximumRows.map { max(1, $0) }
@@ -97,6 +101,7 @@ public struct StreetPhotoView: TerminalView {
 /// one before, `←` and `→` turn the way a step walks, for imagery whose
 /// photos have no sequence.
 public struct StreetViewPanel: TerminalView {
+    /// The street view whose image, status and steps the panel shows.
     public let model: StreetViewModel
     /// The most rows the photo takes, so its caption and credit stay in
     /// view; a taller photo shows its middle band.
@@ -105,6 +110,7 @@ public struct StreetViewPanel: TerminalView {
     /// Enough for a 16:9 photo across a 64-column panel.
     public static let defaultPhotoRows = 18
 
+    /// A panel for `model`, its photo at most `photoRows` rows tall.
     public init(model: StreetViewModel, photoRows: Int = StreetViewPanel.defaultPhotoRows) {
         self.model = model
         self.photoRows = photoRows

@@ -2,7 +2,9 @@ import Foundation
 
 /// What a raster layer of a pack holds.
 public enum RegionPackLayerKind: String, Sendable, Codable, CaseIterable {
+    /// Aerial or satellite photographs.
     case imagery
+    /// Elevation, for relief shading.
     case terrain
 }
 
@@ -16,19 +18,30 @@ public enum RegionPackLayerKind: String, Sendable, Codable, CaseIterable {
 /// Terrain Tiles and the sample town's. Apple's imagery is a snapshot
 /// shown with Apple's map, not a tile to keep, and is never a layer.
 public struct RegionPackLayer: Sendable, Codable, Equatable {
+    /// What the layer holds; a pack has at most one layer of each kind.
     public var kind: RegionPackLayerKind
-    /// The source's name and the credit its licence requires.
+    /// The source's name.
     public var source: String
+    /// The credit the source's licence requires.
     public var attribution: String
+    /// How the layer's tile bytes decode into a tile.
     public var encoding: RasterEncoding
+    /// The shallowest zoom the layer holds.
     public var minimumZoom: Int
+    /// The deepest zoom the layer holds.
     public var maximumZoom: Int
+    /// Tiles on disk.
     public var tileCount: Int
+    /// Their bytes, as fetched.
     public var byteCount: Int
+    /// Whether every tile of the layer has been fetched: false while its
+    /// download runs, and after one that stopped, until it is resumed.
     public var isComplete: Bool
 
+    /// The zooms the layer holds, from ``minimumZoom`` to ``maximumZoom``.
     public var zoomRange: ClosedRange<Int> { minimumZoom...max(minimumZoom, maximumZoom) }
 
+    /// A layer's record, of no tiles yet unless `tileCount` says otherwise.
     public init(kind: RegionPackLayerKind, source: String, attribution: String, encoding: RasterEncoding,
                 zoomRange: ClosedRange<Int>, tileCount: Int = 0, byteCount: Int = 0, isComplete: Bool = false) {
         self.kind = kind
@@ -75,25 +88,35 @@ extension RegionPack {
 /// A pack's raster layer, served from disk: its tiles decoded as the
 /// source's were.
 public struct OfflineLayerSource: EncodedTileSource {
+    /// The pack the layer belongs to.
     public let pack: RegionPack
+    /// The layer whose tiles are served.
     public let layer: RegionPackLayer
 
+    /// A source serving `layer`'s tiles from `pack`'s directory.
     public init(pack: RegionPack, layer: RegionPackLayer) {
         self.pack = pack
         self.layer = layer
     }
 
+    /// The layer's source name, attribution and zooms, over the pack's
+    /// bounds; nothing is fetched.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: layer.source, attribution: layer.attribution, zoomRange: layer.zoomRange,
                        bounds: pack.manifest.bounds)
     }
 
+    /// The tile's bytes as the layer stored them, or nil where the tile
+    /// lies outside the layer's zooms or the pack's bounds or was never
+    /// downloaded.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard layer.zoomRange.contains(id.zoom), id.bounds.intersects(pack.manifest.bounds),
               let url = pack.storedLayerTile(layer.kind, tile: id) else { return nil }
         return Array(try Data(contentsOf: url))
     }
 
+    /// The tile decoded by the layer's encoding, or nil where the layer has
+    /// no such tile on disk.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let bytes = try await tileData(id) else { return nil }
         return try layer.encoding.decode(bytes)
@@ -111,6 +134,9 @@ public struct RegionLayerDownloader: Sendable {
     private let concurrency: Int
     private let tileLimit: Int
 
+    /// A downloader of `source`'s tiles as the pack's `kind` layer, decoded
+    /// by `encoding`, fetching `concurrency` tiles at once and refusing a
+    /// layer of more than `tileLimit`.
     public init(source: any EncodedTileSource, kind: RegionPackLayerKind, encoding: RasterEncoding,
                 concurrency: Int = RegionDownloader.defaultConcurrency,
                 tileLimit: Int = RegionDownloader.defaultTileLimit) {

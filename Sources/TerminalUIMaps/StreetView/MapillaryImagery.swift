@@ -9,10 +9,12 @@ import TerminalUIIO
 /// sequence comes from `GET /image_ids?sequence_id=…`, the sequence's
 /// images in order; its photo is `thumb_1024_url`.
 public struct MapillaryImagery: StreetImagery {
+    /// Mapillary's Graph API, graph.mapillary.com.
     public static let defaultEndpoint = URL(string: "https://graph.mapillary.com")!
     /// The environment variable a token is read from by `init(environment:transport:userAgent:)`.
     static let tokenVariable = "MAPILLARY_ACCESS_TOKEN"
 
+    /// "Mapillary".
     public let name = "Mapillary"
     private let token: String
     private let endpoint: URL
@@ -24,6 +26,8 @@ public struct MapillaryImagery: StreetImagery {
         + "thumb_1024_url,sequence,creator"
     static let searchLimit = 20
 
+    /// Mapillary reached with a client `token`, sending `userAgent` with
+    /// every request.
     public init(token: String, endpoint: URL = MapillaryImagery.defaultEndpoint,
                 transport: any HTTPTransport = URLSessionTransport(), userAgent: String) {
         self.token = token
@@ -43,6 +47,8 @@ public struct MapillaryImagery: StreetImagery {
         self.init(token: token, transport: transport, userAgent: userAgent)
     }
 
+    /// The images within `metres` of a coordinate, nearest first, from at
+    /// most 20 the box around it holds.
     public func images(near coordinate: GeoCoordinate, within metres: Double) async throws -> [StreetImage] {
         let box = coordinate.box(metres: metres)
         let response = try await transport.json(MapillaryList.self, from: request("images", [
@@ -55,6 +61,8 @@ public struct MapillaryImagery: StreetImagery {
             .sorted { $0.coordinate.metres(to: coordinate) < $1.coordinate.metres(to: coordinate) }
     }
 
+    /// The images before and after `image` in its sequence; none for an
+    /// image without one. `bearing` is not used.
     public func neighbours(of image: StreetImage, along bearing: Double) async throws -> StreetImageNeighbours {
         guard let sequence = image.sequence else { return .none }
         let ids = try await transport.json(MapillaryIDList.self,
@@ -65,6 +73,8 @@ public struct MapillaryImagery: StreetImagery {
         return StreetImageNeighbours(previous: try await previous, next: try await next)
     }
 
+    /// The image's 1024-pixel thumbnail, decoded; throws
+    /// ``StreetImageryError/noPhoto`` when it has none.
     public func photo(of image: StreetImage) async throws -> ImageBuffer {
         guard let url = image.photoURL else { throw StreetImageryError.noPhoto }
         return try await transport.photo(at: url, userAgent: userAgent)

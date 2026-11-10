@@ -79,6 +79,7 @@ public struct NavigationCamera: Sendable {
     /// route they were.
     private var shown: (coordinate: GeoCoordinate, course: Double?, distanceAlong: Double?)?
 
+    /// A camera that follows a traveller moving as `profile` says.
     public init(profile: TravelProfile = .car) {
         self.profile = profile
         follow = FollowCamera(configuration: FollowCameraConfiguration(profile: profile))

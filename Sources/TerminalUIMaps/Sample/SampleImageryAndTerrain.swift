@@ -72,13 +72,17 @@ public struct SampleTerrainSource: EncodedTileSource {
     /// Terrarium tiles are 256 samples a side.
     static let samplesPerTile = 256
 
+    /// The sample town's terrain.
     public init() {}
 
+    /// "Sample terrain": every zoom, over the town's bounds.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: "Sample terrain", attribution: SampleTown.attribution,
                        zoomRange: SampleTileSource.zoomRange, bounds: SampleTown.bounds)
     }
 
+    /// The tile's heights as a Terrarium-encoded PNG, or nil for a tile the
+    /// town does not reach.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard id.isValid, SampleTileSource.zoomRange.contains(id.zoom), id.bounds.intersects(SampleTown.bounds),
               let image = Terrarium.image(of: SampleGround.tile(id, samples: Self.samplesPerTile)) else { return nil }
@@ -86,6 +90,8 @@ public struct SampleTerrainSource: EncodedTileSource {
                                 colourType: .rgb)
     }
 
+    /// The tile's heights, decoded from its PNG; nil for a tile the town
+    /// does not reach.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let bytes = try await tileData(id) else { return nil }
         return try RasterEncoding.terrarium.decode(bytes)
@@ -99,13 +105,17 @@ public struct SampleTerrainSource: EncodedTileSource {
 public struct SampleImagerySource: EncodedTileSource {
     static let pixelsPerTile = 256
 
+    /// The sample town's aerial view.
     public init() {}
 
+    /// "Sample imagery": every zoom, over the town's bounds.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: "Sample imagery", attribution: SampleTown.attribution,
                        zoomRange: SampleTileSource.zoomRange, bounds: SampleTown.bounds)
     }
 
+    /// The tile painted and encoded as a PNG, or nil for a tile the town
+    /// does not reach.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         guard id.isValid, SampleTileSource.zoomRange.contains(id.zoom),
               id.bounds.intersects(SampleTown.bounds) else { return nil }
@@ -114,6 +124,8 @@ public struct SampleImagerySource: EncodedTileSource {
                                 colourType: .rgb)
     }
 
+    /// The tile's picture, decoded from its PNG; nil for a tile the town
+    /// does not reach.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let bytes = try await tileData(id) else { return nil }
         return try RasterEncoding.picture.decode(bytes)

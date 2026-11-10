@@ -46,6 +46,7 @@ struct TileJSON: Decodable, Sendable {
 /// names the current planet build's tile template and zooms; tiles are
 /// then fetched from it.
 public actor OpenFreeMapTileSource: EncodedTileSource {
+    /// The TileJSON of OpenFreeMap's whole-planet build.
     public static let planetURL = URL(string: "https://tiles.openfreemap.org/planet")!
 
     /// OpenFreeMap's attribution (openfreemap.org/quick_start), as plain
@@ -57,6 +58,8 @@ public actor OpenFreeMapTileSource: EncodedTileSource {
     private let userAgent: String
     private var tileJSON: Task<TileJSON, any Error>?
 
+    /// A source reading the TileJSON at `tileJSONURL`, naming the
+    /// application `userAgent` on every request.
     public init(tileJSONURL: URL = OpenFreeMapTileSource.planetURL,
                 transport: any HTTPTransport = URLSessionTransport(),
                 userAgent: String) {
@@ -65,6 +68,8 @@ public actor OpenFreeMapTileSource: EncodedTileSource {
         self.userAgent = userAgent
     }
 
+    /// The name, zooms, bounds and attribution the TileJSON gives, with
+    /// OpenFreeMap's own attribution where it gives none.
     public func info() async throws -> TileSourceInfo {
         let metadata = try await loadTileJSON()
         let attribution = metadata.attribution.map(OpenFreeMapTileSource.plainText) ?? OpenFreeMapTileSource.attribution
@@ -74,6 +79,8 @@ public actor OpenFreeMapTileSource: EncodedTileSource {
                               featureIdentifiers: .openMapTiles)
     }
 
+    /// The tile's bytes as served, or nil outside the source's zooms or
+    /// where the server has no tile.
     public func tileData(_ id: TileID) async throws -> [UInt8]? {
         let metadata = try await loadTileJSON()
         guard id.isValid, metadata.zoomRange.contains(id.zoom) else { return nil }

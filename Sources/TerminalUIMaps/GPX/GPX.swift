@@ -3,15 +3,20 @@ import Foundation
 /// A point of a GPX file: a waypoint, a route point or a track point, which
 /// GPX 1.1 gives one type, `wptType`.
 public struct GPXPoint: Sendable, Hashable {
+    /// Where the point is: its `lat` and `lon`.
     public var coordinate: GeoCoordinate
     /// Metres above mean sea level.
     public var elevation: Double?
+    /// When the point was recorded, if the file says.
     public var time: Date?
+    /// The point's name, if it has one.
     public var name: String?
+    /// The point's free-text description, GPX's `desc`, if any.
     public var description: String?
     /// Horizontal dilution of precision, as the receiver reported it.
     public var horizontalDilution: Double?
 
+    /// A point at `coordinate`, with whichever of the optional fields are known.
     public init(coordinate: GeoCoordinate, elevation: Double? = nil, time: Date? = nil, name: String? = nil,
                 description: String? = nil, horizontalDilution: Double? = nil) {
         self.coordinate = coordinate
@@ -25,12 +30,15 @@ public struct GPXPoint: Sendable, Hashable {
 
 /// A planned route: its points are the stops, not the road between them.
 public struct GPXRoute: Sendable, Hashable {
+    /// The route's name, if it has one.
     public var name: String?
     /// GPX's free-form `type`: what the route is travelled by, as
     /// ``TravelMode/init(gpxType:)`` reads it.
     public var type: String?
+    /// The stops, in the order they are visited.
     public var points: [GPXPoint]
 
+    /// A route through `points`, optionally named and typed.
     public init(name: String? = nil, type: String? = nil, points: [GPXPoint]) {
         self.name = name
         self.type = type
@@ -41,11 +49,14 @@ public struct GPXRoute: Sendable, Hashable {
 /// A recorded track: where a traveller went, in segments broken where the
 /// recording was.
 public struct GPXTrack: Sendable, Hashable {
+    /// The track's name, if it has one.
     public var name: String?
     /// GPX's free-form `type`.
     public var type: String?
+    /// The recorded points, one array for each unbroken stretch of recording.
     public var segments: [[GPXPoint]]
 
+    /// A track of `segments`, optionally named and typed.
     public init(name: String? = nil, type: String? = nil, segments: [[GPXPoint]]) {
         self.name = name
         self.type = type
@@ -65,17 +76,25 @@ public struct GPXTrack: Sendable, Hashable {
 /// try GPXDocument(routes: [GPXRoute(plan)]).write(to: url)
 /// ```
 public struct GPXDocument: Sendable, Hashable {
+    /// The document's name, from its `metadata`, if it has one.
     public var name: String?
+    /// The standalone points of interest, GPX's `wpt` elements.
     public var waypoints: [GPXPoint]
+    /// The planned routes, GPX's `rte` elements.
     public var routes: [GPXRoute]
+    /// The recorded tracks, GPX's `trk` elements.
     public var tracks: [GPXTrack]
     /// The program that wrote the file, which GPX 1.1 requires.
     public var creator: String
 
+    /// The GPX 1.1 XML namespace a written document declares.
     public static let namespace = "http://www.topografix.com/GPX/1/1"
+    /// The GPX version a written document declares.
     public static let version = "1.1"
+    /// The `creator` a document names when none is given.
     public static let defaultCreator = "TerminalUIMaps"
 
+    /// A document of the given waypoints, routes and tracks.
     public init(name: String? = nil, waypoints: [GPXPoint] = [], routes: [GPXRoute] = [], tracks: [GPXTrack] = [],
                 creator: String = GPXDocument.defaultCreator) {
         self.name = name
@@ -105,6 +124,7 @@ public struct GPXDocument: Sendable, Hashable {
                   creator: root.attributes["creator"] ?? GPXDocument.defaultCreator)
     }
 
+    /// Read the GPX document in the file at `url`.
     public init(contentsOf url: URL) throws {
         let data = try Data(contentsOf: url)
         try self.init(xml: String(decoding: data, as: UTF8.self))
@@ -164,6 +184,8 @@ public struct GPXDocument: Sendable, Hashable {
         return writer.output
     }
 
+    /// Write the document as GPX 1.1 to the file at `url`, replacing it
+    /// atomically.
     public func write(to url: URL) throws {
         try Data(xml.utf8).write(to: url, options: .atomic)
     }
@@ -202,6 +224,7 @@ public enum GPXError: Error, Sendable, Equatable, CustomStringConvertible {
     /// A point without a latitude and longitude in range.
     case badPoint(String, [String: String])
 
+    /// The reason, as a sentence for the reader.
     public var description: String {
         switch self {
         case .notGPX(let root): "not a GPX file: its root element is <\(root)>"

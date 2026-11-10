@@ -4,10 +4,13 @@ import Observation
 public enum PlaceDetailsState: Sendable, Equatable {
     /// No place on show.
     case idle
+    /// The place's details are being fetched.
     case loading(Place)
+    /// The place and what the backend knows of it.
     case loaded(Place, PlaceInformation)
     /// The backend does not know the place.
     case notFound(Place)
+    /// The fetch failed, and why, in words for a card.
     case failed(Place, String)
 
     /// The place on show, whatever its details' state.
@@ -35,6 +38,7 @@ public enum PlaceDetailsState: Sendable, Equatable {
 @MainActor
 @Observable
 public final class PlaceDetailsLoader {
+    /// The place on show and how far its details have got.
     public private(set) var state = PlaceDetailsState.idle
     /// The backend asked; nil where the app has none.
     @ObservationIgnored public private(set) var provider: (any PlaceDetails)?

@@ -22,8 +22,8 @@ struct MapsApp: TerminalView {
                 MainActor.assumeIsolated { maps.trip.mapContent }
                 if let route = model.route {
                     MapPolyline(route)
-                    MapContentGroup(RouteEnds(route: route, origin: model.origin?.coordinate,
-                                              destination: model.destination?.coordinate).mapElements)
+                    RouteEnds(route: route, origin: model.origin?.coordinate,
+                              destination: model.destination?.coordinate)
                     if let destination = model.destination {
                         Marker(destination.name, coordinate: destination.coordinate)
                     }

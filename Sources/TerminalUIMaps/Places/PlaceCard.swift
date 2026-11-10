@@ -12,8 +12,11 @@ import TerminalUI
 public struct PlaceCardContent: Sendable, Equatable {
     /// How a line is set.
     public enum Tone: Sendable, Equatable {
+        /// The place's name, bold.
         case title
+        /// What the place is, and what it serves.
         case category
+        /// A plain detail: an address, a phone number, a website.
         case body
         /// Good news: open now, wheelchair accessible.
         case positive
@@ -23,16 +26,21 @@ public struct PlaceCardContent: Sendable, Equatable {
         case note
     }
 
+    /// One line of the card and how it is set.
     public struct Line: Sendable, Equatable {
+        /// What the line says.
         public var text: String
+        /// How the line is set.
         public var tone: Tone
 
+        /// A line saying `text`, set in `tone`.
         public init(_ text: String, _ tone: Tone) {
             self.text = text
             self.tone = tone
         }
     }
 
+    /// The card's lines, top to bottom; none where the state has no place.
     public var lines: [Line]
 
     /// The card for `state`'s place, from `provider`, with open-now worked
@@ -158,7 +166,10 @@ extension PointOfInterestCategory {
 /// A place card: the lines of a ``PlaceCardContent`` on a raised, opaque
 /// ground with a border, and a hint line beneath them.
 public struct PlaceCardView: TerminalView {
+    /// The lines the card shows.
     public let content: PlaceCardContent
+    /// A muted line beneath the content, such as which key closes the
+    /// card; nil for none.
     public let hint: String?
     /// The widest the card grows, in columns, its border included; longer
     /// lines are cut.
@@ -167,6 +178,8 @@ public struct PlaceCardView: TerminalView {
     /// Wide enough for a street address on one line.
     public static let defaultMaximumWidth = 48
 
+    /// A card of `content`, with `hint` beneath it, at most `maximumWidth`
+    /// columns wide.
     public init(_ content: PlaceCardContent, hint: String? = nil, maximumWidth: Int = PlaceCardView.defaultMaximumWidth) {
         self.content = content
         self.hint = hint
@@ -234,8 +247,10 @@ public struct PlaceCardView: TerminalView {
 /// The map's point-of-interest glyphs and what each means, a kind a line
 /// in the kind's colour: what an app shows beside a map of a dense city.
 public struct PointOfInterestLegend: TerminalView {
+    /// The kinds listed, in order.
     public let categories: [PointOfInterestCategory]
 
+    /// A legend of `categories`, every kind unless told otherwise.
     public init(_ categories: [PointOfInterestCategory] = PointOfInterestCategory.allCases) {
         self.categories = categories
     }

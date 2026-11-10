@@ -12,8 +12,10 @@ import TerminalUIIO
 /// `prev` and `next`, and serves its photo as the `thumb` asset (500 px
 /// wide) and `sd` (2 048 px).
 public struct PanoramaxImagery: StreetImagery {
+    /// The Panoramax API at api.panoramax.xyz.
     public static let defaultEndpoint = URL(string: "https://api.panoramax.xyz/api")!
 
+    /// "Panoramax".
     public let name = "Panoramax"
     private let endpoint: URL
     private let transport: any HTTPTransport
@@ -23,6 +25,7 @@ public struct PanoramaxImagery: StreetImagery {
     /// busy street, few enough to be a light request.
     static let searchLimit = 20
 
+    /// Panoramax at `endpoint`, sending `userAgent` with every request.
     public init(endpoint: URL = PanoramaxImagery.defaultEndpoint, transport: any HTTPTransport = URLSessionTransport(),
                 userAgent: String) {
         self.endpoint = endpoint
@@ -30,6 +33,8 @@ public struct PanoramaxImagery: StreetImagery {
         self.userAgent = userAgent
     }
 
+    /// The images within `metres` of a coordinate, nearest first, from at
+    /// most 20 the box around it holds.
     public func images(near coordinate: GeoCoordinate, within metres: Double) async throws -> [StreetImage] {
         let box = coordinate.box(metres: metres)
         var components = URLComponents(url: endpoint.appendingPathComponent("search"), resolvingAgainstBaseURL: false)
@@ -45,6 +50,8 @@ public struct PanoramaxImagery: StreetImagery {
             .sorted { $0.coordinate.metres(to: coordinate) < $1.coordinate.metres(to: coordinate) }
     }
 
+    /// The images the item links as before and after it in its sequence;
+    /// none for an image without one. `bearing` is not used.
     public func neighbours(of image: StreetImage, along bearing: Double) async throws -> StreetImageNeighbours {
         guard let sequence = image.sequence else { return .none }
         let item = try await self.item(image.id, in: sequence)
@@ -53,6 +60,8 @@ public struct PanoramaxImagery: StreetImagery {
         return StreetImageNeighbours(previous: try await previous, next: try await next)
     }
 
+    /// The image's photo, decoded; throws ``StreetImageryError/noPhoto``
+    /// when it has none.
     public func photo(of image: StreetImage) async throws -> ImageBuffer {
         guard let url = image.photoURL else { throw StreetImageryError.noPhoto }
         return try await transport.photo(at: url, userAgent: userAgent)

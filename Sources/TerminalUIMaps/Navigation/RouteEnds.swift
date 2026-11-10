@@ -3,9 +3,13 @@ import Foundation
 /// Which side of the road a place lies, seen along the way the traveller
 /// arrives.
 public enum ArrivalSide: String, Sendable, Equatable {
+    /// On the traveller's left.
     case left
+    /// On the traveller's right.
     case right
+    /// Straight on, past the route's end.
     case ahead
+    /// Back the way the traveller came.
     case behind
 }
 
@@ -14,7 +18,7 @@ public enum ArrivalSide: String, Sendable, Equatable {
 /// origin, so the place itself is a short walk off the line. Apple and
 /// Google Maps draw that walk dotted, and say which side the destination
 /// is on ("Your destination is on the left").
-public struct RouteEnds: Sendable, Equatable {
+public struct RouteEnds: MapContent, Sendable, Equatable {
     /// Thresholds for what counts as a gap and as a side.
     public struct Configuration: Sendable, Equatable {
         /// Metres apart under which the place is on the route: a GPS fix's
@@ -27,6 +31,7 @@ public struct RouteEnds: Sendable, Equatable {
         /// a step's bearing span.
         public var bearingSpan = StepShapes.bearingSpan
 
+        /// The default thresholds, each as its property states.
         public init() {}
     }
 

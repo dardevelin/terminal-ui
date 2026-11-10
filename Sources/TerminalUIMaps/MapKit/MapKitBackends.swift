@@ -7,8 +7,10 @@ import TerminalUIIO
 
 /// Place search with Apple's `MKLocalSearch`. macOS only.
 public struct MapKitSearch: PlaceSearch {
+    /// A search through Apple's Maps service; it needs no key.
     public init() {}
 
+    /// The places Apple finds for `query`, favouring `region` when one is given; none for a blank query.
     public func search(_ query: String, near region: GeoRect?) async throws -> [Place] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -27,8 +29,10 @@ public struct MapKitSearch: PlaceSearch {
 
 /// Directions with Apple's `MKDirections`. macOS only.
 public struct MapKitRoutes: RouteProvider {
+    /// Directions from Apple's Maps service; it needs no key.
     public init() {}
 
+    /// Apple's first route from `origin` to `destination` by `mode`, its manoeuvres inferred from each step's line.
     public func route(from origin: GeoCoordinate, to destination: GeoCoordinate,
                       mode: TravelMode) async throws -> Route {
         try await MapKitRoutes.run(from: origin, to: destination, mode: mode)
@@ -74,19 +78,23 @@ public struct MapKitSnapshotSource: MapTileSource {
     /// MapKit's zooms: its map data runs to street level, about OSM's 20.
     public static let zoomRange = 0...20
 
+    /// The credit Apple's terms ask to be shown with the map.
     public static let attribution = "Apple Maps"
 
     private let pixelsPerTile: Int
 
+    /// A source that snapshots each tile at `pixelsPerTile` pixels square, at least 1.
     public init(pixelsPerTile: Int = MapKitSnapshotSource.defaultPixelsPerTile) {
         self.pixelsPerTile = max(1, pixelsPerTile)
     }
 
+    /// The source's name, Apple's attribution and MapKit's zooms, known without a request.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: "Apple Maps", attribution: MapKitSnapshotSource.attribution,
                        zoomRange: MapKitSnapshotSource.zoomRange)
     }
 
+    /// The tile as a snapshot picture, or nil for a tile outside the world or MapKit's zooms.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard id.isValid, MapKitSnapshotSource.zoomRange.contains(id.zoom) else { return nil }
         return .raster(try await MapKitSnapshotSource.snapshot(id, pixels: pixelsPerTile))

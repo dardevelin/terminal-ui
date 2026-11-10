@@ -14,23 +14,40 @@ import TerminalUI
 /// The glyphs are ASCII or shapes `GlyphGeometry` draws, so a recording of
 /// the map draws them the same with any font.
 public enum PointOfInterestCategory: String, Sendable, Hashable, CaseIterable, Identifiable {
+    /// Restaurants, fast food and ice cream.
     case food
+    /// Cafés, coffee shops and bakeries.
     case cafe
+    /// Bars, pubs and nightclubs.
     case bar
+    /// Supermarkets, grocers, butchers and markets.
     case groceries
+    /// Shops and services, and any kind the map does not otherwise know.
     case shop
+    /// Hotels and campsites.
     case lodging
+    /// Stations, stops, ferry terminals and airports.
     case transit
+    /// Pharmacies, hospitals, doctors, dentists and vets.
     case health
+    /// Banks and cash machines.
     case money
+    /// Museums, galleries, theatres, cinemas and libraries.
     case culture
+    /// Attractions, monuments, viewpoints and artworks.
     case sight
+    /// Places of worship.
     case worship
+    /// Schools, colleges and universities.
     case education
+    /// Parks, gardens, playgrounds and sport.
     case leisure
+    /// Town halls, police and fire stations, post offices.
     case civic
+    /// Parking, fuel, car and bicycle places.
     case vehicle
 
+    /// The category itself, as its identity in a list.
     public var id: Self { self }
 
     /// The mark drawn at the place: one cell wide.

@@ -1,10 +1,11 @@
 import Foundation
 import TerminalUIIO
 
-/// Street view of the sample town: a photo every ``spacing`` metres along
+/// Street view of the sample town: a photo every 40 metres along
 /// each of its streets, facing along the street, painted from the town
 /// itself — no network, the tests' street imagery and the sample's.
 public struct SampleStreetImagery: StreetImagery {
+    /// "Millbrook street view".
     public let name = "Millbrook street view"
     /// How far apart the photos are along a street.
     static let spacing = 40.0
@@ -15,6 +16,7 @@ public struct SampleStreetImagery: StreetImagery {
     /// When the town was photographed: a fixed day, so a test reads it.
     static let captured = Date(timeIntervalSince1970: 1_780_000_000)
 
+    /// Street view of the sample town.
     public init() {}
 
     /// Every photo of the town, street by street.
@@ -47,11 +49,14 @@ public struct SampleStreetImagery: StreetImagery {
         return images
     }()
 
+    /// The town's photos within `metres` of a coordinate, nearest first.
     public func images(near coordinate: GeoCoordinate, within metres: Double) async throws -> [StreetImage] {
         Self.images.filter { $0.coordinate.metres(to: coordinate) <= metres }
             .sorted { $0.coordinate.metres(to: coordinate) < $1.coordinate.metres(to: coordinate) }
     }
 
+    /// The photos before and after `image` along its street; `bearing` is
+    /// not used, as every photo has a street.
     public func neighbours(of image: StreetImage, along bearing: Double) async throws -> StreetImageNeighbours {
         let street = Self.images.filter { $0.sequence == image.sequence }
         guard let index = street.firstIndex(where: { $0.id == image.id }) else { return .none }
@@ -59,6 +64,8 @@ public struct SampleStreetImagery: StreetImagery {
                                      next: index + 1 < street.count ? street[index + 1] : nil)
     }
 
+    /// The image's photo, painted from the town: sky, the road ahead and
+    /// houses either side.
     public func photo(of image: StreetImage) async throws -> ImageBuffer {
         try SampleStreetPhoto.paint(image)
     }

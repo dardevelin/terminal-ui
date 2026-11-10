@@ -5,8 +5,12 @@ import Foundation
 /// destination, with a step for each street taken. No network, so
 /// directions work on a first launch and in tests as search does.
 public struct SampleRoutes: RouteProvider {
+    /// Directions over the sample town's streets.
     public init() {}
 
+    /// The shortest way along the town's streets, the ones `mode` may take,
+    /// between those nearest each end; throws
+    /// ``MapServiceError/noRoute(_:)`` where no street reaches either.
     public func route(from origin: GeoCoordinate, to destination: GeoCoordinate,
                       mode: TravelMode) async throws -> Route {
         try SampleRoutes.network.route(from: origin, to: destination, mode: mode)

@@ -18,6 +18,7 @@ public struct MapKitImagerySource: MapTileSource {
         case hybrid
     }
 
+    /// Which imagery map is snapshotted: imagery alone or with roads and names.
     public let style: Style
     private let pixelsPerTile: Int
 
@@ -25,18 +26,22 @@ public struct MapKitImagerySource: MapTileSource {
     /// beyond, the deepest is drawn larger.
     public static let zoomRange = 0...19
 
+    /// The credit Apple's terms ask to be shown with the imagery.
     public static let attribution = "Apple Maps imagery"
 
+    /// A source that snapshots each tile in `style` at `pixelsPerTile` pixels square, at least 1.
     public init(style: Style = .imagery, pixelsPerTile: Int = MapKitSnapshotSource.defaultPixelsPerTile) {
         self.style = style
         self.pixelsPerTile = max(1, pixelsPerTile)
     }
 
+    /// The source's name for its style, Apple's attribution and the imagery's zooms, known without a request.
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: style == .imagery ? "Apple satellite" : "Apple hybrid",
                        attribution: MapKitImagerySource.attribution, zoomRange: MapKitImagerySource.zoomRange)
     }
 
+    /// The tile as a snapshot picture, or nil for a tile outside the world or the imagery's zooms.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard id.isValid, MapKitImagerySource.zoomRange.contains(id.zoom) else { return nil }
         return .raster(try await MapKitImagerySource.snapshot(id, style: style, pixels: pixelsPerTile))

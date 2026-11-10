@@ -13,7 +13,9 @@ import MapKit
 /// by it (`MKMapItemRequest`, macOS 15); any other is looked for by name
 /// near where it is, and the nearest result within ``matchRadius`` taken.
 public struct MapKitPlaceDetails: PlaceDetails {
+    /// The source's name, as a card credits it.
     public let sourceName = "Apple Maps"
+    /// The details Apple's public MapKit gives: category, address, phone and website.
     public let fields: Set<PlaceDetailField> = [.category, .address, .phone, .website]
 
     /// How far, in metres, a search result may be from the place it is
@@ -24,8 +26,10 @@ public struct MapKitPlaceDetails: PlaceDetails {
     /// longitude: a neighbourhood.
     static let searchSpan = 0.01
 
+    /// Details through Apple's Maps service; it needs no key.
     public init() {}
 
+    /// The place's details from Apple, by its MapKit identifier or by name nearby; nil when no match lies within ``matchRadius``.
     public func details(for place: Place) async throws -> PlaceInformation? {
         try await Self.lookUp(place)
     }

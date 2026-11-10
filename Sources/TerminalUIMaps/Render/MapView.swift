@@ -4,7 +4,7 @@ import TerminalUI
 ///
 /// The basemap comes from a ``MapTileStore``; markers and polylines go in
 /// the content closure. The map fills what its container offers, as a
-/// ``Canvas`` does, and takes the pointer and, when focused, the keyboard:
+/// `Canvas` does, and takes the pointer and, when focused, the keyboard:
 ///
 /// - drag to pan, the map following the pointer;
 /// - the wheel zooms in and out about the pointer, so what is under it

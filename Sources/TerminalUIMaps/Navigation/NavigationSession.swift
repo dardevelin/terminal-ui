@@ -39,6 +39,7 @@ public struct NavigationConfiguration: Sendable, Equatable {
     /// band, which starts at 120°, the way on is back.
     public var reversalAngle = 120.0
 
+    /// The documented defaults, each as its property states.
     public init() {}
 }
 
@@ -46,9 +47,11 @@ public struct NavigationConfiguration: Sendable, Equatable {
 public enum NavigationState: Sendable, Equatable {
     /// No fix matched to the route yet.
     case awaitingFix
+    /// The last fix matched the route within the allowed deviation.
     case onRoute
     /// The traveller is this many metres from the route.
     case offRoute(deviation: Double)
+    /// The traveller reached the end of the route; later fixes change nothing.
     case arrived
 }
 
@@ -67,6 +70,7 @@ public enum NavigationEvent: Sendable, Equatable {
     case rejoinedRoute
     /// A new route replaced the old one.
     case rerouted
+    /// A fix came within `arrivalDistance` of the route's end.
     case arrived
 }
 
@@ -74,24 +78,29 @@ public enum NavigationEvent: Sendable, Equatable {
 /// no network and no screen, so every rule here is tested by feeding it
 /// fixes.
 ///
-/// Each fix is matched to the route line (``RouteLine/project(_:from:penalty:)``):
+/// Each fix is matched to the route line, projected onto its nearest stretch:
 /// the nearest point of it no further back than `lookBehind` from the last
 /// match. The current step is the last whose start lies within
 /// `stepAdvanceDistance` ahead of that point, so a traveller who is
 /// already past several steps — a fix after a tunnel, a replay resumed —
 /// jumps straight to the right one. Steps are found on the line from the
 /// router's step coordinates; a step the router gave no manoeuvre for has
-/// one inferred from the line's bend there (``Maneuver/inferred(bearingBefore:bearingAfter:)``).
+/// one inferred from the line's bend there, from the bearings the
+/// traveller arrives and leaves on.
 ///
 /// Time remaining is the current step's duration for the share of it left,
 /// plus every later step's, as Mapbox's `RouteProgress.durationRemaining`
 /// adds it up; a router that gives no step durations (MapKit) has the
 /// route's spread over its length.
 public struct NavigationSession: Sendable {
+    /// The route being followed: the one given, or the last a reroute put in its place.
     public private(set) var route: Route
     private(set) var line: RouteLine
+    /// The thresholds fixes are judged by.
     public let configuration: NavigationConfiguration
+    /// Where navigation stands after the last fix.
     public private(set) var state = NavigationState.awaitingFix
+    /// The index into the route's steps of the one the traveller is on, from 0.
     public private(set) var stepIndex = 0
     /// Where the last fix matched the route.
     private(set) var position: RouteLinePosition?
@@ -110,6 +119,7 @@ public struct NavigationSession: Sendable {
     public private(set) var needsUTurn = false
     private var stepDurations: [Double] = []
 
+    /// A session at the start of `route`, waiting for its first fix.
     public init(route: Route, configuration: NavigationConfiguration = NavigationConfiguration()) {
         self.route = route
         self.line = RouteLine(route.coordinates)
@@ -119,6 +129,7 @@ public struct NavigationSession: Sendable {
 
     // MARK: - Reading progress
 
+    /// The step the traveller is on; nil when the route has no steps.
     public var currentStep: RouteStep? { route.steps.indices.contains(stepIndex) ? route.steps[stepIndex] : nil }
 
     /// The step whose manoeuvre comes next: the one after the current.
@@ -126,6 +137,7 @@ public struct NavigationSession: Sendable {
         route.steps.indices.contains(stepIndex + 1) ? stepIndex + 1 : nil
     }
 
+    /// The step whose manoeuvre comes next; nil on the last step.
     public var upcomingStep: RouteStep? { upcomingStepIndex.map { route.steps[$0] } }
 
     /// The step after the upcoming one, for "then …".
@@ -142,6 +154,7 @@ public struct NavigationSession: Sendable {
         return max(0, target - distanceAlong)
     }
 
+    /// Metres still to travel along the route to its end.
     public var distanceRemaining: Double { max(0, line.length - distanceAlong) }
 
     /// Seconds still to travel at the router's pace.

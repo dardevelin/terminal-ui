@@ -50,6 +50,7 @@ public struct MapTile: Sendable, Equatable {
 
 /// What a tile source offers, and whose data it is.
 public struct TileSourceInfo: Sendable, Equatable {
+    /// The source's name, to show to a reader: "OpenFreeMap".
     public var name: String
     /// The credit the data's licence requires on screen, as plain text.
     public var attribution: String
@@ -64,6 +65,8 @@ public struct TileSourceInfo: Sendable, Equatable {
     public static let world = GeoRect(south: -WebMercator.maximumLatitude, west: -Degrees.halfTurn,
                                       north: WebMercator.maximumLatitude, east: Degrees.halfTurn)
 
+    /// A description of a source; its bounds default to the whole world and
+    /// its feature ids to opaque ones.
     public init(name: String, attribution: String, zoomRange: ClosedRange<Int>,
                 bounds: GeoRect = TileSourceInfo.world, featureIdentifiers: FeatureIdentifiers = .opaque) {
         self.name = name
@@ -94,6 +97,8 @@ public protocol EncodedTileSource: MapTileSource {
 }
 
 extension EncodedTileSource {
+    /// The tile's bytes decoded as a vector tile, or nil where the source
+    /// has none.
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let data = try await tileData(id) else { return nil }
         return try .vector(decoding: data)
@@ -102,9 +107,11 @@ extension EncodedTileSource {
 
 /// A place a search found.
 public struct Place: Sendable, Hashable, Codable {
+    /// The place's name, as the source gives it.
     public var name: String
     /// What it is, in the source's own words: "cafe", "town", "residential".
     public var kind: String
+    /// Where the place is.
     public var coordinate: GeoCoordinate
     /// The address or description to show under the name, if any.
     public var address: String?
@@ -112,6 +119,7 @@ public struct Place: Sendable, Hashable, Codable {
     /// ``PlaceDetails`` backend looks it up with.
     public var identifier: PlaceIdentifier?
 
+    /// A place with the given name, kind and position.
     public init(name: String, kind: String, coordinate: GeoCoordinate, address: String? = nil,
                 identifier: PlaceIdentifier? = nil) {
         self.name = name
@@ -131,8 +139,11 @@ public protocol PlaceSearch: Sendable {
 
 /// How a route is travelled.
 public enum TravelMode: String, Sendable, Hashable, Codable, CaseIterable {
+    /// By car.
     case driving
+    /// On foot.
     case walking
+    /// By bicycle.
     case cycling
 }
 
@@ -140,6 +151,7 @@ public enum TravelMode: String, Sendable, Hashable, Codable, CaseIterable {
 /// that knows them says: OSRM's `Intersection` object
 /// (project-osrm.org/docs/v5.24.0/api/#intersection-object).
 public struct RouteIntersection: Sendable, Hashable, Codable {
+    /// Where the junction is.
     public var coordinate: GeoCoordinate
     /// Each road's bearing leaving the junction, degrees clockwise from
     /// north, the way in among them.
@@ -151,6 +163,7 @@ public struct RouteIntersection: Sendable, Hashable, Codable {
     /// Which it leaves along; nil at the arrival.
     public var outIndex: Int?
 
+    /// A junction at `coordinate` with roads along `bearings`.
     public init(coordinate: GeoCoordinate, bearings: [Double], entry: [Bool] = [], inIndex: Int? = nil,
                 outIndex: Int? = nil) {
         self.coordinate = coordinate
@@ -180,6 +193,8 @@ public struct RouteStep: Sendable, Hashable, Codable {
     /// router says (OSRM does; MapKit and the sample do not).
     public var intersections: [RouteIntersection]?
 
+    /// A step with the given instruction, length in metres, time in seconds
+    /// and start.
     public init(instruction: String, distance: Double, duration: Double, coordinate: GeoCoordinate,
                 name: String? = nil, maneuver: Maneuver? = nil, intersections: [RouteIntersection]? = nil) {
         self.instruction = instruction
@@ -200,8 +215,10 @@ public struct Route: Sendable, Hashable, Codable {
     public var distance: Double
     /// The expected travel time, in seconds.
     public var duration: Double
+    /// The instructions, in the order they are followed.
     public var steps: [RouteStep]
 
+    /// A route along `coordinates`, its length in metres and time in seconds.
     public init(coordinates: [GeoCoordinate], distance: Double, duration: Double, steps: [RouteStep]) {
         self.coordinates = coordinates
         self.distance = distance
@@ -212,12 +229,13 @@ public struct Route: Sendable, Hashable, Codable {
 
 /// Answers "how do I get from here to there?".
 public protocol RouteProvider: Sendable {
+    /// A route from `origin` to `destination`, travelled by `mode`.
     func route(from origin: GeoCoordinate, to destination: GeoCoordinate, mode: TravelMode) async throws -> Route
 
     /// A route through every waypoint in order, the first its start and the
     /// last its end. A router that takes several stops in one request
     /// answers it so; the default asks for each leg and joins them
-    /// (``Route/joining(_:)``).
+    /// into one route.
     func route(through waypoints: [GeoCoordinate], mode: TravelMode) async throws -> Route
 
     /// The same, leaving the first waypoint along `bearing`, degrees

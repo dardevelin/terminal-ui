@@ -47,7 +47,9 @@ enum OSMTags {
 /// together, and its identifying User-Agent is required here as there. A place with no OpenStreetMap element, such as
 /// one from Apple's search, is not looked up.
 public struct NominatimPlaceDetails: PlaceDetails {
+    /// "OpenStreetMap", the data Nominatim serves.
     public let sourceName = "OpenStreetMap"
+    /// Every field: what a place's OpenStreetMap tags record.
     public let fields = Set(PlaceDetailField.allCases)
 
     private let baseURL: URL
@@ -70,6 +72,8 @@ public struct NominatimPlaceDetails: PlaceDetails {
         self.pacing = pacing
     }
 
+    /// The place's details from its OpenStreetMap element, or nil where it
+    /// has no element or Nominatim does not know it.
     public func details(for place: Place) async throws -> PlaceInformation? {
         guard let element = place.identifier?.osmElement, let url = lookupURL(for: element) else { return nil }
         try await pacing.waitForTurn()
@@ -130,6 +134,7 @@ struct NominatimLookupResult: Decodable {
 /// times before giving up. Every request of the process shares one pacing
 /// of a request a second.
 public struct OverpassPlaceDetails: PlaceDetails {
+    /// The public Overpass instance's interpreter endpoint, the default.
     public static let publicURL = URL(string: "https://overpass-api.de/api/interpreter")!
 
     /// One request a second: the slot rate a client of the public
@@ -147,7 +152,9 @@ public struct OverpassPlaceDetails: PlaceDetails {
     /// Overpass QL's own timeout for a query of one element, in seconds.
     static let queryTimeout = 25
 
+    /// "OpenStreetMap (Overpass)", the data and the service it came by.
     public let sourceName = "OpenStreetMap (Overpass)"
+    /// Every field: what a place's OpenStreetMap tags record.
     public let fields = Set(PlaceDetailField.allCases)
 
     private let baseURL: URL
@@ -178,6 +185,8 @@ public struct OverpassPlaceDetails: PlaceDetails {
         self.sleep = sleep
     }
 
+    /// The place's details from its OpenStreetMap element's current tags,
+    /// or nil where it has no element or Overpass finds none.
     public func details(for place: Place) async throws -> PlaceInformation? {
         guard let element = place.identifier?.osmElement, let url = queryURL(for: element) else { return nil }
         let request = HTTPRequest(url: url, headers: [MapUserAgent.headerField: userAgent])

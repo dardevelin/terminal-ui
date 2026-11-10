@@ -2,14 +2,19 @@
 /// use: at zoom z the Web Mercator square is cut into 2^z × 2^z tiles, x
 /// counted east from 180° W and y south from the northern limit.
 public struct TileID: Sendable, Hashable, Codable, CustomStringConvertible {
+    /// The zoom level, 0 for the single tile covering the world.
     public var zoom: Int
+    /// The column, counted east from 0 at 180° W.
     public var x: Int
+    /// The row, counted south from 0 at the northern limit.
     public var y: Int
 
     /// The deepest zoom a tile index can name and still fit an `Int` row
     /// count with room for arithmetic; real sources stop near 22.
     public static let maximumZoom = 30
 
+    /// The tile at column `x`, row `y` of `zoom`, taken as given: see
+    /// ``isValid``.
     public init(zoom: Int, x: Int, y: Int) {
         self.zoom = zoom
         self.x = x
@@ -25,6 +30,7 @@ public struct TileID: Sendable, Hashable, Codable, CustomStringConvertible {
                   y: TileID.clampedIndex(point.y * Double(count), count: count))
     }
 
+    /// The tile as `zoom/x/y`, the way tile URLs spell it.
     public var description: String { "\(zoom)/\(x)/\(y)" }
 
     /// Whether the indices name a tile of the scheme.

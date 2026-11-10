@@ -84,14 +84,19 @@ public enum NavigationWording {
 /// }
 /// ```
 public struct NavigationBanner: TerminalView {
+    /// The session whose progress the banner shows.
     public let session: NavigationSession
+    /// The navigation's status, which puts arriving or rerouting in place of the next manoeuvre.
     public let status: NavigationStatus
+    /// The destination's name for the arrival line; nil leaves the name out.
     public let destination: String?
     /// Where the route meets the destination, so arriving says how far off
     /// the road it is and on which side.
     public let ends: RouteEnds?
+    /// The time zone the arrival time is shown in.
     public let timeZone: TimeZone
 
+    /// A banner for `session` as it stands, with the destination's name and route ends when known.
     public init(session: NavigationSession, status: NavigationStatus, destination: String? = nil,
                 ends: RouteEnds? = nil, timeZone: TimeZone = .current) {
         self.session = session

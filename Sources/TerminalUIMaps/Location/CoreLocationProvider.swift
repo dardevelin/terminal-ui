@@ -18,8 +18,10 @@ import Foundation
 /// it. The runtime's main thread runs no run loop, so the manager lives on
 /// a thread of its own that does.
 public struct CoreLocationProvider: LocationProvider {
+    /// A provider of the Mac's Location Services.
     public init() {}
 
+    /// "Location Services".
     public var name: String { "Location Services" }
 
     /// The key Location Services requires the app's `Info.plist` to state
@@ -36,6 +38,9 @@ public struct CoreLocationProvider: LocationProvider {
     /// stream was cancelled.
     static let runLoopSlice: TimeInterval = 0.25
 
+    /// Fixes as Location Services reports them, only the newest kept for a
+    /// busy reader; the stream fails at once when the binary has no usage
+    /// description, and when the user refuses.
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
         // As a socket's: only the latest fix is kept for a busy reader.
         AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in

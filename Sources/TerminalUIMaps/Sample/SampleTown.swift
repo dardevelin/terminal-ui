@@ -11,8 +11,12 @@ import Foundation
 /// kept in the OpenMapTiles schema, so the sample source's tiles read like
 /// OpenFreeMap's.
 public enum SampleTown {
+    /// "Millbrook".
     public static let name = "Millbrook"
+    /// The town's middle, the point its features are laid out in metres
+    /// east and north of.
     public static let origin = GeoCoordinate(latitude: 0.022, longitude: 0.022)
+    /// The credit the sample sources give, saying the data is made up.
     public static let attribution = "Sample data: Millbrook is fictional"
 
     /// The town and a margin around it.
