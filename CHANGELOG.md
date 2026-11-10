@@ -57,6 +57,16 @@ All notable changes to TerminalUI are documented here. Format based on
   change elsewhere — a task's, a timer's — a focused field dropped a
   paste until a key was pressed, and a view stopped being told of the
   pointer. Both now ride on the node.
+- **A key typed straight after a presentation closes reaches the view
+  focus returns to.** The events that arrive between two frames are
+  handled together, and the views were brought up to date only when the
+  next frame was drawn. A key that closed a modal left focus inside it
+  until then, so the next key — from a scripted client, or a fast typist
+  over SSH — went to the closed modal and was lost; a second Enter after
+  the one that pushed a `NavigationStack` screen reached the link and
+  pushed it again. The runtime now updates the views between such events,
+  as the frame would, without drawing, so each key and paste sees what
+  the events before it left.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

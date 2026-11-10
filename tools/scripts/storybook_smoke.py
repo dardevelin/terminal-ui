@@ -2926,6 +2926,19 @@ def navigation_escape_with_nothing_to_pop_keeps_the_app_running(app: Client) -> 
     assert_true(app.wait_for_exit(5.0) is not None, "Ctrl+C should quit")
 
 
+def navigation_a_key_typed_as_a_screen_is_pushed_reaches_it(app: Client) -> None:
+    """A second Enter typed straight after the Enter that pushes a screen, in
+    the same batch of input, goes to the pushed screen, which takes no Enter.
+    Regression: focus moved into the pushed screen only when the next frame
+    was drawn, so the second Enter reached the link that pushed and pushed
+    the screen again, and Escape then came back to it rather than home."""
+    app.send_text("\n\n")
+    assert_true(app.contains("Inside Account"), "Enter on a link did not push its destination")
+    app.send_key("escape")
+    assert_true(app.contains("Choose a destination"),
+                f"one Escape did not come back home; screen:\n{app.text()}")
+
+
 def navigation_pop_restores_focus_to_the_pushing_link(app: Client) -> None:
     """Enter on a NavigationLink pushes its screen, the pushed screen keeps
     Tab to itself, and Esc pops back with focus on the link that pushed, not
@@ -3023,6 +3036,27 @@ def demo_a_modal_keeps_focus_until_dismissed(app: Client) -> None:
     assert_true(not app.contains("Keyboard Shortcuts"), "Enter on [ Close ] did not dismiss the dialog")
     app.tab()
     assert_true(app.focus().node_id is not None, "focus did not return to the background")
+
+
+def demo_a_key_typed_as_a_modal_closes_reaches_the_background(app: Client) -> None:
+    """A Tab typed straight after the Enter that closes the help modal, in
+    the same batch of input, moves focus on from where the modal returned it.
+    Regression: focus went back only when the next frame was drawn, so the
+    Tab was taken by the closed modal's [ Close ] and lost. The Controls
+    tab, for the focusables Tab moves among."""
+    app.send_text("3")
+    outside = app.focus().node_id
+    app.tab()
+    beyond = app.focus().node_id
+    app.send_key("tab", "shift")
+    assert_true(outside != beyond, "the background needs two focusables for this case")
+    app.send_text("h")
+    assert_true(app.contains("Keyboard Shortcuts"), "h did not present the help modal")
+    app.send_text("\n\t")
+    assert_true(not app.contains("Keyboard Shortcuts"), "Enter on [ Close ] did not dismiss the dialog")
+    landed = app.focus().node_id
+    assert_true(landed == beyond,
+                f"the Tab typed as the modal closed was lost (wanted {beyond!r}, got {landed!r})")
 
 
 # The form's first and last labelled rows, and the section header above the
@@ -3383,8 +3417,12 @@ CASES: list[SmokeCase] = [
               navigation_pop_restores_focus_to_the_pushing_link),
     SmokeCase("navigation.escape_with_nothing_to_pop_keeps_the_app_running", "Navigation",
               navigation_escape_with_nothing_to_pop_keeps_the_app_running),
+    SmokeCase("navigation.a_key_typed_as_a_screen_is_pushed_reaches_it", "Navigation",
+              navigation_a_key_typed_as_a_screen_is_pushed_reaches_it),
     SmokeCase("settings.pickers_commit_and_abandon", "Settings", settings_pickers_commit_and_abandon),
     SmokeCase("demo.a_modal_keeps_focus_until_dismissed", "Demo", demo_a_modal_keeps_focus_until_dismissed),
+    SmokeCase("demo.a_key_typed_as_a_modal_closes_reaches_the_background", "Demo",
+              demo_a_key_typed_as_a_modal_closes_reaches_the_background),
     SmokeCase("storybook.form_scrolls_to_the_focused_control", "Storybook",
               storybook_form_scrolls_to_the_focused_control),
     SmokeCase("asyncstate.capped_is_drawn_with_no_input", "AsyncState",
