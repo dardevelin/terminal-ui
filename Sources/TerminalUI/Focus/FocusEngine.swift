@@ -759,7 +759,9 @@ public final class FocusEngine: @unchecked Sendable {
     ///    cursor but a node *with a registered click handler* is, invoke
     ///    that handler. Keyboard focus stays where it was. Lets a list
     ///    row be clickable (via `.onClick`) without joining the Tab
-    ///    cycle as a focusable.
+    ///    cycle as a focusable. The same holds where such a node is drawn
+    ///    over a focusable, outside it — an overlay's tap above a focusable
+    ///    view: what is on top takes the click.
     ///
     /// Used by Storybook's sidebar rows: they're not focusable (the
     /// single-focusable architecture lives on the bottom hint row), but
@@ -807,6 +809,21 @@ public final class FocusEngine: @unchecked Sendable {
             return false
         }
         beginDrag(at: press, in: scope)
+        // A view that acts on the press, drawn over a focusable rather than
+        // inside one — a compass overlaid on a map — is what the pointer is
+        // on: it acts, and focus stays where it was, as on a press with no
+        // focusable under it. Found topmost first, as the focusable is.
+        let onTop = deepest(x: x, y: y, in: scope) { node -> AttributeNode? in
+            guard node.rect.contains(x: x, y: y),
+                  node.isFocusable || pressAction(at: node, for: press) != nil else { return nil }
+            return node
+        }
+        if let onTop, !onTop.isFocusable,
+           !sequence(first: onTop, next: \.parent).contains(where: \.isFocusable),
+           let action = pressAction(at: onTop, for: press) {
+            action()
+            return true
+        }
         guard let target = findFocusableAt(x: x, y: y, in: scope) else {
             // No focusable under the cursor — try a click handler on any
             // node containing the click point. Walks deepest-first so a

@@ -26,6 +26,11 @@ All notable changes to TerminalUI are documented here. Format based on
   `KeyEventResult` was not `Sendable`, so a handler could not hand back
   the result of `MainActor.assumeIsolated { model.handle(event) }`. It is
   now.
+- **A tap drawn over a focusable view takes the click.** A compass with
+  `.onTapGesture`, overlaid on a focusable map, never ran: the map under
+  it took the click and the focus. What is drawn on top now acts, and
+  focus stays where it was, as it already did over a view that cannot
+  take focus.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

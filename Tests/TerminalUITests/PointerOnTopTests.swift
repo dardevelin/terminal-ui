@@ -65,6 +65,28 @@ private struct Row: Identifiable {
 @MainActor
 struct PointerOnTopTests {
 
+    @Test func aTapDrawnOverAFocusableViewTakesTheClickAndFocusStays() {
+        // A map's compass: a tap overlaid on a focusable map, with focus on
+        // a field above it. The map under the compass took the click and
+        // the focus, and the tap never ran.
+        final class Taps { var count = 0 }
+        let taps = Taps()
+        let screen = Screen(VStack(spacing: 0) {
+            Text("field").focusable()
+            Text("map").frame(width: 20, height: 6).focusable()
+                .overlay(alignment: .topTrailing) { Text("N").onTapGesture { taps.count += 1 } }
+        })
+        screen.click(1, 0)
+        let field = screen.engine.keyboardFocusID
+        #expect(field != nil)
+        screen.click(19, 1)
+        #expect(taps.count == 1)
+        #expect(screen.engine.keyboardFocusID == field)
+        screen.click(2, 4)
+        #expect(taps.count == 1, "the map beside the compass still takes its own clicks")
+        #expect(screen.engine.keyboardFocusID != field)
+    }
+
     @Test func ofTwoOverlappingViewsOnlyTheOneOnTopIsHovered() {
         let hovered = Hovered()
         let screen = Screen(ZStack {
