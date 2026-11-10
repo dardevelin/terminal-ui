@@ -1,10 +1,43 @@
-# Maps — an experiment
+# Maps
 
 A text-based maps app, in the spirit of Apple Maps, built on TerminalUI to find
-the components the framework is missing. **An experiment on its own branch
-(`worktree-maps-experiment`): nothing here merges to main unless we decide so.**
-The demo-as-forcing-function rule from `crush-parity.md` §5 applies: a component
-gets built because the app needs it.
+the components the framework is missing. It began as an experiment on its own
+branch; `TerminalUIMaps` now ships as a public library product (2.6.0) and
+`Examples/Maps` as its example, held to the 2.x rule that the public API stays
+source-compatible. The demo-as-forcing-function rule from `crush-parity.md` §5
+applies: a component gets built because the app needs it. The library is also
+the rehearsal for a real app built on it, so its API is what such an app needs.
+
+## The public API, as shipped
+
+The review before shipping kept public only the seams and the views:
+
+- **The map**: `MapView`, `MapCamera` (in cells: `visibleRegion(in:)`,
+  `coordinate(atCell:in:)`, `fitting(_:in:zoomRange:)`), `MapTileStore`,
+  the content builder and its `Marker`, `MapPolyline`, `RouteEnds`,
+  `TravellerMarker`, `MapContentGroup`, an opaque `MapElement`;
+  `MapLayers`, `MapTypeModel` and its offers; `MapCompass`.
+- **The seams**: `MapTileSource`/`EncodedTileSource` returning an opaque
+  `MapTile` (made from MVT bytes, a picture or Terrarium heights),
+  `PlaceSearch`, `RouteProvider`, `PlaceDetails`, `StreetImagery`,
+  `LocationProvider`, `HTTPTransport`, and their open, MapKit and sample
+  implementations.
+- **Navigation**: `NavigationController`, `NavigationSession`,
+  `NavigationBanner`, `TravelProfile`'s presets, and `NavigationCamera`,
+  which gathers the following camera, the traveller's prediction and the
+  junction zoom the app had wired by hand from a dozen public pieces.
+- **Offline**: the pack store, the downloaders and the offline sources.
+
+Internal: the MVT codec and protobuf, gzip, GPX's XML, the label placer,
+the renderer, Web Mercator and the braille dot geometry, terrain shading,
+`FollowCamera`, `CameraMotion`, `TravellerPrediction`, `JunctionZoom` and
+the junction analysis, `RouteLine`, the socket reader, the request pacing.
+
+Network etiquette is the library's to keep, not the app's to remember:
+every network backend takes a `userAgent` with no default, Nominatim and
+Overpass share one pacing of a request a second across the process,
+Overpass backs off on 429 and 504, and `OSRMRoutes` has no default server.
+Nothing reaches the network unless an app constructs it.
 
 ## What the app does
 
@@ -92,7 +125,7 @@ cell size.
 `Canvas` is general — charts and diagrams want it too — which is why it goes in
 the framework and not the maps library.
 
-### In `TerminalUIMaps` (an internal library target for the experiment)
+### In `TerminalUIMaps`
 
 - **Geo**: `GeoCoordinate` (lat/lon, `Double`), `GeoRect`, Web Mercator
   projection, `TileID` (z/x/y), the tiles covering a viewport, a `MapCamera`
@@ -333,7 +366,9 @@ once, what the backend never gives; `PlaceCardView` draws them.
 - *Escape quits an app whose `onEvent` already handled it.* `onEvent`
   returning true does not stop the framework's outermost binding, Escape →
   `dismissOrQuit`; with the place card open and no panel, Escape closed the
-  card and quit the app. The map's key handler now takes Escape.
+  card and quit the app. The map's key handler took Escape until the
+  framework fixed it: Escape is the app's `onEvent`'s to decide, and the
+  framework's binding only dismisses.
 - *A tap with its location.* `TapGesture` hands its action no position; the
   map uses `.onClick`'s cell. It fires on the press, so a drag that starts on
   a point also selects it.
@@ -405,7 +440,8 @@ The ordinary run holds the work instead: at most 480 names offered and
 
 Found on the way: Escape on the place card reached the framework's
 `dismissOrQuit` and quit the app — an overlay is not a presentation, and
-`onEvent` cannot consume a key. The map's own key handler now takes it.
+`onEvent` cannot consume a key. Fixed in the framework since: an app's
+`onEvent` decides whether Escape quits.
 
 ### C. Routes, location and live navigation
 

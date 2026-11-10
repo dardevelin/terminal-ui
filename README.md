@@ -38,6 +38,11 @@ input, resize handling, and frame-capped rendering.
 <p align="center">
   <img src="assets/demo.gif" alt="A walk through the Storybook example app"/>
 </p>
+
+<p align="center">
+  <img src="assets/maps.gif" alt="The Maps example: a town in braille, searched, seen from the air and as terrain, then driven through a corner"/><br/>
+  <sub><a href="#maps"><code>TerminalUIMaps</code></a>: a moving map drawn in text, on a sample town that needs no network.</sub>
+</p>
 <p align="center"><sub>The <code>Storybook</code> example app — one page per public
 API. Recorded with <a href="https://github.com/charmbracelet/vhs">vhs</a>;
 the script is <code>assets/demo.tape</code>.</sub></p>
@@ -99,6 +104,7 @@ animated version of this table.
 | **Drawing & time** | [`Canvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/canvas) — paths, fills and text on half cells, braille dots and whole cells · [`TimelineView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/timelineview) — redrawn every frame, or at a schedule's dates |
 | **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.inspector`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.contextMenu`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
 | **3D** (`TerminalUI3D`) | [`SceneView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/sceneview) — a lit, shaded [`Scene3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/scene3d) drawn as an image, braille or characters · [`Mesh`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/mesh) · [`Text3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/text3d) · [`Turntable`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/turntable) · [`CameraTour`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/cameratour) |
+| **Maps** (`TerminalUIMaps`) | [`MapView`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/mapview) — vector and picture tiles in braille and half blocks, panned, zoomed and turned · [`MapTileStore`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/maptilestore) · [`PlaceSearch`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/placesearch) · [`RouteProvider`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/routeprovider) · [`NavigationController`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcontroller) · [`NavigationCamera`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcamera) · [`RegionDownloader`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/regiondownloader) |
 | **Gestures** | [`TapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tapgesture) · [`SpatialTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spatialtapgesture) · [`DragGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/draggesture) · [`.onScrollWheel`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onHover`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) |
 
 Beyond the components:
@@ -227,6 +233,38 @@ struct CounterApp: TerminalAppProtocol {
 | `swift run GitClient` | A small git client: staging list, hunk diff, commit prompt |
 | `swift run Chat` | A chat interface: scrollback, prompt input, timed replies |
 | `swift run Coder` | An agent-chat app in the shape of Crush: transcript, tool cards, diffs, sidebar |
+| `swift run Maps` | A maps app on TerminalUIMaps: search, place cards, directions, map types, street view, offline regions and a replayed drive — on a fictional town, with no network, unless `--backend osm` is given |
+
+## Maps
+
+`TerminalUIMaps` draws a moving map in a view, as SwiftUI MapKit's `Map`
+does: streets and areas in braille, names that never overlap, points of
+interest by kind, imagery in half blocks and terrain shaded and contoured,
+in the app's theme. Search, place details, routes, live location and
+turn-by-turn navigation, street view and offline regions sit behind
+protocols, so an app chooses its backends — the film at the top of this
+page is all on a fictional town the library ships, with no network and no key:
+
+```swift
+import TerminalUI
+import TerminalUIMaps
+
+struct TownMap: TerminalView {
+    let store: MapTileStore          // MapTileStore(source: SampleTileSource()), made once
+    @TerminalState var camera = MapCamera(center: SampleTown.origin, zoom: 15)
+
+    var body: some TerminalView {
+        MapView(camera: $camera, store: store)
+    }
+}
+```
+
+Nothing reaches the network unless the app asks: OpenFreeMap's tiles,
+Nominatim's search and an OSRM server's routes each need the app to name
+itself, and each one's terms — and the credit the map draws for it — are in
+the [backends article](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/backendsandtheirterms).
+`swift run Maps --backend osm` draws the real world;
+`--location gpx:Examples/Maps/Tracks/millbrook-drive.gpx` replays the drive.
 
 A few more single-purpose targets live in `Examples/` (`AsyncState`,
 `Navigation`, `Settings`, `DotMatrixDemo`); they double as fixtures for the
@@ -339,6 +377,10 @@ every push to `main` by `.github/workflows/docs.yml`:
 TerminalUI3D's reference, with an article on drawing a scene, sits beside it:
 **<https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/>**
 
+So does TerminalUIMaps', with articles on getting a map on screen, the
+backends and their terms, search and routes, navigation and offline regions:
+**<https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/>**
+
 To browse it locally with live reload while working on the docs:
 
 ```bash
@@ -357,7 +399,7 @@ DocC plugin to build a library that doesn't need it.
 
 ## Library products
 
-One package, six products — five libraries, so consumers pull only the
+One package, seven products — six libraries, so consumers pull only the
 layer they need, and the `swtui` command-line tool:
 
 ```mermaid
@@ -365,11 +407,14 @@ graph TD
     App["your app"] --> TUI
     ImgApp["your app,<br/>with images"] --> IO
     SceneApp["your app,<br/>with 3D"] --> Scene3D
+    MapApp["your app,<br/>with maps"] --> Maps
     CLI["a plain CLI that wants<br/>styled output or logging"] --> Log
     Dev["you, or an agent,<br/>driving a debug build"] --> SW
 
     IO["TerminalUIIO<br/><i>PNG and JPEG decoding, half-block rendering</i>"] --> TUI
     Scene3D["TerminalUI3D<br/><i>meshes, scenes, a text rasterizer</i>"] --> TUI
+    Maps["TerminalUIMaps<br/><i>maps, search, routes, navigation</i>"] --> TUI
+    Maps --> IO
     SW["swtui<br/><i>diagnostics and remote control</i>"] --> TUI
     TUI["TerminalUI<br/><i>the full TUI runtime</i>"] --> Ink
     TUI --> Log
@@ -386,6 +431,7 @@ graph TD
 | `TerminalLog` | TerminalInk | Structured logging with leveled colored prefixes; strips ANSI when output is not a TTY |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, pure-Swift PNG and JPEG decoders behind a decoder protocol you can conform your own to, a half-block renderer, and a pure-Swift inflate |
 | `TerminalUI3D` | TerminalUI | Opt-in 3D: meshes and their primitives, height fields and lettering; a scene of models, materials, lights, a camera, labels and fog; and `SceneView`, which rasterizes it at braille resolution and draws it as an image, half blocks, braille, characters from a ramp, or a fill under them |
+| `TerminalUIMaps` | TerminalUI, TerminalUIIO | Opt-in maps: `MapView` on vector and picture tiles, the camera and its content, search, place details, routes, live location and turn-by-turn navigation, street view and offline regions, behind protocols an app fills with the backends it chooses — a fictional sample town needs no network or key, and every open service it can use requires the app to name itself |
 | `swtui` | TerminalUI | The [debug tools](#debug-tools-and-agent-driven-development)' command line: `swift run swtui ctl …` from your own package drives the debug build you are running |
 
 `TerminalUIConfig` (the TOML parser, the one spelling of a key combination,
@@ -396,7 +442,8 @@ that depends on `TerminalUI` never builds them.
 
 `import TerminalInk` in a script-sized CLI costs you the color layer and
 nothing else; `TerminalUIIO` exists so apps without image needs never carry
-image code, and `TerminalUI3D` so apps without 3D never carry a rasterizer.
+image code, `TerminalUI3D` so apps without 3D never carry a rasterizer, and
+`TerminalUIMaps` so apps without maps never carry a tile renderer.
 
 ## Requirements & compatibility
 
@@ -444,4 +491,7 @@ The JetBrains Mono font in [`tools/fonts/JetBrainsMono/`](tools/fonts/JetBrainsM
 which only developer tooling uses, to draw the documentation's pictures, and
 no library product contains, is Copyright 2020 The JetBrains Mono Project
 Authors under the SIL Open Font License, Version 1.1
-([`OFL.txt`](tools/fonts/JetBrainsMono/OFL.txt)).
+([`OFL.txt`](tools/fonts/JetBrainsMono/OFL.txt)). The OpenStreetMap tiles and
+answers in [`Tests/TerminalUIMapsTests/Fixtures/`](Tests/TerminalUIMapsTests/Fixtures/),
+test fixtures no library product contains, are © OpenStreetMap contributors
+under the Open Database License 1.0.

@@ -6,6 +6,49 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **TerminalUIMaps, a new library product, draws maps in text.** A
+  `MapView` draws a `MapTileStore`'s tiles through a `MapCamera` — centre,
+  fractional zoom and bearing, written back by every drag, wheel notch and
+  key — with `Marker`s, `MapPolyline`s, `RouteEnds` and a
+  `TravellerMarker` listed in a `MapContentBuilder` closure. Vector tiles
+  in the OpenMapTiles schema are drawn in braille at eight dots a cell,
+  areas filled, roads ranked, names placed so none overlap and points of
+  interest marked by kind, with a ladder of detail from z0 to z22 that
+  keeps a dense city readable; `MapLayers` and `MapTypeModel` add imagery
+  in half blocks and terrain shaded and contoured (Explore, Satellite,
+  Hybrid, Terrain), all in the app's theme, with each source's credit
+  drawn whole in the corner. The data comes through protocols an app
+  fills: `MapTileSource`, `PlaceSearch`, `RouteProvider`, `PlaceDetails`,
+  `StreetImagery` and `LocationProvider`, over an injectable
+  `HTTPTransport`. A fictional town, `SampleTown`, answers every one of
+  them with no network and no key. The open services — OpenFreeMap tiles,
+  Nominatim search and details, Overpass details, an OSRM server's routes,
+  EOX's Sentinel-2 cloudless 2016, USGS imagery, AWS Terrain Tiles,
+  Panoramax and Mapillary — are each constructed by the app, require it to
+  name itself in a User-Agent, and keep their usage policies for it:
+  Nominatim and Overpass paced to a request a second across the process,
+  Overpass backing off when busy, OSRM given no default server; MapKit's
+  search, routes, snapshots and Look Around build where MapKit is.
+  `NavigationController` and `NavigationSession` follow a route fix by
+  fix — steps, stops, off route, reroutes that leave the way the traveller
+  is going, arrival and the side the place is on — drawn by
+  `NavigationBanner`; `NavigationCamera` follows the traveller, carried
+  along the route between fixes, turned heading up, eased through corners
+  and closed in before a junction that would not read. Location comes from
+  a GPX replay, gpsd, NMEA over TCP or UDP, a point set by hand, or
+  Location Services on macOS. `RegionDownloader` and
+  `RegionLayerDownloader` keep a region's tiles, imagery and terrain on
+  disk for `OfflineTileSource` and `OfflineSearch`. Its reference, with
+  articles on getting a map on screen, the backends and their terms,
+  search and routes, navigation and offline regions, is on the
+  documentation site beside TerminalUI's.
+- **`swift run Maps`**, an example app on TerminalUIMaps: search, place
+  cards, directions through many stops, map types, street view, offline
+  regions, a backend picker and a replayed drive, on the sample town until
+  `--backend osm` or `--location` says otherwise.
+
 ## [2.5.0] — 2026-11-10 — 3D, drawn in text
 
 A minor release over 2.4.0: an app written for 2.4 compiles unchanged.
