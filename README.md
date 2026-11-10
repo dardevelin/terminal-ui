@@ -98,6 +98,7 @@ animated version of this table.
 | **Charts** | [`BarChart`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/barchart) · [`Sparkline`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/sparkline) · [`HeatMap`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/heatmap) · [`BrailleCanvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/braillecanvas) · [`DotMatrixText`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotmatrixtext) · [`DotFont`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/dotfont) · [`MorseTicker`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/morseticker) |
 | **Drawing & time** | [`Canvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/canvas) — paths, fills and text on half cells, braille dots and whole cells · [`TimelineView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/timelineview) — redrawn every frame, or at a schedule's dates |
 | **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.inspector`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.contextMenu`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
+| **3D** (`TerminalUI3D`) | [`SceneView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/sceneview) — a lit, shaded [`Scene3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/scene3d) drawn as an image, braille or characters · [`Mesh`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/mesh) · [`Text3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/text3d) · [`Turntable`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/turntable) · [`CameraTour`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/cameratour) |
 | **Gestures** | [`TapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tapgesture) · [`SpatialTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spatialtapgesture) · [`DragGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/draggesture) · [`.onScrollWheel`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onHover`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) |
 
 Beyond the components:
@@ -335,6 +336,9 @@ every push to `main` by `.github/workflows/docs.yml`:
 
 **<https://dardevelin.github.io/terminal-ui/documentation/terminalui/>**
 
+TerminalUI3D's reference, with an article on drawing a scene, sits beside it:
+**<https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/>**
+
 To browse it locally with live reload while working on the docs:
 
 ```bash
@@ -353,17 +357,19 @@ DocC plugin to build a library that doesn't need it.
 
 ## Library products
 
-One package, five products — four libraries, so consumers pull only the
+One package, six products — five libraries, so consumers pull only the
 layer they need, and the `swtui` command-line tool:
 
 ```mermaid
 graph TD
     App["your app"] --> TUI
     ImgApp["your app,<br/>with images"] --> IO
+    SceneApp["your app,<br/>with 3D"] --> Scene3D
     CLI["a plain CLI that wants<br/>styled output or logging"] --> Log
     Dev["you, or an agent,<br/>driving a debug build"] --> SW
 
     IO["TerminalUIIO<br/><i>PNG and JPEG decoding, half-block rendering</i>"] --> TUI
+    Scene3D["TerminalUI3D<br/><i>meshes, scenes, a text rasterizer</i>"] --> TUI
     SW["swtui<br/><i>diagnostics and remote control</i>"] --> TUI
     TUI["TerminalUI<br/><i>the full TUI runtime</i>"] --> Ink
     TUI --> Log
@@ -379,6 +385,7 @@ graph TD
 | `TerminalInk` | — | Styled output alone: color model, terminal capability detection, ANSI SGR. For CLIs that want styled stdout/stderr without a render runtime |
 | `TerminalLog` | TerminalInk | Structured logging with leveled colored prefixes; strips ANSI when output is not a TTY |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, pure-Swift PNG and JPEG decoders behind a decoder protocol you can conform your own to, a half-block renderer, and a pure-Swift inflate |
+| `TerminalUI3D` | TerminalUI | Opt-in 3D: meshes and their primitives, height fields and lettering; a scene of models, materials, lights, a camera, labels and fog; and `SceneView`, which rasterizes it at braille resolution and draws it as an image, half blocks, braille, characters from a ramp, or a fill under them |
 | `swtui` | TerminalUI | The [debug tools](#debug-tools-and-agent-driven-development)' command line: `swift run swtui ctl …` from your own package drives the debug build you are running |
 
 `TerminalUIConfig` (the TOML parser, the one spelling of a key combination,
@@ -389,7 +396,7 @@ that depends on `TerminalUI` never builds them.
 
 `import TerminalInk` in a script-sized CLI costs you the color layer and
 nothing else; `TerminalUIIO` exists so apps without image needs never carry
-image code.
+image code, and `TerminalUI3D` so apps without 3D never carry a rasterizer.
 
 ## Requirements & compatibility
 

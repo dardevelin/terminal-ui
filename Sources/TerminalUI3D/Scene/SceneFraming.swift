@@ -22,15 +22,16 @@ public struct SceneFraming: Sendable, Equatable {
     /// the scene's models and moved in or out until they just fit, `padding`
     /// rows inside the view's top and bottom and twice as many columns
     /// inside its sides — the same distance on cells about twice as tall as
-    /// they are wide. Across, a sphere round every model
-    /// must fit, so a model turning about the camera's up keeps its size
-    /// from frame to frame; up and down, only the models' boxes, which such
-    /// a turn leaves alone — so a wide thing turning, a wordmark, fills the
-    /// view rather than a sphere's square round it. Measured in the view's
-    /// own shape, two samples across a cell for four down, so a round thing
-    /// stays round on cells about twice as tall as wide. A perspective
-    /// camera keeps its field of view, an orthographic one its direction
-    /// and takes the height that fits.
+    /// they are wide.
+    ///
+    /// Across, a sphere round every model must fit, so a model turning about
+    /// the camera's up keeps its size from frame to frame; up and down, only
+    /// the models' boxes, which such a turn leaves alone — so a wide thing
+    /// turning, a wordmark, fills the view rather than a sphere's square
+    /// round it. Measured in the view's own shape, two samples across a cell
+    /// for four down, so a round thing stays round. A perspective camera
+    /// keeps its field of view, an orthographic one its direction and takes
+    /// the height that fits.
     public static func fit(padding: Double = 1) -> SceneFraming {
         SceneFraming(kind: .fit(padding: max(0, padding)))
     }

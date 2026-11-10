@@ -48,6 +48,7 @@ swift run Demo               # 12-tab showcase; F1 overlay / F2 panel / F3 inspe
 swift run -c release Demo    # release build — debug tools gone
 swift run ComponentsDemo     # component gallery with realistic data
 swift run DotMatrixDemo      # dot-matrix display + Morse ticker
+swift run -c release SceneBenchmark  # what a 200×60 TerminalUI3D frame costs, per shading style
 swift run GitClient          # example: git client TUI
 swift run Chat               # example: chat TUI
 swift run Coder              # agent-chat TUI — the Crush-parity forcing function
@@ -205,9 +206,9 @@ PTY it holds a crashed process open for 30s offering a debugger.
 - **0 errors, 0 warnings, always.** DX is paramount.
 - All debug/diagnostic machinery is `#if DEBUG`-gated — zero release overhead.
 
-## Package layout (7 library targets — a deliberate layering)
+## Package layout (8 library targets — a deliberate layering)
 
-The package ships four public libraries so consumers pull only what they need.
+The package ships five public libraries so consumers pull only what they need.
 This layering is the modularity strategy — not backend abstraction.
 
 | Target | Depends on | Purpose |
@@ -217,12 +218,13 @@ This layering is the modularity strategy — not backend abstraction.
 | `TerminalUIConfig` | — | Config file formats: `TOMLParser`, `KeyCombo` (the one key spelling), and the diagnostic config (`DiagConfig`, `DiagPaths`, debug-only), with `UnixSocket`, the package-only helper the debug sockets and `swtui ctl` open them with. Used by TerminalUI and the `swtui` CLI. |
 | `TerminalUI` | Config, Ink, Log | The full TUI runtime — the main framework. |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, a decoder protocol with pure-Swift `PNGDecoder` (every colour type, Adam7, `tRNS`) and `JPEGDecoder` (baseline and extended sequential; progressive, arithmetic and CMYK refused by name), each with a `maximumPixelCount`, a half-block renderer, a pure-Swift inflate (`Inflate.decode(_:outputLimit:)` bounds what it expands to). Apps without image needs don't pay for it. |
+| `TerminalUI3D` | TerminalUI | Opt-in 3D in text: `Vector3`, `Vector4`, `Matrix4`, `Quaternion`; `Mesh` with its primitives, `heightField` and `Text3D` lettering from `DotFont`; `Scene3D` of `Model3D`s, `Material`s, `Light3D`s, a `Camera3D`, `Label3D`s and `Fog3D`; `SceneView` (a scene, or a closure that builds one), placed by `SceneFraming` (`.fit(padding:)` fills the view) and drawn through a `Canvas` by the internal `SceneRenderer` — a rasterizer at braille resolution (z-buffer, culling, near-plane clipping, a far plane per sample, perspective-correct attributes), lit once per sample (Blinn–Phong with Schlick's Fresnel) and shaded in Oklab from the theme — as a `ShadingStyle`: `image` (half cells averaged in linear light, edges blended toward a known ground or kept in braille dots over the terminal's own), `image(.dots)`, half-block, braille, hybrid or character ramp, with silhouette and crease outlines; `Turntable` and `CameraTour` for motion. Its DocC catalog is published beside TerminalUI's (`docs.yml`, `check_doc_pages.py`'s `TARGETS`). |
 | `TerminalUIRaster` | — | Internal, swtui-only; not a product. `package` API, pure Swift and integer only, so a picture is the same bytes on every system: `PixelCanvas`, `BlendCanvas` (pixels kept as foreground over background at a coverage), `IndexedPaletteBuilder`, `CRC32`, `Adler32`, `Deflate` (zlib), `PNGWriter`, `LZW`, `GIFWriter`; `TrueTypeFont` (a `glyf` parser), `CoverageRasterizer` (signed-area coverage in 24.8 fixed point, no hinting) and `BuiltinGlyphSource`. The encoders and glyphs the recording renderer draws stills and animations with (`design/self-recording.md`). |
 | `TerminalUIRecording` | TerminalUI, Config, Raster | Internal, swtui-only; not a product. Renders a `.tuirec` recording: `RecordingReader`, `PresentationClock`, `RecordingPalette`, `CellMetrics`, `CastEncoder`, `SVGFrameRenderer` and `SVGAnimationRenderer`, and the raster pictures — `RasterFrameComposer` (a screen into pixels) and `RasterAnimator` (a timeline into a GIF). |
 
 `swtui` is an executable target (the diagnostic CLI); `Examples/*` are executable
 targets. Test targets exist per library (`TerminalUITests`, `TerminalInkTests`,
-`TerminalLogTests`, `TerminalUIIOTests`, `TerminalUIRasterTests`,
+`TerminalLogTests`, `TerminalUIIOTests`, `TerminalUI3DTests`, `TerminalUIRasterTests`,
 `TerminalUIRecordingTests`). The raster
 goldens under `Tests/TerminalUIRasterTests/Fixtures/` are checked twice: byte
 for byte by the Swift tests, and decoded independently (Python's zlib, a GIF
