@@ -54,23 +54,58 @@ public struct LookAroundImagery: StreetImagery {
                     licence: "Apple Maps terms", attribution: "© Apple Look Around")
     }
 
-    @MainActor
-    private static func hasScene(at coordinate: GeoCoordinate) async throws -> Bool {
-        try await scene(at: coordinate) != nil
-    }
+    // MapKit's scene and snapshot are taken through their completion
+    // handlers, and only what is `Sendable` — whether a scene is there, the
+    // pixels — is resumed. Awaiting `MKLookAroundSceneRequest.scene` and
+    // `MKLookAroundSnapshotter.snapshot` from the main actor compiles only
+    // against an SDK that delivers them there: the macOS 27 SDK marks their
+    // completions `NS_SWIFT_UI_ACTOR`, earlier SDKs do not, and with them the
+    // await sends the non-`Sendable` request off the main actor.
 
     @MainActor
-    private static func scene(at coordinate: GeoCoordinate) async throws -> MKLookAroundScene? {
-        try await MKLookAroundSceneRequest(coordinate: CLLocationCoordinate2D(latitude: coordinate.latitude,
-                                                                              longitude: coordinate.longitude)).scene
+    private static func hasScene(at coordinate: GeoCoordinate) async throws -> Bool {
+        try await withCheckedThrowingContinuation { continuation in
+            let request = sceneRequest(at: coordinate)
+            request.getSceneWithCompletionHandler { scene, error in
+                // The request is held until it answers.
+                _ = request
+                if let error { continuation.resume(throwing: error) } else { continuation.resume(returning: scene != nil) }
+            }
+        }
     }
 
     @MainActor
     private static func snapshot(at coordinate: GeoCoordinate) async throws -> ImageBuffer {
-        guard let scene = try await scene(at: coordinate) else { throw StreetImageryError.nothingNearby }
-        let options = MKLookAroundSnapshotter.Options()
-        options.size = snapshotSize
-        let snapshot = try await MKLookAroundSnapshotter(scene: scene, options: options).snapshot
+        try await withCheckedThrowingContinuation { continuation in
+            let request = sceneRequest(at: coordinate)
+            request.getSceneWithCompletionHandler { scene, error in
+                _ = request
+                guard let scene else {
+                    continuation.resume(throwing: error ?? StreetImageryError.nothingNearby)
+                    return
+                }
+                let options = MKLookAroundSnapshotter.Options()
+                options.size = snapshotSize
+                let snapshotter = MKLookAroundSnapshotter(scene: scene, options: options)
+                snapshotter.getSnapshotWithCompletionHandler { snapshot, error in
+                    _ = snapshotter
+                    guard let snapshot else {
+                        continuation.resume(throwing: error
+                            ?? MapServiceError.invalidResponse("Apple returned no Look Around snapshot"))
+                        return
+                    }
+                    continuation.resume(with: Result { try pixels(of: snapshot) })
+                }
+            }
+        }
+    }
+
+    private static func sceneRequest(at coordinate: GeoCoordinate) -> MKLookAroundSceneRequest {
+        MKLookAroundSceneRequest(coordinate: CLLocationCoordinate2D(latitude: coordinate.latitude,
+                                                                    longitude: coordinate.longitude))
+    }
+
+    private static func pixels(of snapshot: MKLookAroundSnapshotter.Snapshot) throws -> ImageBuffer {
         let width = Int(snapshotSize.width), height = Int(snapshotSize.height)
         var rect = CGRect(x: 0, y: 0, width: width, height: height)
         guard let image = snapshot.image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else {
