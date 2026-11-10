@@ -1389,7 +1389,11 @@ public enum FocusDirection {
 // MARK: - Key Event Result
 
 /// What a key handler tells the dispatcher about an event.
-public enum KeyEventResult {
+///
+/// Sendable, so a handler can return what it decided on the main actor —
+/// `MainActor.assumeIsolated { model.handle(event) }` — for a model that is
+/// `@MainActor`.
+public enum KeyEventResult: Sendable {
     /// The event was consumed; dispatch stops here.
     case handled
     /// The event was not consumed; it bubbles to the next handler.

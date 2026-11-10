@@ -22,6 +22,10 @@ All notable changes to TerminalUI are documented here. Format based on
   one's end. As in SwiftUI, a stack holding a view that takes the height
   it is offered now takes it too; a `Spacer` in an `HStack` still leaves
   the row one line tall. The same rule across the width already held.
+- **A key handler can return what an `@MainActor` model decided.**
+  `KeyEventResult` was not `Sendable`, so a handler could not hand back
+  the result of `MainActor.assumeIsolated { model.handle(event) }`. It is
+  now.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 
