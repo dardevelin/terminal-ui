@@ -132,6 +132,37 @@ struct DebugSocketWarningTests {
     }
 }
 
+// What a write to a client's socket means. A full buffer waits for room;
+// so does a kernel briefly short of buffers (ENOBUFS), which macOS returns
+// for a large write to a Unix socket under memory pressure and which used
+// to drop the client mid-reply. Only a real failure drops it.
+@Suite("A reply's write")
+struct ReplyWriteTests {
+    @Test(arguments: [EAGAIN, EWOULDBLOCK, ENOBUFS])
+    func aTransientShortageWaitsForRoom(error: Int32) {
+        #expect(ReplyWrite(bytesWritten: -1, error: error) == .waitForRoom)
+    }
+
+    @Test func anInterruptedWriteIsTriedAgain() {
+        #expect(ReplyWrite(bytesWritten: -1, error: EINTR) == .tryAgain)
+    }
+
+    @Test(arguments: [EPIPE, ECONNRESET, EBADF])
+    func aBrokenConnectionIsDropped(error: Int32) {
+        #expect(ReplyWrite(bytesWritten: -1, error: error) == .dropClient)
+    }
+
+    @Test func bytesTakenAreWritten() {
+        #expect(ReplyWrite(bytesWritten: 512, error: 0) == .wrote(512))
+    }
+
+    @Test func aWriteIsNeverLargerThanTheSendBuffer() {
+        #expect(ReplyWrite.largestWrite(of: 4 * Int(RemoteControlServer.sendBufferBytes))
+                == Int(RemoteControlServer.sendBufferBytes))
+        #expect(ReplyWrite.largestWrite(of: 100) == 100)
+    }
+}
+
 private final class WarningProbe: DebugSink, Sendable {
     let warnings = Mutex<[FrameworkWarningInfo]>([])
 
