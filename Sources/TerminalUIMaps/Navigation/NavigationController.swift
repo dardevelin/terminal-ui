@@ -36,6 +36,9 @@ public final class NavigationController {
 
     @ObservationIgnored private var router: (any RouteProvider)?
     @ObservationIgnored private var lastRerouteAttempt: Date?
+    /// Bumped by every start and stop, so a reroute answered after either
+    /// is dropped rather than given to the navigation that followed.
+    @ObservationIgnored private var generation = 0
 
     /// After a failed reroute, how long, by the fixes' clock, before
     /// another is tried.
@@ -47,6 +50,7 @@ public final class NavigationController {
     /// `router` for a new one when the traveller leaves it.
     public func start(route: Route, plan: RoutePlan, router: (any RouteProvider)?,
                       configuration: NavigationConfiguration = NavigationConfiguration()) {
+        generation += 1
         session = NavigationSession(route: route, configuration: configuration)
         self.plan = plan
         self.router = router
@@ -70,6 +74,7 @@ public final class NavigationController {
     }
 
     public func stop() {
+        generation += 1
         session = nil
         status = .idle
         router = nil
@@ -106,15 +111,21 @@ public final class NavigationController {
         // The way the traveller is going, when they move fast enough for
         // their course to mean it: the new route should leave along it.
         let course = fix.course.flatMap { (fix.speed ?? 0) >= current.configuration.minimumSpeedForCourse ? $0 : nil }
+        let generation = generation
         do {
             let route = try await router.route(through: waypoints, mode: plan.mode, departing: course)
-            guard status == .rerouting, var session else { return }
+            guard self.generation == generation, status == .rerouting, var session else { return }
             history += session.reroute(route, course: course)
             self.session = session
             rerouteError = nil
             status = session.state == .arrived ? .arrived : .navigating
         } catch {
-            rerouteError = String(describing: error)
+            guard self.generation == generation else { return }
+            // A reroute given up with the task that asked for it is no
+            // failure to show: the position's source stopped.
+            if !(Task.isCancelled || error is CancellationError) {
+                rerouteError = String(describing: error)
+            }
             if status == .rerouting { status = .navigating }
         }
     }

@@ -8,11 +8,11 @@ import TerminalUIIO
 ///
 /// ``look(at:)`` finds the image nearest a place; ``step(_:)`` walks to the
 /// next or previous along the street. Each starts a task and returns it,
-/// so a test awaits the answer rather than a clock; an answer that a later
-/// look or step has overtaken is dropped.
+/// so a test awaits the answer rather than a clock; a look or step that a
+/// later one overtakes is cancelled, and its answer dropped.
 ///
 /// ```swift
-/// let street = StreetViewModel(imagery: PanoramaxImagery())
+/// let street = StreetViewModel(imagery: PanoramaxImagery(userAgent: "MyMaps/1.0 (me@example.com)"))
 /// street.look(at: place.coordinate)
 /// StreetViewPanel(model: street)
 /// ```
@@ -53,6 +53,8 @@ public final class StreetViewModel {
     static let turnStep = 45.0
 
     @ObservationIgnored private var generation = 0
+    /// The look, step or turn under way, cancelled by the next.
+    @ObservationIgnored private var current: Task<Void, Never>?
 
     public init(imagery: any StreetImagery) {
         self.imagery = imagery
@@ -64,6 +66,7 @@ public final class StreetViewModel {
         imagery = newImagery
         imageryName = newImagery.name
         generation += 1
+        current?.cancel()
         image = nil
         photo = nil
         neighbours = .none
@@ -76,7 +79,7 @@ public final class StreetViewModel {
         generation += 1
         let generation = generation, imagery = imagery
         status = .searching
-        return Task { [weak self] in
+        return replaceCurrent(Task { [weak self] in
             do {
                 let found = try await imagery.images(near: coordinate, within: Self.searchRadius)
                 guard let self, self.generation == generation else { return }
@@ -89,10 +92,17 @@ public final class StreetViewModel {
                 }
                 await self.show(nearest, generation: generation)
             } catch {
-                guard let self, self.generation == generation else { return }
+                guard let self, self.generation == generation, !Task.isCancelled else { return }
                 self.status = .failed(String(describing: error))
             }
-        }
+        })
+    }
+
+    /// Cancel the task under way and keep `task` as the one now.
+    private func replaceCurrent(_ task: Task<Void, Never>) -> Task<Void, Never> {
+        current?.cancel()
+        current = task
+        return task
     }
 
     /// Walk to the next or the previous image along the street; nothing
@@ -107,7 +117,7 @@ public final class StreetViewModel {
         }
         generation += 1
         let generation = generation
-        return Task { [weak self] in await self?.show(target, generation: generation) }
+        return replaceCurrent(Task { [weak self] in await self?.show(target, generation: generation) })
     }
 
     /// Turn the bearing steps walk, for imagery without sequences: the
@@ -118,15 +128,16 @@ public final class StreetViewModel {
         guard let image else { return nil }
         generation += 1
         let generation = generation, imagery = imagery, bearing = walkingBearing
-        return Task { [weak self] in
+        return replaceCurrent(Task { [weak self] in
             let found = (try? await imagery.neighbours(of: image, along: bearing)) ?? .none
             guard let self, self.generation == generation else { return }
             self.neighbours = found
-        }
+        })
     }
 
     /// Show `image`: its photo, then its neighbours.
     private func show(_ shown: StreetImage, generation: Int) async {
+        guard self.generation == generation else { return }
         image = shown
         photo = nil
         neighbours = .none
@@ -144,7 +155,7 @@ public final class StreetViewModel {
             guard self.generation == generation else { return }
             self.neighbours = around
         } catch {
-            guard self.generation == generation else { return }
+            guard self.generation == generation, !Task.isCancelled else { return }
             status = .failed(String(describing: error))
         }
     }

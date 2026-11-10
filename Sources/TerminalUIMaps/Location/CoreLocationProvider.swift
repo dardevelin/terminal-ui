@@ -37,11 +37,12 @@ public struct CoreLocationProvider: LocationProvider {
     static let runLoopSlice: TimeInterval = 0.25
 
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
-        AsyncThrowingStream { continuation in
+        // As a socket's: only the latest fix is kept for a busy reader.
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             guard CoreLocationProvider.hasUsageDescription else {
                 continuation.finish(throwing: LocationError.unavailable(
-                    "this binary has no Info.plist, so Location Services will not ask: "
-                        + "build it with TERMINALUI_MAPS_LOCATION_PLIST=1"))
+                    "this binary has no Info.plist with a location usage description, so Location Services "
+                        + "will not ask: embed one (the Maps example: TERMINALUI_MAPS_LOCATION_PLIST=1)"))
                 return
             }
             let cancelled = LineSocket.CancellationFlag()

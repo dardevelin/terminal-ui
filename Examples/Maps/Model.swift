@@ -457,7 +457,7 @@ final class MapsModel {
             do {
                 try await downloader.download(RegionDownloadRequest(name: name, bounds: region, zoomRange: zooms)) {
                     progress in
-                    Task { @MainActor in maps.download = progress }
+                    Task { @MainActor in maps.noteDownload(progress) }
                 }
                 try await maps.downloadLayers(named: name)
                 maps.downloadProgress = .done
@@ -467,6 +467,13 @@ final class MapsModel {
                 maps.downloadProgress = .failed(String(describing: error))
             }
         }
+    }
+
+    /// A download's progress, sent a tile at a time as tasks that may land
+    /// out of order: only one further on than what is shown is taken.
+    func noteDownload(_ progress: DownloadProgress) {
+        if let download, download.total == progress.total, download.completed >= progress.completed { return }
+        download = progress
     }
 
     func delete(_ name: String) {

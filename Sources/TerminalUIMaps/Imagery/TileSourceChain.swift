@@ -58,6 +58,10 @@ actor TileSourceChain: MapTileSource {
         let infos = try await describe()
         var lastError: (any Error)?
         for (index, source) in sources.enumerated() {
+            // A request cancelled reaches the next source as a URL error,
+            // not a CancellationError: ask no further once the tile is
+            // given up.
+            try Task.checkCancellation()
             let info = infos[index]
             guard id.bounds.intersects(info.bounds), id.zoom >= info.zoomRange.lowerBound else { continue }
             do {

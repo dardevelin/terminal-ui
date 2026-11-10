@@ -42,18 +42,20 @@ public actor OfflineSearch: PlaceSearch {
     }
 
     public func search(_ query: String, near region: GeoRect?) async throws -> [Place] {
-        let matcher = self.matcher ?? PlaceMatcher(places: OfflineSearch.index(pack))
+        let matcher = try self.matcher ?? PlaceMatcher(places: OfflineSearch.index(pack))
         self.matcher = matcher
         return matcher.search(query, near: region)
     }
 
     /// The named features of every stored tile, deepest zoom first so a
     /// place keeps its most precise position. A tile that does not decode
-    /// is passed over rather than failing the search.
-    static func index(_ pack: RegionPack) -> [Place] {
+    /// is passed over rather than failing the search; the search's task
+    /// cancelled, the reading stops at the next tile.
+    static func index(_ pack: RegionPack) throws -> [Place] {
         var places: [Place] = []
         var seen: Set<PlaceKey> = []
         for tile in pack.storedTiles() {
+            try Task.checkCancellation()
             guard let bytes = try? Data(contentsOf: pack.tileURL(for: tile)),
                   let decoded = try? VectorTileDecoder.decode(Array(bytes)) else { continue }
             for layer in decoded.layers where searchedLayers.contains(layer.name) {

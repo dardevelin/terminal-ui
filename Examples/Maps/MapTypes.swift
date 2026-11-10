@@ -134,7 +134,7 @@ extension MapsModel {
             download = DownloadProgress(total: RegionDownloader.tileCount(for: pack.manifest.bounds, zoomRange: zooms))
             try await RegionLayerDownloader(source: layer.source, kind: layer.kind, encoding: layer.encoding)
                 .download(into: pack) { progress in
-                    Task { @MainActor in maps.download = progress }
+                    Task { @MainActor in maps.noteDownload(progress) }
                 }
         }
     }

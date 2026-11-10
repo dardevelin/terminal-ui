@@ -32,7 +32,10 @@ enum LineSocket {
         _ endpoint: Endpoint, greeting: String?, state: State,
         decode: @escaping @Sendable (inout State, String) -> LocationFix?
     ) -> AsyncThrowingStream<LocationFix, any Error> {
-        AsyncThrowingStream { continuation in
+        // A live position matters only as it is now: while the reader of
+        // the stream is busy — a reroute awaited — fixes are not queued up
+        // to be replayed after, only the latest kept.
+        AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             let cancelled = CancellationFlag()
             continuation.onTermination = { _ in cancelled.cancel() }
             let thread = Thread {
