@@ -6,6 +6,17 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.4.0] — 2026-11-10 — Drawing, time and pictures
+
+A minor release over 2.3.2: an app written for 2.3 compiles unchanged, and
+gains views it could not build before. `Canvas` draws paths, fills and
+text at braille and half-block resolution, as SwiftUI's does;
+`TimelineView` redraws on a schedule and costs nothing while it waits; a
+view can take the wheel with where the pointer is, and a tap can say
+where it landed. TerminalUIIO now decodes PNG and JPEG in Swift alone,
+and inflates thirty to a hundred times as fast. `swtui` draws a recording
+as an SVG, a PNG or a GIF, the same bytes on macOS and Linux.
+
 ### Added
 
 - **`swtui record render --format svg` draws a recorded screen as an SVG.**
@@ -1550,7 +1561,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.4.0...HEAD
+[2.4.0]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
