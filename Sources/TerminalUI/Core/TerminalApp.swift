@@ -277,6 +277,9 @@ public enum RenderMode: Sendable {
 @MainActor
 public final class TerminalRuntime<RootView: TerminalView> {
     private let buildView: () -> RootView
+    /// Watches what `buildView` reads, and brings the graph up to date
+    /// between the events of one batch when one may have moved focus.
+    private let inputSettling = InputSettling()
     private let onEvent: (TerminalEvent) -> Bool
     private let timers: [TerminalTimer]
     private let renderMode: RenderMode
@@ -1104,50 +1107,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
     }
 
-    /// Re-reads where focus can go from the graph as it now stands: a
-    /// presentation that opened takes focus, one that closed hands it back.
-    private func reindexFocus() {
-        guard let root = graph.root else { return }
-        focusEngine.rebuildIndex(root: root)
-        // Auto-focus on startup: the view that asked with
-        // `.prefersDefaultFocus()`, else the first focusable. With
-        // arrows no longer moving focus by default, an app whose
-        // arrow handler lives on a `.focusable()` view would receive
-        // nothing until the user pressed Tab. Mirrors SwiftUI's
-        // implicit first-responder — the app boots with a focused
-        // element so per-view handlers fire on the very first key.
-        if focusEngine.keyboardFocusID == nil {
-            focusEngine.focusDefault()
-        }
-    }
-
-    /// Brings the graph up to date with what the events before this one
-    /// changed, without drawing, so a key reaches the view that holds focus
-    /// once they have taken effect.
-    ///
-    /// A frame's events are handled in a batch, and the graph is updated
-    /// only when the frame is drawn. A key that closed a presentation left
-    /// focus inside it until then, so a key typed straight after it — a
-    /// scripted client's, a fast typist's over SSH — went to the closed
-    /// presentation and was lost; one typed after a push reached the link
-    /// that pushed and pushed again. As in SwiftUI, each event sees the
-    /// views the ones before it left. The update is the one the frame would
-    /// make: from the root after an event, since `content()` may read state
-    /// no body observes, and otherwise a drain of the bodies whose observed
-    /// state changed; with neither due, nothing.
+    /// Brings the graph up to date before a key or a paste, when an event
+    /// before it in the batch may have moved where it goes; see
+    /// `InputSettling`.
     private func settleBeforeFocusedInput() {
-        guard graph.root != nil else { return }
-        graph.focusMoved(to: focusEngine.keyboardFocusID)
-        guard needsRender || graph.hasDirtyNodes else { return }
         withFrameEnvironment {
-            focusEngine.clearHandlers()
-            if needsRender {
-                graph.update(from: buildView())
-            } else {
-                graph.drain()
-            }
+            inputSettling.settle(graph, for: focusEngine, content: buildView)
         }
-        reindexFocus()
     }
 
     private func renderDiffFrameBody(buildStart: UInt64, structuralRebuild: Bool, needsWork: Bool) {
@@ -1157,7 +1123,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             focusEngine.clearHandlers()
 
             if structuralRebuild {
-                let view = buildView()
+                let view = inputSettling.build(buildView)
                 graphChanged = graph.update(from: view)
             } else {
                 // Pure state mutation — drain in place. Returns true
@@ -1166,7 +1132,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 graphChanged = graph.drain()
             }
 
-            reindexFocus()
+            if let root = graph.root {
+                focusEngine.reindex(root)
+            }
 
             // The first focusable is chosen only once this frame's graph
             // exists — after its bodies ran in an environment that named no

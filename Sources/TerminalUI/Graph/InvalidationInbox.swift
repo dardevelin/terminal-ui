@@ -49,6 +49,14 @@ final class InvalidationInbox: Sendable {
         }
     }
 
+    /// Whether a node posted since the last ``take()`` satisfies
+    /// `predicate`, leaving it posted. Called on the main actor, the only
+    /// place a node's other properties are read or written.
+    func containsPosted(where predicate: (AttributeNode) -> Bool) -> Bool {
+        guard hasPending else { return false }
+        return pending.withLock { $0.values.contains(where: predicate) }
+    }
+
     #if DEBUG
     /// What ``take()`` would return, without taking it. For tests.
     var posted: [ObjectIdentifier: AttributeNode] {

@@ -64,9 +64,11 @@ All notable changes to TerminalUI are documented here. Format based on
   until then, so the next key — from a scripted client, or a fast typist
   over SSH — went to the closed modal and was lost; a second Enter after
   the one that pushed a `NavigationStack` screen reached the link and
-  pushed it again. The runtime now updates the views between such events,
-  as the frame would, without drawing, so each key and paste sees what
-  the events before it left.
+  pushed it again. When an event may have presented or dismissed
+  something — state `content()` read changed, or a body due to run again
+  holds a presentation — the runtime now updates the views before the
+  next key or paste, as the frame would, without drawing. Typing, which
+  moves no focus, waits for the frame as before.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

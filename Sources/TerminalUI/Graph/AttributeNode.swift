@@ -301,6 +301,12 @@ public class AttributeNode: @unchecked Sendable {
     /// before the first stamp, which counts as true.
     var _readsEnvironmentBelow: Bool?
 
+    /// Memoised alongside `_containsViewBody`: true iff this node or a
+    /// descendant hosts a presentation — a `.modal` modifier, which every
+    /// presentation is built on — presented or not. Nil for a node built
+    /// since the last stamp, which a walk then fills.
+    var _holdsPresentationBelow: Bool?
+
     /// Last `Size` `geometryRebuilder` was invoked at by the layout
     /// phase. Render reads this to confirm the GR's child subtree is
     /// already laid out at the rect's size; if not (the rare case of

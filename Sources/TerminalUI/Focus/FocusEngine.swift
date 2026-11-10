@@ -109,6 +109,23 @@ public final class FocusEngine: @unchecked Sendable {
     /// `.prefersDefaultFocus()`, as of the last ``rebuildIndex(root:)``.
     private var defaultFocusIDs: Set<NodeID> = []
 
+    /// Re-reads where focus can go from the graph under `root` as it now
+    /// stands — a presentation that opened takes focus, one that closed
+    /// hands it back — and focuses the default when nothing is.
+    ///
+    /// The default is the view that asked with `.prefersDefaultFocus()`,
+    /// else the first focusable. With arrows no longer moving focus by
+    /// default, an app whose arrow handler lives on a `.focusable()` view
+    /// would receive nothing until the user pressed Tab. Mirrors SwiftUI's
+    /// implicit first responder: the app boots with a focused element so
+    /// per-view handlers fire on the very first key.
+    func reindex(_ root: AttributeNode) {
+        rebuildIndex(root: root)
+        if keyboardFocusID == nil {
+            focusDefault()
+        }
+    }
+
     /// Rebuild both indices with a single depth-first walk.
     /// Called after graph.update() when the graph structure changed.
     ///
