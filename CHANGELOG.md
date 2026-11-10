@@ -6,6 +6,16 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `WidthReader` shows what its view's state now says, however the
+  state changed.** A body run again because a task changed its state, not
+  because of a key, handed its reader a new closure, and the reader kept
+  what the old one had built at that width: every `StatusBar` holds one,
+  so a status line fed by a task read its old text until a key was
+  pressed. A `List` given a `visibleCount` kept its old rows the same way.
+  A new closure now forgets the old one's build.
+
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 
 A patch release over 2.3.0: an app written for 2.3 compiles unchanged.

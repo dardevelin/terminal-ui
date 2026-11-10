@@ -321,7 +321,8 @@ public class AttributeNode: @unchecked Sendable {
     public var readerSizing: ReaderSizing?
 
     /// The width and graph update a reader's content was last built for —
-    /// the memo `WidthReader` rebuilds consult.
+    /// the memo `WidthReader` rebuilds consult. Cleared when the node is
+    /// handed a new closure, which may build other content.
     var _readerBuild: (width: Int, generation: Int)?
 
     /// A list given a `visibleCount`: rebuilds its rows for the width a pass

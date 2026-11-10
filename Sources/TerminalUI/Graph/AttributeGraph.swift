@@ -488,6 +488,10 @@ public final class AttributeGraph: @unchecked Sendable {
         if let geom = view as? any _GraphGeometryReader {
             node.readerSizing = geom.sizing
             node.geometryRebuilder = makeGeometryRebuilder(geom, childID: node.id.appending(.index(0)))
+            // A new closure may build other content at the same width: a
+            // drain hands one over without a new update generation, and the
+            // memo of the old closure's build would keep its content.
+            node._readerBuild = nil
             node.isDirty = false
             return
         }
@@ -1132,8 +1136,9 @@ public final class AttributeGraph: @unchecked Sendable {
     /// fallback for a node with no child yet.
     ///
     /// A `WidthReader` skips the rebuild when it already holds a build for
-    /// this width from this update: its content is a function of width and
-    /// state alone, and state does not change within an update. That is what
+    /// this width from this update and this closure: its content is a
+    /// function of the closure and the width alone, and an update or a drain
+    /// that hands the node a new closure forgets the build. That is what
     /// lets measurement build it for the width it asks about without paying
     /// again in layout and render. A `GeometryReader` rebuilds every time, as
     /// it always has.
@@ -1208,6 +1213,10 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         node.readerSizing = nil
         node.geometryRebuilder = nil
+        // The fresh closures may hold other rows: forget the old ones'
+        // build, which a drain, bringing no new update generation, would
+        // otherwise keep, as a reader's.
+        node._readerBuild = nil
         weak let weakNode: AttributeNode? = node
         node.rowWindowRebuilder = { width in
             guard let graph = weakSelf, let node = weakNode else { return }
