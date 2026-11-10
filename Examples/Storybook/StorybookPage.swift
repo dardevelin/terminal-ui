@@ -38,13 +38,13 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     // Layout
     case vstack, hstack, zstack, spacer, divider, scrollview, geometryreader, widthReader, splitView, alignment
     // Primitives
-    case text, gradient, forEach, subCell, timeline, asyncTask, capabilities
+    case text, gradient, forEach, subCell, timeline, timelineView, asyncTask, capabilities
     // Input
     case button, textInput, textArea, toggle, disclosureGroup, picker, slider, stepper, gauge, form, navigationStack, promptInput
     // Display
     case list, table, tabView, treeView, diffView, hunkDiffView, progressBar, statusBar, bufferView, markdown, codeView
     // Charts
-    case barChart, sparkline, heatMap, brailleCanvas, dotMatrixText, morseTicker
+    case barChart, sparkline, heatMap, brailleCanvas, canvas, dotMatrixText, morseTicker
     // Modifiers
     case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, dragGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, contextMenu, alert, confirmationDialog
 
@@ -240,6 +240,22 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                 let curve = CurveTimeline(duration: .milliseconds(500), curve: .easeOut)
                 curve.start()
                 // ... view reads `curve.progress` (0..1) ...
+                """)
+        case .timelineView: return PageInfo(id: self, category: .primitives, name: "TimelineView",
+            summary: "A view rebuilt on a schedule: every frame with .animation, or at the dates of .periodic and .everyMinute. Only its own body runs again, and a paused or absent timeline costs nothing.",
+            code: """
+                VStack {
+                    TimelineView(.animation) { context in
+                        let phase = context.date.timeIntervalSinceReferenceDate
+                        let length = Int(((sin(phase * 2) + 1) * 12).rounded())
+                        Text("[" + String(repeating: "=", count: length)
+                             + String(repeating: " ", count: 24 - length) + "]").foreground(.cyan)
+                    }
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("ticks once a second: \\(Int(context.date.timeIntervalSinceReferenceDate) % 60)")
+                            .foreground(.gray)
+                    }
+                }
                 """)
         case .asyncTask: return PageInfo(id: self, category: .primitives, name: ".task",
             summary: "Async work owned by a view: started when it appears, cancelled when it leaves. Mutating @Observable state from inside wakes the render loop, so the screen follows the work with no key press and no timer. `.task(id:)` restarts when the id changes.",
@@ -530,6 +546,36 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                     canvas.set(x: x, y: y)
                 }
                 Text(canvas.render()).foreground(.cyan)
+                """)
+        case .canvas: return PageInfo(id: self, category: .charts, name: "Canvas",
+            summary: "Draw paths, fills and text, as SwiftUI's Canvas. Fills land on half cells, strokes on braille dots with one colour to a cell (the road clears the river's dots where it crosses), text on whole cells over both.",
+            code: """
+                Canvas { context, size in
+                    var field = Path()
+                    field.addLines([CanvasPoint(x: 0, y: 3.5), CanvasPoint(x: 40, y: 1.5),
+                                    CanvasPoint(x: 40, y: 8), CanvasPoint(x: 0, y: 8)])
+                    field.closeSubpath()
+                    context.fill(field, with: .color(.rgb(46, 96, 52)))
+
+                    var lake = Path(ellipseIn: CanvasRect(x: 21, y: 3.5, width: 16, height: 4))
+                    lake.addEllipse(in: CanvasRect(x: 27, y: 5, width: 4, height: 1))
+                    context.fill(lake, with: .color(.rgb(40, 70, 140)), style: FillStyle(eoFill: true))
+
+                    var river = Path()
+                    river.move(to: CanvasPoint(x: 0, y: 7.5))
+                    river.addCurve(to: CanvasPoint(x: 22, y: 5.5),
+                                   control1: CanvasPoint(x: 8, y: 4), control2: CanvasPoint(x: 14, y: 8))
+                    context.stroke(river, with: .color(.rgb(120, 200, 255)))
+
+                    var road = Path()
+                    road.addLines([CanvasPoint(x: 6, y: 2.5), CanvasPoint(x: 14, y: 8)])
+                    context.stroke(road, with: .color(.rgb(240, 200, 80)), lineWidth: 0.5)
+
+                    context.stroke(Path(ellipseIn: CanvasRect(x: 3, y: 0.25, width: 4, height: 2)),
+                                   with: .color(.rgb(255, 220, 120)))
+                    context.draw(Text("lake"), at: CanvasPoint(x: 29, y: 4))
+                }
+                .frame(width: 40, height: 8)
                 """)
         case .dotMatrixText: return PageInfo(id: self, category: .charts, name: "DotMatrixText",
             summary: "Large text rendered as dot-matrix LED panels, or as solid half-block letterforms.",

@@ -220,6 +220,8 @@ struct PreviewPane: TerminalView {
                     Text(String(SubCellGlyph.shade(.dark).character)).foreground(.yellow)
                 }
             }
+        case .timelineView:
+            TimelineViewDemo()
         case .timeline:
             // Timeline is observable; the running ticker reads
             // `state.timelineFrame` which the StorybookApp advances
@@ -522,6 +524,33 @@ struct PreviewPane: TerminalView {
             // BrailleCanvas is a helper — build it, render to a String,
             // then wrap in Text. This keeps the preview declarative.
             Text(buildBrailleDemo()).foreground(.cyan)
+        case .canvas:
+            Canvas { context, size in
+                var field = Path()
+                field.addLines([CanvasPoint(x: 0, y: 3.5), CanvasPoint(x: 40, y: 1.5),
+                                CanvasPoint(x: 40, y: 8), CanvasPoint(x: 0, y: 8)])
+                field.closeSubpath()
+                context.fill(field, with: .color(.rgb(46, 96, 52)))
+
+                var lake = Path(ellipseIn: CanvasRect(x: 21, y: 3.5, width: 16, height: 4))
+                lake.addEllipse(in: CanvasRect(x: 27, y: 5, width: 4, height: 1))
+                context.fill(lake, with: .color(.rgb(40, 70, 140)), style: FillStyle(eoFill: true))
+
+                var river = Path()
+                river.move(to: CanvasPoint(x: 0, y: 7.5))
+                river.addCurve(to: CanvasPoint(x: 22, y: 5.5),
+                               control1: CanvasPoint(x: 8, y: 4), control2: CanvasPoint(x: 14, y: 8))
+                context.stroke(river, with: .color(.rgb(120, 200, 255)))
+
+                var road = Path()
+                road.addLines([CanvasPoint(x: 6, y: 2.5), CanvasPoint(x: 14, y: 8)])
+                context.stroke(road, with: .color(.rgb(240, 200, 80)), lineWidth: 0.5)
+
+                context.stroke(Path(ellipseIn: CanvasRect(x: 3, y: 0.25, width: 4, height: 2)),
+                               with: .color(.rgb(255, 220, 120)))
+                context.draw(Text("lake"), at: CanvasPoint(x: 29, y: 4))
+            }
+            .frame(width: 40, height: 8)
         case .dotMatrixText:
             VStack(spacing: 1) {
                 DotMatrixText("HELLO")
@@ -1400,5 +1429,24 @@ struct StorybookChoice: TerminalView {
     var body: some TerminalView {
         Text((isFocused ? "▸ " : "  ") + title)
             .foreground(isFocused ? .cyan : .gray)
+    }
+}
+
+/// The TimelineView page's preview: a bar swinging every frame, and a clock
+/// that ticks once a second — two schedules, nothing else driving them.
+struct TimelineViewDemo: TerminalView {
+    var body: some TerminalView {
+        VStack {
+            TimelineView(.animation) { context in
+                let phase = context.date.timeIntervalSinceReferenceDate
+                let length = Int(((sin(phase * 2) + 1) * 12).rounded())
+                Text("[" + String(repeating: "=", count: length)
+                     + String(repeating: " ", count: 24 - length) + "]").foreground(.cyan)
+            }
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text("ticks once a second: \(Int(context.date.timeIntervalSinceReferenceDate) % 60)")
+                    .foreground(.gray)
+            }
+        }
     }
 }
