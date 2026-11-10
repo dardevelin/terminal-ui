@@ -20,7 +20,10 @@ extension Action {
 
     /// Dismiss the topmost modal or, when none is present, quit. The
     /// framework's runtime resolves the dismiss-vs-quit branch when
-    /// it supplies the closure.
+    /// it supplies the closure: bound to Escape, it never quits, since
+    /// the key has already been through the app's `onEvent`, which says
+    /// whether Escape quits; invoked by name with nothing presented, it
+    /// quits.
     public static func dismissOrQuit(perform: @Sendable @escaping () -> Void) -> Action {
         Action(
             id: "app.dismissOrQuit",

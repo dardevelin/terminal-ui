@@ -47,6 +47,77 @@ All notable changes to TerminalUI are documented here. Format based on
   is approximated, with a warning that names it. Defaults for every render
   flag can be set in a `[render]` section of `.terminalui/terminalui.toml`.
 
+## [2.3.2] — 2026-11-10 — Keys and taps where they are meant
+
+A patch release over 2.3.1: an app written for 2.3 compiles unchanged.
+A key typed as a presentation closes reaches the view focus returns to, a
+handled Escape no longer quits, a tap drawn over a focusable view takes
+the click, and a status line fed by a task shows what the task last said.
+One behaviour moves with the Escape fix: an app whose `onEvent` returns
+`true` for Escape no longer quits on it, as it asked; Ctrl+C still does.
+
+### Fixed
+
+- **A `WidthReader` shows what its view's state now says, however the
+  state changed.** A body run again because a task changed its state, not
+  because of a key, handed its reader a new closure, and the reader kept
+  what the old one had built at that width: every `StatusBar` holds one,
+  so a status line fed by a task read its old text until a key was
+  pressed. A `List` given a `visibleCount` kept its old rows the same way.
+  A new closure now forgets the old one's build.
+- **A stack nested in a stack gives a greedy child the height left.** A
+  `List` sized by its container, under a heading in a `VStack` that sat in
+  another, was measured with its stack as content and drew no rows, and a
+  `Spacer` in an inner `VStack` pushed nothing that followed the outer
+  one's end. As in SwiftUI, a stack holding a view that takes the height
+  it is offered now takes it too; a `Spacer` in an `HStack` still leaves
+  the row one line tall. The same rule across the width already held.
+- **A key handler can return what an `@MainActor` model decided.**
+  `KeyEventResult` was not `Sendable`, so a handler could not hand back
+  the result of `MainActor.assumeIsolated { model.handle(event) }`. It is
+  now.
+- **A tap drawn over a focusable view takes the click.** A compass with
+  `.onTapGesture`, overlaid on a focusable map, never ran: the map under
+  it took the click and the focus. What is drawn on top now acts, and
+  focus stays where it was, as it already did over a view that cannot
+  take focus.
+- **An overlay on a view that fills its space is aligned in all of it.**
+  Given any alignment but `.topLeading`, an `.overlay` or
+  `.backgroundView` on a `GeometryReader`, or on a `.frame(maxWidth:
+  .infinity, maxHeight: .infinity)`, was aligned in the base's measured
+  size — a single cell for a reader, the content's size for the frame —
+  so a banner at `.top` was squeezed into one cell and a badge at
+  `.bottomTrailing` sat at the top left. A base that takes what it is
+  offered is now as big as that.
+- **Escape quits only where the app's `onEvent` says so.** An app that
+  closed an overlay of its own on Escape in `onEvent` and returned `true`
+  was quit all the same: an overlay is not a presentation, and with none
+  up the key fell through to the framework's Escape binding, which quit.
+  That binding now only dismisses: whether Escape quits is `onEvent`'s
+  to say, and the default `onEvent` still quits on it. An app whose
+  `onEvent` returns `true` for Escape — Coder, Navigation, Settings,
+  AsyncState among the examples — no longer quits on it; Ctrl+C still
+  does. `invoke_action app.dismissOrQuit` from a control client, which no
+  `onEvent` sees, still quits with nothing presented.
+- **A paste reaches a field whose body the last frame did not run.** A
+  frame clears every handler and puts back what the graph update
+  registers; key, click, tap, drag and wheel handlers ride on their
+  view's node, so one whose body was skipped is put back too, but
+  `.onPaste` and `.onHover` did not. After a frame drawn only for a
+  change elsewhere — a task's, a timer's — a focused field dropped a
+  paste until a key was pressed, and a view stopped being told of the
+  pointer. Both now ride on the node.
+- **A key typed straight after a presentation closes reaches the view
+  focus returns to.** The events that arrive between two frames are
+  handled together, and the views were brought up to date only when the
+  next frame was drawn. A key that closed a modal left focus inside it
+  until then, so the next key — from a scripted client, or a fast typist
+  over SSH — went to the closed modal and was lost; a second Enter after
+  the one that pushed a `NavigationStack` screen reached the link and
+  pushed it again. The runtime now updates the views between such events,
+  as the frame would, without drawing, so each key and paste sees what
+  the events before it left.
+
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 
 A patch release over 2.3.0: an app written for 2.3 compiles unchanged.
@@ -1412,7 +1483,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...HEAD
+[2.3.2]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
 [2.3.0]: https://github.com/dardevelin/terminal-ui/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dardevelin/terminal-ui/compare/v2.1.0...v2.2.0

@@ -106,4 +106,53 @@ struct HandlerReregistrationTests {
         engine.handleMouseClick(x: 0, y: 0, root: graph.root!)
         #expect(clicked == 1)
     }
+
+    // A paste and a hover handler ride it too. Neither was stamped on its
+    // node, so a field whose body a frame skipped took no paste: the
+    // payload was dropped, as one with no field to go to is.
+    @Test("a paste and a hover handler survive clear + cached update")
+    func pasteAndHoverSurvive() {
+        pastedBox.text = []
+        pastedBox.hovered = []
+        let graph = AttributeGraph()
+        let engine = FocusEngine()
+
+        func frame(clearFirst: Bool) {
+            GraphContext.$currentFocusEngine.withValue(engine) {
+                if clearFirst { engine.clearHandlers() }
+                graph.update(from: VStack { CachedPasteField(title: "field") })
+                var buffer = CellBuffer(width: 20, height: 4)
+                let rect = Rect(x: 0, y: 0, width: 20, height: 4)
+                Layout.measureAndPlace(graph: graph.root!, in: rect)
+                GraphRenderer.render(graph.root!, into: &buffer, context: RenderContext(rect: rect))
+                engine.rebuildIndex(root: graph.root!)
+            }
+        }
+
+        frame(clearFirst: false)
+        frame(clearFirst: true)
+        engine.focusNext()
+        #expect(engine.routePasteEvent("pasted", root: graph.root!))
+        #expect(pastedBox.text == ["pasted"])
+        engine.applyMouseMove(x: 1, y: 0, root: graph.root!, policy: .clickToLock)
+        #expect(pastedBox.hovered == [true])
+    }
+}
+
+/// What `CachedPasteField` was handed, kept outside it for the reason
+/// `FireCount` is.
+final class PasteLog: @unchecked Sendable {
+    var text: [String] = []
+    var hovered: [Bool] = []
+}
+private let pastedBox = PasteLog()
+
+private struct CachedPasteField: TerminalView {
+    let title: String
+
+    var body: some TerminalView {
+        Text(title).focusable()
+            .onPaste { pastedBox.text.append($0) }
+            .onHover { pastedBox.hovered.append($0) }
+    }
 }

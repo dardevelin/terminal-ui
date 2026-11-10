@@ -47,12 +47,14 @@ extension DragGestureModifier: _FocusGraphModifier {
 
 extension OnPasteModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
+        node._pasteHandler = handler
         GraphContext.currentFocusEngine?.registerPasteHandler(for: node.id, handler: handler)
     }
 }
 
 extension OnHoverModifier: _FocusGraphModifier {
     func registerWithFocusEngine(node: AttributeNode) {
+        node._hoverHandler = handler
         GraphContext.currentFocusEngine?.registerHoverHandler(for: node.id, handler: handler)
         #if DEBUG
         // Surface a stable-coded framework warning for the only
