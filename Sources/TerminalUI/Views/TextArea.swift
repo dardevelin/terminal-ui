@@ -368,7 +368,8 @@ public struct TextArea: TerminalView {
         )
         // The wheel scrolls the text and leaves the caret and the selection
         // alone; as arrows it moved the caret and cleared the selection.
-        return rows.onScrollWheel { [state] key in
+        return rows.onScrollWheel { [state] step in
+            let key = step.key
             var editor = state.get()
             let current = min(max(0, editor.scrollOffset), maxScroll)
             let next: Int

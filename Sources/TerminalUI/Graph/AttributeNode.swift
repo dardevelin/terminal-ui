@@ -285,7 +285,7 @@ public class AttributeNode: @unchecked Sendable {
 
     /// Scrolls this view one wheel step toward the given arrow, and says
     /// whether it moved; see `View.onScrollWheel`.
-    var _wheelHandler: ((Key) -> Bool)?
+    var _wheelHandler: ((ScrollWheelEvent) -> Bool)?
 
     /// Memoised: true iff this node OR any descendant has `.viewBody`
     /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`

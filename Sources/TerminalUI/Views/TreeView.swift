@@ -314,7 +314,8 @@ public struct TreeView<Data: RandomAccessCollection, Content: TerminalView>: Ter
         .frame(minHeight: FrameDimension(window.lines))
         .focusable()
         // The wheel scrolls the window and leaves the selection alone.
-        .onScrollWheel { key in
+        .onScrollWheel { step in
+            let key = step.key
             let current = !wheel.moved && scrollBinding.get() == drawnFrom ? window.offset : scrollBinding.get()
             let next: Int
             switch key {

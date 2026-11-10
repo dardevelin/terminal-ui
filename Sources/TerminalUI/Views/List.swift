@@ -203,7 +203,8 @@ public struct List<Data: RandomAccessCollection, Content: TerminalView>: Termina
         .focusable()
         // The wheel scrolls the window and leaves the selection alone, as a
         // list under a trackpad does; the arrows move the selection.
-        .onScrollWheel { key in
+        .onScrollWheel { step in
+            let key = step.key
             let current = !wheel.moved && scroll.get() == drawnFrom ? window.offset : scroll.get()
             let next: Int
             switch key {
