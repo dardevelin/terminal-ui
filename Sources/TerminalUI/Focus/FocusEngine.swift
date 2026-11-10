@@ -109,6 +109,23 @@ public final class FocusEngine: @unchecked Sendable {
     /// `.prefersDefaultFocus()`, as of the last ``rebuildIndex(root:)``.
     private var defaultFocusIDs: Set<NodeID> = []
 
+    /// Re-reads where focus can go from the graph under `root` as it now
+    /// stands — a presentation that opened takes focus, one that closed
+    /// hands it back — and focuses the default when nothing is.
+    ///
+    /// The default is the view that asked with `.prefersDefaultFocus()`,
+    /// else the first focusable. With arrows no longer moving focus by
+    /// default, an app whose arrow handler lives on a `.focusable()` view
+    /// would receive nothing until the user pressed Tab. Mirrors SwiftUI's
+    /// implicit first responder: the app boots with a focused element so
+    /// per-view handlers fire on the very first key.
+    func reindex(_ root: AttributeNode) {
+        rebuildIndex(root: root)
+        if keyboardFocusID == nil {
+            focusDefault()
+        }
+    }
+
     /// Rebuild both indices with a single depth-first walk.
     /// Called after graph.update() when the graph structure changed.
     ///
@@ -261,6 +278,12 @@ public final class FocusEngine: @unchecked Sendable {
         }
         if let wheelHandler = node._wheelHandler, wheelHandlers[node.id] == nil {
             wheelHandlers[node.id] = wheelHandler
+        }
+        if let pasteHandler = node._pasteHandler, pasteHandlers[node.id] == nil {
+            pasteHandlers[node.id] = pasteHandler
+        }
+        if let hoverHandler = node._hoverHandler, hoverHandlers[node.id] == nil {
+            hoverHandlers[node.id] = hoverHandler
         }
     }
 
@@ -759,7 +782,9 @@ public final class FocusEngine: @unchecked Sendable {
     ///    cursor but a node *with a registered click handler* is, invoke
     ///    that handler. Keyboard focus stays where it was. Lets a list
     ///    row be clickable (via `.onClick`) without joining the Tab
-    ///    cycle as a focusable.
+    ///    cycle as a focusable. The same holds where such a node is drawn
+    ///    over a focusable, outside it — an overlay's tap above a focusable
+    ///    view: what is on top takes the click.
     ///
     /// Used by Storybook's sidebar rows: they're not focusable (the
     /// single-focusable architecture lives on the bottom hint row), but
@@ -807,6 +832,21 @@ public final class FocusEngine: @unchecked Sendable {
             return false
         }
         beginDrag(at: press, in: scope)
+        // A view that acts on the press, drawn over a focusable rather than
+        // inside one — a compass overlaid on a map — is what the pointer is
+        // on: it acts, and focus stays where it was, as on a press with no
+        // focusable under it. Found topmost first, as the focusable is.
+        let onTop = deepest(x: x, y: y, in: scope) { node -> AttributeNode? in
+            guard node.rect.contains(x: x, y: y),
+                  node.isFocusable || pressAction(at: node, for: press) != nil else { return nil }
+            return node
+        }
+        if let onTop, !onTop.isFocusable,
+           !sequence(first: onTop, next: \.parent).contains(where: \.isFocusable),
+           let action = pressAction(at: onTop, for: press) {
+            action()
+            return true
+        }
         guard let target = findFocusableAt(x: x, y: y, in: scope) else {
             // No focusable under the cursor — try a click handler on any
             // node containing the click point. Walks deepest-first so a
@@ -1389,7 +1429,11 @@ public enum FocusDirection {
 // MARK: - Key Event Result
 
 /// What a key handler tells the dispatcher about an event.
-public enum KeyEventResult {
+///
+/// Sendable, so a handler can return what it decided on the main actor —
+/// `MainActor.assumeIsolated { model.handle(event) }` — for a model that is
+/// `@MainActor`.
+public enum KeyEventResult: Sendable {
     /// The event was consumed; dispatch stops here.
     case handled
     /// The event was not consumed; it bubbles to the next handler.

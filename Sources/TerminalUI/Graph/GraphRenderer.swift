@@ -683,7 +683,8 @@ public enum GraphRenderer {
     /// content's natural size, and any view whose body reads its size through
     /// one (`TreeView`) echoed the parent's extent back as a fixed measure
     /// and overflowed the stack. A `WidthReader` is the opposite on this
-    /// axis: its content decides its height, so a stack measures it.
+    /// axis: its content decides its height, so a stack measures it. A stack
+    /// holding any of these is one too.
     private static func isVFlexChild(_ node: AttributeNode) -> Bool {
         if node.readerSizing == .proposal { return true }
         if case .primitive(.spacer) = node.kind { return true }
@@ -691,6 +692,25 @@ public enum GraphRenderer {
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
         if case .modifier(.frame(_, _, _, _, _, let maxH, _)) = node.kind, maxH == .infinity { return true }
         if let child = flexBearingChild(of: node) { return isVFlexChild(child) }
+        // The vertical twin of `isFlexChild`'s rule: a stack holding a view
+        // that takes the height it is offered takes it too, as SwiftUI's
+        // does. A size-driven List under a heading, in a VStack nested in
+        // another, was measured with its stack and given no rows. A Spacer
+        // in an HStack stretches only across it, so it does not make the
+        // HStack tall.
+        if case .layout(let info) = node.kind {
+            switch info.kind {
+            case .vstack:
+                return node.children.contains(where: isVFlexChild)
+            case .hstack:
+                return node.children.contains { child in
+                    if case .primitive(.spacer) = child.kind { return false }
+                    return isVFlexChild(child)
+                }
+            default:
+                break
+            }
+        }
         return false
     }
 
@@ -906,16 +926,22 @@ public enum GraphRenderer {
         return max(1, min(available, measureHeight(child, proposedWidth: proposedWidth)))
     }
 
-    /// A child is "flex" if it should consume remaining space in a stack layout.
-    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
-    /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
-    /// HStacks — see `isVFlexChild` for why the reader is here.
     /// Whether `node` takes whatever width it is offered, as a Spacer or a
     /// row holding one does.
     static func takesOfferedWidth(_ node: AttributeNode) -> Bool {
         isFlexChild(node)
     }
 
+    /// Whether `node` takes whatever height it is offered: the vertical
+    /// twin of `takesOfferedWidth`.
+    static func takesOfferedHeight(_ node: AttributeNode) -> Bool {
+        isVFlexChild(node)
+    }
+
+    /// A child is "flex" if it should consume remaining space in a stack layout.
+    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
+    /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
+    /// HStacks — see `isVFlexChild` for why the reader is here.
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
         if node.geometryRebuilder != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }

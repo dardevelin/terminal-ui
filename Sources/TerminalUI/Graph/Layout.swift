@@ -172,9 +172,14 @@ public enum Layout {
                         in rect: Rect, alignment: Alignment) -> Rect {
         var frame = rect
         if alignment != .topLeading {
-            let baseWidth = min(rect.width, GraphMeasurer.measureWidth(base))
-            let baseHeight = min(rect.height,
-                                 GraphMeasurer.measureHeight(base, proposedWidth: max(1, baseWidth)))
+            // A base that takes what it is offered — a reader, a frame
+            // reaching for `.infinity` — is as big as the rect on that axis,
+            // not as its measure, which for a GeometryReader is nothing.
+            let baseWidth = GraphRenderer.takesOfferedWidth(base)
+                ? rect.width : min(rect.width, GraphMeasurer.measureWidth(base))
+            let baseHeight = GraphRenderer.takesOfferedHeight(base)
+                ? rect.height
+                : min(rect.height, GraphMeasurer.measureHeight(base, proposedWidth: max(1, baseWidth)))
             frame = Rect(x: rect.x, y: rect.y,
                          width: max(1, baseWidth), height: max(1, baseHeight))
         }

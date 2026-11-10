@@ -277,6 +277,9 @@ public enum RenderMode: Sendable {
 @MainActor
 public final class TerminalRuntime<RootView: TerminalView> {
     private let buildView: () -> RootView
+    /// Watches what `buildView` reads, and brings the graph up to date
+    /// between the events of one batch when one may have moved focus.
+    private let inputSettling = InputSettling()
     private let onEvent: (TerminalEvent) -> Bool
     private let timers: [TerminalTimer]
     private let renderMode: RenderMode
@@ -359,10 +362,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Overwrites the previous one; only the last-dispatched
         // signal matters because the loop polls every iteration.
         self.pendingQuitSignal = signal
-        return makeFrameworkDefaultsScope(
-            signal: signal,
-            isPresenting: focusEngine.isContainingFocus
-        )
+        // A key has been through `onEvent`, which said whether Escape quits.
+        return makeFrameworkDefaultsScope(signal: signal, escapeQuits: false)
     }
 
     private var pendingQuitSignal: QuitSignal?
@@ -686,6 +687,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
             for event in events {
                 if !(pendingPointer?.continues(with: event) ?? false) {
                     route(&pendingPointer)
+                }
+                switch event {
+                case .key, .paste: settleBeforeFocusedInput()
+                default: break
                 }
                 // Universal Ctrl+C is now an action graph default —
                 // `Action.quit` bound to `.keyboard(.character("c"), [.ctrl])`
@@ -1075,12 +1080,21 @@ public final class TerminalRuntime<RootView: TerminalView> {
         let stateOnlyDirty = graph.hasDirtyNodes && !structuralRebuild
         let needsWork = structuralRebuild || stateOnlyDirty
 
-        // Bind environment + proposed size for the entire frame. The
-        // bindings are observed by body evaluation, measurement,
-        // layout, and render — all called from inside this closure.
-        // Use the current binding (if any) as the base so settings
-        // bound at run-loop scope (e.g., a future global env override)
-        // still propagate.
+        withFrameEnvironment {
+            renderDiffFrameBody(
+                buildStart: buildStart,
+                structuralRebuild: structuralRebuild,
+                needsWork: needsWork
+            )
+        }
+        cursorFlash.frameDrawn()
+    }
+
+    /// Runs `body` with the environment and proposed size a frame binds.
+    /// Body evaluation, measurement, layout and render all read them. The
+    /// current binding, if any, is the base, so settings bound at run-loop
+    /// scope still propagate.
+    private func withFrameEnvironment(_ body: () -> Void) {
         var env = GraphContext.currentEnvironment ?? EnvironmentValues()
         env.terminalSize = size
         env.bell = bellAction
@@ -1089,15 +1103,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {
-            GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows)) {
-                renderDiffFrameBody(
-                    buildStart: buildStart,
-                    structuralRebuild: structuralRebuild,
-                    needsWork: needsWork
-                )
-            }
+            GraphContext.$currentProposedSize.withValue(Size(width: size.cols, height: size.rows), operation: body)
         }
-        cursorFlash.frameDrawn()
+    }
+
+    /// Brings the graph up to date before a key or a paste, when an event
+    /// before it in the batch may have moved where it goes; see
+    /// `InputSettling`.
+    private func settleBeforeFocusedInput() {
+        withFrameEnvironment {
+            inputSettling.settle(graph, for: focusEngine, content: buildView)
+        }
     }
 
     private func renderDiffFrameBody(buildStart: UInt64, structuralRebuild: Bool, needsWork: Bool) {
@@ -1107,7 +1123,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             focusEngine.clearHandlers()
 
             if structuralRebuild {
-                let view = buildView()
+                let view = inputSettling.build(buildView)
                 graphChanged = graph.update(from: view)
             } else {
                 // Pure state mutation — drain in place. Returns true
@@ -1116,19 +1132,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
                 graphChanged = graph.drain()
             }
 
-            // Rebuild focus index after graph changes
             if let root = graph.root {
-                focusEngine.rebuildIndex(root: root)
-                // Auto-focus on startup: the view that asked with
-                // `.prefersDefaultFocus()`, else the first focusable. With
-                // arrows no longer moving focus by default, an app whose
-                // arrow handler lives on a `.focusable()` view would receive
-                // nothing until the user pressed Tab. Mirrors SwiftUI's
-                // implicit first-responder — the app boots with a focused
-                // element so per-view handlers fire on the very first key.
-                if focusEngine.keyboardFocusID == nil {
-                    focusEngine.focusDefault()
-                }
+                focusEngine.reindex(root)
             }
 
             // The first focusable is chosen only once this frame's graph
@@ -1416,9 +1421,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     public func remoteFrameworkDefaultsScope() -> ActionScope {
         let signal = QuitSignal()
         self.pendingQuitSignal = signal
+        // An action invoked by name has been through no `onEvent`.
         return makeFrameworkDefaultsScope(
             signal: signal,
-            isPresenting: focusEngine.isContainingFocus
+            escapeQuits: !focusEngine.isContainingFocus
         )
     }
 
@@ -1510,20 +1516,25 @@ final class QuitSignal: Sendable {
 /// a concrete reference type — no metatype involvement, so the
 /// strict-sendability gate accepts this.
 ///
-/// `isPresenting` gates the Esc default: a presented screen owns
-/// Escape even when its own handlers ignored the key. Quitting out
-/// from under a presentation is the worst failure mode in a
-/// terminal — there is no window chrome to recover from — so the
-/// dismiss-or-quit default only quits when nothing is presented.
-/// A plain Bool suffices: the scope is built fresh per dispatch, so
-/// the value is current for exactly the event being dispatched.
+/// `escapeQuits` says whether the Esc default quits or does nothing,
+/// leaving dismissal to what is presented. A presented screen owns
+/// Escape even when its own handlers ignored the key: quitting out from
+/// under it is the worst failure mode in a terminal, with no window
+/// chrome to recover from. A key reached the app's `onEvent` before any
+/// binding, and the app said there whether Escape quits — the default
+/// `onEvent` does — so after a key the default never quits either: an
+/// app that closed an overlay of its own on Escape and returned `true`
+/// goes on, as SwiftUI's cancel action dismisses and never ends an app.
+/// Only an action invoked by name, which no `onEvent` saw, quits with
+/// nothing presented. A plain Bool suffices: the scope is built fresh
+/// per dispatch, so the value is current for exactly that dispatch.
 @MainActor
-func makeFrameworkDefaultsScope(signal: QuitSignal, isPresenting: Bool) -> ActionScope {
+func makeFrameworkDefaultsScope(signal: QuitSignal, escapeQuits: Bool) -> ActionScope {
     let quit: @Sendable () -> Void = { signal.fire() }
-    let ownedByPresentation: @Sendable () -> Void = {}
+    let leftToPresentation: @Sendable () -> Void = {}
     return ActionScope.frameworkDefaults(
         quit: quit,
-        dismissOrQuit: isPresenting ? ownedByPresentation : quit
+        dismissOrQuit: escapeQuits ? quit : leftToPresentation
     )
 }
 
@@ -1568,6 +1579,10 @@ public protocol TerminalAppProtocol {
     /// App-level event hook, called before view-level handlers for every
     /// ``TerminalEvent``. Return `false` to quit the app. The default quits
     /// on `q` or Escape.
+    ///
+    /// This is where Escape quits, if it does: the framework's own Escape
+    /// only dismisses what is presented, so an app that returns `true` for
+    /// it goes on running.
     static func onEvent(_ event: TerminalEvent) -> Bool
     /// Called once the app has torn down — the terminal handed back, its
     /// per-process files removed — with why it ended: the place to save what

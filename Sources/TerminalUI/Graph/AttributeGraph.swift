@@ -253,22 +253,61 @@ public final class AttributeGraph: @unchecked Sendable {
     /// and `drain()` after reconciliation completes; cheap because every
     /// descendant write is `Bool? = ...`.
     @discardableResult
-    private func stampSubtree(_ node: AttributeNode) -> (containsViewBody: Bool, readsEnvironment: Bool) {
+    private func stampSubtree(_ node: AttributeNode)
+        -> (containsViewBody: Bool, readsEnvironment: Bool, holdsPresentation: Bool)
+    {
         var containsViewBody = false
         var readsEnvironment = !node.environmentReads.isEmpty || node.geometryRebuilder != nil
             || node.rowWindowRebuilder != nil
+        var holdsPresentation = false
         if case .viewBody = node.kind {
             containsViewBody = true
+        }
+        if case .modifier(.modal) = node.kind {
+            holdsPresentation = true
         }
         for child in node.children {
             // Don't stop early — every descendant still needs stamping.
             let below = stampSubtree(child)
             containsViewBody = containsViewBody || below.containsViewBody
             readsEnvironment = readsEnvironment || below.readsEnvironment
+            holdsPresentation = holdsPresentation || below.holdsPresentation
         }
         node._containsViewBody = containsViewBody
         node._readsEnvironmentBelow = readsEnvironment
-        return (containsViewBody, readsEnvironment)
+        node._holdsPresentationBelow = holdsPresentation
+        return (containsViewBody, readsEnvironment, holdsPresentation)
+    }
+
+    /// Whether a body due to run again — posted by a change to what it
+    /// read, or queued for the next drain — holds a presentation's host
+    /// below it, presented or not, and so may present or dismiss
+    /// something. A host below a nested body counts: the outer body may
+    /// hand the inner one what decides it.
+    var dueBodiesHoldPresentations: Bool {
+        let holds = { (posted: AttributeNode) -> Bool in
+            // The body a posted node belongs to is what runs again, as
+            // `applyInvalidations` finds it.
+            var node = posted
+            while node.bodyReplay == nil, let parent = node.parent {
+                node = parent
+            }
+            return Self.holdsPresentation(node)
+        }
+        return dirtyQueue.values.contains(where: holds) || invalidations.containsPosted(where: holds)
+    }
+
+    /// `node._holdsPresentationBelow`, found by a walk for a node built
+    /// since the last stamp — a reader's content, built during layout.
+    private static func holdsPresentation(_ node: AttributeNode) -> Bool {
+        if let stamped = node._holdsPresentationBelow { return stamped }
+        var holds = false
+        if case .modifier(.modal) = node.kind { holds = true }
+        for child in node.children where holdsPresentation(child) {
+            holds = true
+        }
+        node._holdsPresentationBelow = holds
+        return holds
     }
 
     // MARK: - Body Evaluation with Observation
@@ -488,6 +527,10 @@ public final class AttributeGraph: @unchecked Sendable {
         if let geom = view as? any _GraphGeometryReader {
             node.readerSizing = geom.sizing
             node.geometryRebuilder = makeGeometryRebuilder(geom, childID: node.id.appending(.index(0)))
+            // A new closure may build other content at the same width: a
+            // drain hands one over without a new update generation, and the
+            // memo of the old closure's build would keep its content.
+            node._readerBuild = nil
             node.isDirty = false
             return
         }
@@ -1132,8 +1175,9 @@ public final class AttributeGraph: @unchecked Sendable {
     /// fallback for a node with no child yet.
     ///
     /// A `WidthReader` skips the rebuild when it already holds a build for
-    /// this width from this update: its content is a function of width and
-    /// state alone, and state does not change within an update. That is what
+    /// this width from this update and this closure: its content is a
+    /// function of the closure and the width alone, and an update or a drain
+    /// that hands the node a new closure forgets the build. That is what
     /// lets measurement build it for the width it asks about without paying
     /// again in layout and render. A `GeometryReader` rebuilds every time, as
     /// it always has.
@@ -1208,6 +1252,10 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         node.readerSizing = nil
         node.geometryRebuilder = nil
+        // The fresh closures may hold other rows: forget the old ones'
+        // build, which a drain, bringing no new update generation, would
+        // otherwise keep, as a reader's.
+        node._readerBuild = nil
         weak let weakNode: AttributeNode? = node
         node.rowWindowRebuilder = { width in
             guard let graph = weakSelf, let node = weakNode else { return }

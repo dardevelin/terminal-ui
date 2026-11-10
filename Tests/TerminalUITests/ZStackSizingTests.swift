@@ -161,6 +161,28 @@ struct ZStackSizingTests {
 
     // MARK: - An overlay, placed by the same rule
 
+    /// A view that takes what it is offered is as big as that, so what is
+    /// laid over it is aligned in all of it. Measured instead, a
+    /// GeometryReader claimed a cell, and a banner overlaid at its top was
+    /// squeezed into it.
+    @Test func anOverlayOnAViewThatTakesItsOfferIsAlignedInAllOfIt() {
+        let top = Screen(width: 12, height: 5, GeometryReader { _ in Text("") }
+            .overlay(alignment: .top) { Text("hi") })
+        #expect(top.root.children[1].rect == Rect(x: 5, y: 0, width: 2, height: 1))
+        #expect(top.rows[0] == "     hi     ")
+        let corner = Screen(width: 12, height: 5, GeometryReader { _ in Text("") }
+            .overlay(alignment: .bottomTrailing) { Text("●") })
+        #expect(corner.root.children[1].rect == Rect(x: 11, y: 4, width: 1, height: 1))
+    }
+
+    @Test func anOverlayOnAFrameReachingForInfinityIsAlignedInAllOfIt() {
+        let screen = Screen(width: 12, height: 5, Text("map")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .bottomTrailing) { Text("●") })
+        #expect(screen.root.children[1].rect == Rect(x: 11, y: 4, width: 1, height: 1))
+        #expect(screen.rows[4] == "           ●")
+    }
+
     @Test func anOverlaidDividerSpansTheBase() {
         let screen = Screen(width: 12, height: 5, Text("abcdef\nabcdef")
             .overlay(alignment: .bottom) { Divider() })

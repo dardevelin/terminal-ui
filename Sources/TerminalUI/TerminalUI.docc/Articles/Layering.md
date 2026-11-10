@@ -113,7 +113,10 @@ MainView()
 ```
 
 While any presentation is up, Escape cannot quit the app, even when the
-app's own handler would quit on it.
+app's own handler would quit on it. With none up, Escape quits only if the
+app's `onEvent` says so, as the default one does: the framework's own
+Escape dismisses and never quits, so an app that closes an overlay of its
+own on Escape and returns `true` goes on running.
 
 **Alert and confirmation dialog.** These are modals whose content is a
 bordered dialog of ``AlertAction`` buttons. Focus starts on the `.default`

@@ -462,10 +462,11 @@ struct CoderApp: TerminalView {
         .markdownStyle(.coder(theme))
         // The composer's `>` says where keys go; Crush draws no other mark.
         .focusIndicator(.none)
-        // Escape is the framework's dismiss-or-quit. In Crush it cancels the
-        // request in flight and never closes the session — a reflex press
-        // must not cost the user their conversation. Coder runs no agent, so
-        // there is nothing to cancel yet; the binding is here to own the key.
+        // In Crush Escape cancels the request in flight and never closes the
+        // session — a reflex press must not cost the user their
+        // conversation. Coder runs no agent, so there is nothing to cancel
+        // yet; the binding is here to own the key, ahead of the framework's
+        // dismiss.
         .actions {
             Action(id: "coder.cancel", title: .literal("Cancel"), perform: {})
                 .bound(to: .keyboard(.escape, []))
