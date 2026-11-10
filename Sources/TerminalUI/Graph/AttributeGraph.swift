@@ -92,6 +92,10 @@ public final class AttributeGraph: @unchecked Sendable {
     /// dirty queue at the start of its next ``update(from:)`` or ``drain()``.
     private let invalidations: InvalidationInbox
 
+    /// Where a change to what a node read is posted — what a
+    /// ``TimelineScheduler`` posts a timeline to when its date comes.
+    var invalidationInbox: InvalidationInbox { invalidations }
+
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {
         for (_, posted) in invalidations.take() where !posted.isRetired {

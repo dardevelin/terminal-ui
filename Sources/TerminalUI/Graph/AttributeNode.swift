@@ -1,3 +1,5 @@
+import Foundation
+
 /// Base class for all nodes in the attribute graph.
 /// Persistent across frames — created once, updated in place.
 ///
@@ -334,6 +336,10 @@ public class AttributeNode: @unchecked Sendable {
     /// A canvas's planes, kept from frame to frame so drawing it reuses
     /// their storage; nil for any other node.
     var canvasRaster: CanvasRaster?
+
+    /// The date a `TimelineView` last drew at: what a paused animation keeps
+    /// showing. Nil for any other node.
+    var timelineDate: Date?
 
     #if DEBUG
     /// What the debug tools call this node: its kind's name, or `Canvas`.

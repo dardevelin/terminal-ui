@@ -320,6 +320,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// The environment's `\.cursorFlash` in every frame, told of each frame
     /// drawn: its moment starts once the lit cursor is on screen.
     private let cursorFlash = CursorFlash()
+    /// The environment's `\.timelineScheduler` in every frame: when each
+    /// `TimelineView` on screen is due to draw again.
+    private let timelineScheduler: TimelineScheduler
     /// The user's own bindings, laid over every frame's keymap.
     private var userKeymap: UserKeymap
     private var outputBuffer = OutputBuffer()
@@ -417,6 +420,9 @@ public final class TerminalRuntime<RootView: TerminalView> {
         self.bell = bell
         self.bellAction = BellAction { bell.ring() }
         self.graph = AttributeGraph(wake: wake)
+        self.timelineScheduler = TimelineScheduler(
+            inbox: graph.invalidationInbox, wake: wake,
+            animationFloor: Self.animationFloor(for: renderMode))
         self.buildView = content
         self.onEvent = onEvent
         self.timers = timers
@@ -822,11 +828,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
             // Render
             if running {
                 let frameStart = ContinuousClock.now
+                // A timeline whose date has come runs its body again on
+                // this frame, as a node whose observed state changed does.
+                timelineScheduler.postDue()
                 // `.uncapped` draws every pass, for benchmarking throughput.
                 if drawsEveryPass || needsFrame {
                     renderDiffFrame()
                     needsRender = false
                 }
+                timelineScheduler.armWake()
                 soundPendingBell()
                 // Every pass that goes on to another must end here, and only
                 // here: the pause is the one place the loop is sure to
@@ -845,6 +855,15 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // shell has taken back.
         await inputThread.value
         for t in timerTasks { t.cancel() }
+        timelineScheduler.cancel()
+    }
+
+    /// The least time between an animation's frames: none where the render
+    /// mode's cap paces the loop, and 60 a second for `.onDemand`, which has
+    /// no cap and would otherwise draw an animation as fast as it could.
+    static func animationFloor(for renderMode: RenderMode) -> TimeInterval {
+        if case .onDemand = renderMode { return TimelineDriver.frameInterval }
+        return 0
     }
 
     /// Whether the next frame has anything to draw: input or a remote
@@ -867,7 +886,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
     }
 
     private var hasWork: Bool {
-        if eventQueue.hasEvents || needsFrame || bell.isPending || quitRequestedOutsideEvents {
+        if eventQueue.hasEvents || needsFrame || bell.isPending || quitRequestedOutsideEvents
+            || timelineScheduler.hasDue {
             return true
         }
         #if DEBUG
@@ -1097,6 +1117,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
         env.bell = bellAction
         env.killBuffer = killBuffer
         env.cursorFlash = cursorFlash
+        env.timelineScheduler = timelineScheduler
         env.userKeymap = userKeymap
         env.focusedID = focusEngine.keyboardFocusID
         GraphContext.$currentEnvironment.withValue(env) {

@@ -184,6 +184,10 @@ public struct EnvironmentValues: Sendable {
     /// app supplies one; with none, `.bounce` lights nothing.
     public var cursorFlash: CursorFlash?
 
+    /// When each `TimelineView` draws again. A running app supplies one;
+    /// with none, a timeline draws its current moment once.
+    var timelineScheduler: TimelineScheduler?
+
     /// Which key performs which text-editing command in this subtree's
     /// inputs. Set with `.textKeymap(_:)`.
     public var textKeymap: TextKeymap = .standard
