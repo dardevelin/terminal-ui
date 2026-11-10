@@ -6,7 +6,8 @@ and the framework's own marks as shapes (``GlyphGeometry``), and everything
 else with a font, where a missing glyph falls back to another font at
 another size or to an empty box. ``tools/font-glyphs.txt`` lists each
 non-ASCII character in a string or character literal of ``Sources/TerminalUI``
-(the tutorial's steps, under ``TerminalUI.docc/Resources``, included):
+(the tutorial's steps, under ``TerminalUI.docc/Resources``, included) and of
+``Sources/TerminalUI3D``, whose scenes draw their own glyphs on the screen:
 either ``shape``, drawn from geometry, or ``font``, with why a font may draw
 it. This check fails on a character no entry covers and on an entry no
 source holds any more, so the list is always the true inventory;
@@ -33,7 +34,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 LIST = Path("tools") / "font-glyphs.txt"
-SOURCES = Path("Sources") / "TerminalUI"
+SOURCES = (Path("Sources") / "TerminalUI", Path("Sources") / "TerminalUI3D")
 KINDS = ("shape", "font")
 
 # `\u{…}`, one to eight hex digits (The Swift Programming Language,
@@ -147,7 +148,7 @@ def string_scalars(text: str) -> list[tuple[int, int]]:
 def drawn_characters(root: Path) -> dict[int, list[str]]:
     """Code point → where each non-ASCII literal appears, as `path:line`."""
     found: dict[int, list[str]] = {}
-    for source in sorted((root / SOURCES).rglob("*.swift")):
+    for source in sorted(path for tree in SOURCES for path in (root / tree).rglob("*.swift")):
         path = source.relative_to(root).as_posix()
         for value, number in string_scalars(source.read_text()):
             if value > 0x7F:

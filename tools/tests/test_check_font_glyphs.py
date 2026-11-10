@@ -32,10 +32,10 @@ SCRATCH = tempfile.TemporaryDirectory(prefix="terminalui-glyph-tests-")
 BOX = "U+2500..U+257F ─..╿ shape Box drawing.\n"
 
 
-def tree(sources: dict[str, str], listed: str = "") -> Path:
+def tree(sources: dict[str, str], listed: str = "", target: str = "TerminalUI") -> Path:
     root = Path(tempfile.mkdtemp(dir=SCRATCH.name))
     for relative, text in sources.items():
-        path = root / "Sources" / "TerminalUI" / relative
+        path = root / "Sources" / target / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
     (root / "tools").mkdir()
@@ -81,6 +81,12 @@ def the_tutorial_steps_are_checked() -> None:
     assert len(checker.findings(root)) == 2, checker.findings(root)
 
 
+def the_3d_library_is_checked() -> None:
+    root = tree({"Render/Labels.swift": 'let mark = "\\u{2022}"\n'}, target="TerminalUI3D")
+    [finding] = checker.findings(root)
+    assert finding.startswith("Sources/TerminalUI3D/Render/Labels.swift:1: U+2022 •"), finding
+
+
 def an_entry_no_source_draws_is_reported() -> None:
     root = tree({"Views/A.swift": 'let a = "─"\n'}, BOX + "U+276F ❯ shape The prompt.\n")
     [finding] = checker.findings(root)
@@ -113,6 +119,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("comments are not drawn", comments_are_not_drawn),
     ("every kind of literal counts", every_kind_of_literal_counts),
     ("the tutorial steps are checked", the_tutorial_steps_are_checked),
+    ("the 3D library is checked", the_3d_library_is_checked),
     ("an entry no source draws is reported", an_entry_no_source_draws_is_reported),
     ("an unreadable entry is reported", an_unreadable_entry_is_reported),
     ("an invisible character is listed as a dash", an_invisible_character_is_listed_as_a_dash),

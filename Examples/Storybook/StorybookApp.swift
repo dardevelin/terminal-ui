@@ -119,6 +119,11 @@ final class StorybookState {
     /// Ticked by the `.task` page's own async work, with no timer and no
     /// input — the render loop has to notice the mutation on its own.
     var asyncTicks: Int = 0
+    /// The 3D pages' shading style, theme and pause, shared so a style
+    /// chosen on one page is the one the next shows.
+    var scene3DStyle: Int = 0
+    var scene3DLook: Int = 0
+    var scene3DPaused: Bool = false
     // SplitView demo: nested two-level tree. Left pane is one leaf; right
     // pane is itself a vertical split. Holding the SplitState here means
     // a reassigned `root` survives page switches.

@@ -1252,6 +1252,19 @@ def storybook_morseticker_scrolls_on_its_own(app: Client) -> None:
                 f"the MorseTicker preview did not move on its own: {first!r}")
 
 
+SCENE_PAGES = ("SceneView: torus", "Text3D", "Height field")
+# The rows of a 3D page's preview above its scene: the controls and the
+# keys that work them.
+SCENE_HEADER_ROWS = 2
+BRAILLE_BLOCK = range(0x2800, 0x2900)
+
+
+def scene_rows(app: Client) -> list[str]:
+    """The rows of a 3D page's preview that show its scene."""
+    rows = [row.strip("│") for row in app.preview_cells().rows[1:-1]]
+    return rows[SCENE_HEADER_ROWS:]
+
+
 def storybook_timelineview_draws_on_its_own(app: Client) -> None:
     """The TimelineView page's bar moves with no key pressed and no timer
     declared: the animation schedule alone brings the app round."""
@@ -1260,6 +1273,66 @@ def storybook_timelineview_draws_on_its_own(app: Client) -> None:
     assert_true("[" in first and "ticks once a second" in first, f"the TimelineView page is empty:\n{first}")
     assert_true(app.wait_until(lambda client: client.preview_text() != first),
                 f"the TimelineView preview did not move on its own:\n{first}")
+
+
+def storybook_scene_pages_draw_and_turn(app: Client) -> None:
+    """Each 3D page draws its scene, and the scene turns on its own: the
+    frames differ over time with no key pressed."""
+    for title in SCENE_PAGES:
+        app.goto_page(title)
+        drawn = scene_rows(app)
+        filled = sum(1 for row in drawn for character in row if character != " ")
+        assert_true(filled > 40, f"{title} drew almost nothing ({filled} cells):\n" + "\n".join(drawn))
+        assert_true(app.wait_until(lambda client: scene_rows(client) != drawn),
+                    f"{title} did not turn on its own:\n" + "\n".join(drawn))
+
+
+def storybook_scene_switches_shading_style(app: Client) -> None:
+    """`s` steps the torus through the shading styles, and each draws with
+    its own glyphs: the image's half blocks, its dots, half blocks alone,
+    dithered braille, and a fill under ramp characters."""
+    app.goto_page(SCENE_PAGES[0])
+    app.send_key("tab")
+    assert_true("style ‹image›" in app.preview_text(), f"the page opens on another style:\n{app.preview_text()}")
+    text = "\n".join(scene_rows(app))
+    assert_true("▀" in text, f"the image style drew no half blocks:\n{text}")
+
+    app.send_key("s")
+    text = "\n".join(scene_rows(app))
+    assert_true("style ‹image dots›" in app.preview_text(), "s did not step to the dotted image")
+    assert_true(sum(1 for character in text if ord(character) in BRAILLE_BLOCK) > 40 and "▀" not in text,
+                f"the dotted image is not braille throughout:\n{text}")
+
+    app.send_key("s")
+    text = "\n".join(scene_rows(app))
+    assert_true("▀" in text or "▄" in text, f"the half-block style drew no half blocks:\n{text}")
+
+    app.send_key("s")
+    text = "\n".join(scene_rows(app))
+    assert_true(sum(1 for character in text if ord(character) in BRAILLE_BLOCK) > 20,
+                f"the braille style drew no dots:\n{text}")
+
+    app.send_key("s")
+    text = "\n".join(scene_rows(app))
+    assert_true("style ‹hybrid›" in app.preview_text() and any(character in text for character in "+*#=:"),
+                f"the hybrid style drew no ramp characters:\n{text}")
+
+
+def storybook_scene_pause_holds_the_frame(app: Client) -> None:
+    """Space pauses the scene at the moment it was showing: the frames the
+    theme switches draw after it are the same scene, at the same angle."""
+    app.goto_page(SCENE_PAGES[0])
+    app.send_key("tab")
+    app.send_key(" ")
+    assert_true("paused" in app.preview_text(), f"space did not pause:\n{app.preview_text()}")
+    held = scene_rows(app)
+    # Three theme steps come back to the app's theme, drawing three frames.
+    for _ in range(3):
+        app.send_key("t")
+    assert_true("theme ‹app›" in app.preview_text(), "three theme steps should come back to the app's")
+    assert_true(scene_rows(app) == held, "a paused scene moved")
+    app.send_key(" ")
+    assert_true(app.wait_until(lambda client: scene_rows(client) != held), "the scene did not turn again")
 
 
 # The README's recording: assets/demo.tape's 1020x700 window at font size 15,
@@ -3549,6 +3622,9 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
     SmokeCase("storybook.morseticker_scrolls_on_its_own", "Storybook", storybook_morseticker_scrolls_on_its_own),
     SmokeCase("storybook.timelineview_draws_on_its_own", "Storybook", storybook_timelineview_draws_on_its_own),
+    SmokeCase("storybook.scene_pages_draw_and_turn", "Storybook", storybook_scene_pages_draw_and_turn),
+    SmokeCase("storybook.scene_switches_shading_style", "Storybook", storybook_scene_switches_shading_style),
+    SmokeCase("storybook.scene_pause_holds_the_frame", "Storybook", storybook_scene_pause_holds_the_frame),
     SmokeCase("storybook.every_page_fits_the_recording_window", "Storybook",
               storybook_every_page_fits_the_recording_window),
     SmokeCase("storybook.every_page_reaches_the_terminal_as_drawn", "Storybook",

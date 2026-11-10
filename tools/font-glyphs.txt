@@ -1,5 +1,6 @@
 # Every character outside ASCII the framework draws, from a string or character
-# literal in Sources/TerminalUI (the tutorial's steps included), and how a picture
+# literal in Sources/TerminalUI (the tutorial's steps included) or Sources/TerminalUI3D
+# (whose scenes draw their own shading, outlines and labels), and how a picture
 # of a recording draws it. tools/scripts/check_font_glyphs.py fails when the
 # sources and this list disagree; GlyphGeometryTests holds each `shape` entry to
 # being one, and each `font` entry to not being one.
@@ -33,7 +34,7 @@ U+276F ❯ shape PromptInput's prompt.
 # Text the font draws.
 U+00D7 × font Latin-1, which every face of the stack has: a grow factor in the debug panel, a size in a message.
 U+2014 — font General Punctuation, which every face of the font stack has: text, not structure. An em dash in labels and placeholders.
-U+2022 • font General Punctuation, which every face of the font stack has: text, not structure. Markdown's list bullet and the picker's selected mark.
+U+2022 • font General Punctuation, which every face of the font stack has: text, not structure. Markdown's list bullet, the picker's selected mark and a 3D label's point.
 U+2026 … font General Punctuation, which every face of the font stack has: text, not structure. Truncation's ellipsis, which ends a run of text.
 U+2194 ↔ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.
 U+2195 ↕ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.

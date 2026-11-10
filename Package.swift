@@ -55,6 +55,9 @@ let package = Package(
         // without image needs don't pay the cost. Hosts ImageBuffer,
         // ImageDecoder protocol, future Image view + renderers.
         .library(name: "TerminalUIIO", targets: ["TerminalUIIO"]),
+        // TerminalUI3D: meshes, a scene, and a software rasterizer that
+        // draws it in text through a Canvas. Opt-in, as TerminalUIIO is.
+        .library(name: "TerminalUI3D", targets: ["TerminalUI3D"]),
         // swtui: the diagnostic CLI. A product so an app's own package can
         // `swift run swtui ctl …` against the debug build it is running —
         // as a bare target it ran only from this checkout.
@@ -96,6 +99,16 @@ let package = Package(
             name: "TerminalUIIO",
             dependencies: ["TerminalUI"],
             path: "Sources/TerminalUIIO",
+            swiftSettings: strictSettings
+        ),
+        // TerminalUI3D — vectors, matrices and quaternions; meshes and their
+        // primitives, height fields and 3D lettering; a scene of models,
+        // lights, a camera and labels; and the rasterizer that draws it into
+        // a Canvas in one of several shading styles. Opt-in.
+        .target(
+            name: "TerminalUI3D",
+            dependencies: ["TerminalUI"],
+            path: "Sources/TerminalUI3D",
             swiftSettings: strictSettings
         ),
         // TerminalUIRaster — PNG and GIF encoders, the canvas the
@@ -146,7 +159,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "Storybook",
-            dependencies: ["TerminalUI"],
+            dependencies: ["TerminalUI", "TerminalUI3D"],
             path: "Examples/Storybook",
             swiftSettings: strictSettings
         ),
@@ -186,6 +199,13 @@ let package = Package(
             path: "Examples/Coder",
             swiftSettings: strictSettings
         ),
+        // What a TerminalUI3D frame costs: `swift run -c release SceneBenchmark`.
+        .executableTarget(
+            name: "SceneBenchmark",
+            dependencies: ["TerminalUI", "TerminalUI3D"],
+            path: "Examples/SceneBenchmark",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalUITests",
             dependencies: ["TerminalUI", "TerminalUIConfig"],
@@ -220,6 +240,14 @@ let package = Package(
             path: "Tests/TerminalUIRecordingTests",
             // Hand-written logs and their SVG goldens, read through `#filePath`.
             exclude: ["Fixtures"],
+            swiftSettings: strictSettings
+        ),
+        .testTarget(
+            name: "TerminalUI3DTests",
+            // TerminalUI to draw a scene into a canvas's planes and read the
+            // cells, as its own canvas tests do.
+            dependencies: ["TerminalUI3D", "TerminalUI"],
+            path: "Tests/TerminalUI3DTests",
             swiftSettings: strictSettings
         ),
         .testTarget(

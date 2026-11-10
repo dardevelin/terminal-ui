@@ -28,13 +28,13 @@ from terminalui.cases import run_cases  # noqa: E402
 
 
 def page(path: str, kind: str = "Instance Property", abstract: bool = False,
-         symbol: bool = True) -> dict:
+         symbol: bool = True, module: str = "TerminalUI") -> dict:
     title = path.rsplit("/", 1)[-1]
     return {
         "kind": {"name": kind, "isSymbol": symbol},
         "hasAbstract": abstract,
         "title": title,
-        "referencePath": f"doc://TerminalUI/documentation/TerminalUI/{path}",
+        "referencePath": f"doc://{module}/documentation/{module}/{path}",
     }
 
 
@@ -66,6 +66,13 @@ def a_hand_written_initializer_still_needs_words() -> None:
     assert finding.startswith("MarkdownListItem/init(blocks:)"), finding
 
 
+def every_published_module_is_checked() -> None:
+    assert "TerminalUI3D" in checker.TARGETS, checker.TARGETS
+    [finding] = checker.naked_pages([page("SceneView/init(_:)", "Initializer", module="TerminalUI3D")],
+                                    "TerminalUI3D")
+    assert finding == "TerminalUI3D/SceneView/init(_:) (Initializer)", finding
+
+
 def warnings_are_counted() -> None:
     log = "warning: 'Gone' doesn't exist at '/TerminalUI/Thing'\nnote: fine\nwarning: another\n"
     assert checker.docc_warnings(log) == [
@@ -78,6 +85,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("an article is not a symbol", an_article_is_not_a_symbol),
     ("a synthesized decoder is not ours to document", a_synthesized_decoder_is_not_ours_to_document),
     ("a macro's projection is not ours to document", a_macro_projection_is_not_ours_to_document),
+    ("every published module is checked", every_published_module_is_checked),
     ("a hand-written initializer still needs words", a_hand_written_initializer_still_needs_words),
     ("warnings are counted", warnings_are_counted),
 ]

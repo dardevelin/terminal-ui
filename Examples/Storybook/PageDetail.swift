@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import TerminalUI
+import TerminalUI3D
 
 // MARK: - Detail pane
 
@@ -1060,6 +1061,12 @@ struct PreviewPane: TerminalView {
                     }
                 Text("chosen: \(state.menuChoice)").foreground(.gray)
             }
+        case .torus3D:
+            Scene3DPage(subject: .torus, state: state)
+        case .text3D:
+            Scene3DPage(subject: .lettering, state: state)
+        case .terrain3D:
+            Scene3DPage(subject: .terrain, state: state)
         case .confirmationDialog:
             VStack {
                 Text("Actions stack vertically — the action-sheet shape").foreground(.gray)

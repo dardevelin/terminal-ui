@@ -20,6 +20,7 @@ struct PageInfo: Identifiable, Sendable {
         case display = "Display"
         case charts = "Charts"
         case modifiers = "Modifiers"
+        case scenes = "3D"
     }
 }
 
@@ -47,6 +48,8 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
     case barChart, sparkline, heatMap, brailleCanvas, canvas, dotMatrixText, morseTicker
     // Modifiers
     case foreground, bold, theme, border, borderEdges, padding, truncate, scrollbarStyle, defaultScrollAnchor, scrollPosition, scrollTargetVisibility, syntaxHighlighter, markdownStyle, promptPrefix, focusable, frame, flexible, onHover, onTapGesture, dragGesture, mouseFocusPolicy, actions, actionContext, keyChord, disabled, boundaryFeedback, textKeymap, modal, inspector, contextMenu, alert, confirmationDialog
+    // 3D
+    case torus3D, text3D, terrain3D
 
     // The `code` string must reproduce the exact `PreviewPane` output.
     // Paste-and-run contract: if it doesn't match the preview, it's a bug.
@@ -1001,6 +1004,43 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
                         AlertAction("Save draft") { save() }
                         AlertAction("Cancel", role: .cancel) { }
                     }
+                """)
+
+        // ───── 3D ─────
+        case .torus3D: return PageInfo(id: self, category: .scenes, name: "SceneView: torus",
+            summary: "TerminalUI3D: a lit torus on a turntable — eased turns, a wobble, a highlight that slides as it turns — framed to fill the view. s or ←→ switches the shading style, t the theme, space pauses.",
+            code: """
+                TimelineView(.animation(minimumInterval: 1.0 / 20)) { context in
+                    let time = context.date.timeIntervalSinceReferenceDate
+                    var scene = Scene3D(camera: Camera3D(position: Vector3(0, 0.6, 4)))
+                    let turn = Turntable().rotation(at: time) * standing
+                    scene.add(.torus(minorRadius: 0.42), transform: turn.matrix,
+                              materials: [Material(theme.accent, specular: 0.9, shininess: 36)])
+                    SceneView(scene).framing(.fit(padding: 1))
+                }
+                """)
+        case .text3D: return PageInfo(id: self, category: .scenes, name: "Text3D",
+            summary: "Lettering extruded into a solid from the dot-matrix font, faces and sides in two materials, turning on a turntable and framed to fit.",
+            code: """
+                let title = Text3D("TERMINAL\\nUI", depth: 4)
+                var scene = Scene3D(camera: Camera3D(position: Vector3(0, 0, 80),
+                                                     projection: .perspective(fieldOfView: .pi / 9)))
+                scene.add(title.mesh, transform: Turntable(period: 4.8).rotation(at: time).matrix,
+                          materials: [Material(theme.accent), Material(theme.primary)])
+                SceneView(scene).framing(.fit(padding: 1))
+                """)
+        case .terrain3D: return PageInfo(id: self, category: .scenes, name: "Height field",
+            summary: "A 10,000-triangle terrain coloured by height along a gradient material, lakes a material of their own, fogged with distance and flown over along a CameraTour. Peak labels hide behind the hills.",
+            code: """
+                let ground = Mesh.heightField(columns: 71, rows: 71, spacing: 0.2, heights: heights)
+                var scene = Scene3D(camera: flyover.camera(at: time))  // a CameraTour
+                scene.fog = Fog3D(start: 6, end: 17, density: 0.8)
+                scene.add(ground, materials: [
+                    Material(gradient: [theme.info, theme.success, theme.foregroundMuted, theme.foregroundEmphasis]),
+                    Material(theme.info, specular: 0.9),
+                ])
+                scene.add(Label3D("Summit", at: summit))
+                SceneView(scene)
                 """)
         }
     }

@@ -6,6 +6,35 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **TerminalUI3D, a new library product, draws lit, shaded 3D in a
+  terminal.** A `SceneView` draws a `Scene3D` — `Mesh` models placed by a
+  `Matrix4` or a `Quaternion` and painted in `Material`s from the theme's
+  roles, the `Light3D`s on them, a `Camera3D`, `Label3D`s pinned to points
+  and hidden behind what stands in front of them, and `Fog3D` — given as a
+  value or built in a closure, as RealityKit's `RealityView` builds its
+  content. A software rasterizer renders it at braille resolution, eight
+  samples to a cell, with a depth buffer, back faces culled, triangles cut
+  at the near plane and attributes interpolated perspective-correct; each
+  sample is lit once, by Blinn–Phong with Schlick's Fresnel, and shaded in
+  Oklab, so a shadow keeps its hue. A `ShadingStyle` turns the samples into
+  cells: an image whose half cells are averaged in linear light and whose
+  edges blend into the background (the default), braille dots, half
+  blocks, characters from a `CharacterRamp`, or a fill under them, with
+  the silhouette and creases outlined. `.framing(.fit())` brings the camera
+  in until the scene fills the view on cells twice as tall as they are
+  wide. Meshes come from boxes, spheres, tori, cylinders and prisms, from
+  height fields coloured by height along a gradient material, and from
+  `Text3D` lettering in the dot-matrix font; `Turntable` turns a model as a
+  thing with weight turns, and `CameraTour` flies the camera between stops.
+  Built in a `TimelineView`, a scene animates; a 200 × 60 cell frame of
+  five to ten thousand triangles takes 2 to 6 ms in a release build,
+  allocating nothing per sample (`swift run -c release SceneBenchmark`).
+  The Storybook shows a
+  torus, lettering and a terrain fly-over on pages of their own, and the
+  documentation site publishes the library's reference beside TerminalUI's.
+
 ## [2.4.0] — 2026-11-10 — Drawing, time and pictures
 
 A minor release over 2.3.2: an app written for 2.3 compiles unchanged, and
