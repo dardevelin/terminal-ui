@@ -6,6 +6,19 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-10 — Maps, drawn in text
+
+A minor release over 2.5.0: an app written for 2.5 compiles unchanged.
+TerminalUIMaps, a new library product, draws maps in a terminal as
+SwiftUI MapKit's `Map` does — streets and areas in braille, names that
+never overlap, imagery and terrain — and puts search, place details,
+routes, live location, turn-by-turn navigation, street view and offline
+regions behind protocols an app chooses between. It ships a fictional
+town, so a map draws with no network and no key; nothing reaches a server
+unless the app asks, and each source's terms are documented. The `Maps`
+example is built on it, and the README shows 3D, the Canvas and the maps
+in films of their own.
+
 ### Added
 
 - **TerminalUIMaps, a new library product, draws maps in text.** A
@@ -60,6 +73,16 @@ All notable changes to TerminalUI are documented here. Format based on
   `assets/3d.gif` and `assets/canvas.gif` from `assets/3d.tape` and
   `assets/canvas.tape`, and the articles on drawing a scene, a canvas and a
   schedule show them too.
+
+### Fixed
+
+- **`swtui ctl` reaches an app that has only just started.** A debug
+  socket was bound at its path before it listened, so a client that found
+  the path in between — `swtui ctl` run as an app came up, a test's client
+  under Thread Sanitizer — was refused; on a fast machine nearly every new
+  socket refused its first finder. The socket is now bound under an
+  unpublished name and renamed into place once it listens, so whoever finds
+  the path finds it accepting.
 
 ## [2.5.0] — 2026-11-10 — 3D, drawn in text
 
@@ -1655,7 +1678,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.5.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.6.0...HEAD
+[2.6.0]: https://github.com/dardevelin/terminal-ui/compare/v2.5.0...v2.6.0
 [2.5.0]: https://github.com/dardevelin/terminal-ui/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...v2.3.2
