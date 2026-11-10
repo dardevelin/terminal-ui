@@ -108,7 +108,15 @@ struct GPSDTests {
         } catch let error as LocationError {
             #expect(error == .connection("the server closed the connection"))
         }
-        #expect(fixes.map(\.coordinate.latitude) == [51.5, 51.5001])
+        // A live stream keeps only the newest fix — a navigator wants where
+        // the traveller is now, not a backlog — so a reader slower than the
+        // daemon, as one under Thread Sanitizer is, may miss the first. What
+        // the stream promises is that the newest arrives, and that what
+        // arrives came in the order it was sent.
+        let latitudes = fixes.map(\.coordinate.latitude)
+        #expect(latitudes.last == 51.5001, "the newest fix arrives: \(latitudes)")
+        #expect(latitudes == latitudes.sorted() && Set(latitudes).isSubset(of: [51.5, 51.5001]),
+                "only fixes that were sent, in order: \(latitudes)")
         #expect(await server.received.hasPrefix(GPSDProtocol.watchCommand))
     }
 
