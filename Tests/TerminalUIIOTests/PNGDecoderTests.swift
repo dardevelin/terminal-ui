@@ -125,7 +125,7 @@ struct PNGDecoderTests {
             case .headerNotFirst: [palette, header, PNGTestImage.chunk("IDAT", data)]
             case .secondHeader: [header, header, palette, PNGTestImage.chunk("IDAT", data)]
             }
-            return PNGTestImage.signature + chunks.joined() + PNGTestImage.chunk("IEND", [])
+            return PNGTestImage.signature + Array(chunks.joined()) + PNGTestImage.chunk("IEND", [])
         }
 
         var expected: String {
