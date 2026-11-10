@@ -111,11 +111,6 @@ final class StorybookState {
     var alertResult: String = "(no choice yet)"
     var confirmPresented: Bool = false
     var confirmResult: String = "(no choice yet)"
-    // Timeline-page demo: app advances `timelineFrame` via TerminalTimer
-    // so the rendered braille-spinner cycles. The page reads
-    // `timelineFrame % 8` to pick the displayed glyph; if no timer is
-    // running, it shows frame 0 statically.
-    var timelineFrame: Int = 0
     /// Ticked by the `.task` page's own async work, with no timer and no
     /// input — the render loop has to notice the mutation on its own.
     var asyncTicks: Int = 0
@@ -314,14 +309,6 @@ struct StorybookApp: TerminalView {
 
 @main
 struct StorybookMain: TerminalAppProtocol {
-    /// 100ms ticker advances `state.timelineFrame` so the Timeline page's
-    /// braille spinner cycles. The timer fires whether or not the
-    /// Timeline page is visible — the cost is one Int increment per
-    /// 100ms which is negligible.
-    static var timers: [TerminalTimer] {[
-        TerminalTimer("timeline-tick", every: .milliseconds(100))
-    ]}
-
     static func onEvent(_ event: TerminalEvent) -> Bool {
         // Global-only binding: Esc quits — UNLESS a context mode is
         // active, in which case Esc clears the mode and STAYS in the
@@ -344,9 +331,6 @@ struct StorybookMain: TerminalAppProtocol {
                 return true
             }
             return false
-        }
-        if case .timer(let name) = event, name == "timeline-tick" {
-            state.timelineFrame &+= 1
         }
         return true
     }

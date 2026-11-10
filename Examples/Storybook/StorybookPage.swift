@@ -234,10 +234,14 @@ enum PageID: String, Sendable, Hashable, CaseIterable {
         case .timeline: return PageInfo(id: self, category: .primitives, name: "Timeline",
             summary: "Animation primitive — FrameTimeline (frame-step at fps) + CurveTimeline (eased 0..1 progress). @Observable so view bodies reactively re-render.",
             code: """
-                // Frame timeline: cycle 0..<8 at 10fps
-                let frame = FrameTimeline(frames: 8, fps: 10)
-                frame.start()
-                // ... view reads `frame.currentFrame` ...
+                // Frame timeline: cycle 0..<8 at 10fps, the frame
+                // worked out from the clock when read
+                let spinner = FrameTimeline(frames: 8, fps: 10)
+                spinner.start()
+                // A TimelineView redraws it, only while it shows
+                TimelineView(.animation(minimumInterval: 0.1)) { _ in
+                    Text(frames[spinner.currentFrame])
+                }
 
                 // Curve timeline: 500ms ease-out
                 let curve = CurveTimeline(duration: .milliseconds(500), curve: .easeOut)
