@@ -1265,6 +1265,20 @@ def scene_rows(app: Client) -> list[str]:
     return rows[SCENE_HEADER_ROWS:]
 
 
+def storybook_timeline_spinner_turns_while_shown(app: Client) -> None:
+    """The Timeline page's spinner turns on its own while the page shows,
+    from a TimelineView rather than an app-wide timer, which drew frames on
+    every page."""
+    app.goto_page("Timeline")
+    def spinner(client: Client) -> str:
+        line = next((row for row in client.cells().rows if "frame=" in row), "")
+        return line.split("frame=")[1][:1] if "frame=" in line else ""
+    first = spinner(app)
+    assert_true(first != "", "the Timeline page shows its spinner's frame")
+    assert_true(app.wait_until(lambda c: spinner(c) not in ("", first)),
+                f"the spinner stayed on frame {first}")
+
+
 def storybook_timelineview_draws_on_its_own(app: Client) -> None:
     """The TimelineView page's bar moves with no key pressed and no timer
     declared: the animation schedule alone brings the app round."""
@@ -3824,6 +3838,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("navigation.idle_costs_nothing", "Navigation", idle_costs_nothing),
     SmokeCase("navigation.debug_output_is_the_owners_alone", "Navigation", debug_output_is_the_owners_alone),
     SmokeCase("coder.idle_costs_nothing", "Coder", idle_costs_nothing),
+    # The Storybook ticked a 100ms timer for its Timeline page whether the
+    # page showed or not: a frame every tick, a whole core under Thread
+    # Sanitizer, enough on CI's small runner to answer SIGTERM late.
+    SmokeCase("storybook.idle_costs_nothing", "Storybook", idle_costs_nothing),
     SmokeCase("navigation.an_idle_app_acts_on_remote_commands", "Navigation",
               navigation_an_idle_app_acts_on_remote_commands),
     SmokeCase("navigation.invoke_action_quits_an_idle_app", "Navigation",
@@ -3931,6 +3949,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
     SmokeCase("storybook.morseticker_scrolls_on_its_own", "Storybook", storybook_morseticker_scrolls_on_its_own),
     SmokeCase("storybook.timelineview_draws_on_its_own", "Storybook", storybook_timelineview_draws_on_its_own),
+    SmokeCase("storybook.timeline_spinner_turns_while_shown", "Storybook",
+              storybook_timeline_spinner_turns_while_shown),
     SmokeCase("storybook.scene_pages_draw_and_turn", "Storybook", storybook_scene_pages_draw_and_turn),
     SmokeCase("storybook.scene_switches_shading_style", "Storybook", storybook_scene_switches_shading_style),
     SmokeCase("storybook.scene_pause_holds_the_frame", "Storybook", storybook_scene_pause_holds_the_frame),

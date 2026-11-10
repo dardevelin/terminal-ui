@@ -224,16 +224,18 @@ struct PreviewPane: TerminalView {
         case .timelineView:
             TimelineViewDemo()
         case .timeline:
-            // Timeline is observable; the running ticker reads
-            // `state.timelineFrame` which the StorybookApp advances
-            // via TerminalTimer. Without that wiring the page still
-            // renders — just shows frame 0 statically.
+            // The spinner's frame is the time, read in a TimelineView, which
+            // asks for frames only while this page shows. An app-wide timer
+            // ticked here once kept the whole Storybook drawing ten frames
+            // a second on every page.
             VStack {
                 Text("FrameTimeline (frames=8, fps=10):").foreground(.gray)
-                HStack {
-                    let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
-                    Text(frames[state.timelineFrame % frames.count]).foreground(.cyan)
-                    Text(" frame=\(state.timelineFrame % 8)").foreground(.gray)
+                TimelineView(.animation(minimumInterval: TimelineDemo.frameInterval)) { _ in
+                    let frame = MainActor.assumeIsolated { TimelineDemo.spinner.currentFrame }
+                    HStack {
+                        Text(TimelineDemo.frames[frame]).foreground(.cyan)
+                        Text(" frame=\(frame)").foreground(.gray)
+                    }
                 }
                 Text(" ")
                 Text("CurveTimeline (.easeInOut, fixed sample at 0.5):").foreground(.gray)
@@ -1456,4 +1458,20 @@ struct TimelineViewDemo: TerminalView {
             }
         }
     }
+}
+
+/// The Timeline page's spinner: a `FrameTimeline` of eight braille frames
+/// at ten a second, which works its frame out from the clock when read, and
+/// a `TimelineView` on the page that reads it each tenth of a second while
+/// the page shows.
+enum TimelineDemo {
+    static let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"]
+    static let framesPerSecond = 10
+    static let frameInterval = 1 / Double(framesPerSecond)
+
+    @MainActor static let spinner: FrameTimeline = {
+        let timeline = FrameTimeline(frames: frames.count, fps: framesPerSecond)
+        timeline.start()
+        return timeline
+    }()
 }
