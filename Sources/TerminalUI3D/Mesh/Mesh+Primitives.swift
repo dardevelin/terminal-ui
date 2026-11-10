@@ -5,9 +5,8 @@ import Foundation
 // corners of their own, so the edges between them stay hard.
 
 extension Mesh {
-    /// A box `width` across x, `height` up y and `depth` along z.
-    ///
-    /// - Parameter material: The material every face is drawn in.
+    /// A box `width` across x, `height` up y and `depth` along z, every
+    /// face drawn in `material`.
     public static func box(width: Double, height: Double, depth: Double, material: Int = 0) -> Mesh {
         let halfX = width / 2, halfY = height / 2, halfZ = depth / 2
         var builder = MeshBuilder()
@@ -96,10 +95,9 @@ extension Mesh {
     }
 
     /// An upright cylinder of `radius` and `height`, its side cut into
-    /// `segments` and shaded smooth, with flat caps.
-    ///
-    /// - Parameter capMaterial: The material of the caps; nil draws them in
-    ///   `material`.
+    /// `segments` and shaded smooth, with flat caps. The side is drawn in
+    /// `material` and the caps in `capMaterial`, or in `material` too when
+    /// it is nil.
     public static func cylinder(radius: Double = 1, height: Double = 1, segments: Int = 32,
                                 material: Int = 0, capMaterial: Int? = nil) -> Mesh {
         upright(sides: segments, radius: radius, height: height, smooth: true,
@@ -107,7 +105,9 @@ extension Mesh {
     }
 
     /// An upright prism with `sides` flat sides — six for a hexagonal
-    /// column — round a circle of `radius`, `height` tall.
+    /// column — round a circle of `radius`, `height` tall, its sides in
+    /// `material` and its caps in `capMaterial`, or in `material` too when
+    /// it is nil.
     public static func prism(sides: Int, radius: Double = 1, height: Double = 1,
                              material: Int = 0, capMaterial: Int? = nil) -> Mesh {
         upright(sides: sides, radius: radius, height: height, smooth: false,

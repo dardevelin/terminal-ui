@@ -7,7 +7,7 @@ import Foundation
 /// only fronts are drawn unless its material is double-sided. Normals are
 /// per vertex: a vertex shared by triangles at an angle is a smooth surface
 /// there, and a hard edge is made of vertices of its own on each side — as
-/// the ``box(width:height:depth:)`` primitive's corners are.
+/// the ``box(width:height:depth:material:)`` primitive's corners are.
 ///
 /// A vertex's ``tints`` value places it along its material's gradient: a
 /// terrain coloured by height, water to snow, is one gradient material and a

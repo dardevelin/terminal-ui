@@ -1,7 +1,7 @@
 import Foundation
 import TerminalUI
 
-/// Lettering as a solid: each dot of the ``DotFont`` 5 × 7 font a block,
+/// Lettering as a solid: each dot of TerminalUI's 5 × 7 `DotFont` a block,
 /// extruded `depth` deep — a wordmark to turn, or a place name standing
 /// over a map.
 ///

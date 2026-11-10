@@ -43,12 +43,19 @@ jobs:
       # consumers resolving this package clone nothing — docs builds are the
       # one place that opts in. The hosting base path must equal the repo
       # name for github.io project pages, so derive it rather than hardcode.
+      # Each published library is a --target, built into one combined
+      # archive (swift-docc-plugin 1.4+): every module keeps its own
+      # documentation/<module>/ route, the tutorials keep theirs, and
+      # documentation/ lists the modules. A library joins the site by joining
+      # this list and check_doc_pages.py's TARGETS together.
       - name: Generate documentation
         run: |
           TUI_BUILD_DOCS=1 swift package \
             --allow-writing-to-directory docs-site \
             generate-documentation \
             --target TerminalUI \
+            --target TerminalUI3D \
+            --enable-experimental-combined-documentation \
             --experimental-skip-synthesized-symbols \
             --output-path docs-site \
             --transform-for-static-hosting \

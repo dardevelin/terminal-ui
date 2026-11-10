@@ -8,7 +8,8 @@ of its own, and the site carried some 3,500 pages that only repeated others
 (every view listed every modifier again; `!=` alone had 121).
 
 This check builds the documentation exactly as ``.github/workflows/docs.yml``
-publishes it and reads DocC's coverage report: it fails on a symbol page
+publishes it — every module the site carries, ``TARGETS`` — and reads each
+module's DocC coverage report: it fails on a symbol page
 without an abstract, and on any DocC warning (a broken link, an article that
 shadows a symbol). Plumbing no reader uses — a view's ``body``, a modifier's
 ``ModifierType`` — is kept off the site with
@@ -36,8 +37,12 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-TARGET = "TerminalUI"
+# The modules the site publishes, in docs.yml's order. A module joins the
+# site by joining this list and docs.yml's together.
+TARGETS = ("TerminalUI", "TerminalUI3D")
 # The options the published site is built with; kept equal to docs.yml's.
+# docs.yml also combines the modules into one archive, which changes no
+# page; the coverage report is written per module, so this builds them apart.
 PUBLISHED_OPTIONS = ["--experimental-skip-synthesized-symbols"]
 # Pages the compiler writes, with no declaration to carry a comment: a
 # Codable type's decoder and a raw-value enum's initializer.
@@ -52,18 +57,20 @@ def is_projection(entry: dict) -> bool:
     return entry["title"].startswith("$") and entry["kind"]["name"].endswith("Property")
 
 
-def naked_pages(coverage: list[dict]) -> list[str]:
-    """Every symbol page in a DocC coverage report with nothing to say, as
-    ``Type/member (Kind)``."""
+def naked_pages(coverage: list[dict], target: str = TARGETS[0]) -> list[str]:
+    """Every symbol page in `target`'s DocC coverage report with nothing to
+    say, as ``Type/member (Kind)``, prefixed by the module for any module but
+    the first."""
     naked = []
+    prefix = "" if target == TARGETS[0] else f"{target}/"
     for entry in coverage:
         kind = entry["kind"]
         if not kind.get("isSymbol") or entry["hasAbstract"]:
             continue
         if (kind["name"], entry["title"]) in COMPILER_WRITTEN or is_projection(entry):
             continue
-        path = entry["referencePath"].split(f"/documentation/{TARGET}/", 1)[-1]
-        naked.append(f"{path} ({kind['name']})")
+        path = entry["referencePath"].split(f"/documentation/{target}/", 1)[-1]
+        naked.append(f"{prefix}{path} ({kind['name']})")
     return sorted(naked)
 
 
@@ -71,34 +78,40 @@ def docc_warnings(log: str) -> list[str]:
     return [line.strip() for line in log.splitlines() if line.lstrip().startswith("warning:")]
 
 
-def build(scratch_path: str) -> tuple[int, str, Path]:
+def build(scratch_path: str) -> tuple[int, str, dict[str, Path]]:
+    """Build every published module's documentation; the status, the log,
+    and each module's archive."""
+    targets = [argument for target in TARGETS for argument in ("--target", target)]
     result = subprocess.run(
         ["swift", "package", "--scratch-path", scratch_path, "generate-documentation",
-         "--target", TARGET, *PUBLISHED_OPTIONS,
+         *targets, *PUBLISHED_OPTIONS,
          "--experimental-documentation-coverage", "--coverage-summary-level", "brief"],
         cwd=REPO_ROOT, capture_output=True, text=True,
         env={**os.environ, "TUI_BUILD_DOCS": "1"})
-    archive = (REPO_ROOT / scratch_path / "plugins" / "Swift-DocC" / "outputs"
-               / f"{TARGET}.doccarchive")
-    return result.returncode, result.stdout + result.stderr, archive
+    outputs = REPO_ROOT / scratch_path / "plugins" / "Swift-DocC" / "outputs"
+    archives = {target: outputs / f"{target}.doccarchive" for target in TARGETS}
+    return result.returncode, result.stdout + result.stderr, archives
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--scratch-path", default=".build-docs")
     args = parser.parse_args()
-    status, log, archive = build(args.scratch_path)
+    status, log, archives = build(args.scratch_path)
     if status != 0:
         print("\n".join(log.splitlines()[-20:]))
         print("the documentation did not build")
         return 1
-    coverage = json.loads((archive / "documentation-coverage.json").read_text())
-    problems = docc_warnings(log) + [f"says nothing: {page}" for page in naked_pages(coverage)]
+    problems = docc_warnings(log)
+    pages = 0
+    for target, archive in archives.items():
+        coverage = json.loads((archive / "documentation-coverage.json").read_text())
+        problems += [f"says nothing: {page}" for page in naked_pages(coverage, target)]
+        pages += sum(1 for entry in coverage if entry["kind"].get("isSymbol"))
     if problems:
         print("\n".join(problems))
         return 1
-    pages = sum(1 for entry in coverage if entry["kind"].get("isSymbol"))
-    print(f"every one of the {pages} symbol pages says something")
+    print(f"every one of the {pages} symbol pages of {', '.join(TARGETS)} says something")
     return 0
 
 
