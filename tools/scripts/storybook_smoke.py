@@ -2909,6 +2909,23 @@ def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
 # ---------------------------------------------------------------------------
 
 
+def navigation_escape_with_nothing_to_pop_keeps_the_app_running(app: Client) -> None:
+    """Escape with nothing to pop leaves the app running: its `onEvent`
+    lets Escape through, and the framework's own Escape only dismisses what
+    is presented. Regression: with nothing presented the framework's Escape
+    quit the app, though the app had said to go on, so an app that closed
+    an overlay of its own on Escape closed it and quit. Ctrl+C still
+    quits."""
+    app.send_key("escape")
+    try:
+        app.ping()
+    except Exception as exc:
+        raise CaseFailed(f"Escape at the root, with nothing presented, quit the app: {exc}") from exc
+    assert_true(app.contains("Choose a destination"), "Escape at the root left the root screen")
+    app.send_key("c", "ctrl")
+    assert_true(app.wait_for_exit(5.0) is not None, "Ctrl+C should quit")
+
+
 def navigation_pop_restores_focus_to_the_pushing_link(app: Client) -> None:
     """Enter on a NavigationLink pushes its screen, the pushed screen keeps
     Tab to itself, and Esc pops back with focus on the link that pushed, not
@@ -3364,6 +3381,8 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
     SmokeCase("navigation.pop_restores_focus_to_the_pushing_link", "Navigation",
               navigation_pop_restores_focus_to_the_pushing_link),
+    SmokeCase("navigation.escape_with_nothing_to_pop_keeps_the_app_running", "Navigation",
+              navigation_escape_with_nothing_to_pop_keeps_the_app_running),
     SmokeCase("settings.pickers_commit_and_abandon", "Settings", settings_pickers_commit_and_abandon),
     SmokeCase("demo.a_modal_keeps_focus_until_dismissed", "Demo", demo_a_modal_keeps_focus_until_dismissed),
     SmokeCase("storybook.form_scrolls_to_the_focused_control", "Storybook",

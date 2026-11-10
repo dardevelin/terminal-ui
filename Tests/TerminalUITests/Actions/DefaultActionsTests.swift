@@ -110,18 +110,23 @@ private final class TestCounter: @unchecked Sendable {
     var value: Int { lock.lock(); defer { lock.unlock() }; return _value }
 }
 
-// The Esc default is "dismiss or quit": quitting is only legitimate when no
-// presentation is containing focus. A presented screen owns Escape even when
-// its own handlers ignored the key — falling through to quit would tear the
-// app down under the user, which a terminal cannot recover from.
-@Suite("Default actions — Esc gated by presentation")
+// The Esc default is "dismiss or quit", and quits only when nothing is
+// presented and no `onEvent` has had its say. A presented screen owns Escape
+// even when its own handlers ignored the key — falling through to quit would
+// tear the app down under the user, which a terminal cannot recover from. A
+// key has been through the app's `onEvent`, which says whether Escape quits:
+// an app that closed an overlay of its own on Escape and returned `true` was
+// quit by the default all the same. The smoke case
+// `navigation.escape_with_nothing_to_pop_keeps_the_app_running` drives that
+// through the runtime.
+@Suite("Default actions — Esc gated by presentation and onEvent")
 @MainActor
 struct DismissOrQuitGatingTests {
 
-    @Test("Esc default does not quit while a presentation contains focus")
+    @Test("Esc default that may not quit takes the key and does nothing")
     func escDefaultGatedWhilePresented() {
         let signal = QuitSignal()
-        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: true)
+        let scope = makeFrameworkDefaultsScope(signal: signal, escapeQuits: false)
         let graph = AttributeGraph()
         graph.update(from: Text("covered"))
         let fired = ActionDispatch.dispatch(
@@ -133,10 +138,10 @@ struct DismissOrQuitGatingTests {
         #expect(!signal.fired)
     }
 
-    @Test("Esc default quits when nothing is presented")
+    @Test("Esc default that may quit quits")
     func escDefaultQuitsWhenNotPresented() {
         let signal = QuitSignal()
-        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: false)
+        let scope = makeFrameworkDefaultsScope(signal: signal, escapeQuits: true)
         let graph = AttributeGraph()
         graph.update(from: Text("root"))
         _ = ActionDispatch.dispatch(
@@ -150,7 +155,7 @@ struct DismissOrQuitGatingTests {
     @Test("Ctrl+C quits unconditionally, presented or not")
     func ctrlCQuitsEvenWhilePresented() {
         let signal = QuitSignal()
-        let scope = makeFrameworkDefaultsScope(signal: signal, isPresenting: true)
+        let scope = makeFrameworkDefaultsScope(signal: signal, escapeQuits: false)
         let graph = AttributeGraph()
         graph.update(from: Text("covered"))
         _ = ActionDispatch.dispatch(

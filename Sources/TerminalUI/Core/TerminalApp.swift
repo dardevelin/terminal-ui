@@ -359,10 +359,8 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // Overwrites the previous one; only the last-dispatched
         // signal matters because the loop polls every iteration.
         self.pendingQuitSignal = signal
-        return makeFrameworkDefaultsScope(
-            signal: signal,
-            isPresenting: focusEngine.isContainingFocus
-        )
+        // A key has been through `onEvent`, which said whether Escape quits.
+        return makeFrameworkDefaultsScope(signal: signal, escapeQuits: false)
     }
 
     private var pendingQuitSignal: QuitSignal?
@@ -1416,9 +1414,10 @@ public final class TerminalRuntime<RootView: TerminalView> {
     public func remoteFrameworkDefaultsScope() -> ActionScope {
         let signal = QuitSignal()
         self.pendingQuitSignal = signal
+        // An action invoked by name has been through no `onEvent`.
         return makeFrameworkDefaultsScope(
             signal: signal,
-            isPresenting: focusEngine.isContainingFocus
+            escapeQuits: !focusEngine.isContainingFocus
         )
     }
 
@@ -1510,20 +1509,25 @@ final class QuitSignal: Sendable {
 /// a concrete reference type — no metatype involvement, so the
 /// strict-sendability gate accepts this.
 ///
-/// `isPresenting` gates the Esc default: a presented screen owns
-/// Escape even when its own handlers ignored the key. Quitting out
-/// from under a presentation is the worst failure mode in a
-/// terminal — there is no window chrome to recover from — so the
-/// dismiss-or-quit default only quits when nothing is presented.
-/// A plain Bool suffices: the scope is built fresh per dispatch, so
-/// the value is current for exactly the event being dispatched.
+/// `escapeQuits` says whether the Esc default quits or does nothing,
+/// leaving dismissal to what is presented. A presented screen owns
+/// Escape even when its own handlers ignored the key: quitting out from
+/// under it is the worst failure mode in a terminal, with no window
+/// chrome to recover from. A key reached the app's `onEvent` before any
+/// binding, and the app said there whether Escape quits — the default
+/// `onEvent` does — so after a key the default never quits either: an
+/// app that closed an overlay of its own on Escape and returned `true`
+/// goes on, as SwiftUI's cancel action dismisses and never ends an app.
+/// Only an action invoked by name, which no `onEvent` saw, quits with
+/// nothing presented. A plain Bool suffices: the scope is built fresh
+/// per dispatch, so the value is current for exactly that dispatch.
 @MainActor
-func makeFrameworkDefaultsScope(signal: QuitSignal, isPresenting: Bool) -> ActionScope {
+func makeFrameworkDefaultsScope(signal: QuitSignal, escapeQuits: Bool) -> ActionScope {
     let quit: @Sendable () -> Void = { signal.fire() }
-    let ownedByPresentation: @Sendable () -> Void = {}
+    let leftToPresentation: @Sendable () -> Void = {}
     return ActionScope.frameworkDefaults(
         quit: quit,
-        dismissOrQuit: isPresenting ? ownedByPresentation : quit
+        dismissOrQuit: escapeQuits ? quit : leftToPresentation
     )
 }
 
@@ -1568,6 +1572,10 @@ public protocol TerminalAppProtocol {
     /// App-level event hook, called before view-level handlers for every
     /// ``TerminalEvent``. Return `false` to quit the app. The default quits
     /// on `q` or Escape.
+    ///
+    /// This is where Escape quits, if it does: the framework's own Escape
+    /// only dismisses what is presented, so an app that returns `true` for
+    /// it goes on running.
     static func onEvent(_ event: TerminalEvent) -> Bool
     /// Called once the app has torn down — the terminal handed back, its
     /// per-process files removed — with why it ended: the place to save what

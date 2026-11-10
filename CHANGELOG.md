@@ -39,6 +39,16 @@ All notable changes to TerminalUI are documented here. Format based on
   so a banner at `.top` was squeezed into one cell and a badge at
   `.bottomTrailing` sat at the top left. A base that takes what it is
   offered is now as big as that.
+- **Escape quits only where the app's `onEvent` says so.** An app that
+  closed an overlay of its own on Escape in `onEvent` and returned `true`
+  was quit all the same: an overlay is not a presentation, and with none
+  up the key fell through to the framework's Escape binding, which quit.
+  That binding now only dismisses: whether Escape quits is `onEvent`'s
+  to say, and the default `onEvent` still quits on it. An app whose
+  `onEvent` returns `true` for Escape — Coder, Navigation, Settings,
+  AsyncState among the examples — no longer quits on it; Ctrl+C still
+  does. `invoke_action app.dismissOrQuit` from a control client, which no
+  `onEvent` sees, still quits with nothing presented.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 
