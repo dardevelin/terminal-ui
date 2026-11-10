@@ -70,6 +70,9 @@ public struct HitResult {
             case .spinner(let f, _):
                 values.append(("type", "Spinner"))
                 values.append(("frame", "\(f)"))
+            case .empty where node.canvas != nil:
+                values.append(("type", "Canvas"))
+                values.append(("size", "\(node.rect.width)x\(node.rect.height)"))
             case .empty:
                 values.append(("type", "Empty"))
             case .cellBuffer(let buf):

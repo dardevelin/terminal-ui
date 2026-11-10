@@ -898,7 +898,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         }
         let info = FocusInfo(
             nodeID: String(describing: id),
-            kind: node.kind.debugName,
+            kind: node.debugName,
             rect: [node.rect.x, node.rect.y, node.rect.width, node.rect.height],
             value: nodeValue(node)
         )
@@ -1029,9 +1029,9 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
                 let probe = InspectorProbe(
                     cursorX: node.rect.x, cursorY: node.rect.y,
                     active: inspector.active,
-                    nodeKind: node.kind.debugName,
+                    nodeKind: node.debugName,
                     nodeRect: [node.rect.x, node.rect.y, node.rect.width, node.rect.height],
-                    declared: ["type": node.kind.debugName],
+                    declared: ["type": node.debugName],
                     modifierChain: []
                 )
                 return RemoteResponse(id: request.id, ok: true, result: RemoteResult(inspector: probe))
@@ -1042,9 +1042,9 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
             let probe = InspectorProbe(
                 cursorX: match.rect.x, cursorY: match.rect.y,
                 active: inspector.active,
-                nodeKind: match.kind.debugName,
+                nodeKind: match.debugName,
                 nodeRect: [match.rect.x, match.rect.y, match.rect.width, match.rect.height],
-                declared: ["type": match.kind.debugName, "text": nodeValue(match) ?? ""],
+                declared: ["type": match.debugName, "text": nodeValue(match) ?? ""],
                 modifierChain: []
             )
             return RemoteResponse(id: request.id, ok: true, result: RemoteResult(inspector: probe))
@@ -1059,7 +1059,7 @@ public final class RuntimeRemoteDispatcher: RemoteControlDispatcher {
         if matchKind != nil || matchText != nil {
             var ok = true
             if let want = matchKind {
-                ok = ok && node.kind.debugName.caseInsensitiveCompare(want) == .orderedSame
+                ok = ok && node.debugName.caseInsensitiveCompare(want) == .orderedSame
             }
             if let want = matchText, let value = nodeValue(node) {
                 ok = ok && value.contains(want)

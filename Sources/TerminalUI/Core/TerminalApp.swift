@@ -1382,6 +1382,7 @@ public final class TerminalRuntime<RootView: TerminalView> {
             case .divider: kind = "Divider"
             case .progressBar(let v, _, _, _): kind = "ProgressBar(\(Int(v*100))%)"
             case .spinner(let f, _): kind = "Spinner(f:\(f))"
+            case .empty where node.canvas != nil: kind = "Canvas(\(node.rect.width)x\(node.rect.height))"
             case .empty: kind = "Empty"
             case .cellBuffer(let buf): kind = "BufferView(\(buf.width)x\(buf.height))"
             }

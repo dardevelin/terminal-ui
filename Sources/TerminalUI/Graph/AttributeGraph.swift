@@ -95,6 +95,14 @@ public final class AttributeGraph: @unchecked Sendable {
     /// Marks every invalidated node and queues it for ``drain()``.
     private func applyInvalidations() {
         for (_, posted) in invalidations.take() where !posted.isRetired {
+            // A canvas posts itself for what its renderer read: the renderer
+            // runs again, and no body need. Queued, so the drain says there
+            // is a frame to draw; it has no body to replay.
+            if let raster = posted.canvasRaster {
+                raster.needsRender = true
+                dirtyQueue[ObjectIdentifier(posted)] = posted
+                continue
+            }
             // A ForEach posts itself for what its row closure read (see
             // `trackingRow`); the body holding it is what runs again.
             var node = posted
@@ -256,7 +264,7 @@ public final class AttributeGraph: @unchecked Sendable {
     private func stampSubtree(_ node: AttributeNode) -> (containsViewBody: Bool, readsEnvironment: Bool) {
         var containsViewBody = false
         var readsEnvironment = !node.environmentReads.isEmpty || node.geometryRebuilder != nil
-            || node.rowWindowRebuilder != nil
+            || node.rowWindowRebuilder != nil || node.canvas != nil
         if case .viewBody = node.kind {
             containsViewBody = true
         }
@@ -614,8 +622,31 @@ public final class AttributeGraph: @unchecked Sendable {
                 return true
             }
         }
+        // A canvas is an `.empty` leaf carrying its renderer (see
+        // `AttributeNode.canvas`), so either view takes over the other's node.
         if view is EmptyView {
             if case .primitive(.empty) = node.kind {
+                if node.canvas != nil {
+                    node.canvas = nil
+                    node.canvasRaster = nil
+                    invalidateMeasurementCache(from: node)
+                    changed = true
+                }
+                node.isDirty = false
+                return true
+            }
+        }
+        if let canvas = view as? Canvas {
+            if case .primitive(.empty) = node.kind {
+                if node.canvasRaster == nil {
+                    node.canvasRaster = CanvasRaster(inbox: invalidations)
+                    invalidateMeasurementCache(from: node)
+                }
+                // A renderer is a closure, which cannot be compared: the new
+                // one is taken, and draws the next frame.
+                node.canvas = canvas
+                node.canvasRaster?.needsRender = true
+                changed = true
                 node.isDirty = false
                 return true
             }
@@ -789,6 +820,12 @@ public final class AttributeGraph: @unchecked Sendable {
         var inner = environment
         node.applyEnvironment(to: &inner)
         for child in node.children {
+            // A renderer may read any of the environment, through its
+            // context, and records none of it: it draws again.
+            if let raster = child.canvasRaster {
+                raster.needsRender = true
+                continue
+            }
             if case .viewBody = child.kind, let replay = child.bodyReplay,
                child.environmentReadsDiffer(from: inner) {
                 GraphContext.$currentEnvironment.withValue(inner) {
@@ -1413,6 +1450,12 @@ public final class AttributeGraph: @unchecked Sendable {
         }
         if let bufferView = view as? BufferView {
             return AttributeNode(id: id, kind: .primitive(.cellBuffer(bufferView.buffer)))
+        }
+        if let canvas = view as? Canvas {
+            let node = AttributeNode(id: id, kind: .primitive(.empty))
+            node.canvas = canvas
+            node.canvasRaster = CanvasRaster(inbox: invalidations)
+            return node
         }
         return nil
     }

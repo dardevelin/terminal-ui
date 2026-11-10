@@ -322,6 +322,26 @@ public class AttributeNode: @unchecked Sendable {
     /// rebuild (e.g. on the very first render before any seed exists).
     public var geometryRebuilder: ((Size, AttributeNode) -> Void)?
 
+    /// The canvas this node draws, or nil for any other node.
+    ///
+    /// A canvas is a `.primitive(.empty)` leaf carrying its renderer here:
+    /// it measures to nothing and draws nothing of its own, as `.empty`
+    /// does, and the renderer and layout look here for the rest. A case of
+    /// its own in the public `PrimitiveContent` would break every switch
+    /// over it outside the framework.
+    var canvas: Canvas?
+
+    /// A canvas's planes, kept from frame to frame so drawing it reuses
+    /// their storage; nil for any other node.
+    var canvasRaster: CanvasRaster?
+
+    #if DEBUG
+    /// What the debug tools call this node: its kind's name, or `Canvas`.
+    var debugName: String {
+        canvas == nil ? kind.debugName : "Canvas"
+    }
+    #endif
+
     /// What a reader node takes from its container, or nil for any other
     /// node. Set alongside ``geometryRebuilder``; the passes read it to decide
     /// whether the reader is told its height or measures it.
