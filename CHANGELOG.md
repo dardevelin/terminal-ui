@@ -31,6 +31,14 @@ All notable changes to TerminalUI are documented here. Format based on
   it took the click and the focus. What is drawn on top now acts, and
   focus stays where it was, as it already did over a view that cannot
   take focus.
+- **An overlay on a view that fills its space is aligned in all of it.**
+  Given any alignment but `.topLeading`, an `.overlay` or
+  `.backgroundView` on a `GeometryReader`, or on a `.frame(maxWidth:
+  .infinity, maxHeight: .infinity)`, was aligned in the base's measured
+  size — a single cell for a reader, the content's size for the frame —
+  so a banner at `.top` was squeezed into one cell and a badge at
+  `.bottomTrailing` sat at the top left. A base that takes what it is
+  offered is now as big as that.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

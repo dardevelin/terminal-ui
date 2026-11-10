@@ -926,16 +926,22 @@ public enum GraphRenderer {
         return max(1, min(available, measureHeight(child, proposedWidth: proposedWidth)))
     }
 
-    /// A child is "flex" if it should consume remaining space in a stack layout.
-    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
-    /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
-    /// HStacks — see `isVFlexChild` for why the reader is here.
     /// Whether `node` takes whatever width it is offered, as a Spacer or a
     /// row holding one does.
     static func takesOfferedWidth(_ node: AttributeNode) -> Bool {
         isFlexChild(node)
     }
 
+    /// Whether `node` takes whatever height it is offered: the vertical
+    /// twin of `takesOfferedWidth`.
+    static func takesOfferedHeight(_ node: AttributeNode) -> Bool {
+        isVFlexChild(node)
+    }
+
+    /// A child is "flex" if it should consume remaining space in a stack layout.
+    /// Spacers, horizontal scroll views, `.flexible(.horizontal)`,
+    /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
+    /// HStacks — see `isVFlexChild` for why the reader is here.
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
         if node.geometryRebuilder != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
