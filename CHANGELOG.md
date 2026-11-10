@@ -46,6 +46,21 @@ All notable changes to TerminalUI are documented here. Format based on
   edges shaded in up to 16 steps, and only a frame of more than 255 colours
   is approximated, with a warning that names it. Defaults for every render
   flag can be set in a `[render]` section of `.terminalui/terminalui.toml`.
+- **`Inflate.decode(_:outputLimit:)` stops a stream at a bound**, throwing
+  `BoundedInflateError.outputLimitExceeded(limit:)` rather than inflating
+  a stream built to fill memory, and `.malformed(_:)` with the
+  `InflateError` of one that is not deflate.
+
+### Changed
+
+- **`Inflate` decodes thirty to a hundred times as fast**: 1.5 MB of a
+  photo's deflated pixels in 8 ms rather than 1.2 s, in a release build. A
+  Huffman code is looked up from the next nine bits in one step, and a
+  longer one counted out a bit at a time as zlib's puff does, where every
+  symbol used to be searched at every bit; back-references copy from the
+  output itself, with no second window. Code lengths that over-subscribe a
+  code, a block that declares more codes than deflate has or none to end
+  it, are refused as zlib refuses them.
 
 ## [2.3.1] — 2026-11-09 — The caret where it is drawn
 

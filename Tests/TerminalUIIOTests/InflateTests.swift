@@ -141,6 +141,116 @@ struct InflateTests {
         let output = try Inflate.decode(data)
         #expect(output == "Hi world".data(using: .utf8)!)
     }
+
+    // MARK: - A bound on the output
+
+    @Test("a bounded decode returns a stream that fits, to the byte")
+    func boundedFits() throws {
+        let fixture = try fixtureData(named: "long-pattern.deflate")
+        let original = try fixtureData(named: "long-pattern.bin")
+        #expect(try Inflate.decode(fixture, outputLimit: original.count) == original)
+    }
+
+    @Test("a bounded decode stops at the limit and says so",
+          arguments: ["long-pattern.deflate", "repeat-256.deflate", "random-1024.deflate"])
+    func boundedRefuses(name: String) throws {
+        let fixture = try fixtureData(named: name)
+        let whole = try Inflate.decode(fixture)
+        #expect(throws: BoundedInflateError.outputLimitExceeded(limit: whole.count - 1)) {
+            try Inflate.decode(fixture, outputLimit: whole.count - 1)
+        }
+    }
+
+    @Test("a bounded decode of a malformed stream says why")
+    func boundedMalformed() throws {
+        #expect(throws: BoundedInflateError.malformed(.truncatedInput)) {
+            try Inflate.decode(Data(), outputLimit: 10)
+        }
+        // BFINAL=1, BTYPE=11: the reserved block type.
+        #expect(throws: BoundedInflateError.malformed(.invalidBlockType)) {
+            try Inflate.decode(Data([0x07]), outputLimit: 10)
+        }
+    }
+
+    // MARK: - Code lengths deflate does not allow
+
+    @Test("code lengths that claim more codes than their bits hold are refused")
+    func overSubscribed() {
+        // Three codes of one bit.
+        #expect(throws: InflateError.invalidHuffmanCode) { try HuffmanTree(codeLengths: [1, 1, 1]) }
+        #expect((try? HuffmanTree(codeLengths: [1, 2, 2])) != nil)
+        // An incomplete set is allowed, as zlib allows it.
+        #expect((try? HuffmanTree(codeLengths: [2, 2, 2])) != nil)
+    }
+
+    @Test("a dynamic block that declares more than 286 literal codes is refused")
+    func tooManyLiteralCodes() {
+        // BFINAL=1, BTYPE=10, then HLIT=31 (288 codes): bits 1, 0 1, 11111.
+        #expect(throws: InflateError.invalidHuffmanCode) { try Inflate.decode(Data([0xFD, 0x00, 0x00])) }
+    }
+
+    // MARK: - Cost
+
+    // A count-based decoder takes one step a bit of code it reads — one
+    // lookup for a short code, one more and then one a bit for a long one —
+    // so its steps stay within twice the input's bits. A decoder that
+    // searched the symbols for each code would take tens to hundreds a bit.
+
+    @Test("decoding takes at most two steps a bit of input", arguments: ["long-pattern", "repeat-256", "hello"])
+    func linearInInput(name: String) throws {
+        let fixture = [UInt8](try fixtureData(named: "\(name).deflate"))
+        var statistics = InflateStatistics()
+        _ = try Inflate.inflate(fixture, from: 0, limit: .max, statistics: &statistics)
+        #expect(statistics.codeSteps > 0)
+        #expect(statistics.codeSteps <= 2 * fixture.count * UInt8.bitWidth, "\(statistics.codeSteps) steps")
+    }
+
+    @Test("codes longer than the lookup table decode a step a bit")
+    func longCodes() throws {
+        // Lengths 1 to 15 and a second 15: a complete code whose longest
+        // codes are well past the table's nine bits.
+        let lengths = Array(1...15) + [15]
+        let tree = try HuffmanTree(codeLengths: lengths)
+        let (stream, bits) = HuffmanTestStream.encode(symbols: Array(lengths.indices), lengths: lengths)
+        var reader = BitReader(bytes: stream)
+        for symbol in lengths.indices {
+            #expect(try tree.decode(reader: &reader) == symbol)
+        }
+        #expect(reader.codeSteps <= bits + lengths.count, "\(reader.codeSteps) steps for \(bits) bits")
+    }
+}
+
+/// Canonical Huffman codes (RFC 1951 §3.2.2) written into a bit stream as
+/// deflate packs them, for tests that need codes of chosen lengths.
+enum HuffmanTestStream {
+    static func encode(symbols: [Int], lengths: [Int]) -> (bytes: [UInt8], bits: Int) {
+        let longest = lengths.max() ?? 0
+        var counts = [Int](repeating: 0, count: longest + 1)
+        for length in lengths where length > 0 { counts[length] += 1 }
+        var next = [Int](repeating: 0, count: longest + 1)
+        var code = 0
+        for length in stride(from: 1, through: longest, by: 1) {
+            code = (code + counts[length - 1]) << 1
+            next[length] = code
+        }
+        var codes = [Int](repeating: 0, count: lengths.count)
+        for (symbol, length) in lengths.enumerated() where length > 0 {
+            codes[symbol] = next[length]
+            next[length] += 1
+        }
+        var bytes: [UInt8] = []
+        var bitCount = 0
+        for symbol in symbols {
+            // Most significant bit of the code first, each into the next
+            // least significant free bit of the stream.
+            for bit in stride(from: lengths[symbol] - 1, through: 0, by: -1) {
+                if bitCount % UInt8.bitWidth == 0 { bytes.append(0) }
+                bytes[bytes.count - 1] |= UInt8((codes[symbol] >> bit) & 1) << UInt8(bitCount % UInt8.bitWidth)
+                bitCount += 1
+            }
+        }
+        return (bytes, bitCount)
+    }
 }
 
 // MARK: - Fixture loader
