@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Callable, Iterator, Mapping, Optional, Sequence, Tuple
 
 from . import verdict
-from .client import Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
+from .client import INPUT_TIMEOUT, Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
 from .recording import RECORDING_TERMINAL, recording_environment
 
 
@@ -298,6 +298,12 @@ def spawn_and_connect(target: str,
         client.attach_pty(master)
         client.pid = proc.pid
         client.sanitizer = verdict.sanitizer_of(exe)
+        if client.sanitizer:
+            # A reply is served between frames, and a sanitizer build's
+            # frames on a loaded runner — CI's three cores under Thread
+            # Sanitizer — took longer than the two seconds a reply is
+            # otherwise allowed: give it the time its input is given.
+            client.read_timeout = INPUT_TIMEOUT
         client.build_dir = resolved_build_dir
         client.pty_output = _output
         client.hang_up = _hang_up
