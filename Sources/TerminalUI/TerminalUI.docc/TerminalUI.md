@@ -85,6 +85,18 @@ In-depth: how the framework works, for when you need to reason about it.
 - ``ForEach``
 - ``ForEachWithID``
 
+### Drawing and time
+
+Paths, fills and text at a finer grain than the cell, and views that draw
+again on a schedule.
+
+- <doc:DrawingOnACanvas>
+- ``Canvas``
+- ``GraphicsContext``
+- ``Path``
+- <doc:DrawingOnASchedule>
+- ``TimelineView``
+
 ### Input
 
 - ``Button``
@@ -98,10 +110,14 @@ In-depth: how the framework works, for when you need to reason about it.
 
 A press carries its button, its click count and the modifiers held; a
 gesture waits for the one it describes. A right click opens a view's
-`contextMenu(menuItems:)`.
+`contextMenu(menuItems:)`. A view that takes the wheel itself — a map
+zooming about the pointer — hears each step with where the pointer is.
 
 - ``TapGesture``
+- ``SpatialTapGesture``
 - ``DragGesture``
+- ``TerminalView/onScrollWheel(perform:)``
+- ``ScrollWheelEvent``
 
 ### Display
 

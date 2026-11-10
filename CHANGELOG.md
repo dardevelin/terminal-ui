@@ -67,6 +67,39 @@ All notable changes to TerminalUI are documented here. Format based on
   `BoundedInflateError.outputLimitExceeded(limit:)` rather than inflating
   a stream built to fill memory, and `.malformed(_:)` with the
   `InflateError` of one that is not deflate.
+- **`Canvas` draws paths, fills and text, as SwiftUI's does.** Its
+  renderer is handed a `GraphicsContext` and the canvas's size in cells,
+  and strokes, fills and clips `Path`s — lines, quadratic and cubic Bézier
+  curves, rectangles and ellipses — and places `Text` anchored at a
+  `UnitPoint`, with `translateBy`, `scaleBy` and `opacity` as in SwiftUI.
+  Fills land on half cells, two to a cell, under the non-zero or the
+  even-odd rule (`FillStyle`); strokes on braille dots, two by four to a
+  cell, one colour to a cell, so a later stroke of another colour takes
+  the cells it crosses; text on whole cells over both, the fill beneath as
+  its background. `canvasResolution(_:)` strokes on half cells or whole
+  cells instead, and a translucent colour is mixed in Oklab toward what
+  lies beneath it. `fill(_:with:)` for a `CanvasRect`, `fillHalfCells`
+  and `drawCells` draw a picture worked out sample by sample — an image, a
+  software renderer's frame — without a path or a `Text` per sample, and
+  allocate nothing once the canvas's palette has seen its colours. The
+  renderer's reads of an `@Observable` model are tracked as a body's are,
+  and it runs only when the canvas has something new to show: a frame
+  drawn for a spinner beside it shows what it last drew.
+- **`TimelineView` draws again on a schedule.** `.animation` builds its
+  content every frame the app draws — sixty a second in an `.onDemand`
+  app — `.animation(minimumInterval:paused:)` holds frames apart or still,
+  and `.periodic(from:by:)`, `.everyMinute` and `.explicit(_:)` wake the
+  app at their dates and sleep between them. Only the timeline's own body
+  runs again, and a timeline that leaves the tree or is paused asks for
+  nothing, so an app with none running stays idle. A clock set back while
+  a timeline waits draws it at once.
+- **`onScrollWheel(perform:)` hands a view each wheel step with where the
+  pointer is**, as a `ScrollWheelEvent` of a direction and a location in
+  the view's cells: a map zooms about the pointer, a dial turns. Return
+  whether anything moved, and a view with nothing left to do passes the
+  wheel to the scroll view around it. It is never delivered as a key.
+- **`SpatialTapGesture` says where a tap landed**, in the tapped view's
+  cells: SwiftUI's, with `TapGesture`'s count and `modifiers(_:)`.
 
 ### Changed
 

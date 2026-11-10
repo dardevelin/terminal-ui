@@ -273,11 +273,11 @@ allocation- and cast-free.
 | **State** | `TerminalUI/State/` | `@TerminalState`, `Binding<Value>`, `StateStorage`, `GraphContext` (`@TaskLocal`), `EnvironmentValues` |
 | **Focus** | `TerminalUI/Focus/` | `FocusEngine` (dual keyboard/mouse, scope-aware arrows, directional `move()`), `FocusModifiers` (`.focusable`, `.focusScope`), `FocusableContainer`, `FocusGraphIntegration` |
 | **Actions** | `TerminalUI/Actions/` | Action-context stack, scoped key-bindings |
-| **Views** | `TerminalUI/Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar, Alert, Form, Picker, Navigation, BufferView, SyntaxHighlighter, UndoStack, BoundedValue(+Controls); `Split/` — SplitNode, SplitState, SplitView, SplitTreeCoding |
+| **Views** | `TerminalUI/Views/` | Text, VStack, HStack, ZStack, Spacer, Divider, ForEach, List, ScrollView, Button, TextInput, Toggle, Table, GeometryReader, TabView, TreeView, TextArea, DiffView, HunkDiffView, PromptInput, StatusBar, ProgressBar, Alert, Form, Picker, Navigation, BufferView, SyntaxHighlighter, UndoStack, BoundedValue(+Controls); `Split/` — SplitNode, SplitState, SplitView, SplitTreeCoding; `Canvas/` — Canvas, GraphicsContext (+Cells: `fillHalfCells`, `drawCells`), Path, CanvasRaster (the fill, braille-stroke and text planes and their composite) |
 | **Charts** | `TerminalUI/Views/Charts/` | BarChart, Sparkline, HeatMap, BrailleCanvas, DotMatrixText, DotFont, MorseTicker |
 | **Markdown** | `TerminalUI/Markdown/` | CommonMark *subset* parsed to a style-free value tree (`MarkdownBlock`, `MarkdownInline`); `MarkdownView` renders it. Scope is what agent output contains — no HTML, images, reference links, setext headings |
 | **Modifiers** | `TerminalUI/Modifiers/` | `ModifiedView`, overlay modifiers + protocols, lifecycle modifiers |
-| **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `ColorBlending` (sRGB↔Oklab), `BorderStyle`, `Theme`; `Coordinate`, text layout; timeline scheduling |
+| **Style / Layout / Timeline** | `TerminalUI/{Style,Layout,Timeline}/` | `Color`, `ColorBlending` (sRGB↔Oklab), `BorderStyle`, `Theme`; `Coordinate`, text layout; timeline scheduling — `Timeline`/`CurveTimeline`/`FrameTimeline`, and `TimelineView` with its schedules, driven by `TimelineScheduler` in the frame loop |
 | **DevTools** | `TerminalUI/DevTools/` | DebugOverlay, DebugPanel, Inspector, DevTrace, DebugStream — all `#if DEBUG` |
 | **Config / CLI** | `TerminalUIConfig/`, `swtui/` | `DiagConfig`, `TOMLParser`, `KeyCombo`, `DiagPaths`; the diagnostic CLI (links TerminalUI for `swtui keys`) |
 | **Raster** (internal) | `TerminalUIRaster/` | `PixelCanvas`, `IndexedImage`, `BlendCanvas`, `IndexedPaletteBuilder`; `Deflate` (LZ77 + `HuffmanCode` package-merge, each block the cheapest of stored/fixed/dynamic), `PNGWriter`, `LZW`, `GIFWriter` |
@@ -333,6 +333,25 @@ there). Use an `@Observable` class + `Binding`; the `$binding` projected value
 eagerly captures `currentNode` to fix this. Project `$state` in `body`, never
 inside a `GeometryReader { … }` or `WidthReader { … }` closure (it captures the
 wrong node).
+
+### Canvas and TimelineView
+
+A `Canvas` is a `.primitive(.empty)` node carrying its renderer
+(`AttributeNode.canvas`) — a case of its own in the public `PrimitiveContent`
+would break every switch over it outside the framework — and its planes
+(`canvasRaster`), kept between frames. `GraphRenderer` runs the renderer at
+draw time, under observation tracking, only when the planes are stale: a new
+renderer from an update, an observed change (the canvas posts itself, and no
+body re-runs), an update that passed over it (its renderer may read any of
+the environment) or a new size or background. Any other frame composites the
+planes as they are; a tracking taken every frame would pile up for as long
+as the model held still.
+
+A `TimelineView` asks the runtime's `TimelineScheduler` (in the environment)
+for its next date as its body runs; the loop posts what is due to the
+graph's invalidation inbox before each frame and arms one sleeping task for
+the earliest date after it. Nothing is asked for by a timeline that left the
+tree or is paused, and the loop stays idle.
 
 ### GeometryReader vs WidthReader
 
