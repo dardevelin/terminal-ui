@@ -11,7 +11,7 @@ import Foundation
 /// the XOR of every byte between `$` and `*`. A sentence whose checksum is
 /// missing or wrong is dropped: on a UDP stream from a phone, a garbled
 /// line is otherwise a position kilometres away.
-public struct NMEADecoder: Sendable {
+struct NMEADecoder: Sendable {
     /// The HDOP of the last GGA, which RMC does not carry.
     private var horizontalDilution: Double?
     /// Whether an RMC has been seen: once one has, GGA only refines its
@@ -23,18 +23,18 @@ public struct NMEADecoder: Sendable {
     /// times: a horizontal error of about HDOP × UERE (Kaplan and Hegarty,
     /// *Understanding GPS/GNSS*, 3rd ed., §11.2). Five metres is a
     /// typical single-frequency receiver's.
-    public static let userEquivalentRangeError = 5.0
+    static let userEquivalentRangeError = 5.0
 
     /// The knot, 1 852 m an hour exactly (the international nautical mile).
     static let metresPerSecondPerKnot = 1_852.0 / 3_600
 
-    public init(now: @escaping @Sendable () -> Date = { Date() }) {
+    init(now: @escaping @Sendable () -> Date = { Date() }) {
         self.now = now
     }
 
     /// The fields of a sentence whose checksum holds, its first the talker
     /// and type ("GPRMC"); nil for anything else.
-    public static func fields(of sentence: String) -> [Substring]? {
+    static func fields(of sentence: String) -> [Substring]? {
         let trimmed = sentence.trimmingXMLWhitespace()
         guard trimmed.hasPrefix("$"), let star = trimmed.lastIndex(of: "*") else { return nil }
         let body = trimmed[trimmed.index(after: trimmed.startIndex)..<star]
@@ -52,7 +52,7 @@ public struct NMEADecoder: Sendable {
     }
 
     /// The fix a sentence completes, if it does.
-    public mutating func decode(_ sentence: String) -> LocationFix? {
+    mutating func decode(_ sentence: String) -> LocationFix? {
         guard let fields = NMEADecoder.fields(of: sentence), let kind = fields.first,
               kind.count == Layout.addressLength else { return nil }
         switch kind.suffix(Layout.typeLength) {
@@ -191,7 +191,7 @@ public struct NMEADecoder: Sendable {
     }
 
     /// A sentence's checksum, for writing one: the XOR of its body.
-    public static func checksum(of body: String) -> String {
+    static func checksum(of body: String) -> String {
         let value = body.utf8.reduce(UInt8(0)) { $0 ^ $1 }
         let hex = String(value, radix: Checksum.radix, uppercase: true)
         return hex.count < Checksum.digits ? "0" + hex : hex
@@ -202,12 +202,20 @@ public struct NMEADecoder: Sendable {
 /// (gpsd's raw port, a phone app serving its GPS), or UDP datagrams
 /// arriving on a port (a phone app broadcasting it).
 public struct NMEALocationProvider: LocationProvider {
-    public let endpoint: LineSocket.Endpoint
+    /// Where the sentences come from.
+    public enum Endpoint: Sendable, Hashable {
+        /// Connect to a server.
+        case tcp(host: String, port: UInt16)
+        /// Listen for datagrams on a port, every interface.
+        case udp(port: UInt16)
+    }
+
+    public let endpoint: Endpoint
 
     /// The port NMEA-over-IP commonly uses, 10110 (IANA "nmea-0183").
     public static let defaultPort: UInt16 = 10110
 
-    public init(endpoint: LineSocket.Endpoint) {
+    public init(endpoint: Endpoint) {
         self.endpoint = endpoint
     }
 

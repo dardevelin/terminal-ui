@@ -3,9 +3,9 @@ import Foundation
 /// A manoeuvre of a route as a junction on the map: where it is, the roads
 /// that meet there, and how the route turns through them — what decides
 /// whether the junction reads on screen at a zoom (``JunctionLegibility``).
-public struct RouteJunction: Sendable, Equatable {
+struct RouteJunction: Sendable, Equatable {
     /// Where the junction's roads came from.
-    public enum BranchSource: Sendable, Equatable {
+    enum BranchSource: Sendable, Equatable {
         /// The router's own intersection: OSRM's `bearings`.
         case router
         /// The roads of the map's vector tiles around the point.
@@ -16,27 +16,27 @@ public struct RouteJunction: Sendable, Equatable {
     }
 
     /// The step whose manoeuvre this is.
-    public var stepIndex: Int
+    var stepIndex: Int
     /// Metres along the route to the junction.
-    public var distanceAlong: Double
-    public var coordinate: GeoCoordinate
-    public var maneuver: Maneuver
+    var distanceAlong: Double
+    var coordinate: GeoCoordinate
+    var maneuver: Maneuver
     /// How far the route turns there, in degrees, 0 to 180, read from its
     /// shape.
-    public var turnAngle: Double
+    var turnAngle: Double
     /// The bearing the traveller arrives on, degrees clockwise from north.
-    public var entryBearing: Double?
+    var entryBearing: Double?
     /// The bearing they leave on.
-    public var exitBearing: Double?
+    var exitBearing: Double?
     /// Every road's bearing leaving the junction, the way in among them
     /// (the arrival's bearing turned round), sorted.
-    public var branches: [Double]
-    public var branchSource: BranchSource
+    var branches: [Double]
+    var branchSource: BranchSource
     /// Across the roundabout the manoeuvre enters, in metres, read from
     /// the route's arc around it.
-    public var roundaboutDiameter: Double?
+    var roundaboutDiameter: Double?
 
-    public init(stepIndex: Int, distanceAlong: Double, coordinate: GeoCoordinate, maneuver: Maneuver,
+    init(stepIndex: Int, distanceAlong: Double, coordinate: GeoCoordinate, maneuver: Maneuver,
                 turnAngle: Double, entryBearing: Double?, exitBearing: Double?, branches: [Double],
                 branchSource: BranchSource, roundaboutDiameter: Double? = nil) {
         self.stepIndex = stepIndex
@@ -52,11 +52,11 @@ public struct RouteJunction: Sendable, Equatable {
     }
 
     /// The bearing of the way in, leaving the junction.
-    public var wayInBearing: Double? { entryBearing.map { GeoMeasure.normalizedBearing($0 + Degrees.halfTurn) } }
+    var wayInBearing: Double? { entryBearing.map { GeoMeasure.normalizedBearing($0 + Degrees.halfTurn) } }
 
     /// Whether the traveller must choose here: a turn of the route, or a
     /// manoeuvre that is one whichever way the road bends.
-    public func isTurn(gentlestTurn: Double) -> Bool {
+    func isTurn(gentlestTurn: Double) -> Bool {
         turnAngle >= gentlestTurn || Self.choosingKinds.contains(maneuver.kind)
     }
 
@@ -75,12 +75,12 @@ public struct RouteJunction: Sendable, Equatable {
 /// map is vector tiles), else the route's own way in and out. The route
 /// itself adds the rest: how far apart the manoeuvres are, how sharply it
 /// turns, and how wide a roundabout it goes round.
-public enum JunctionAnalysis {
+enum JunctionAnalysis {
     /// The junctions of `session`'s route: every step's manoeuvre but the
     /// departure and the arrivals. `roads` gives the road lines near a
     /// point, as ``MapTileStore/lines(near:within:roles:)`` does; with
     /// none, the router's intersections or the route alone are read.
-    public static func junctions(of session: NavigationSession, rules: JunctionLegibilityRules = JunctionLegibilityRules(),
+    static func junctions(of session: NavigationSession, rules: JunctionLegibilityRules = JunctionLegibilityRules(),
                                  roads: (GeoCoordinate, Double) -> [[GeoCoordinate]] = { _, _ in [] })
         -> [RouteJunction] {
         let line = session.line
@@ -146,7 +146,7 @@ public enum JunctionAnalysis {
     /// reader sees the road leave at. A line that ends at the node gives
     /// one branch, one through it two; branches within the same-road
     /// separation of another are one (the same road in two tiles' buffers).
-    public static func branches(at node: GeoCoordinate, lines: [[GeoCoordinate]],
+    static func branches(at node: GeoCoordinate, lines: [[GeoCoordinate]],
                                 rules: JunctionLegibilityRules = JunctionLegibilityRules()) -> [Double] {
         let plane = LocalPlane(reference: node)
         let radius = rules.mouthLength

@@ -24,7 +24,7 @@ public struct CoreLocationProvider: LocationProvider {
 
     /// The key Location Services requires the app's `Info.plist` to state
     /// why it asks.
-    public static let usageDescriptionKeys = ["NSLocationUsageDescription", "NSLocationWhenInUseUsageDescription"]
+    static let usageDescriptionKeys = ["NSLocationUsageDescription", "NSLocationWhenInUseUsageDescription"]
 
     /// Whether this process has a usage description, without which no
     /// prompt is shown.

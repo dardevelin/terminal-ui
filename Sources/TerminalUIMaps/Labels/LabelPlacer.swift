@@ -1,9 +1,9 @@
 import TerminalUI
 
 /// A label the map would like to draw.
-public struct LabelRequest: Sendable, Hashable {
+struct LabelRequest: Sendable, Hashable {
     /// Where a label goes relative to its anchor.
-    public enum Style: Sendable, Hashable {
+    enum Style: Sendable, Hashable {
         /// A name that is the place: centred on it, or else just above or
         /// below.
         case centred
@@ -19,16 +19,16 @@ public struct LabelRequest: Sendable, Hashable {
         case pointOfInterest
     }
 
-    public var text: String
+    var text: String
     /// Where the label belongs, in cells of the canvas it is drawn on:
     /// fractional, since a projected coordinate falls between cells, and
     /// rounding it is the placer's job, not the projection's.
-    public var anchor: CanvasPoint
+    var anchor: CanvasPoint
     /// Lower claims space first (`MapRole.labelRank`).
-    public var rank: Int
-    public var style: Style
+    var rank: Int
+    var style: Style
 
-    public init(text: String, anchor: CanvasPoint, rank: Int, style: Style = .centred) {
+    init(text: String, anchor: CanvasPoint, rank: Int, style: Style = .centred) {
         self.text = text
         self.anchor = anchor
         self.rank = rank
@@ -38,20 +38,20 @@ public struct LabelRequest: Sendable, Hashable {
 
 /// A label given a place on the screen: `width` columns from `column` on
 /// `row`.
-public struct PlacedLabel: Sendable, Hashable {
-    public var text: String
-    public var column: Int
-    public var row: Int
-    public var width: Int
-    public var rank: Int
+struct PlacedLabel: Sendable, Hashable {
+    var text: String
+    var column: Int
+    var row: Int
+    var width: Int
+    var rank: Int
     /// Where its request sat in the list handed to the placer, so a caller
     /// can draw what goes with it — a marker at its anchor.
-    public var request: Int
+    var request: Int
     /// False for a point of interest whose glyph found room and whose name
     /// did not: only its anchor's cell is taken, and the text is not drawn.
-    public var showsText: Bool
+    var showsText: Bool
 
-    public init(text: String, column: Int, row: Int, width: Int, rank: Int, request: Int = 0,
+    init(text: String, column: Int, row: Int, width: Int, rank: Int, request: Int = 0,
                 showsText: Bool = true) {
         self.text = text
         self.column = column
@@ -72,7 +72,7 @@ public struct PlacedLabel: Sendable, Hashable {
 /// it from the cached width. Placement is greedy in rank order against a
 /// grid of claimed cells: a label takes the first of its candidate places
 /// that is on screen and free, or is dropped.
-public struct LabelPlacer: Sendable {
+struct LabelPlacer: Sendable {
     private enum Spacing {
         /// Free columns kept either side of a label, so two on one row read
         /// as two names and not one.
@@ -90,12 +90,12 @@ public struct LabelPlacer: Sendable {
 
     /// How many texts have been measured since the placer was made: one
     /// per distinct text, however many frames place it.
-    public private(set) var measurements = 0
+    private(set) var measurements = 0
 
-    public init() {}
+    init() {}
 
     /// The places this frame's labels get, in the order they claimed them.
-    public mutating func place(_ requests: [LabelRequest], in size: Size) -> [PlacedLabel] {
+    mutating func place(_ requests: [LabelRequest], in size: Size) -> [PlacedLabel] {
         guard size.width > 0, size.height > 0 else { return [] }
         var claimed = ClaimGrid(size: size)
         var placed: [PlacedLabel] = []
@@ -139,7 +139,7 @@ public struct LabelPlacer: Sendable {
     /// The columns `text` takes, measured the first time it is asked for
     /// and remembered: what a caller deciding where to offer a name needs,
     /// counted with the placer's own measurements.
-    public mutating func width(of text: String) -> Int {
+    mutating func width(of text: String) -> Int {
         measure(text)
     }
 

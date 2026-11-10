@@ -24,7 +24,7 @@ public struct PanoramaxImagery: StreetImagery {
     static let searchLimit = 20
 
     public init(endpoint: URL = PanoramaxImagery.defaultEndpoint, transport: any HTTPTransport = URLSessionTransport(),
-                userAgent: String = MapUserAgent.default) {
+                userAgent: String) {
         self.endpoint = endpoint
         self.transport = transport
         self.userAgent = userAgent

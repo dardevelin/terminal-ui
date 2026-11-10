@@ -2,19 +2,19 @@ import Foundation
 
 /// A recorded track as a timeline: where the traveller was at each moment
 /// from its start, between its points by straight-line interpolation.
-public struct TrackTimeline: Sendable, Equatable {
+struct TrackTimeline: Sendable, Equatable {
     /// The points, each with its seconds from the start.
-    public let points: [GeoCoordinate]
-    public let offsets: [Double]
+    let points: [GeoCoordinate]
+    let offsets: [Double]
 
     /// The speed a track with no times is taken to be travelled at, in
     /// metres a second: 30 km/h, a town's driving speed.
-    public static let defaultSpeed = 30_000.0 / 3_600
+    static let defaultSpeed = 30_000.0 / 3_600
 
     /// A timeline of track points. Their own times are kept when every
     /// point has one and they never run backwards; otherwise the track is
     /// timed as if travelled at `speed` throughout.
-    public init(_ track: [GPXPoint], speed: Double = TrackTimeline.defaultSpeed) {
+    init(_ track: [GPXPoint], speed: Double = TrackTimeline.defaultSpeed) {
         let times = track.compactMap(\.time)
         let timed = times.count == track.count && !times.isEmpty
             && zip(times, times.dropFirst()).allSatisfy { $0 <= $1 }
@@ -26,7 +26,7 @@ public struct TrackTimeline: Sendable, Equatable {
     }
 
     /// A timeline of a line travelled at a steady speed.
-    public init(coordinates: [GeoCoordinate], speed: Double = TrackTimeline.defaultSpeed) {
+    init(coordinates: [GeoCoordinate], speed: Double = TrackTimeline.defaultSpeed) {
         var offsets: [Double] = []
         var elapsed = 0.0
         for (index, coordinate) in coordinates.enumerated() {
@@ -36,18 +36,18 @@ public struct TrackTimeline: Sendable, Equatable {
         self.init(points: coordinates, offsets: offsets)
     }
 
-    public init(points: [GeoCoordinate], offsets: [Double]) {
+    init(points: [GeoCoordinate], offsets: [Double]) {
         self.points = points
         self.offsets = offsets
     }
 
     /// The track's length in time, in seconds.
-    public var duration: Double { offsets.last ?? 0 }
+    var duration: Double { offsets.last ?? 0 }
 
     /// Where the traveller is `seconds` from the start, which way they are
     /// going and how fast: the course and speed of the segment they are
     /// on, none while standing still.
-    public func sample(at seconds: Double) -> (coordinate: GeoCoordinate, course: Double?, speed: Double?)? {
+    func sample(at seconds: Double) -> (coordinate: GeoCoordinate, course: Double?, speed: Double?)? {
         guard let first = points.first else { return nil }
         guard points.count > 1 else { return (first, nil, 0) }
         let time = min(max(seconds, 0), duration)
@@ -67,20 +67,18 @@ public struct TrackTimeline: Sendable, Equatable {
 /// test, and the app's demo mode, run on.
 ///
 /// A fix is reported every `interval` of the track's time, and the replay
-/// waits `interval / speed` of `clock`'s between them, so a speed of 10
-/// drives a ten-minute track in a minute with the same fixes. A test hands
-/// it a clock whose sleeps return at once and gets the whole track without
-/// waiting. Fixes are timestamped from `startDate` — the moment the stream
-/// starts, unless given — plus the track time, so an arrival time reads
-/// as if the drive were now.
-public struct GPXReplayProvider<ReplayClock: Clock>: LocationProvider where ReplayClock.Duration == Duration {
-    public let timeline: TrackTimeline
+/// waits `interval / speed` between them, so a speed of 10 drives a
+/// ten-minute track in a minute with the same fixes. Fixes are timestamped
+/// from the moment the stream starts plus the track time, so an arrival
+/// time reads as if the drive were now.
+public struct GPXReplayProvider: LocationProvider {
+    let timeline: TrackTimeline
     public let speed: Double
     public let interval: Duration
     /// The accuracy every fix claims, in metres: a good receiver's.
     public let accuracy: Double
     public let name: String
-    private let clock: ReplayClock
+    private let sleep: @Sendable (Duration) async throws -> Void
     private let startDate: Date?
 
     /// One second, the rate a phone or a receiver reports at.
@@ -88,21 +86,30 @@ public struct GPXReplayProvider<ReplayClock: Clock>: LocationProvider where Repl
     /// A clear sky's accuracy, in metres.
     public static var defaultAccuracy: Double { 5 }
 
-    public init(timeline: TrackTimeline, speed: Double = 1, interval: Duration = defaultInterval,
-                accuracy: Double = defaultAccuracy, name: String = "replay", clock: ReplayClock,
-                startDate: Date? = nil) {
+    /// A replay of `track`, a fix every `interval` of the track's time,
+    /// `speed` times faster than it was recorded. Points without times are
+    /// travelled at a steady 30 km/h.
+    public init(track: [GPXPoint], speed: Double = 1, interval: Duration = defaultInterval,
+                accuracy: Double = defaultAccuracy, name: String = "replay") {
+        self.init(timeline: TrackTimeline(track), speed: speed, interval: interval, accuracy: accuracy, name: name,
+                  clock: ContinuousClock())
+    }
+
+    init<ReplayClock: Clock>(timeline: TrackTimeline, speed: Double = 1, interval: Duration = defaultInterval,
+                             accuracy: Double = defaultAccuracy, name: String = "replay", clock: ReplayClock,
+                             startDate: Date? = nil) where ReplayClock.Duration == Duration {
         self.timeline = timeline
         self.speed = speed > 0 ? speed : 1
         self.interval = interval > .zero ? interval : Self.defaultInterval
         self.accuracy = accuracy
         self.name = name
-        self.clock = clock
+        self.sleep = { try await clock.sleep(for: $0) }
         self.startDate = startDate
     }
 
     public func fixes() -> AsyncThrowingStream<LocationFix, any Error> {
         let timeline = timeline, speed = speed, interval = interval, accuracy = accuracy
-        let clock = clock, startDate = startDate
+        let sleep = sleep, startDate = startDate
         return AsyncThrowingStream { continuation in
             let task = Task {
                 guard !timeline.points.isEmpty else {
@@ -122,7 +129,7 @@ public struct GPXReplayProvider<ReplayClock: Clock>: LocationProvider where Repl
                     }
                     guard time < timeline.duration else { break }
                     do {
-                        try await clock.sleep(for: interval / speed)
+                        try await sleep(interval / speed)
                     } catch {
                         break
                     }
@@ -135,13 +142,4 @@ public struct GPXReplayProvider<ReplayClock: Clock>: LocationProvider where Repl
     }
 
     private static var attosecondsPerSecond: Double { 1e18 }
-}
-
-extension GPXReplayProvider where ReplayClock == ContinuousClock {
-    /// A replay against the system's clock.
-    public init(timeline: TrackTimeline, speed: Double = 1, interval: Duration = defaultInterval,
-                accuracy: Double = defaultAccuracy, name: String = "replay") {
-        self.init(timeline: timeline, speed: speed, interval: interval, accuracy: accuracy, name: name,
-                  clock: ContinuousClock())
-    }
 }

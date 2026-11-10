@@ -59,7 +59,7 @@ public actor OpenFreeMapTileSource: EncodedTileSource {
 
     public init(tileJSONURL: URL = OpenFreeMapTileSource.planetURL,
                 transport: any HTTPTransport = URLSessionTransport(),
-                userAgent: String = MapUserAgent.default) {
+                userAgent: String) {
         self.tileJSONURL = tileJSONURL
         self.transport = transport
         self.userAgent = userAgent
@@ -70,7 +70,8 @@ public actor OpenFreeMapTileSource: EncodedTileSource {
         let attribution = metadata.attribution.map(OpenFreeMapTileSource.plainText) ?? OpenFreeMapTileSource.attribution
         return TileSourceInfo(name: metadata.name ?? "OpenFreeMap",
                               attribution: attribution.isEmpty ? OpenFreeMapTileSource.attribution : attribution,
-                              zoomRange: metadata.zoomRange, bounds: metadata.geoBounds)
+                              zoomRange: metadata.zoomRange, bounds: metadata.geoBounds,
+                              featureIdentifiers: .openMapTiles)
     }
 
     public func tileData(_ id: TileID) async throws -> [UInt8]? {

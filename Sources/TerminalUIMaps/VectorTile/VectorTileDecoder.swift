@@ -1,5 +1,5 @@
 /// Why a vector tile could not be decoded.
-public enum VectorTileError: Error, Sendable, Equatable {
+enum VectorTileError: Error, Sendable, Equatable {
     case protobuf(ProtobufError)
     case gzip(GZipError)
     /// A layer without the name the spec requires.
@@ -15,7 +15,7 @@ public enum VectorTileError: Error, Sendable, Equatable {
     /// A feature's geometry broke the command grammar of MVT 2.1 §4.3.
     case invalidGeometry(GeometryProblem)
 
-    public enum GeometryProblem: Error, Sendable, Equatable {
+    enum GeometryProblem: Error, Sendable, Equatable {
         /// A command id other than MoveTo (1), LineTo (2) and ClosePath (7).
         case unknownCommand(UInt32)
         /// A command count the grammar does not allow there.
@@ -80,12 +80,12 @@ enum GeometryCommand {
 }
 
 /// Decodes Mapbox Vector Tile 2.1 bytes, gzip-compressed or not.
-public enum VectorTileDecoder {
+enum VectorTileDecoder {
     /// The versions this decoder reads: 1, whose rings may wind either way,
     /// and 2.
     private static let supportedVersions: ClosedRange<UInt64> = 1...2
 
-    public static func decode(_ bytes: [UInt8]) throws(VectorTileError) -> VectorTile {
+    static func decode(_ bytes: [UInt8]) throws(VectorTileError) -> VectorTile {
         var raw = bytes
         if GZip.isCompressed(bytes) {
             do { raw = try GZip.decompress(bytes) } catch { throw .gzip(error) }

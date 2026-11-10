@@ -2,23 +2,23 @@ import Foundation
 import TerminalUI
 
 /// A map's bearing as a compass reads it.
-public struct MapCompassReading: Sendable, Equatable {
+struct MapCompassReading: Sendable, Equatable {
     /// Degrees clockwise from north at the top of the map.
-    public var bearing: Double
+    var bearing: Double
 
-    public init(bearing: Double) {
+    init(bearing: Double) {
         self.bearing = GeoMeasure.normalizedBearing(bearing)
     }
 
     /// The bearing in whole degrees, 0 to 359.
-    public var degrees: Int { Int(bearing.rounded()) % Int(Degrees.fullTurn) }
+    var degrees: Int { Int(bearing.rounded()) % Int(Degrees.fullTurn) }
 
     /// Whether the map is turned off north by a degree it would show.
-    public var isRotated: Bool { degrees != 0 }
+    var isRotated: Bool { degrees != 0 }
 
     /// Which way north lies on the screen, as x right and y down: up, the
     /// screen's top, turned back by the bearing.
-    public var northOnScreen: (x: Double, y: Double) {
+    var northOnScreen: (x: Double, y: Double) {
         let radians = GeoMeasure.radians(bearing)
         return (-sin(radians), -cos(radians))
     }
@@ -41,14 +41,16 @@ public struct MapCompassReading: Sendable, Equatable {
 /// }
 /// ```
 public struct MapCompass: TerminalView {
-    public let bearing: Double
-    public let action: (() -> Void)?
+    let bearing: Double
+    let action: (() -> Void)?
 
     /// The rose, in cells: a frame three rows high with the arrow in its
     /// middle, and a row beneath for the degrees.
-    public static let width = 7
-    public static let height = 3
+    static let width = 7
+    static let height = 3
 
+    /// A compass for a map turned to `bearing`; `action` runs when it is
+    /// clicked, as Apple Maps turns a map north up from its compass.
     public init(bearing: Double, action: (() -> Void)? = nil) {
         self.bearing = bearing
         self.action = action
@@ -92,7 +94,7 @@ public struct MapCompass: TerminalView {
 
     /// The rose for `reading`, row by row: north sits on the screen at
     /// minus the bearing, taken to the nearest of the eight points.
-    public static func rows(_ reading: MapCompassReading) -> [String] {
+    static func rows(_ reading: MapCompassReading) -> [String] {
         let northOnScreen = GeoMeasure.normalizedBearing(Rose.fullTurn - reading.bearing)
         let sector = Rose.fullTurn / Double(Rose.points.count)
         let point = Rose.points[Int((northOnScreen / sector).rounded()) % Rose.points.count]

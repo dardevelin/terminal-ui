@@ -48,9 +48,9 @@ public final class StreetViewModel {
 
     /// How far from the place a look searches, in metres: a street's width
     /// and a little more, so the photo is of the street asked about.
-    public static let searchRadius = 60.0
+    static let searchRadius = 60.0
     /// How far ``turn(by:)`` turns at a press: an eighth of the compass.
-    public static let turnStep = 45.0
+    static let turnStep = 45.0
 
     @ObservationIgnored private var generation = 0
 

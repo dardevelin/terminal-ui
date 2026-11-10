@@ -1,5 +1,5 @@
 /// Spaces requests out: each caller waits its turn.
-public protocol RequestPacing: Sendable {
+protocol RequestPacing: Sendable {
     /// Returns when the caller may send its request.
     func waitForTurn() async throws
 }
@@ -9,17 +9,17 @@ public protocol RequestPacing: Sendable {
 /// arrive together go out one interval apart rather than all at once when
 /// a sleep ends. The wait is the clock's `sleep`, which suspends the task
 /// and holds no thread.
-public actor RequestLimiter<LimiterClock: Clock>: RequestPacing where LimiterClock.Duration == Duration {
+actor RequestLimiter<LimiterClock: Clock>: RequestPacing where LimiterClock.Duration == Duration {
     private let interval: Duration
     private let clock: LimiterClock
     private var nextSlot: LimiterClock.Instant?
 
-    public init(interval: Duration, clock: LimiterClock) {
+    init(interval: Duration, clock: LimiterClock) {
         self.interval = interval
         self.clock = clock
     }
 
-    public func waitForTurn() async throws {
+    func waitForTurn() async throws {
         let now = clock.now
         let slot = nextSlot.map { max($0, now) } ?? now
         nextSlot = slot.advanced(by: interval)
@@ -31,7 +31,7 @@ public actor RequestLimiter<LimiterClock: Clock>: RequestPacing where LimiterClo
 
 extension RequestLimiter where LimiterClock == ContinuousClock {
     /// A limiter on the system's continuous clock.
-    public init(interval: Duration) {
+    init(interval: Duration) {
         self.init(interval: interval, clock: ContinuousClock())
     }
 }

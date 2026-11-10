@@ -10,7 +10,7 @@ extension MapRole {
     /// labels take legible foregrounds: water in the info hue, the main
     /// roads in the warning hue a road atlas draws them in, the rest in
     /// steps of the foreground ramp by importance.
-    public func colour(in theme: any Theme) -> Color {
+    func colour(in theme: any Theme) -> Color {
         switch self {
         case .landcover, .park: theme.successSubtle
         case .landuse: theme.backgroundRaised
@@ -35,7 +35,7 @@ extension MapRole {
 
     /// Whether the role's labels are set bold: the names of the places a
     /// reader looks for first.
-    public var isBoldLabel: Bool {
+    var isBoldLabel: Bool {
         switch self {
         case .townLabel, .cityLabel, .countryLabel: true
         default: false

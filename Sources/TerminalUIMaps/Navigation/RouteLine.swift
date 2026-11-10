@@ -1,26 +1,26 @@
 import Foundation
 
 /// A point on a route line: where a position projects onto it.
-public struct RouteLinePosition: Sendable, Equatable {
+struct RouteLinePosition: Sendable, Equatable {
     /// The index of the segment, from point `segment` to `segment + 1`.
-    public var segment: Int
+    var segment: Int
     /// Metres along the line from its start.
-    public var distanceAlong: Double
+    var distanceAlong: Double
     /// How far the position projected lies from the line, in metres.
-    public var offset: Double
+    var offset: Double
     /// The point on the line.
-    public var coordinate: GeoCoordinate
+    var coordinate: GeoCoordinate
     /// The line's bearing there, degrees clockwise from north.
-    public var bearing: Double
+    var bearing: Double
 }
 
 /// A route's path measured for navigation: each point's distance from the
 /// start, on a local plane in metres, so a fix projects onto it as onto a
 /// polyline on paper.
-public struct RouteLine: Sendable, Equatable {
-    public let coordinates: [GeoCoordinate]
+struct RouteLine: Sendable, Equatable {
+    let coordinates: [GeoCoordinate]
     /// Metres from the start to each point.
-    public let cumulative: [Double]
+    let cumulative: [Double]
     private let plane: LocalPlane
     private let points: [Planar]
 
@@ -29,7 +29,7 @@ public struct RouteLine: Sendable, Equatable {
         var north: Double
     }
 
-    public init(_ coordinates: [GeoCoordinate]) {
+    init(_ coordinates: [GeoCoordinate]) {
         self.coordinates = coordinates
         plane = LocalPlane(reference: coordinates.first ?? GeoCoordinate(latitude: 0, longitude: 0))
         let plane = plane
@@ -51,14 +51,14 @@ public struct RouteLine: Sendable, Equatable {
     }
 
     /// The line's length in metres.
-    public var length: Double { cumulative.last ?? 0 }
+    var length: Double { cumulative.last ?? 0 }
 
     /// The nearest point of the line to `coordinate` on a segment that ends
     /// at or after `minimumDistance` along it, the cost of each candidate
     /// raised by `penalty` — which can, say, discourage a segment heading
     /// against the traveller's course. Nil for a line of fewer than two
     /// points.
-    public func project(_ coordinate: GeoCoordinate, from minimumDistance: Double = 0,
+    func project(_ coordinate: GeoCoordinate, from minimumDistance: Double = 0,
                         penalty: (_ segmentBearing: Double, _ distanceAlong: Double) -> Double = { _, _ in 0 })
         -> RouteLinePosition? {
         guard points.count >= 2 else { return nil }
@@ -92,7 +92,7 @@ public struct RouteLine: Sendable, Equatable {
     }
 
     /// The point `distance` metres along the line, held to its ends.
-    public func coordinate(atDistance distance: Double) -> GeoCoordinate {
+    func coordinate(atDistance distance: Double) -> GeoCoordinate {
         guard let first = coordinates.first else { return GeoCoordinate(latitude: 0, longitude: 0) }
         guard coordinates.count > 1, distance > 0 else { return first }
         guard distance < length else { return coordinates[coordinates.count - 1] }
@@ -103,7 +103,7 @@ public struct RouteLine: Sendable, Equatable {
     }
 
     /// The bearing of the line from `from` metres along it to `to`.
-    public func bearing(from: Double, to: Double) -> Double? {
+    func bearing(from: Double, to: Double) -> Double? {
         let start = coordinate(atDistance: from), end = coordinate(atDistance: to)
         guard GeoMeasure.distance(start, end) > 0 else { return nil }
         return GeoMeasure.bearing(start, end)
@@ -111,7 +111,7 @@ public struct RouteLine: Sendable, Equatable {
 
     /// The line split at `distance` along it: the part travelled, ending
     /// at that point, and the part ahead, beginning there.
-    public func split(atDistance distance: Double) -> (travelled: [GeoCoordinate], ahead: [GeoCoordinate]) {
+    func split(atDistance distance: Double) -> (travelled: [GeoCoordinate], ahead: [GeoCoordinate]) {
         guard coordinates.count > 1 else { return ([], coordinates) }
         let clamped = min(max(distance, 0), length)
         let segment = self.segment(atDistance: clamped)

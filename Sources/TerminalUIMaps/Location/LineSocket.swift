@@ -13,13 +13,8 @@ import Synchronization
 /// pool, where it would hold a thread for the life of the stream. The
 /// thread polls with a short timeout, so cancelling the stream — the
 /// iterating task ending — is noticed within it and the socket closed.
-public enum LineSocket {
-    public enum Endpoint: Sendable, Hashable {
-        /// Connect to a server.
-        case tcp(host: String, port: UInt16)
-        /// Listen for datagrams on a port, every interface.
-        case udp(port: UInt16)
-    }
+enum LineSocket {
+    typealias Endpoint = NMEALocationProvider.Endpoint
 
     /// How long one poll waits before the thread looks for cancellation.
     static let pollMilliseconds: Int32 = 200
@@ -33,7 +28,7 @@ public enum LineSocket {
     /// A stream of the fixes `decode` makes of each line, carrying `state`
     /// from one line to the next. `greeting`, when given, is sent once a
     /// TCP connection opens.
-    public static func stream<State: Sendable>(
+    static func stream<State: Sendable>(
         _ endpoint: Endpoint, greeting: String?, state: State,
         decode: @escaping @Sendable (inout State, String) -> LocationFix?
     ) -> AsyncThrowingStream<LocationFix, any Error> {

@@ -23,17 +23,17 @@ struct LocationChoice: Identifiable, Sendable, Equatable {
         }
         for (id, title, mode) in [("five-ways-drive", "Five Ways by car", TravelMode.driving),
                                   ("five-ways-ride", "Five Ways by bicycle", .cycling)]
-            where FileManager.default.fileExists(atPath: SampleFiveWays.trackPath(for: mode)) {
+            where FileManager.default.fileExists(atPath: TripModel.fiveWaysTrackPath(for: mode)) {
             choices.append(LocationChoice(id: id, title: title, summary: "replay through the confusing junction",
-                                          spec: .gpx(path: SampleFiveWays.trackPath(for: mode))))
+                                          spec: .gpx(path: TripModel.fiveWaysTrackPath(for: mode))))
         }
         choices += [
             LocationChoice(id: "gpsd", title: "gpsd", summary: "localhost:2947",
-                           spec: .gpsd(host: GPSDProtocol.defaultHost, port: GPSDProtocol.defaultPort)),
+                           spec: .gpsd(host: GPSDLocationProvider.defaultHost, port: GPSDLocationProvider.defaultPort)),
             LocationChoice(id: "nmea-udp", title: "NMEA over UDP", summary: "a phone sending to port 10110",
                            spec: .nmeaUDP(port: NMEALocationProvider.defaultPort)),
             LocationChoice(id: "nmea-tcp", title: "NMEA over TCP", summary: "localhost:10110",
-                           spec: .nmeaTCP(host: GPSDProtocol.defaultHost, port: NMEALocationProvider.defaultPort)),
+                           spec: .nmeaTCP(host: GPSDLocationProvider.defaultHost, port: NMEALocationProvider.defaultPort)),
         ]
         #if canImport(CoreLocation)
         choices.append(LocationChoice(id: "corelocation", title: "Location Services",
@@ -76,33 +76,16 @@ final class TripModel {
     /// Fed with every fix; main-actor state, reached through
     /// `MainActor.assumeIsolated` by the views.
     let navigation = NavigationController()
-    var follow = FollowCamera()
-    /// How the traveller moves: the route's mode's, switched with `w`.
-    var profile = TravelProfile.car
+    /// The camera that follows the traveller, its profile the route's
+    /// mode's, switched with `w`.
+    var navigationCamera = NavigationCamera()
     /// Whether the compass shows on the map (`C`).
     var showsCompass = true
 
-    /// The traveller as drawn this frame: carried along the route since the
-    /// last fix, facing the route ahead.
-    var shownTraveller: (coordinate: GeoCoordinate, course: Double?, distanceAlong: Double?)?
     /// Whether the camera or the traveller is still moving, so the map's
     /// timeline draws frames; false when both have come to rest, and the
     /// app goes idle.
     var isAnimating = false
-    /// How the camera eases; switched while running (`toggleEasing`).
-    var motionConfiguration = CameraMotionConfiguration()
-    @ObservationIgnored private var motion: CameraMotion?
-    @ObservationIgnored private var prediction = TravellerPrediction()
-    /// The zoom the junctions ahead ask for, and the hold it keeps.
-    @ObservationIgnored private var junctionZoom = JunctionZoom(profile: .car)
-    /// The route's junctions, read again when the route, the profile or
-    /// the tiles at hand change.
-    @ObservationIgnored private var junctions: [RouteJunction] = []
-    @ObservationIgnored private var junctionsKey: JunctionsKey?
-    /// Where a browsing map is turning to (`<`, `>`, the compass).
-    @ObservationIgnored private var browseBearing: Double?
-    @ObservationIgnored private var fixArrival: Date?
-    @ObservationIgnored private var lastFrame: Date?
 
     @ObservationIgnored private var locationTask: Task<Void, Never>?
     @ObservationIgnored private var routeTask: Task<Void, Never>?
@@ -110,12 +93,22 @@ final class TripModel {
     /// The demo track, relative to the checkout `swift run` runs from.
     static let demoTrackPath = "Examples/Maps/Tracks/millbrook-drive.gpx"
 
+    /// The drives through the sample town's Five Ways, by car and by
+    /// bicycle, beside the demo track.
+    static func fiveWaysTrackPath(for mode: TravelMode) -> String {
+        mode == .cycling ? "Examples/Maps/Tracks/millbrook-five-ways-ride.gpx"
+            : "Examples/Maps/Tracks/millbrook-five-ways-drive.gpx"
+    }
+
     init(replaySpeed: Double) {
         self.replaySpeed = replaySpeed
         demoTrack = FileManager.default.fileExists(atPath: TripModel.demoTrackPath) ? TripModel.demoTrackPath : nil
     }
 
     var choices: [LocationChoice] { LocationChoice.all(demoTrack: demoTrack) }
+
+    /// How the traveller moves: the route's mode's, switched with `w`.
+    var profile: TravelProfile { navigationCamera.profile }
 
     var stopRows: [StopRow] {
         plan.waypoints.enumerated().map { StopRow(number: $0.offset + 1, waypoint: $0.element) }
@@ -152,13 +145,8 @@ final class TripModel {
     /// A stop where a cell of the map is: a Ctrl+click.
     @MainActor
     func addStop(atCell cell: Point) {
-        let viewport = MapRenderer.viewport(for: maps.store.lastSize)
-        let dot = DotPoint(x: (Double(cell.x) + TripModel.cellMiddle) * Double(BrailleCell.dotColumns),
-                           y: (Double(cell.y) + TripModel.cellMiddle) * Double(BrailleCell.dotRows))
-        addStop("Pin \(plan.waypoints.count + 1)", at: maps.camera.coordinate(at: dot, in: viewport))
+        addStop("Pin \(plan.waypoints.count + 1)", at: maps.camera.coordinate(atCell: cell, in: maps.store.viewSize))
     }
-
-    private static let cellMiddle = 0.5
 
     @MainActor
     func removeStop(_ id: Int) {
@@ -272,13 +260,14 @@ final class TripModel {
         location = spec
         locationError = nil
         lastFix = nil
+        navigationCamera.clearFix()
         do {
             guard let provider = try spec.makeProvider(here: maps.camera.center, replaySpeed: replaySpeed) else {
                 locationName = nil
                 return
             }
             locationName = provider.name
-            follow.recentre()
+            navigationCamera.recentre()
             locationTask = Task { @MainActor in
                 do {
                     for try await fix in provider.fixes() {
@@ -307,164 +296,36 @@ final class TripModel {
     @MainActor
     func receive(_ fix: LocationFix) async {
         lastFix = fix
-        fixArrival = Date()
+        navigationCamera.receive(fix)
         await navigation.receive(fix)
         isAnimating = true
     }
 
-    /// The traveller at `date`: on the route where navigation matched them,
-    /// carried along it at the last fix's speed and facing the route ahead,
-    /// as Ferrostar and Mapbox draw the puck; else the fix as it came.
-    @MainActor
-    func estimatedTraveller(at date: Date) -> (coordinate: GeoCoordinate, course: Double?, distanceAlong: Double?) {
-        guard let lastFix else { return (maps.camera.center, nil, nil) }
-        let estimate = prediction.estimate(for: navigation.session, rerouting: navigation.status == .rerouting,
-                                           paused: navigation.status == .paused, fix: lastFix,
-                                           secondsSinceFix: (fixArrival.map { date.timeIntervalSince($0) } ?? 0)
-                                               * roadTimeScale,
-                                           headingUpSpeed: profile.headingUpSpeed)
-        return (estimate.coordinate, estimate.course, estimate.distanceAlong)
-    }
-
-    /// One frame of the map's timeline: a browsing map turned toward its
-    /// bearing, the traveller carried on to `date`, and, while following,
-    /// the camera eased toward them at the zoom the junctions ahead ask for.
+    /// One frame of the map's timeline: the navigation camera carries the
+    /// traveller on and moves the map after them.
     @MainActor
     func advance(to date: Date) {
-        let elapsed = min(lastFrame.map { date.timeIntervalSince($0) } ?? 0, TripModel.longestFrame)
-        lastFrame = date
-        let turning = turnBrowsingMap(by: elapsed)
-        guard lastFix != nil else {
-            isAnimating = turning
-            return
-        }
-        let shown = estimatedTraveller(at: date)
-        shownTraveller = shown
-        let moving = navigation.isActive && navigation.status != .paused
-            && navigation.session?.state == .onRoute && (lastFix?.speed ?? 0) > 0
-        let viewport = MapRenderer.viewport(for: maps.store.lastSize)
-        guard follow.isFollowing, viewport.width > 0 else {
-            isAnimating = moving || turning
-            return
-        }
-        var motion = self.motion ?? CameraMotion(pose: pose(of: maps.camera, viewport: viewport))
-        motion.configuration = motionConfiguration
-        // The camera runs in road time, so a fast replay keeps its junction
-        // holds; but how fast the map turns is for the eye, on screen. A
-        // turn rate and smoothing held in screen time keep a 4× replay's
-        // corner a sweep the eye can follow, not a flip.
-        motion.configuration.maximumTurnRate = motionConfiguration.maximumTurnRate / roadTimeScale
-        motion.configuration.bearingSmoothing = motionConfiguration.bearingSmoothing * roadTimeScale
-        let speed = lastFix?.speed ?? 0
-        let target = follow.pose(for: shown.coordinate, course: shown.course, speed: speed,
-                                 bearing: motion.pose.bearing,
-                                 zoom: junctionZoom(along: shown.distanceAlong ?? navigation.session?.distanceAlong,
-                                                    speed: speed, viewport: viewport))
-        motion.advance(toward: target, by: elapsed * roadTimeScale)
-        self.motion = motion
-        maps.camera = follow.camera(for: motion.pose, current: maps.camera, viewport: viewport)
-        isAnimating = moving || !motion.isSettled(toward: target)
-    }
-
-    /// What the junction zoom's cache of a route's junctions was read for.
-    private struct JunctionsKey: Equatable {
-        var rerouteCount: Int
-        var routeLength: Double
-        var profile: TravelProfile.Kind
-        var tiles: Int
-    }
-
-    /// The zoom the junctions ahead ask for, or nil — the speed's — with
-    /// the switch off or no route.
-    @MainActor
-    private func junctionZoom(along distance: Double?, speed: Double, viewport: DotSize) -> Double? {
-        guard follow.configuration.zoomsForJunctions, let session = navigation.session, let distance else {
-            return nil
-        }
-        let key = JunctionsKey(rerouteCount: navigation.rerouteCount, routeLength: session.line.length,
-                               profile: profile.kind, tiles: maps.store.revision)
-        if key != junctionsKey {
-            if junctionsKey.map({ $0.rerouteCount != key.rerouteCount || $0.profile != key.profile }) ?? true {
-                junctionZoom.reset()
-            }
-            let roles = profile.branchRoles
-            junctions = JunctionAnalysis.junctions(of: session, rules: profile.legibility) { point, radius in
-                maps.store.lines(near: point, within: radius, roles: roles)
-            }
-            junctionsKey = key
-        }
-        let fixedBearing: Double? = switch follow.configuration.orientation {
-        case .headingUp: nil
-        case .northUp: 0
-        case .locked: follow.configuration.lockedBearing
-        }
-        let frame = JunctionFrame(viewport: viewport, travellerHeightShare: follow.configuration.travellerHeightShare,
-                                  fixedBearing: fixedBearing)
-        return junctionZoom.zoom(at: distance, speed: speed,
-                                 speedZoom: follow.configuration.zoom(forSpeed: speed), junctions: junctions,
-                                 line: session.line, frame: frame)
+        navigationCamera.timeScale = roadTimeScale
+        var camera = maps.camera
+        isAnimating = navigationCamera.advance(to: date, camera: &camera, navigation: navigation, store: maps.store)
+        if camera != maps.camera { maps.camera = camera }
     }
 
     /// How many seconds of the road a second on screen is: a replay's
-    /// speed. The traveller is carried and the camera eased in road time, so
-    /// a replay is the drive itself played faster — its junction zoom
-    /// settled the same seconds of the road before each junction.
+    /// speed.
     private var roadTimeScale: Double {
         if case .gpx = location { replaySpeed } else { 1 }
     }
 
-    /// A browsing map turned a frame's way toward the bearing asked for;
-    /// whether it is still turning.
-    @MainActor
-    private func turnBrowsingMap(by seconds: Double) -> Bool {
-        guard let target = browseBearing else { return false }
-        var camera = maps.camera
-        let goal = FollowPose(focus: camera.center, bearing: target, zoom: camera.zoom)
-        var turn = CameraMotion(pose: FollowPose(focus: camera.center, bearing: camera.bearing, zoom: camera.zoom),
-                                configuration: motionConfiguration)
-        turn.advance(toward: goal, by: seconds)
-        let settled = turn.isSettled(toward: goal)
-        camera.bearing = settled ? target : turn.pose.bearing
-        maps.camera = camera
-        if settled { browseBearing = nil }
-        return !settled
-    }
-
-    /// The pose a camera shows: the point where the follow camera keeps the
-    /// traveller, so that following picks up from wherever the map is.
-    private func pose(of camera: MapCamera, viewport: DotSize) -> FollowPose {
-        let travellerPoint = DotPoint(x: viewport.width / 2,
-                                      y: viewport.height * follow.configuration.travellerHeightShare)
-        return FollowPose(focus: camera.coordinate(at: travellerPoint, in: viewport), bearing: camera.bearing,
-                          zoom: camera.zoom)
-    }
-
-    /// The longest frame the motion integrates: after a stall, the camera
-    /// eases on from where it was rather than leaping.
-    private static let longestFrame = 0.1
-
-    /// Where the traveller is drawn, as of the last frame.
-    @MainActor
-    var traveller: (coordinate: GeoCoordinate, course: Double?) {
-        let shown = shownTraveller ?? estimatedTraveller(at: Date())
-        return (shown.coordinate, shown.course)
-    }
-
     /// The user panned or zoomed: stop following until re-centred.
     func userMovedCamera() {
-        follow.userMovedCamera()
-        motion = nil
-        browseBearing = nil
+        navigationCamera.userMovedCamera()
     }
 
     /// Follow again, flying back from wherever the user left the map.
     @MainActor
     func recentre() {
-        follow.recentre()
-        motion = nil
-        junctionZoom.reset()
-        browseBearing = nil
-        lastFrame = nil
+        navigationCamera.recentre()
         isAnimating = lastFix != nil
     }
 
@@ -479,7 +340,7 @@ final class TripModel {
         apply(TravelProfile(mode: plan.mode))
         navigation.start(route: route, plan: plan, router: maps.backend.routes,
                          configuration: profile.navigationConfiguration)
-        follow.recentre()
+        navigationCamera.recentre()
         maps.panel = nil
         maps.notice = nil
     }
@@ -552,29 +413,29 @@ final class TripModel {
     /// Heading up, north up, locked; the map turns to the new orientation.
     @MainActor
     func cycleOrientation() {
-        let orientation = follow.cycleOrientation(currentBearing: maps.camera.bearing)
-        maps.notice = TripModel.describe(orientation, bearing: follow.configuration.lockedBearing)
+        let orientation = navigationCamera.cycleOrientation(currentBearing: maps.camera.bearing)
+        maps.notice = TripModel.describe(orientation, bearing: navigationCamera.lockedBearing)
         isAnimating = lastFix != nil
     }
 
-    static func describe(_ orientation: FollowCameraConfiguration.Orientation, bearing: Double) -> String {
+    static func describe(_ orientation: NavigationCamera.Orientation, bearing: Double) -> String {
         switch orientation {
         case .headingUp: "heading up"
         case .northUp: "north up"
-        case .locked: "locked at \(MapCompassReading(bearing: bearing).degrees)°"
+        case .locked: "locked at \(Int(bearing.rounded()) % TripModel.degreesInTurn)°"
         }
     }
+
+    private static let degreesInTurn = 360
 
     /// Turn the map by `degrees`: while following it is then locked there,
     /// as Apple Maps keeps a map the user turned; while browsing it turns
     /// about its middle.
     @MainActor
     func rotateMap(by degrees: Double) {
-        if follow.isFollowing, lastFix != nil {
-            follow.rotate(by: degrees, currentBearing: maps.camera.bearing)
-            maps.notice = TripModel.describe(.locked, bearing: follow.configuration.lockedBearing)
-        } else {
-            browseBearing = GeoMeasure.normalizedBearing((browseBearing ?? maps.camera.bearing) + degrees)
+        navigationCamera.rotate(by: degrees, currentBearing: maps.camera.bearing)
+        if navigationCamera.isFollowing, lastFix != nil {
+            maps.notice = TripModel.describe(.locked, bearing: navigationCamera.lockedBearing)
         }
         isAnimating = true
     }
@@ -584,11 +445,9 @@ final class TripModel {
     @MainActor
     func compassTapped() {
         let bearing = maps.camera.bearing
-        if follow.isFollowing, lastFix != nil {
-            follow.compassTapped(currentBearing: bearing)
-            maps.notice = TripModel.describe(follow.configuration.orientation, bearing: bearing)
-        } else if MapCompassReading(bearing: bearing).isRotated {
-            browseBearing = 0
+        navigationCamera.compassTapped(currentBearing: bearing)
+        if navigationCamera.isFollowing, lastFix != nil {
+            maps.notice = TripModel.describe(navigationCamera.orientation, bearing: bearing)
         }
         isAnimating = true
     }
@@ -621,27 +480,22 @@ final class TripModel {
 
     /// Take a profile's speeds, look-ahead and junction rules.
     func apply(_ newProfile: TravelProfile) {
-        profile = newProfile
-        follow.configuration.apply(newProfile)
-        prediction = TravellerPrediction(configuration: newProfile.lookAhead)
-        junctionZoom = JunctionZoom(profile: newProfile)
-        junctionsKey = nil
+        navigationCamera.profile = newProfile
     }
 
     /// Whether the zoom reads the junctions ahead or follows speed alone.
     @MainActor
     func toggleJunctionZoom() {
-        follow.configuration.zoomsForJunctions.toggle()
-        junctionZoom.reset()
-        maps.notice = follow.configuration.zoomsForJunctions ? "zoom reads the junctions" : "zoom follows speed only"
+        navigationCamera.zoomsForJunctions.toggle()
+        maps.notice = navigationCamera.zoomsForJunctions ? "zoom reads the junctions" : "zoom follows speed only"
         isAnimating = lastFix != nil
     }
 
     /// Whether the camera eases or jumps to each frame's target.
     @MainActor
     func toggleEasing() {
-        motionConfiguration.isSmooth.toggle()
-        maps.notice = motionConfiguration.isSmooth ? "smooth camera" : "camera jumps to each fix"
+        navigationCamera.isSmooth.toggle()
+        maps.notice = navigationCamera.isSmooth ? "smooth camera" : "camera jumps to each fix"
         isAnimating = lastFix != nil
     }
 
@@ -663,23 +517,14 @@ final class TripModel {
     /// traveller.
     @MainActor
     var mapContent: MapContentGroup {
-        var elements: [MapElement] = []
-        if let session = navigation.session {
-            let (travelled, ahead) = shownTraveller?.distanceAlong.map { session.line.split(atDistance: $0) }
-                ?? session.travelledAndAhead
-            if travelled.count >= 2 { elements.append(.polyline(MapPolyline(coordinates: travelled, style: .travelled))) }
-            elements.append(.polyline(MapPolyline(coordinates: ahead)))
-        } else if let route {
-            elements.append(.polyline(MapPolyline(route)))
-        }
+        var elements: [MapElement] = navigation.session != nil
+            ? navigationCamera.routeLines(for: navigation).mapElements
+            : route.map { MapPolyline($0).mapElements } ?? []
         elements += routeEnds?.mapElements ?? []
         for row in stopRows {
-            elements.append(.marker(Marker("\(row.number) \(row.waypoint.name)", coordinate: row.waypoint.coordinate)))
+            elements += Marker("\(row.number) \(row.waypoint.name)", coordinate: row.waypoint.coordinate).mapElements
         }
-        if lastFix != nil {
-            let shown = traveller
-            elements.append(.traveller(TravellerMarker(coordinate: shown.coordinate, course: shown.course)))
-        }
+        elements += navigationCamera.traveller?.mapElements ?? []
         return MapContentGroup(elements)
     }
 }

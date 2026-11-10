@@ -6,39 +6,39 @@ import Foundation
 ///
 /// The rules are written out, with their reasons, in
 /// design/maps.md ("Junction-aware zoom").
-public struct JunctionLegibilityRules: Sendable, Equatable {
+struct JunctionLegibilityRules: Sendable, Equatable {
     /// Dots two neighbouring roads must lie apart at the mouth: four, a
     /// cell's height, so the route's accent and the road beside it never
     /// share a cell whichever way they run — a cell has one colour, and
     /// two lines in it read as one.
-    public var separationDots = 4.0
+    var separationDots = 4.0
     /// Metres from the node at which the roads must have parted: the
     /// junction's mouth, about a carriageway's width plus its pavements.
     /// Past it a reader tells the roads apart by where they lead.
-    public var mouthLength = 15.0
+    var mouthLength = 15.0
     /// Cells a manoeuvre must sit from the next, counted in cell heights —
     /// four dots, the way the road ahead runs heading up: one cell for each
     /// bend and one between them for the road they cross.
-    public var spacingCells = 3.0
+    var spacingCells = 3.0
     /// Dots a roundabout must span to read as a ring with exits around it:
     /// three cells' height. Smaller, its braille is a blot.
-    public var roundaboutDiameterDots = 12.0
+    var roundaboutDiameterDots = 12.0
     /// From this many roads a junction is one a driver counts ("the second
     /// on the left"), so every pair of neighbouring roads must part, not
     /// only those beside the way out.
-    public var complexBranchCount = 5
+    var complexBranchCount = 5
     /// Bearings closer than this, in degrees, are the same road: a U-turn's
     /// way in and out, a road in two tiles' buffers.
-    public var sameRoadSeparation = 5.0
+    var sameRoadSeparation = 5.0
     /// A manoeuvre turning less than this is no turn for the spacing rule,
     /// unless it is one that chooses a road whatever its bend: OSRM's
     /// "straight" band.
-    public var gentlestTurn = 20.0
+    var gentlestTurn = 20.0
     /// How near the node, in metres, a road's line must pass to be one of
     /// its roads: a carriageway's half width.
-    public var nodeTolerance = 6.0
+    var nodeTolerance = 6.0
 
-    public init(separationDots: Double = 4, mouthLength: Double = 15, spacingCells: Double = 3,
+    init(separationDots: Double = 4, mouthLength: Double = 15, spacingCells: Double = 3,
                 roundaboutDiameterDots: Double = 12, complexBranchCount: Int = 5, sameRoadSeparation: Double = 5,
                 gentlestTurn: Double = 20, nodeTolerance: Double = 6) {
         self.separationDots = separationDots
@@ -54,21 +54,21 @@ public struct JunctionLegibilityRules: Sendable, Equatable {
 
 /// How legible one junction is: the measures, and the coarsest scale at
 /// which the rules hold.
-public struct JunctionLegibility: Sendable, Equatable {
+struct JunctionLegibility: Sendable, Equatable {
     /// How many roads meet.
-    public var branchCount: Int
+    var branchCount: Int
     /// The narrowest angle, in degrees, between roads that must be told
     /// apart: those beside the way out, or every neighbouring pair at a
     /// complex junction. Nil with fewer than two such roads.
-    public var minimumSeparation: Double?
+    var minimumSeparation: Double?
     /// Metres to the next manoeuvre that turns, if any.
-    public var distanceToNext: Double?
-    public var roundaboutDiameter: Double?
+    var distanceToNext: Double?
+    var roundaboutDiameter: Double?
     /// The most metres a dot may cover for the junction to read; nil when
     /// nothing about it limits the scale.
-    public var largestMetresPerDot: Double?
+    var largestMetresPerDot: Double?
 
-    public init(_ junction: RouteJunction, next: RouteJunction?,
+    init(_ junction: RouteJunction, next: RouteJunction?,
                 rules: JunctionLegibilityRules = JunctionLegibilityRules()) {
         let branches = junction.branches.sorted()
         branchCount = branches.count
@@ -100,12 +100,12 @@ public struct JunctionLegibility: Sendable, Equatable {
 
     /// The zoom at which the junction reads, at `latitude`, for a camera of
     /// `tileSize` dots a tile; nil when any zoom does.
-    public func requiredZoom(atLatitude latitude: Double, tileSize: Double = MapCamera.defaultTileSize) -> Double? {
+    func requiredZoom(atLatitude latitude: Double, tileSize: Double = MapCamera.defaultTileSize) -> Double? {
         largestMetresPerDot.map { JunctionLegibility.zoom(metresPerDot: $0, latitude: latitude, tileSize: tileSize) }
     }
 
     /// The zoom at which a dot covers `metresPerDot` metres.
-    public static func zoom(metresPerDot: Double, latitude: Double, tileSize: Double = MapCamera.defaultTileSize)
+    static func zoom(metresPerDot: Double, latitude: Double, tileSize: Double = MapCamera.defaultTileSize)
         -> Double {
         log2(WebMercator.metresPerWorldUnit(atLatitude: latitude) / (max(metresPerDot, .ulpOfOne) * tileSize))
     }
@@ -130,15 +130,15 @@ public struct JunctionLegibility: Sendable, Equatable {
 
 /// What the map shows around the traveller: what a group of junctions
 /// must fit inside.
-public struct JunctionFrame: Sendable, Equatable {
-    public var viewport: DotSize
+struct JunctionFrame: Sendable, Equatable {
+    var viewport: DotSize
     /// Where the traveller sits, as a share of the height from the top.
-    public var travellerHeightShare: Double
+    var travellerHeightShare: Double
     /// The map's bearing when it is held — north up or locked; nil heading
     /// up, where it follows the route.
-    public var fixedBearing: Double?
+    var fixedBearing: Double?
 
-    public init(viewport: DotSize, travellerHeightShare: Double, fixedBearing: Double? = nil) {
+    init(viewport: DotSize, travellerHeightShare: Double, fixedBearing: Double? = nil) {
         self.viewport = viewport
         self.travellerHeightShare = travellerHeightShare
         self.fixedBearing = fixedBearing
@@ -146,22 +146,22 @@ public struct JunctionFrame: Sendable, Equatable {
 }
 
 /// Junctions close enough to be held at one zoom.
-public struct JunctionGroup: Sendable, Equatable {
+struct JunctionGroup: Sendable, Equatable {
     /// Indices into the junctions given.
-    public var junctions: ClosedRange<Int>
+    var junctions: ClosedRange<Int>
     /// Metres along the route to the first junction and the last.
-    public var start: Double
-    public var end: Double
+    var start: Double
+    var end: Double
     /// The zoom every junction of the group reads at, or the speed's when
     /// that is closer.
-    public var legibleZoom: Double
+    var legibleZoom: Double
     /// The deepest zoom that keeps the group's junctions and the road out
     /// of the last on screen through the hold; nil with no viewport.
-    public var fittingZoom: Double?
+    var fittingZoom: Double?
     /// Whether the speed's zoom fails a rule here.
-    public var isTight: Bool
+    var isTight: Bool
     /// What the camera holds through the group.
-    public var zoom: Double
+    var zoom: Double
 }
 
 /// The following camera's zoom around junctions: the speed table's, except
@@ -174,50 +174,50 @@ public struct JunctionGroup: Sendable, Equatable {
 /// A value fed the traveller's place along the route each frame; it keeps
 /// the zoom it holds, so a speed that drops braking for the turn does not
 /// change the scale mid-junction.
-public struct JunctionZoom: Sendable, Equatable {
+struct JunctionZoom: Sendable, Equatable {
     /// When the zoom moves, as seconds of travel at the traveller's speed,
     /// each with a floor in metres so a crawl or a stop still has room.
-    public struct Configuration: Sendable, Equatable {
+    struct Configuration: Sendable, Equatable {
         /// Seconds before a junction its zoom is settled: two of the 2 s
         /// glances NHTSA's driver-distraction guidelines allow, and the
         /// time to act on them.
-        public var settleTime = 6.0
-        public var minimumSettleDistance = 30.0
+        var settleTime = 6.0
+        var minimumSettleDistance = 30.0
         /// Seconds the camera's own easing takes to close the last of a
         /// change: ``CameraMotionConfiguration/zoomSmoothing``'s 0.8 s lag
         /// leaves 2% of it after 3 s. The zoom's target is final this much
         /// earlier than `settleTime`, so the picture is still by then.
-        public var easingTime = 3.0
+        var easingTime = 3.0
         /// Seconds the zoom takes to move to a junction's, before it is
         /// settled, and back after.
-        public var transitionTime = 3.0
-        public var minimumTransitionDistance = 15.0
+        var transitionTime = 3.0
+        var minimumTransitionDistance = 15.0
         /// Seconds past a junction the zoom holds, while the road out comes
         /// into view.
-        public var releaseTime = 2.0
-        public var minimumReleaseDistance = 15.0
+        var releaseTime = 2.0
+        var minimumReleaseDistance = 15.0
         /// Junctions whose holds would come closer than this, in seconds,
         /// are held as one: two changes of scale within a few seconds read
         /// as the map pumping.
-        public var mergeTime = 8.0
-        public var minimumMergeDistance = 40.0
+        var mergeTime = 8.0
+        var minimumMergeDistance = 40.0
         /// The most a junction closes the camera in, in levels: a level
         /// and a half shows a third of the road ahead, enough for a mouth
         /// without losing the road to it.
-        public var maximumZoomIn = 1.5
+        var maximumZoomIn = 1.5
         /// The most fitting the next manoeuvre draws the camera back past
         /// the speed's zoom, in levels.
-        public var maximumZoomOut = 0.5
+        var maximumZoomOut = 0.5
         /// Less than this, in levels, is no change worth making.
-        public var noticeableZoom = 0.05
+        var noticeableZoom = 0.05
         /// Cells kept clear between what must be on screen and its edge.
-        public var fitMarginCells = 2.0
+        var fitMarginCells = 2.0
         /// Metres of road past a group's last junction that must show.
-        public var fitExitLength = 30.0
+        var fitExitLength = 30.0
         /// Metres between the points of the route checked for fitting.
-        public var fitSampleSpacing = 5.0
+        var fitSampleSpacing = 5.0
 
-        public init(settleTime: Double = 6, minimumSettleDistance: Double = 30, transitionTime: Double = 3,
+        init(settleTime: Double = 6, minimumSettleDistance: Double = 30, transitionTime: Double = 3,
                     minimumTransitionDistance: Double = 15, releaseTime: Double = 2,
                     minimumReleaseDistance: Double = 15, mergeTime: Double = 8, minimumMergeDistance: Double = 40) {
             self.settleTime = settleTime
@@ -242,39 +242,39 @@ public struct JunctionZoom: Sendable, Equatable {
     }
 
     /// A zoom held through a group of junctions.
-    public struct Hold: Sendable, Equatable {
-        public var zoom: Double
+    struct Hold: Sendable, Equatable {
+        var zoom: Double
         /// Metres along where the hold began.
-        public var start: Double
+        var start: Double
         /// The last junction it holds through.
-        public var lastJunction: Double
+        var lastJunction: Double
         /// Where it lets go.
-        public var releaseAlong: Double
+        var releaseAlong: Double
     }
 
     /// A hold let go: where, and its zoom, which the camera eases away
     /// from.
-    public struct Release: Sendable, Equatable {
-        public var along: Double
-        public var zoom: Double
+    struct Release: Sendable, Equatable {
+        var along: Double
+        var zoom: Double
     }
 
-    public var configuration: Configuration
-    public var rules: JunctionLegibilityRules
-    public private(set) var hold: Hold?
-    public private(set) var released: Release?
+    var configuration: Configuration
+    var rules: JunctionLegibilityRules
+    private(set) var hold: Hold?
+    private(set) var released: Release?
 
-    public init(configuration: Configuration = Configuration(), rules: JunctionLegibilityRules = JunctionLegibilityRules()) {
+    init(configuration: Configuration = Configuration(), rules: JunctionLegibilityRules = JunctionLegibilityRules()) {
         self.configuration = configuration
         self.rules = rules
     }
 
-    public init(profile: TravelProfile) {
+    init(profile: TravelProfile) {
         self.init(configuration: profile.junctionTiming, rules: profile.legibility)
     }
 
     /// Forget any hold: a new route, or following resumed.
-    public mutating func reset() {
+    mutating func reset() {
         hold = nil
         released = nil
     }
@@ -284,7 +284,7 @@ public struct JunctionZoom: Sendable, Equatable {
     /// The groups of junctions ahead of `distanceAlong` on `line`, each with
     /// the zoom it would be held at, for a traveller at `speed` metres a
     /// second whose speed table gives `speedZoom`.
-    public func groups(_ junctions: [RouteJunction], on line: RouteLine, after distanceAlong: Double,
+    func groups(_ junctions: [RouteJunction], on line: RouteLine, after distanceAlong: Double,
                        speed: Double, speedZoom: Double, frame: JunctionFrame?) -> [JunctionGroup] {
         let settle = configuration.settleDistance(speed), release = configuration.releaseDistance(speed)
         let merge = configuration.mergeDistance(speed)
@@ -371,7 +371,7 @@ public struct JunctionZoom: Sendable, Equatable {
     /// The zoom for a traveller `distanceAlong` metres along `line` at
     /// `speed`, among `junctions`: held if a hold is under way, else the
     /// speed's eased toward the next group's and away from the last.
-    public mutating func zoom(at distanceAlong: Double, speed: Double, speedZoom: Double,
+    mutating func zoom(at distanceAlong: Double, speed: Double, speedZoom: Double,
                               junctions: [RouteJunction], line: RouteLine, frame: JunctionFrame?) -> Double {
         let settle = configuration.settleDistance(speed), transition = configuration.transitionDistance(speed)
         if let current = hold, distanceAlong < current.start - settle {

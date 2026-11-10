@@ -120,7 +120,7 @@ struct HeadingTests {
 
     @Test("OSRM is asked to leave along the bearing: bearings on the first coordinate only")
     func osrmBearings() throws {
-        let routes = OSRMRoutes()
+        let routes = OSRMRoutes(baseURL: OSRMRoutes.demoURL, userAgent: testUserAgent)
         let url = try #require(routes.routeURL(through: [GeoCoordinate(latitude: 0, longitude: 0),
                                                          GeoCoordinate(latitude: 0.01, longitude: 0),
                                                          GeoCoordinate(latitude: 0.02, longitude: 0)],

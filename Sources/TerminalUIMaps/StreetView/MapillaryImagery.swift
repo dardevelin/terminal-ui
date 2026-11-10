@@ -10,8 +10,8 @@ import TerminalUIIO
 /// images in order; its photo is `thumb_1024_url`.
 public struct MapillaryImagery: StreetImagery {
     public static let defaultEndpoint = URL(string: "https://graph.mapillary.com")!
-    /// The environment variable a token is read from by ``init(environment:transport:userAgent:)``.
-    public static let tokenVariable = "MAPILLARY_ACCESS_TOKEN"
+    /// The environment variable a token is read from by `init(environment:transport:userAgent:)`.
+    static let tokenVariable = "MAPILLARY_ACCESS_TOKEN"
 
     public let name = "Mapillary"
     private let token: String
@@ -25,18 +25,18 @@ public struct MapillaryImagery: StreetImagery {
     static let searchLimit = 20
 
     public init(token: String, endpoint: URL = MapillaryImagery.defaultEndpoint,
-                transport: any HTTPTransport = URLSessionTransport(), userAgent: String = MapUserAgent.default) {
+                transport: any HTTPTransport = URLSessionTransport(), userAgent: String) {
         self.token = token
         self.endpoint = endpoint
         self.transport = transport
         self.userAgent = userAgent
     }
 
-    /// Mapillary with the token in ``tokenVariable``; throws
+    /// Mapillary with the token in `tokenVariable`; throws
     /// ``StreetImageryError/missingToken(_:)`` when there is none.
-    public init(environment: [String: String] = ProcessInfo.processInfo.environment,
+    init(environment: [String: String] = ProcessInfo.processInfo.environment,
                 transport: any HTTPTransport = URLSessionTransport(),
-                userAgent: String = MapUserAgent.default) throws {
+                userAgent: String) throws {
         guard let token = environment[Self.tokenVariable], !token.isEmpty else {
             throw StreetImageryError.missingToken(Self.tokenVariable)
         }

@@ -42,9 +42,9 @@ enum OSMTags {
 /// (nominatim.org/release-docs/latest/api/Lookup/), by the place's
 /// OpenStreetMap element, with its extra tags and address.
 ///
-/// Every request shares Nominatim's pacing with ``NominatimSearch`` unless
-/// given its own: the usage policy's one request a second counts lookups
-/// and searches together. A place with no OpenStreetMap element, such as
+/// Every request shares Nominatim's pacing with ``NominatimSearch``: the
+/// usage policy's one request a second counts lookups and searches
+/// together, and its identifying User-Agent is required here as there. A place with no OpenStreetMap element, such as
 /// one from Apple's search, is not looked up.
 public struct NominatimPlaceDetails: PlaceDetails {
     public let sourceName = "OpenStreetMap"
@@ -55,9 +55,15 @@ public struct NominatimPlaceDetails: PlaceDetails {
     private let transport: any HTTPTransport
     private let pacing: any RequestPacing
 
+    /// Details asked for under `userAgent`, which names the application.
     public init(userAgent: String, baseURL: URL = NominatimSearch.publicURL,
-                transport: any HTTPTransport = URLSessionTransport(),
-                pacing: any RequestPacing = NominatimSearch.sharedPacing) {
+                transport: any HTTPTransport = URLSessionTransport()) {
+        self.init(userAgent: userAgent, baseURL: baseURL, transport: transport, pacing: NominatimSearch.sharedPacing)
+    }
+
+    init(userAgent: String, baseURL: URL = NominatimSearch.publicURL,
+         transport: any HTTPTransport = URLSessionTransport(),
+         pacing: any RequestPacing) {
         self.userAgent = userAgent
         self.baseURL = baseURL
         self.transport = transport
@@ -121,14 +127,14 @@ struct NominatimLookupResult: Decodable {
 /// and answers 429 when a client is going too fast, or 504 when the server
 /// is too busy (dev.overpass-api.de/overpass-doc/en/preface/commons.html).
 /// Either is waited out and tried again, each wait twice the last, a few
-/// times before giving up. Requests share a pacing that by default allows
-/// one a second.
+/// times before giving up. Every request of the process shares one pacing
+/// of a request a second.
 public struct OverpassPlaceDetails: PlaceDetails {
     public static let publicURL = URL(string: "https://overpass-api.de/api/interpreter")!
 
     /// One request a second: the slot rate a client of the public
     /// instance is given.
-    public static let sharedPacing: any RequestPacing = RequestLimiter(interval: .seconds(1))
+    static let sharedPacing: any RequestPacing = RequestLimiter(interval: .seconds(1))
 
     /// The statuses Overpass answers a busy client with: too many requests
     /// (RFC 6585 §4) and gateway timeout, which it sends when its
@@ -136,7 +142,7 @@ public struct OverpassPlaceDetails: PlaceDetails {
     static let busyStatuses: Set<Int> = [429, 504]
 
     /// The waits before each retry, doubling.
-    public static let defaultBackoff: [Duration] = [.seconds(1), .seconds(2), .seconds(4)]
+    static let defaultBackoff: [Duration] = [.seconds(1), .seconds(2), .seconds(4)]
 
     /// Overpass QL's own timeout for a query of one element, in seconds.
     static let queryTimeout = 25
@@ -151,13 +157,19 @@ public struct OverpassPlaceDetails: PlaceDetails {
     private let backoff: [Duration]
     private let sleep: @Sendable (Duration) async throws -> Void
 
+    /// Details asked for under `userAgent`, which names the application.
+    public init(userAgent: String, baseURL: URL = OverpassPlaceDetails.publicURL,
+                transport: any HTTPTransport = URLSessionTransport()) {
+        self.init(userAgent: userAgent, baseURL: baseURL, transport: transport, pacing: OverpassPlaceDetails.sharedPacing)
+    }
+
     /// - Parameter sleep: how a wait is waited: the task's own sleep, which
     ///   suspends and holds no thread; a test passes one that records it.
-    public init(userAgent: String, baseURL: URL = OverpassPlaceDetails.publicURL,
-                transport: any HTTPTransport = URLSessionTransport(),
-                pacing: any RequestPacing = OverpassPlaceDetails.sharedPacing,
-                backoff: [Duration] = OverpassPlaceDetails.defaultBackoff,
-                sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
+    init(userAgent: String, baseURL: URL = OverpassPlaceDetails.publicURL,
+         transport: any HTTPTransport = URLSessionTransport(),
+         pacing: any RequestPacing,
+         backoff: [Duration] = OverpassPlaceDetails.defaultBackoff,
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         self.userAgent = userAgent
         self.baseURL = baseURL
         self.transport = transport

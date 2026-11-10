@@ -25,7 +25,7 @@ private enum FieldKey {
 }
 
 /// Why a protobuf message could not be read.
-public enum ProtobufError: Error, Sendable, Equatable {
+enum ProtobufError: Error, Sendable, Equatable {
     /// The message ended inside a field.
     case truncated
     /// A varint ran past ten bytes.

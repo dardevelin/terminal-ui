@@ -14,10 +14,9 @@ public struct NominatimSearch: PlaceSearch {
     /// The policy's ceiling: one request a second.
     public static let minimumInterval: Duration = .seconds(1)
 
-    /// The pacing every search of the process shares unless given its own,
-    /// so two searches made apart still stay under the policy's ceiling
-    /// together.
-    public static let sharedPacing: any RequestPacing = RequestLimiter(interval: minimumInterval)
+    /// The pacing every search of the process shares, so two searches
+    /// made apart still stay under the policy's ceiling together.
+    static let sharedPacing: any RequestPacing = RequestLimiter(interval: minimumInterval)
 
     /// How many results to ask for; Nominatim's own default is 10.
     public static let defaultLimit = 10
@@ -28,10 +27,21 @@ public struct NominatimSearch: PlaceSearch {
     private let pacing: any RequestPacing
     private let limit: Int
 
+    /// A search that names itself `userAgent` — the application, as the
+    /// policy asks, with a way to reach its author — on every request.
+    /// Every search of the process, whatever its `baseURL`, shares one
+    /// pacing of a request a second.
     public init(userAgent: String, baseURL: URL = NominatimSearch.publicURL,
                 transport: any HTTPTransport = URLSessionTransport(),
-                pacing: any RequestPacing = NominatimSearch.sharedPacing,
                 limit: Int = NominatimSearch.defaultLimit) {
+        self.init(userAgent: userAgent, baseURL: baseURL, transport: transport, pacing: NominatimSearch.sharedPacing,
+                  limit: limit)
+    }
+
+    init(userAgent: String, baseURL: URL = NominatimSearch.publicURL,
+         transport: any HTTPTransport = URLSessionTransport(),
+         pacing: any RequestPacing,
+         limit: Int = NominatimSearch.defaultLimit) {
         self.userAgent = userAgent
         self.baseURL = baseURL
         self.transport = transport

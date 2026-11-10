@@ -125,17 +125,17 @@ struct LocationPanel: TerminalView {
             if TripModel.routesCarsOnly(maps.backend.preset, mode: trip.profile.travelMode) {
                 Text("OSRM's demo server routes cars only").foreground(theme.warning)
             }
-            Button("Facing: \(TripModel.describe(trip.follow.configuration.orientation, bearing: trip.follow.configuration.lockedBearing))  (u)") {
+            Button("Facing: \(TripModel.describe(trip.navigationCamera.orientation, bearing: trip.navigationCamera.lockedBearing))  (u)") {
                 MainActor.assumeIsolated { maps.trip.cycleOrientation() }
             }
             Toggle("Zoom for junctions  (z)", isOn: Binding(
-                get: { trip.follow.configuration.zoomsForJunctions },
+                get: { trip.navigationCamera.zoomsForJunctions },
                 set: { _ in MainActor.assumeIsolated { maps.trip.toggleJunctionZoom() } }))
             Toggle("Compass  (C)", isOn: Binding(
                 get: { trip.showsCompass },
                 set: { _ in MainActor.assumeIsolated { maps.trip.toggleCompass() } }))
             Toggle("Smooth camera  (e)", isOn: Binding(
-                get: { trip.motionConfiguration.isSmooth },
+                get: { trip.navigationCamera.isSmooth },
                 set: { _ in MainActor.assumeIsolated { maps.trip.toggleEasing() } }))
         }
     }
@@ -207,7 +207,7 @@ func tripStatus(_ trip: TripModel, theme: any Theme) -> [TextSpan] {
     var spans: [TextSpan] = [TextSpan("  \(trip.profile.title)", foreground: theme.foregroundSubtle)]
     if let name = trip.locationName {
         spans.append(TextSpan("  ◉ \(name)", foreground: trip.locationError == nil ? theme.info : theme.error))
-        if trip.lastFix != nil, !trip.follow.isFollowing {
+        if trip.lastFix != nil, !trip.navigationCamera.isFollowing {
             spans.append(TextSpan("  r re-centre", foreground: theme.accent, bold: true))
         }
     }

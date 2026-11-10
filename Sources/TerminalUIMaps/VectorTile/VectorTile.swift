@@ -1,9 +1,9 @@
 /// One Mapbox Vector Tile (MVT 2.1): named layers of features in tile
 /// coordinates.
-public struct VectorTile: Sendable, Equatable {
-    public var layers: [VectorLayer]
+struct VectorTile: Sendable, Equatable {
+    var layers: [VectorLayer]
 
-    public init(layers: [VectorLayer]) {
+    init(layers: [VectorLayer]) {
         self.layers = layers
     }
 
@@ -15,20 +15,20 @@ public struct VectorTile: Sendable, Equatable {
 }
 
 /// A layer of a tile (MVT 2.1 §4.1).
-public struct VectorLayer: Sendable, Equatable {
+struct VectorLayer: Sendable, Equatable {
     /// The extent the spec defaults to.
-    public static let defaultExtent = 4096
+    static let defaultExtent = 4096
     /// The version this decoder reads.
-    public static let specificationVersion = 2
+    static let specificationVersion = 2
 
-    public var name: String
-    public var version: Int
+    var name: String
+    var version: Int
     /// The width and height of the tile in this layer's coordinates; a
     /// feature may reach beyond it into a buffer around the tile.
-    public var extent: Int
-    public var features: [VectorFeature]
+    var extent: Int
+    var features: [VectorFeature]
 
-    public init(name: String, version: Int = VectorLayer.specificationVersion,
+    init(name: String, version: Int = VectorLayer.specificationVersion,
                 extent: Int = VectorLayer.defaultExtent, features: [VectorFeature]) {
         self.name = name
         self.version = version
@@ -39,18 +39,18 @@ public struct VectorLayer: Sendable, Equatable {
 
 /// A point in a layer's tile coordinates: x right, y down, the tile from 0
 /// to the layer's extent.
-public struct TilePoint: Sendable, Hashable {
-    public var x: Int32
-    public var y: Int32
+struct TilePoint: Sendable, Hashable {
+    var x: Int32
+    var y: Int32
 
-    public init(x: Int32, y: Int32) {
+    init(x: Int32, y: Int32) {
         self.x = x
         self.y = y
     }
 }
 
 /// A feature's property value (MVT 2.1 §4.1, the `Value` message).
-public enum VectorValue: Sendable, Hashable {
+enum VectorValue: Sendable, Hashable {
     case string(String)
     case float(Float)
     case double(Double)
@@ -58,13 +58,13 @@ public enum VectorValue: Sendable, Hashable {
     case uint(UInt64)
     case bool(Bool)
 
-    public var stringValue: String? {
+    var stringValue: String? {
         if case .string(let text) = self { return text }
         return nil
     }
 
     /// Any numeric value as a `Double`.
-    public var numberValue: Double? {
+    var numberValue: Double? {
         switch self {
         case .float(let number): Double(number)
         case .double(let number): number
@@ -76,48 +76,48 @@ public enum VectorValue: Sendable, Hashable {
 }
 
 extension VectorValue: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, ExpressibleByBooleanLiteral {
-    public init(stringLiteral value: String) { self = .string(value) }
-    public init(integerLiteral value: Int64) { self = .int(value) }
-    public init(booleanLiteral value: Bool) { self = .bool(value) }
+    init(stringLiteral value: String) { self = .string(value) }
+    init(integerLiteral value: Int64) { self = .int(value) }
+    init(booleanLiteral value: Bool) { self = .bool(value) }
 }
 
 /// A polygon of a feature: one exterior ring and the holes in it.
-public struct VectorPolygon: Sendable, Equatable {
-    public var exterior: [TilePoint]
-    public var interiors: [[TilePoint]]
+struct VectorPolygon: Sendable, Equatable {
+    var exterior: [TilePoint]
+    var interiors: [[TilePoint]]
 
-    public init(exterior: [TilePoint], interiors: [[TilePoint]] = []) {
+    init(exterior: [TilePoint], interiors: [[TilePoint]] = []) {
         self.exterior = exterior
         self.interiors = interiors
     }
 }
 
 /// A feature of a layer (MVT 2.1 §4.2).
-public struct VectorFeature: Sendable, Equatable {
+struct VectorFeature: Sendable, Equatable {
     /// MVT 2.1 §4.3.4's geometry types.
-    public enum Kind: Int, Sendable {
+    enum Kind: Int, Sendable {
         case unknown = 0
         case point = 1
         case lineString = 2
         case polygon = 3
     }
 
-    public var id: UInt64?
-    public var kind: Kind
+    var id: UInt64?
+    var kind: Kind
     /// The geometry, by kind: for points, one list of every point; for
     /// lines, one list per line string; for polygons, one per ring, each
     /// closed implicitly (the first point is not repeated at the end).
-    public var rings: [[TilePoint]]
-    public var properties: [String: VectorValue]
+    var rings: [[TilePoint]]
+    var properties: [String: VectorValue]
     /// For a polygon feature, its rings grouped by the spec's winding rule:
     /// an exterior ring has a positive surveyor's-formula area in tile
     /// coordinates (clockwise as drawn, y being down), and each is followed
     /// by its interior rings, of negative area. A ring of zero area, or an
     /// interior ring before any exterior one, is dropped. Empty for other
     /// kinds.
-    public private(set) var polygons: [VectorPolygon]
+    private(set) var polygons: [VectorPolygon]
 
-    public init(id: UInt64? = nil, kind: Kind, rings: [[TilePoint]], properties: [String: VectorValue] = [:]) {
+    init(id: UInt64? = nil, kind: Kind, rings: [[TilePoint]], properties: [String: VectorValue] = [:]) {
         self.id = id
         self.kind = kind
         self.rings = rings
@@ -127,7 +127,7 @@ public struct VectorFeature: Sendable, Equatable {
 
     /// A polygon feature from polygons, each ring wound as the spec requires
     /// whichever way it was given.
-    public init(id: UInt64? = nil, polygons: [VectorPolygon], properties: [String: VectorValue] = [:]) {
+    init(id: UInt64? = nil, polygons: [VectorPolygon], properties: [String: VectorValue] = [:]) {
         var rings: [[TilePoint]] = []
         for polygon in polygons {
             rings.append(VectorFeature.wound(polygon.exterior, positive: true))
@@ -139,13 +139,13 @@ public struct VectorFeature: Sendable, Equatable {
     }
 
     /// A point feature.
-    public static func point(id: UInt64? = nil, _ point: TilePoint,
+    static func point(id: UInt64? = nil, _ point: TilePoint,
                              properties: [String: VectorValue] = [:]) -> VectorFeature {
         VectorFeature(id: id, kind: .point, rings: [[point]], properties: properties)
     }
 
     /// A line feature of one or more line strings.
-    public static func line(id: UInt64? = nil, _ lines: [[TilePoint]],
+    static func line(id: UInt64? = nil, _ lines: [[TilePoint]],
                             properties: [String: VectorValue] = [:]) -> VectorFeature {
         VectorFeature(id: id, kind: .lineString, rings: lines, properties: properties)
     }
@@ -155,7 +155,7 @@ public struct VectorFeature: Sendable, Equatable {
     /// Twice the signed area of a ring by the surveyor's (shoelace) formula,
     /// in tile coordinates: positive for an exterior ring under MVT 2.1
     /// §4.3.4.4.
-    public static func doubledSignedArea(of ring: [TilePoint]) -> Int64 {
+    static func doubledSignedArea(of ring: [TilePoint]) -> Int64 {
         guard ring.count >= 3 else { return 0 }
         var sum: Int64 = 0
         var previous = ring[ring.count - 1]

@@ -55,7 +55,7 @@ extension RegionPack {
     }
 
     /// The directory a layer's tiles live in.
-    public func layerDirectory(_ kind: RegionPackLayerKind) -> URL {
+    func layerDirectory(_ kind: RegionPackLayerKind) -> URL {
         directory.appendingPathComponent(RegionPack.layersDirectoryName).appendingPathComponent(kind.rawValue)
     }
 

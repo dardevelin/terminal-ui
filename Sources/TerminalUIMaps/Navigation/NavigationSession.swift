@@ -89,12 +89,12 @@ public enum NavigationEvent: Sendable, Equatable {
 /// route's spread over its length.
 public struct NavigationSession: Sendable {
     public private(set) var route: Route
-    public private(set) var line: RouteLine
+    private(set) var line: RouteLine
     public let configuration: NavigationConfiguration
     public private(set) var state = NavigationState.awaitingFix
     public private(set) var stepIndex = 0
     /// Where the last fix matched the route.
-    public private(set) var position: RouteLinePosition?
+    private(set) var position: RouteLinePosition?
     /// The last fix given, matched or not.
     public private(set) var lastFix: LocationFix?
     /// Stops on the way reached so far, over every route this session has
@@ -103,7 +103,7 @@ public struct NavigationSession: Sendable {
     /// Each step's manoeuvre, the router's or one inferred.
     public private(set) var maneuvers: [Maneuver] = []
     /// Metres along the line to each step's start.
-    public private(set) var stepStarts: [Double] = []
+    private(set) var stepStarts: [Double] = []
     /// Whether the route leaves against the traveller's course, so the
     /// first thing to do is turn round: set by a reroute from a traveller
     /// heading away, cleared once their course agrees with the route.

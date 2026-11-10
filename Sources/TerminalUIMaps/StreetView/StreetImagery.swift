@@ -96,7 +96,7 @@ public enum StreetImageryError: Error, Sendable, Equatable, CustomStringConverti
 extension GeoCoordinate {
     /// The coordinate `metres` away on a compass `bearing`, over the
     /// projected map: exact enough for steps along a street.
-    public func moved(metres: Double, bearing: Double) -> GeoCoordinate {
+    func moved(metres: Double, bearing: Double) -> GeoCoordinate {
         let radians = bearing * .pi / Degrees.halfTurn
         let world = WebMercator.project(self)
         let units = metres / WebMercator.metresPerWorldUnit(atLatitude: latitude)
@@ -105,7 +105,7 @@ extension GeoCoordinate {
 
     /// The distance to another coordinate over the projected map, in
     /// metres at this one's latitude.
-    public func metres(to other: GeoCoordinate) -> Double {
+    func metres(to other: GeoCoordinate) -> Double {
         let start = WebMercator.project(self), end = WebMercator.project(other)
         let deltaX = end.x - start.x, deltaY = end.y - start.y
         return (deltaX * deltaX + deltaY * deltaY).squareRoot() * WebMercator.metresPerWorldUnit(atLatitude: latitude)

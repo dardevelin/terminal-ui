@@ -26,13 +26,13 @@ struct PlaceDetailsTests {
     }
 
     @Test func aClickedPointBecomesAPlaceItsSourceCanLookUp() {
-        let point = MapPointOfInterest(name: "Institut Arthur Vernes", category: .health, featureClass: "hospital",
+        var point = MapPointOfInterest(name: "Institut Arthur Vernes", category: .health, featureClass: "hospital",
                                        subclass: "clinic", featureID: 14_427_318_282,
                                        coordinate: GeoCoordinate(latitude: 48.8475, longitude: 2.3296), column: 3, row: 4)
-        let place = point.place(featureIdentifiers: .openMapTiles)
-        #expect(place.kind == "clinic")
-        #expect(place.identifier == .openStreetMap(OSMElement(.way, 1_442_731_828)))
-        #expect(point.place(featureIdentifiers: .opaque).identifier == nil)
+        #expect(point.place.identifier == nil, "a source's ids mean nothing until it says what they name")
+        point.featureIdentifiers = .openMapTiles
+        #expect(point.place.kind == "clinic")
+        #expect(point.place.identifier == .openStreetMap(OSMElement(.way, 1_442_731_828)))
     }
 
     // MARK: - Nominatim

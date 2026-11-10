@@ -2,33 +2,33 @@ import TerminalUI
 import TerminalUIIO
 
 /// What the last frame a ``MapRenderer`` drew cost and showed.
-public struct MapRenderStatistics: Sendable, Equatable {
+struct MapRenderStatistics: Sendable, Equatable {
     /// Tiles drawn at the frame's tile zoom.
-    public var tilesDrawn = 0
+    var tilesDrawn = 0
     /// Tiles missing at that zoom and drawn from a cached ancestor instead.
-    public var fallbackTiles = 0
+    var fallbackTiles = 0
     /// Tiles missing at that zoom and drawn from cached descendants that
     /// cover them whole — what a zoom out draws until its tiles land.
-    public var descendantTiles = 0
+    var descendantTiles = 0
     /// Tiles with neither, left blank.
-    public var missingTiles = 0
+    var missingTiles = 0
     /// Areas and lines drawn, and those passed over as off screen.
-    public var featuresDrawn = 0
-    public var featuresCulled = 0
+    var featuresDrawn = 0
+    var featuresCulled = 0
     /// Points given to the canvas, and those dropped as within a dot of
     /// the point before.
-    public var verticesDrawn = 0
-    public var verticesDropped = 0
+    var verticesDrawn = 0
+    var verticesDropped = 0
     /// Names offered to the label placer, and those it found room for.
-    public var labelsOffered = 0
-    public var labelsPlaced = 0
+    var labelsOffered = 0
+    var labelsPlaced = 0
     /// Points of interest passed over by the zoom's rank cut
     /// (``PointOfInterestDensity``), and those placed, with their name or
     /// as a glyph alone.
-    public var pointsOfInterestCut = 0
-    public var pointsOfInterestPlaced = 0
+    var pointsOfInterestCut = 0
+    var pointsOfInterestPlaced = 0
 
-    public init() {}
+    init() {}
 }
 
 /// Draws a map into a ``GraphicsContext``: the basemap of the tiles at
@@ -57,7 +57,7 @@ public struct MapRenderStatistics: Sendable, Equatable {
 ///     renderer.draw(in: context, camera: camera, size: size, zoomRange: 0...14) { id in cache[id] }
 /// }
 /// ```
-public final class MapRenderer {
+final class MapRenderer {
     var labelPlacer = LabelPlacer()
 
     /// What the last frame drew.
@@ -65,34 +65,34 @@ public final class MapRenderer {
     /// The names the last frame placed.
     public internal(set) var placedLabels: [PlacedLabel] = []
     /// How many distinct names the renderer has measured: each once.
-    public var labelMeasurements: Int { labelPlacer.measurements }
+    var labelMeasurements: Int { labelPlacer.measurements }
 
     /// How many zooms out a missing tile looks for a cached ancestor: past
     /// eight, the ancestor's own cell would be a whole tile wide.
-    public static let fallbackDepth = 8
+    static let fallbackDepth = 8
 
     /// How many zooms in a missing tile looks for cached descendants: two
     /// is the sixteen tiles a two-level zoom out leaves, and each level
     /// deeper quadruples the lookups.
-    public static let descendantDepth = 2
+    static let descendantDepth = 2
 
     /// How many points of interest a frame offers, by zoom.
-    public var pointOfInterestDensity = PointOfInterestDensity.standard
+    var pointOfInterestDensity = PointOfInterestDensity.standard
 
     /// The points of interest the last frame placed, glyph and name.
     public internal(set) var placedPointsOfInterest: [MapPointOfInterest] = []
 
-    public init() {}
+    init() {}
 
     /// The viewport, in dots, of a canvas of `size` cells.
-    public static func viewport(for size: CanvasSize) -> DotSize {
+    static func viewport(for size: CanvasSize) -> DotSize {
         DotSize(width: max(0, size.width.rounded(.down)) * Double(BrailleCell.dotColumns),
                 height: max(0, size.height.rounded(.down)) * Double(BrailleCell.dotRows))
     }
 
     /// The tiles a frame of `size` cells draws, nearest the centre first:
     /// the ones a tile store should have at hand.
-    public static func tiles(for camera: MapCamera, size: CanvasSize,
+    static func tiles(for camera: MapCamera, size: CanvasSize,
                              zoomRange: ClosedRange<Int>) -> [TileID] {
         let viewport = viewport(for: size)
         guard viewport.width > 0, viewport.height > 0 else { return [] }
@@ -111,7 +111,7 @@ public final class MapRenderer {
     ///   - layers: Imagery beneath the basemap, terrain over its areas, and
     ///     how much of the basemap to draw.
     ///   - lookup: The tile at hand for an id, or nil.
-    public func draw(in context: GraphicsContext, camera: MapCamera, size: CanvasSize,
+    func draw(in context: GraphicsContext, camera: MapCamera, size: CanvasSize,
                      zoomRange: ClosedRange<Int>, content: [MapElement] = [],
                      layers: MapFrameLayers = MapFrameLayers(),
                      tiles lookup: (TileID) -> RenderTile?) {
@@ -706,7 +706,7 @@ public final class MapRenderer {
 
     private func drawPolylines(_ content: [MapElement], camera: MapCamera, viewport: DotSize,
                                dots: GraphicsContext, theme: any Theme) {
-        for case .polyline(let polyline) in content where polyline.coordinates.count >= 2 {
+        for case .polyline(let polyline) in content.map(\.kind) where polyline.coordinates.count >= 2 {
             if polyline.style == .connector {
                 drawDashes(polyline, camera: camera, viewport: viewport, dots: dots, theme: theme)
                 continue

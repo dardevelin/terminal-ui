@@ -16,13 +16,13 @@ import Foundation
 /// the ranks a zoom to keep the points on screen about as many. That is
 /// ``ranksAtTileZoom`` at the tile's own zoom and four times as many each
 /// zoom deeper, fractional zooms included.
-public struct PointOfInterestDensity: Sendable, Hashable {
+struct PointOfInterestDensity: Sendable, Hashable {
     /// The ranks a tile shows when drawn at its own zoom.
-    public var ranksAtTileZoom: Double
+    var ranksAtTileZoom: Double
 
     /// The deepest rank ever cut at: OpenFreeMap's busiest tiles, central
     /// Paris among them, run to about 400 a grid cell.
-    public static let unlimited = Int(Int16.max)
+    static let unlimited = Int(Int16.max)
 
     /// The share of a tile one zoom deeper shows: half its side each way.
     static let areaGrowthPerZoom = 4.0
@@ -30,15 +30,15 @@ public struct PointOfInterestDensity: Sendable, Hashable {
     /// About a hundred points offered to a 200 × 60 frame, a tile and a
     /// half: as many as its labels have room for beside the roads' and
     /// places' names, at any zoom.
-    public static let standard = PointOfInterestDensity(ranksAtTileZoom: 2)
+    static let standard = PointOfInterestDensity(ranksAtTileZoom: 2)
 
-    public init(ranksAtTileZoom: Double) {
+    init(ranksAtTileZoom: Double) {
         self.ranksAtTileZoom = max(0, ranksAtTileZoom)
     }
 
     /// The highest rank drawn from a tile of `tileZoom` with the camera at
     /// `zoom`.
-    public func maximumRank(atZoom zoom: Double, tileZoom: Int) -> Int {
+    func maximumRank(atZoom zoom: Double, tileZoom: Int) -> Int {
         let deeper = max(0, zoom - Double(tileZoom))
         let ranks = ranksAtTileZoom * Foundation.pow(Self.areaGrowthPerZoom, deeper)
         guard ranks.isFinite, ranks < Double(Self.unlimited) else { return Self.unlimited }

@@ -1,12 +1,12 @@
 /// A zoom the following camera takes at a speed: one row of a profile's
 /// table, interpolated between.
-public struct SpeedZoom: Sendable, Equatable {
+struct SpeedZoom: Sendable, Equatable {
     /// Metres a second.
-    public var speed: Double
+    var speed: Double
     /// This library's camera zoom, whose tile is 256 braille dots.
-    public var zoom: Double
+    var zoom: Double
 
-    public init(speed: Double, zoom: Double) {
+    init(speed: Double, zoom: Double) {
         self.speed = speed
         self.zoom = zoom
     }
@@ -27,26 +27,26 @@ public struct TravelProfile: Sendable, Equatable, Identifiable {
         case foot
     }
 
-    public var kind: Kind
+    public internal(set) var kind: Kind
     /// The zoom at each speed, slowest first. Each table keeps about the
     /// same twenty-odd seconds of road ahead of the traveller on a
     /// terminal of 40 rows: a bicycle at 15 km/h needs the road a car at
     /// 50 km/h covers in a third of the time, so it stands closer at the
     /// same speed's share of its own range.
-    public var zoomBySpeed: [SpeedZoom]
+    var zoomBySpeed: [SpeedZoom]
     /// Above this speed, in metres a second, the map turns heading up.
-    public var headingUpSpeed: Double
+    var headingUpSpeed: Double
     /// How far ahead the heading looks, and how long a fix is carried on.
-    public var lookAhead: TravellerPrediction.Configuration
+    var lookAhead: TravellerPrediction.Configuration
     /// When a junction's zoom is settled, held and let go.
-    public var junctionTiming: JunctionZoom.Configuration
+    var junctionTiming: JunctionZoom.Configuration
     /// What a junction needs to read on screen.
-    public var legibility: JunctionLegibilityRules
+    var legibility: JunctionLegibilityRules
     /// Metres from the route beyond which a good fix is off it.
-    public var maximumDeviation: Double
+    var maximumDeviation: Double
     /// The road roles that count as a junction's branches: the ones the
     /// traveller could take, and so might take for theirs.
-    public var branchRoles: Set<MapRole>
+    var branchRoles: Set<MapRole>
 
     public var id: Kind { kind }
 
@@ -86,7 +86,7 @@ public struct TravelProfile: Sendable, Equatable, Identifiable {
         }
     }
 
-    public init(kind: Kind, zoomBySpeed: [SpeedZoom], headingUpSpeed: Double,
+    init(kind: Kind, zoomBySpeed: [SpeedZoom], headingUpSpeed: Double,
                 lookAhead: TravellerPrediction.Configuration, junctionTiming: JunctionZoom.Configuration,
                 legibility: JunctionLegibilityRules, maximumDeviation: Double, branchRoles: Set<MapRole>) {
         self.kind = kind
@@ -106,6 +106,7 @@ public struct TravelProfile: Sendable, Equatable, Identifiable {
         return TravelProfile.of(kinds[(index + 1) % kinds.count])
     }
 
+    /// The profile of a kind: ``car``, ``bicycle`` or ``foot``.
     public static func of(_ kind: Kind) -> TravelProfile {
         switch kind {
         case .car: .car

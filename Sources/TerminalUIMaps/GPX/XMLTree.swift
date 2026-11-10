@@ -4,15 +4,15 @@
 /// Names are kept without their namespace prefix — `gpxtpx:speed` is
 /// `speed` — which is how a reader that knows the vocabulary it expects
 /// finds its elements whatever prefix the writer chose.
-public struct XMLNode: Sendable, Equatable {
-    public var name: String
-    public var attributes: [String: String]
-    public var children: [XMLNode]
+struct XMLNode: Sendable, Equatable {
+    var name: String
+    var attributes: [String: String]
+    var children: [XMLNode]
     /// The character data directly inside the element, entities decoded,
     /// CDATA sections included as they are.
-    public var text: String
+    var text: String
 
-    public init(name: String, attributes: [String: String] = [:], children: [XMLNode] = [], text: String = "") {
+    init(name: String, attributes: [String: String] = [:], children: [XMLNode] = [], text: String = "") {
         self.name = name
         self.attributes = attributes
         self.children = children
@@ -20,28 +20,28 @@ public struct XMLNode: Sendable, Equatable {
     }
 
     /// The first child of that name.
-    public func child(_ name: String) -> XMLNode? {
+    func child(_ name: String) -> XMLNode? {
         children.first { $0.name == name }
     }
 
     /// Every child of that name, in order.
-    public func children(_ name: String) -> [XMLNode] {
+    func children(_ name: String) -> [XMLNode] {
         children.filter { $0.name == name }
     }
 
     /// The text of the first child of that name, trimmed of white space.
-    public func childText(_ name: String) -> String? {
+    func childText(_ name: String) -> String? {
         child(name).map { $0.text.trimmingXMLWhitespace() }
     }
 }
 
 /// Why a document could not be read, and where.
-public struct XMLReadError: Error, Sendable, Equatable, CustomStringConvertible {
-    public var reason: String
+struct XMLReadError: Error, Sendable, Equatable, CustomStringConvertible {
+    var reason: String
     /// The byte offset in the document.
-    public var offset: Int
+    var offset: Int
 
-    public var description: String { "XML at byte \(offset): \(reason)" }
+    var description: String { "XML at byte \(offset): \(reason)" }
 }
 
 /// A reader of the XML 1.0 a data file holds (W3C, "Extensible Markup
@@ -51,13 +51,13 @@ public struct XMLReadError: Error, Sendable, Equatable, CustomStringConvertible 
 /// instructions and a document type declaration, the last three skipped.
 /// It does not read a DTD or expand entities one declares — GPX declares
 /// none — and it does not validate.
-public enum XMLReader {
-    public static func parse(_ text: String) throws -> XMLNode {
+enum XMLReader {
+    static func parse(_ text: String) throws -> XMLNode {
         var parser = Parser(bytes: Array(text.utf8))
         return try parser.document()
     }
 
-    public static func parse(_ bytes: [UInt8]) throws -> XMLNode {
+    static func parse(_ bytes: [UInt8]) throws -> XMLNode {
         var parser = Parser(bytes: bytes)
         return try parser.document()
     }
@@ -304,13 +304,13 @@ public enum XMLReader {
 
 /// Writes an XML document a line an element, indented, its text and
 /// attribute values escaped.
-public struct XMLWriter: Sendable {
-    public private(set) var output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+struct XMLWriter: Sendable {
+    private(set) var output = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
     private var open: [String] = []
 
     private static let indentUnit = "  "
 
-    public init() {}
+    init() {}
 
     private var indent: String { String(repeating: XMLWriter.indentUnit, count: open.count) }
 
@@ -319,30 +319,30 @@ public struct XMLWriter: Sendable {
     }
 
     /// Open an element whose children follow.
-    public mutating func start(_ name: String, _ attributes: [(String, String)] = []) {
+    mutating func start(_ name: String, _ attributes: [(String, String)] = []) {
         output += "\(indent)<\(name)\(XMLWriter.attributes(attributes))>\n"
         open.append(name)
     }
 
     /// Close the element last opened.
-    public mutating func end() {
+    mutating func end() {
         guard let name = open.popLast() else { return }
         output += "\(indent)</\(name)>\n"
     }
 
     /// An element holding only text.
-    public mutating func element(_ name: String, _ attributes: [(String, String)] = [], text: String) {
+    mutating func element(_ name: String, _ attributes: [(String, String)] = [], text: String) {
         output += "\(indent)<\(name)\(XMLWriter.attributes(attributes))>\(XMLWriter.escape(text, inAttribute: false))</\(name)>\n"
     }
 
     /// An element with no content.
-    public mutating func empty(_ name: String, _ attributes: [(String, String)] = []) {
+    mutating func empty(_ name: String, _ attributes: [(String, String)] = []) {
         output += "\(indent)<\(name)\(XMLWriter.attributes(attributes))/>\n"
     }
 
     /// `&` and `<` always, `>` so `]]>` cannot appear, and in an attribute
     /// the quote that delimits it (XML 1.0 §2.4, production [10]).
-    public static func escape(_ text: String, inAttribute: Bool) -> String {
+    static func escape(_ text: String, inAttribute: Bool) -> String {
         var escaped = ""
         escaped.reserveCapacity(text.utf8.count)
         for character in text {

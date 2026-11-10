@@ -70,7 +70,7 @@ enum SampleGround {
 /// takes.
 public struct SampleTerrainSource: EncodedTileSource {
     /// Terrarium tiles are 256 samples a side.
-    public static let samplesPerTile = 256
+    static let samplesPerTile = 256
 
     public init() {}
 
@@ -97,7 +97,7 @@ public struct SampleTerrainSource: EncodedTileSource {
 /// roads, lit by the sample ground's slopes. PNG tiles, so a pack can hold
 /// them and the decoder reads them, at every zoom.
 public struct SampleImagerySource: EncodedTileSource {
-    public static let pixelsPerTile = 256
+    static let pixelsPerTile = 256
 
     public init() {}
 

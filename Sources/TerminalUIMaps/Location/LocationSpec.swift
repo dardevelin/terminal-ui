@@ -93,7 +93,7 @@ public enum LocationSpec: Sendable, Hashable, CustomStringConvertible {
             guard let points = LocationSpec.replayPoints(of: document) else {
                 throw LocationError.noData("\(path) has no track, route or waypoints")
             }
-            return GPXReplayProvider(timeline: TrackTimeline(points), speed: replaySpeed,
+            return GPXReplayProvider(track: points, speed: replaySpeed,
                                      name: "replay \(URL(fileURLWithPath: path).lastPathComponent)")
         case .gpsd(let host, let port):
             return GPSDLocationProvider(host: host, port: port)

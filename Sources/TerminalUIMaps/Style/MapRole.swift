@@ -5,7 +5,7 @@
 /// Roles come from the OpenMapTiles schema 3.x (openmaptiles.org/schema),
 /// which OpenFreeMap serves and the sample town imitates: a layer name and,
 /// within it, the feature's `class`.
-public enum MapRole: String, Sendable, Hashable, CaseIterable {
+enum MapRole: String, Sendable, Hashable, CaseIterable {
     // Areas.
     case landcover
     case landuse
@@ -40,7 +40,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
     case countryLabel
 
     /// How a role is drawn.
-    public enum Geometry: Sendable {
+    enum Geometry: Sendable {
         /// A filled area, drawn on the background plane.
         case area
         /// A stroked line.
@@ -49,7 +49,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
         case label
     }
 
-    public var geometry: Geometry {
+    var geometry: Geometry {
         switch self {
         case .landcover, .landuse, .park, .water, .building: .area
         case .waterway, .boundary, .path, .serviceRoad, .minorRoad, .tertiary, .secondary, .primary, .trunk,
@@ -62,7 +62,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
     /// The order roles are drawn in, bottom first: ground cover, then water
     /// over it, buildings, lines from the smallest road up so a motorway
     /// crosses over a lane, rail over roads, and labels last of all.
-    public static let drawSequence: [MapRole] = [
+    static let drawSequence: [MapRole] = [
         .landcover, .landuse, .park, .water, .building,
         .waterway, .boundary, .path, .serviceRoad, .minorRoad, .tertiary, .secondary, .primary, .trunk,
         .motorway, .rail,
@@ -72,19 +72,19 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
 
     /// Where the role sits in `drawSequence`: a lower number is drawn first,
     /// under a higher one.
-    public var drawOrder: Int {
+    var drawOrder: Int {
         MapRole.drawSequence.firstIndex(of: self) ?? MapRole.drawSequence.count
     }
 
     /// The order labels claim space in, most important first: when two
     /// overlap, the one earlier here is kept.
-    public static let labelPriority: [MapRole] = [
+    static let labelPriority: [MapRole] = [
         .countryLabel, .regionLabel, .cityLabel, .townLabel, .villageLabel, .suburbLabel, .poiLabel,
         .waterLabel, .roadLabel, .lakeLabel, .houseNumberLabel,
     ]
 
     /// Where a label role sits in `labelPriority`; nil for areas and lines.
-    public var labelRank: Int? {
+    var labelRank: Int? {
         MapRole.labelPriority.firstIndex(of: self)
     }
 
@@ -97,7 +97,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
     /// for 14, past the zooms where the town around it is a few cells
     /// wide; house numbers for 17, where a house is a cell or more. The
     /// ladder this makes is written out in design/maps.md.
-    public var minimumZoom: Int {
+    var minimumZoom: Int {
         switch self {
         case .countryLabel, .water: 0
         case .regionLabel, .boundary: 3
@@ -116,7 +116,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
 
     /// Whether the role is drawn at a camera zoom: from its
     /// ``minimumZoom`` on.
-    public func isVisible(atZoom zoom: Double) -> Bool {
+    func isVisible(atZoom zoom: Double) -> Bool {
         zoom >= Double(minimumZoom)
     }
 
@@ -124,7 +124,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
     /// zoom; 1, the finest line braille has, for every line but the bigger
     /// roads, which thicken as the map comes closer so the network's
     /// hierarchy reads at a glance. Zero for areas and labels.
-    public func lineWidth(atZoom zoom: Double) -> Double {
+    func lineWidth(atZoom zoom: Double) -> Double {
         guard geometry == .line else { return 0 }
         let steps: [(zoom: Double, dots: Double)]
         switch self {
@@ -155,7 +155,7 @@ public enum MapRole: String, Sendable, Hashable, CaseIterable {
 
     /// The role of a feature of an OpenMapTiles layer, or nil for one the
     /// map does not draw (ferries, aeroways).
-    public init?(layer: String, properties: [String: VectorValue]) {
+    init?(layer: String, properties: [String: VectorValue]) {
         let featureClass = properties["class"]?.stringValue ?? ""
         switch layer {
         case "water": self = .water

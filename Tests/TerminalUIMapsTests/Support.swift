@@ -125,3 +125,40 @@ struct TemporaryDirectory: ~Copyable {
 
 /// Whether the live checks, which reach real servers, run.
 let liveNetworkEnabled = ProcessInfo.processInfo.environment["TERMINALUI_MAPS_LIVE"] == "1"
+
+/// The name the tests' requests go under: every network backend requires
+/// one, as the services' usage policies ask an application to name itself.
+let testUserAgent = "TerminalUIMapsTests/1"
+
+extension OSRMRoutes {
+    /// A router over a stub, at the demo server's address.
+    init(transport: any HTTPTransport, userAgent: String = testUserAgent) {
+        self.init(baseURL: OSRMRoutes.demoURL, transport: transport, userAgent: userAgent)
+    }
+}
+
+extension RasterTileSource {
+    static func sentinel2Cloudless2016(transport: any HTTPTransport) -> RasterTileSource {
+        sentinel2Cloudless2016(transport: transport, userAgent: testUserAgent)
+    }
+
+    static func usgsImagery(transport: any HTTPTransport) -> RasterTileSource {
+        usgsImagery(transport: transport, userAgent: testUserAgent)
+    }
+
+    static func awsTerrain(transport: any HTTPTransport) -> RasterTileSource {
+        awsTerrain(transport: transport, userAgent: testUserAgent)
+    }
+}
+
+extension PanoramaxImagery {
+    init(transport: any HTTPTransport) {
+        self.init(transport: transport, userAgent: testUserAgent)
+    }
+}
+
+extension MapTypeOffer {
+    static func open(transport: any HTTPTransport) -> MapTypeOffer {
+        open(transport: transport, userAgent: testUserAgent)
+    }
+}

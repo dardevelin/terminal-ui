@@ -80,7 +80,7 @@ public enum PointOfInterestCategory: String, Sendable, Hashable, CaseIterable, I
     /// The mark's colour under `theme`: a status hue for the kinds a reader
     /// scans for (food in `attention`, health in `error`, transit in
     /// `info`), quieter steps of the foreground for the many shops.
-    public func colour(in theme: any Theme) -> Color {
+    func colour(in theme: any Theme) -> Color {
         switch self {
         case .food, .bar: theme.attention
         case .cafe, .sight: theme.warning
@@ -97,7 +97,7 @@ public enum PointOfInterestCategory: String, Sendable, Hashable, CaseIterable, I
     /// `subclass`, or nil for street furniture and the like that a map of
     /// a dense city is better without (``noiseSubclasses``,
     /// ``noiseClasses``).
-    public init?(class featureClass: String, subclass: String?) {
+    init?(class featureClass: String, subclass: String?) {
         let subclass = subclass ?? featureClass
         if PointOfInterestCategory.noiseClasses.contains(featureClass)
             || PointOfInterestCategory.noiseSubclasses.contains(subclass) {
@@ -114,7 +114,7 @@ public enum PointOfInterestCategory: String, Sendable, Hashable, CaseIterable, I
 
     /// Classes dropped whatever their subclass: street furniture, barriers,
     /// and offices, which name a company and not a place to go.
-    public static let noiseClasses: Set<String> = [
+    static let noiseClasses: Set<String> = [
         "bicycle_parking", "motorcycle_parking", "waste_basket", "bollard", "gate", "lift_gate", "cycle_barrier",
         "recycling", "shelter", "bench", "vending_machine", "drinking_water", "toilets", "picnic_site",
         "sally_port", "basin", "brownfield", "office", "information", "entrance_barrier", "kissing_gate",
@@ -122,7 +122,7 @@ public enum PointOfInterestCategory: String, Sendable, Hashable, CaseIterable, I
     ]
 
     /// Subclasses dropped from classes otherwise kept.
-    public static let noiseSubclasses: Set<String> = [
+    static let noiseSubclasses: Set<String> = [
         "post_box", "parcel_locker", "waste_disposal", "bicycle_repair_station", "atm_kiosk",
     ]
 

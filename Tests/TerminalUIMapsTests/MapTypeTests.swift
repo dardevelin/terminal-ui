@@ -214,8 +214,8 @@ struct RegionPackLayerTests {
         #expect(withTerrain.manifest.layers?.count == 2)
 
         let id = TileID(containing: SampleTown.origin, zoom: 15)
-        guard case .raster = try #require(try await OfflineLayerSource(pack: reread, layer: imagery).tile(id)),
-              case .elevation = try #require(try await OfflineLayerSource(pack: reread, layer: terrain).tile(id)) else {
+        guard case .raster = try #require(try await OfflineLayerSource(pack: reread, layer: imagery).tile(id)).content,
+              case .elevation = try #require(try await OfflineLayerSource(pack: reread, layer: terrain).tile(id)).content else {
             Issue.record("the layers read back as a picture and heights")
             return
         }

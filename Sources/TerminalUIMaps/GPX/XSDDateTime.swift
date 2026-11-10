@@ -5,9 +5,9 @@ import Foundation
 /// written in pure arithmetic so the same text gives the same instant on
 /// every system. A time with no zone is taken as UTC, as GPX 1.1 says
 /// times are.
-public enum XSDDateTime {
+enum XSDDateTime {
     /// The instant a date-time names, or nil for text that is not one.
-    public static func parse(_ text: String) -> Date? {
+    static func parse(_ text: String) -> Date? {
         let characters = Array(text.trimmingXMLWhitespace().utf8)
         var reader = Digits(bytes: characters)
         guard let year = reader.number(count: Width.year), reader.take("-"),
@@ -46,7 +46,7 @@ public enum XSDDateTime {
     }
 
     /// The instant in UTC, `Z`-suffixed, with milliseconds when it has any.
-    public static func format(_ date: Date) -> String {
+    static func format(_ date: Date) -> String {
         let interval = date.timeIntervalSince1970
         var seconds = Int(interval.rounded(.down))
         var milliseconds = Int(((interval - Double(seconds)) * Double(Calendar.millisecondsPerSecond)).rounded())

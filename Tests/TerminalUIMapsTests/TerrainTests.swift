@@ -38,7 +38,7 @@ struct TerrainTests {
         let id = TileID(containing: SampleTown.origin, zoom: 15)
         let bytes = try #require(try await source.tileData(id))
         #expect(bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]))
-        guard case .elevation(let tile) = try #require(try await source.tile(id)) else {
+        guard case .elevation(let tile) = try #require(try await source.tile(id)).content else {
             Issue.record("a terrain source gives heights")
             return
         }
@@ -156,8 +156,9 @@ struct RasterSourceTests {
         let png = try #require(data)
         let source = RasterTileSource(name: "test", attribution: "test", template: "https://tiles.test/{z}/{x}/{y}.png",
                                       encoding: .picture, zoomRange: 0...18,
-                                      transport: StubTransport { _ in HTTPResponse(statusCode: 200, body: png) })
-        guard case .raster(let image) = try #require(try await source.tile(TileID(zoom: 16, x: 1, y: 1))) else {
+                                      transport: StubTransport { _ in HTTPResponse(statusCode: 200, body: png) },
+                                      userAgent: testUserAgent)
+        guard case .raster(let image) = try #require(try await source.tile(TileID(zoom: 16, x: 1, y: 1))).content else {
             Issue.record("a picture source gives pictures")
             return
         }
@@ -185,7 +186,7 @@ struct RasterSourceTests {
         // Two zooms in, the south-east child of the south-east child: the
         // parent's bottom-right sixteenth.
         let child = TileID(zoom: 16, x: 403, y: 803)
-        guard case .raster(let image) = try #require(try await chain.tile(child)) else {
+        guard case .raster(let image) = try #require(try await chain.tile(child)).content else {
             Issue.record("a picture")
             return
         }
@@ -200,7 +201,7 @@ struct RasterSourceTests {
     @Test func cuttingATerrainTileSamplesItsShare() {
         let tile = ElevationTile(checkedWidth: 4, height: 4, metres: (0..<16).map { Float($0) })
         let cut = MapTile.elevation(tile).descendant(TileID(zoom: 1, x: 1, y: 0), of: TileID(zoom: 0, x: 0, y: 0))
-        guard case .elevation(let quarter) = cut else {
+        guard case .elevation(let quarter) = cut?.content else {
             Issue.record("heights")
             return
         }
@@ -241,7 +242,7 @@ final class FixedSource: MapTileSource {
     }
 
     static func colour(of tile: MapTile) -> UInt8? {
-        guard case .raster(let image) = tile else { return nil }
+        guard case .raster(let image) = tile.content else { return nil }
         return image.pixel(at: 0, 0).r
     }
 }

@@ -3,7 +3,7 @@ import TerminalUIIO
 import TerminalUIRaster
 
 /// Why gzip bytes could not be inflated.
-public enum GZipError: Error, Sendable, Equatable {
+enum GZipError: Error, Sendable, Equatable {
     /// Shorter than a header and trailer.
     case truncated
     /// Not the gzip magic, or a method other than deflate.
@@ -20,7 +20,7 @@ public enum GZipError: Error, Sendable, Equatable {
 /// of the CRC-32 and the length mod 2^32 of what it holds, both
 /// little-endian. TerminalUIIO's `Inflate` reads the deflate stream;
 /// this is the framing around it.
-public enum GZip {
+enum GZip {
     /// RFC 1952 §2.3.1: ID1, ID2, then CM, where 8 is deflate.
     private enum Header {
         static let firstMagic: UInt8 = 0x1F
@@ -48,13 +48,13 @@ public enum GZip {
     private static let extraLengthBytes = 2
 
     /// Whether `bytes` start with the gzip magic.
-    public static func isCompressed(_ bytes: some Collection<UInt8>) -> Bool {
+    static func isCompressed(_ bytes: some Collection<UInt8>) -> Bool {
         var iterator = bytes.makeIterator()
         return iterator.next() == Header.firstMagic && iterator.next() == Header.secondMagic
     }
 
     /// The bytes one gzip member holds.
-    public static func decompress(_ bytes: [UInt8]) throws(GZipError) -> [UInt8] {
+    static func decompress(_ bytes: [UInt8]) throws(GZipError) -> [UInt8] {
         guard bytes.count >= Header.fixedLength + trailerLength else { throw .truncated }
         guard bytes[0] == Header.firstMagic, bytes[1] == Header.secondMagic,
               bytes[2] == Header.deflateMethod else { throw .notGzip }

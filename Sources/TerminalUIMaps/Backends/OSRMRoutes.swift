@@ -3,11 +3,16 @@ import Foundation
 /// Routing over an OSRM server's `route` service
 /// (project-osrm.org/docs/v5.24.0/api/#route-service).
 ///
-/// The default is the project's demo server, router.project-osrm.org,
-/// which routes cars only whatever profile the URL names: walking and
-/// cycling need a server that loads those profiles, such as
-/// routing.openstreetmap.de's per-profile instances, passed as `baseURL`.
+/// There is no default server. The project's demo server, ``demoURL``
+/// (router.project-osrm.org), is for trying the API: its usage policy
+/// allows at most a request a second, asks for an identifying User-Agent
+/// and forbids heavy use, and it routes cars only whatever profile the URL
+/// names. Walking and cycling need a server that loads those profiles, such
+/// as routing.openstreetmap.de's per-profile instances, with
+/// `supportedModes` saying which. Routes are drawn from OpenStreetMap data,
+/// © OpenStreetMap contributors, ODbL.
 public struct OSRMRoutes: RouteProvider {
+    /// The OSRM project's demo server: cars only, for light use.
     public static let demoURL = URL(string: "https://router.project-osrm.org")!
 
     private let baseURL: URL
@@ -15,9 +20,11 @@ public struct OSRMRoutes: RouteProvider {
     private let userAgent: String
     private let supportedModes: Set<TravelMode>
 
-    public init(baseURL: URL = OSRMRoutes.demoURL,
+    /// A router over the server at `baseURL`, naming the application
+    /// `userAgent` on every request, that answers `supportedModes`.
+    public init(baseURL: URL,
                 transport: any HTTPTransport = URLSessionTransport(),
-                userAgent: String = MapUserAgent.default,
+                userAgent: String,
                 supportedModes: Set<TravelMode> = [.driving]) {
         self.baseURL = baseURL
         self.transport = transport

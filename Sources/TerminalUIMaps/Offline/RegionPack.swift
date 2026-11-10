@@ -27,6 +27,9 @@ public struct RegionPackManifest: Sendable, Codable, Equatable {
     /// pack written before layers were, which reads as none: the format
     /// is unchanged, and a reader that knows no layers ignores the key.
     public var layers: [RegionPackLayer]?
+    /// How the source's feature ids name the map data's elements; absent
+    /// from a pack written before it was kept, which reads as opaque.
+    public var featureIdentifiers: FeatureIdentifiers?
 
     public var zoomRange: ClosedRange<Int> { minimumZoom...max(minimumZoom, maximumZoom) }
 
@@ -76,9 +79,9 @@ public struct RegionPack: Sendable, Equatable {
         self.init(directory: directory, manifest: manifest)
     }
 
-    public var tilesDirectory: URL { directory.appendingPathComponent(RegionPack.tilesDirectoryName) }
+    var tilesDirectory: URL { directory.appendingPathComponent(RegionPack.tilesDirectoryName) }
 
-    public func tileURL(for tile: TileID) -> URL {
+    func tileURL(for tile: TileID) -> URL {
         tilesDirectory
             .appendingPathComponent(String(tile.zoom))
             .appendingPathComponent(String(tile.x))
@@ -91,7 +94,7 @@ public struct RegionPack: Sendable, Equatable {
     }
 
     /// The tiles the pack has on disk, deepest zoom first.
-    public func storedTiles() -> [TileID] {
+    func storedTiles() -> [TileID] {
         let files = FileManager.default
         var tiles: [TileID] = []
         let zooms = ((try? files.contentsOfDirectory(atPath: tilesDirectory.path)) ?? []).compactMap { Int($0) }

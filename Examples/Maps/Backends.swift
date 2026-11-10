@@ -54,9 +54,6 @@ struct Backend: Sendable {
     /// What a place card asks for a place's hours, phone and the rest; nil
     /// where the backend has no such service (PlaceDetailsViews.swift).
     var details: (any PlaceDetails)?
-    /// How the tiles' feature ids name the map data's elements, so a click
-    /// on a point of interest can ask after it.
-    var featureIdentifiers = FeatureIdentifiers.opaque
 
     /// The name Nominatim's usage policy requires every request to carry,
     /// and the other services are sent too.
@@ -79,16 +76,18 @@ struct Backend: Sendable {
                      details: PlaceDetailsSource = .nominatim) throws -> Backend {
         var backend = try composed(preset, pack: pack)
         backend.details = details.provider(for: preset, userAgent: userAgent)
-        backend.featureIdentifiers = preset.featureIdentifiers
         return backend
     }
 
     private static func composed(_ preset: BackendPreset, pack: RegionPack?) throws -> Backend {
         switch preset {
         case .openStreetMap:
+            // The OSRM project's demo server, chosen here as the app is a
+            // demonstration: cars only, a request a second at most.
             let tiles = OpenFreeMapTileSource(userAgent: userAgent)
             return Backend(preset: preset, tiles: tiles, search: NominatimSearch(userAgent: userAgent),
-                           routes: OSRMRoutes(userAgent: userAgent), downloads: tiles, pack: nil)
+                           routes: OSRMRoutes(baseURL: OSRMRoutes.demoURL, userAgent: userAgent), downloads: tiles,
+                           pack: nil)
         case .apple:
             #if canImport(MapKit)
             return Backend(preset: preset, tiles: MapKitSnapshotSource(), search: MapKitSearch(),

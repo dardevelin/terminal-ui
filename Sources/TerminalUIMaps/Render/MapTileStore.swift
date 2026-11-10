@@ -10,9 +10,10 @@ import TerminalUI
 /// tiles are kept, the least recently drawn given up first once the store
 /// holds `capacity`.
 ///
-/// It is observable: a canvas that draws from it is drawn again when a tile
-/// lands, because each lookup reads ``revision``, and a status line can
-/// show ``isLoading``, ``loadingCount`` and ``lastError``.
+/// It is observable: a ``MapView`` that draws from it is drawn again when a
+/// tile lands, and a status line can show ``isLoading``, ``loadingCount``
+/// and ``lastError``. One store serves one map on screen: what it loads and
+/// cancels follows the frames of the map that draws from it.
 ///
 /// ```swift
 /// let store = MapTileStore(source: SampleTileSource())
@@ -33,7 +34,7 @@ public final class MapTileStore {
     public private(set) var lastError: String?
     /// How many tiles have landed: a lookup reads it, so what drew from
     /// the store is drawn again when it moves.
-    public private(set) var revision = 0
+    private(set) var revision = 0
 
     /// The most decoded tiles kept.
     public let capacity: Int
@@ -42,9 +43,10 @@ public final class MapTileStore {
     /// a zoom passes through: a 200 × 60 terminal shows about six.
     public nonisolated static let defaultCapacity = 256
 
-    /// The size the store's map was last drawn at, in cells — what a wheel
-    /// or a key handler zooms and pans within.
-    @ObservationIgnored public private(set) var lastSize = CanvasSize.zero
+    /// The size, in cells, the map drawing from the store was last drawn
+    /// at: what a camera's ``MapCamera/visibleRegion(in:)`` and
+    /// ``MapCamera/coordinate(atCell:in:)`` take for the map on screen.
+    @ObservationIgnored public private(set) var viewSize = CanvasSize.zero
 
     private struct Entry {
         var tile: RenderTile
@@ -102,16 +104,19 @@ public final class MapTileStore {
         describeSource()
     }
 
-    /// Ask again for the tiles that failed.
+    /// Ask again for the tiles that failed, and for the source's
+    /// description if that failed: a map opened offline loads once the
+    /// network is back.
     public func retry() {
         failed.removeAll()
         lastError = nil
         revision += 1
+        if info == nil { describeSource() }
     }
 
     /// The tile, decoded, if the store has it. Reads ``revision``, so what
     /// asks is drawn again when a tile lands.
-    public func tile(_ id: TileID) -> RenderTile? {
+    func tile(_ id: TileID) -> RenderTile? {
         _ = revision
         guard var entry = cache[id] else { return nil }
         useCount += 1
@@ -121,7 +126,7 @@ public final class MapTileStore {
     }
 
     /// The tiles the store holds.
-    public var cachedTiles: Set<TileID> {
+    var cachedTiles: Set<TileID> {
         _ = revision
         return Set(cache.keys)
     }
@@ -130,7 +135,7 @@ public final class MapTileStore {
     /// cancel loads of any others — tiles gone off screen. Cheap to call
     /// every frame with the same tiles; it starts tasks and changes nothing
     /// a view reads, so it may be called while drawing.
-    public func load(_ tiles: [TileID]) {
+    func load(_ tiles: [TileID]) {
         wanted = Set(tiles)
         for (id, load) in loads where !wanted.contains(id) {
             load.task.cancel()
@@ -145,8 +150,8 @@ public final class MapTileStore {
     /// cancel what it no longer does. Returns the zooms to draw it at, or
     /// nil until the source has said which it has — a read of ``info``, so
     /// the frame is drawn again when it does.
-    public func prepareFrame(camera: MapCamera, size: CanvasSize) -> ClosedRange<Int>? {
-        lastSize = size
+    func prepareFrame(camera: MapCamera, size: CanvasSize) -> ClosedRange<Int>? {
+        viewSize = size
         guard let info else { return nil }
         load(MapRenderer.tiles(for: camera, size: size, zoomRange: info.zoomRange))
         return info.zoomRange
@@ -154,13 +159,13 @@ public final class MapTileStore {
 
     /// Note the size the store's map is drawn at without loading anything:
     /// a frame that hides the basemap still pans and zooms within its size.
-    public func noteSize(_ size: CanvasSize) {
-        lastSize = size
+    func noteSize(_ size: CanvasSize) {
+        viewSize = size
     }
 
     /// Draw the map for `camera` into a canvas of `size` cells with
     /// `renderer`: what is at hand, and a request for the rest.
-    public func draw(with renderer: MapRenderer, in context: GraphicsContext, camera: MapCamera,
+    func draw(with renderer: MapRenderer, in context: GraphicsContext, camera: MapCamera,
                      size: CanvasSize, content: [MapElement] = []) {
         guard let zoomRange = prepareFrame(camera: camera, size: size) else { return }
         renderer.draw(in: context, camera: camera, size: size, zoomRange: zoomRange, content: content) {
@@ -193,28 +198,37 @@ public final class MapTileStore {
         let token = loadCount
         let source = source
         let generation = generation
+        loadingCount += 1
+        // The task holds the store only once its fetch is back: a store
+        // given up while tiles are on their way is freed, and its deinit
+        // cancels them.
         let task = Task { [weak self] in
-            guard let self else { return }
-            self.loadingCount += 1
-            defer {
-                self.loadingCount -= 1
-                if self.loads[id]?.token == token { self.loads[id] = nil }
-            }
+            let outcome: Result<RenderTile?, any Error>
             do {
-                let tile = try await MapTileStore.fetch(id, from: source)
-                guard !Task.isCancelled, self.generation == generation else { return }
-                if let tile {
-                    self.insert(tile)
-                } else {
-                    self.absent.insert(id)
-                }
+                outcome = .success(try await MapTileStore.fetch(id, from: source))
             } catch {
-                guard !Task.isCancelled, self.generation == generation, !(error is CancellationError) else { return }
-                self.failed.insert(id)
-                self.lastError = String(describing: error)
+                outcome = .failure(error)
             }
+            self?.finishLoad(id, token: token, generation: generation, outcome: outcome)
         }
         loads[id] = Load(task: task, token: token)
+    }
+
+    private func finishLoad(_ id: TileID, token: UInt64, generation: Int, outcome: Result<RenderTile?, any Error>) {
+        loadingCount -= 1
+        let current = loads[id]?.token == token
+        if current { loads[id] = nil }
+        guard current, self.generation == generation else { return }
+        switch outcome {
+        case .success(let tile?):
+            insert(tile)
+        case .success(nil):
+            absent.insert(id)
+        case .failure(let error):
+            guard !(error is CancellationError) else { return }
+            failed.insert(id)
+            lastError = String(describing: error)
+        }
     }
 
     private func insert(_ tile: RenderTile) {

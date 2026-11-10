@@ -19,7 +19,7 @@ struct LiveTests {
         #expect(info.zoomRange.upperBound == 14)
         #expect(info.attribution.contains("OpenStreetMap"))
         let tile = try await source.tile(TileID(containing: Self.constancia, zoom: 14))
-        guard case .vector(let vector) = tile else {
+        guard case .vector(let vector) = tile?.content else {
             Issue.record("expected a vector tile")
             return
         }
@@ -35,7 +35,7 @@ struct LiveTests {
     }
 
     @Test func osrmRoutesAcrossTown() async throws {
-        let route = try await OSRMRoutes(userAgent: Self.userAgent).route(
+        let route = try await OSRMRoutes(baseURL: OSRMRoutes.demoURL, userAgent: Self.userAgent).route(
             from: Self.constancia, to: GeoCoordinate(latitude: 39.4637, longitude: -8.3195), mode: .driving)
         #expect(route.distance > 0)
         #expect(route.coordinates.count >= 2)
@@ -58,7 +58,7 @@ struct LiveTests {
     @Test func mapKitSnapshotsATile() async throws {
         let tile = try await MapKitSnapshotSource(pixelsPerTile: 64).tile(TileID(containing: Self.constancia,
                                                                                  zoom: 13))
-        guard case .raster(let image) = tile else {
+        guard case .raster(let image) = tile?.content else {
             Issue.record("expected a raster tile")
             return
         }

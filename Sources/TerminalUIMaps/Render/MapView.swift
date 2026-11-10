@@ -24,15 +24,15 @@ import TerminalUI
 /// }
 /// ```
 public struct MapView: TerminalView {
-    public let camera: Binding<MapCamera>
-    public let store: MapTileStore
-    public let content: MapContentGroup
+    let camera: Binding<MapCamera>
+    let store: MapTileStore
+    let content: MapContentGroup
     /// What a click on a point of interest does; see
     /// ``onPointOfInterestTap(perform:)``.
     var pointOfInterestAction: ((MapPointOfInterest) -> Void)?
     /// Imagery, terrain and how much of the basemap shows: set with
     /// ``mapLayers(_:)``.
-    public private(set) var layers = MapLayers.explore
+    private(set) var layers = MapLayers.explore
 
     /// A map of `store`'s tiles seen through `camera`, which every pan and
     /// zoom writes back.
@@ -112,9 +112,10 @@ public struct MapView: TerminalView {
             }
             .onEnded { _ in drag.wrappedValue = nil })
         .onClick { column, row in
-            guard let pointOfInterestAction, let point = renderer.pointOfInterest(atColumn: column, row: row) else {
+            guard let pointOfInterestAction, var point = renderer.pointOfInterest(atColumn: column, row: row) else {
                 return
             }
+            point.featureIdentifiers = MainActor.assumeIsolated { store.info?.featureIdentifiers } ?? .opaque
             pointOfInterestAction(point)
         }
         .onScrollWheel { event in
@@ -125,7 +126,7 @@ public struct MapView: TerminalView {
             case .left: delta = Steps.fineWheelZoom
             case .right: delta = -Steps.fineWheelZoom
             }
-            let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.lastSize) }
+            let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
             let anchor = DotPoint(x: (Double(event.location.x) + Steps.cellMiddle) * Double(BrailleCell.dotColumns),
                                   y: (Double(event.location.y) + Steps.cellMiddle) * Double(BrailleCell.dotRows))
             let before = camera.wrappedValue
@@ -136,7 +137,7 @@ public struct MapView: TerminalView {
         }
         .focusable()
         .onKeyPress { event in
-            let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.lastSize) }
+            let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
             guard let moved = MapView.camera(camera.wrappedValue, movedBy: event, in: viewport) else {
                 return .ignored
             }

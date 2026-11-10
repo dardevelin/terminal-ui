@@ -16,7 +16,7 @@ public struct TerrainStyle: Sendable, Equatable {
     /// Whether slopes are shaded as the sun would light them.
     public var showsHillshade: Bool
     /// Whether lines of equal height are drawn, at the interval the tile's
-    /// zoom gives (``ContourTracer/interval(forZoom:)``).
+    /// zoom gives: closer at a closer zoom.
     public var showsContours: Bool
     /// The most a shade moves the ground toward light or dark: 0 shades
     /// nothing, 1 lets a cliff take the theme's ink or ground outright.
@@ -69,11 +69,11 @@ public struct MapLayers: Sendable, Equatable {
 
 /// The tiles of one layer a frame draws: the zooms its source has and the
 /// tile at hand for an id — what a ``MapTileStore`` gives a frame.
-public struct MapLayerTiles {
-    public var zoomRange: ClosedRange<Int>
-    public var lookup: (TileID) -> RenderTile?
+struct MapLayerTiles {
+    var zoomRange: ClosedRange<Int>
+    var lookup: (TileID) -> RenderTile?
 
-    public init(zoomRange: ClosedRange<Int>, lookup: @escaping (TileID) -> RenderTile?) {
+    init(zoomRange: ClosedRange<Int>, lookup: @escaping (TileID) -> RenderTile?) {
         self.zoomRange = zoomRange
         self.lookup = lookup
     }
@@ -81,13 +81,13 @@ public struct MapLayerTiles {
 
 /// A frame's layers, as ``MapRenderer/draw(in:camera:size:zoomRange:content:layers:tiles:)``
 /// takes them: ``MapLayers`` with each store's tiles at hand.
-public struct MapFrameLayers {
-    public var basemap: BasemapDetail
-    public var imagery: MapLayerTiles?
-    public var terrain: MapLayerTiles?
-    public var terrainStyle: TerrainStyle
+struct MapFrameLayers {
+    var basemap: BasemapDetail
+    var imagery: MapLayerTiles?
+    var terrain: MapLayerTiles?
+    var terrainStyle: TerrainStyle
 
-    public init(basemap: BasemapDetail = .full, imagery: MapLayerTiles? = nil, terrain: MapLayerTiles? = nil,
+    init(basemap: BasemapDetail = .full, imagery: MapLayerTiles? = nil, terrain: MapLayerTiles? = nil,
                 terrainStyle: TerrainStyle = .standard) {
         self.basemap = basemap
         self.imagery = imagery

@@ -56,10 +56,19 @@ public struct RegionDownloader: Sendable {
     private let tileLimit: Int
     private let now: @Sendable () -> Date
 
+    /// A downloader of `source`'s tiles into packs in `store`, fetching
+    /// `concurrency` tiles at once and refusing a region of more than
+    /// `tileLimit`.
     public init(store: RegionPackStore, source: any EncodedTileSource,
                 concurrency: Int = RegionDownloader.defaultConcurrency,
-                tileLimit: Int = RegionDownloader.defaultTileLimit,
-                now: @escaping @Sendable () -> Date = { Date() }) {
+                tileLimit: Int = RegionDownloader.defaultTileLimit) {
+        self.init(store: store, source: source, concurrency: concurrency, tileLimit: tileLimit, now: { Date() })
+    }
+
+    init(store: RegionPackStore, source: any EncodedTileSource,
+         concurrency: Int = RegionDownloader.defaultConcurrency,
+         tileLimit: Int = RegionDownloader.defaultTileLimit,
+         now: @escaping @Sendable () -> Date) {
         self.store = store
         self.source = source
         self.concurrency = max(1, concurrency)
@@ -99,6 +108,7 @@ public struct RegionDownloader: Sendable {
         var manifest = RegionPackManifest(name: request.name, bounds: request.bounds, zoomRange: zoomRange,
                                           source: info.name, attribution: info.attribution, created: created)
         manifest.layers = earlier?.layers
+        manifest.featureIdentifiers = info.featureIdentifiers
         let pack = RegionPack(directory: directory, manifest: manifest)
         try pack.writeManifest(manifest)
 

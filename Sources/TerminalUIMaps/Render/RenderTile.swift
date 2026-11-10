@@ -4,8 +4,8 @@ import TerminalUIIO
 /// the tile's unit square, and its names picked out — the per-tile work a
 /// frame would otherwise repeat, done once when the tile arrives and off
 /// the main actor.
-public struct RenderTile: Sendable {
-    public let id: TileID
+struct RenderTile: Sendable {
+    let id: TileID
     let content: Content
 
     enum Content: Sendable {
@@ -15,9 +15,9 @@ public struct RenderTile: Sendable {
     }
 
     /// Prepare a tile of a source for drawing.
-    public init(id: TileID, tile: MapTile) {
+    init(id: TileID, tile: MapTile) {
         self.id = id
-        switch tile {
+        switch tile.content {
         case .vector(let vector): content = .vector(VectorContent(vector))
         case .raster(let image): content = .raster(RasterContent(image: image))
         case .elevation(let elevation): content = .elevation(ElevationContent(elevation, id: id))
@@ -26,7 +26,7 @@ public struct RenderTile: Sendable {
 
     /// How many features of each kind the tile draws from: areas and lines,
     /// then labels.
-    public var featureCount: (shapes: Int, labels: Int) {
+    var featureCount: (shapes: Int, labels: Int) {
         switch content {
         case .vector(let vector):
             (vector.layers.reduce(0) { $0 + $1.features.count }, vector.labels.count + vector.lineLabels.count)

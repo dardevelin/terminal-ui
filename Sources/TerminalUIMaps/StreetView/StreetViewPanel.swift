@@ -20,7 +20,7 @@ public struct StreetPhotoView: TerminalView {
     }
 
     /// The rows a photo of `width` columns takes.
-    public static func rows(for photo: ImageBuffer, width: Int) -> Int {
+    static func rows(for photo: ImageBuffer, width: Int) -> Int {
         guard photo.width > 0, width > 0 else { return 0 }
         let pixelRows = Double(width) * Double(photo.height) / Double(photo.width)
         return max(1, Int((pixelRows / Double(PhotoGrid.pixelsPerRow)).rounded()))

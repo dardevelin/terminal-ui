@@ -5,7 +5,7 @@ extension RenderTile {
     /// `coordinate`, as coordinates: what a junction's roads are read from
     /// (``JunctionAnalysis/branches(at:lines:rules:)``). A ring whose
     /// bounds lie farther off is passed over.
-    public func lines(of roles: Set<MapRole>, near coordinate: GeoCoordinate, within radius: Double)
+    func lines(of roles: Set<MapRole>, near coordinate: GeoCoordinate, within radius: Double)
         -> [[GeoCoordinate]] {
         guard case .vector(let vector) = content else { return [] }
         let count = Double(TileID.tilesPerSide(atZoom: id.zoom))
@@ -34,7 +34,7 @@ extension MapTileStore {
     /// The lines of `roles` within `radius` metres of `coordinate`, from
     /// the deepest zoom whose tile there the store holds, and that zoom's
     /// neighbours the circle reaches into when they are held too.
-    public func lines(near coordinate: GeoCoordinate, within radius: Double, roles: Set<MapRole>)
+    func lines(near coordinate: GeoCoordinate, within radius: Double, roles: Set<MapRole>)
         -> [[GeoCoordinate]] {
         let held = cachedTiles
         guard let zoom = held.filter({ TileID(containing: coordinate, zoom: $0.zoom) == $0 }).map(\.zoom).max()

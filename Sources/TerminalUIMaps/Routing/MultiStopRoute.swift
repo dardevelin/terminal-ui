@@ -24,7 +24,7 @@ extension Route {
     /// last ends on an arrival at a stop, as OSRM's multi-leg routes do
     /// (each `RouteLeg` ends in an `arrive` step); it is named for the stop
     /// so the traveller is not told they have arrived when they have not.
-    public static func joining(_ legs: [Route]) -> Route {
+    static func joining(_ legs: [Route]) -> Route {
         guard var joined = legs.first else { return Route(coordinates: [], distance: 0, duration: 0, steps: []) }
         joined.steps = joined.steps.renamingArrival(stop: legs.count > 1 ? 1 : nil)
         for (index, leg) in legs.enumerated().dropFirst() {

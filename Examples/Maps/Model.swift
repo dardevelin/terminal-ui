@@ -210,7 +210,7 @@ final class MapsModel {
     /// The region in view, which a search prefers results near.
     @MainActor
     var visibleRegion: GeoRect {
-        camera.visibleRect(in: MapRenderer.viewport(for: store.lastSize))
+        camera.visibleRegion(in: store.viewSize)
     }
 
     /// Enter in a search field: search for its text, or, when the results
@@ -295,7 +295,7 @@ final class MapsModel {
 
     func fly(to coordinate: GeoCoordinate) {
         camera = MapCamera(center: coordinate, zoom: max(camera.zoom, MapsModel.placeZoom),
-                           zoomRange: camera.zoomRange, tileSize: camera.tileSize)
+                           zoomRange: camera.zoomRange)
     }
 
     // MARK: - Directions
@@ -331,14 +331,14 @@ final class MapsModel {
             return
         }
         routeProgress = .working
-        let viewport = MapRenderer.viewport(for: store.lastSize)
+        let viewSize = store.viewSize
         routeTask = Task { @MainActor in
             do {
                 let route = try await routes.route(from: from, to: destination.coordinate, mode: .driving)
                 guard !Task.isCancelled else { return }
                 maps.route = route
                 maps.routeProgress = .done
-                maps.frame(route, in: viewport)
+                maps.frame(route, in: viewSize)
             } catch {
                 guard !Task.isCancelled else { return }
                 maps.routeProgress = .failed(String(describing: error))
@@ -349,9 +349,9 @@ final class MapsModel {
     /// Bring the whole route into view, a little way in from the edges, and
     /// no closer than a place is shown: a route of a few metres fits at a
     /// zoom where its streets have gone.
-    private func frame(_ route: Route, in viewport: DotSize) {
-        guard let box = GeoRect(covering: route.coordinates), viewport.width > 0, viewport.height > 0 else { return }
-        let fitted = MapCamera.fitting(box, in: viewport, zoomRange: camera.zoomRange, tileSize: camera.tileSize)
+    private func frame(_ route: Route, in viewSize: CanvasSize) {
+        guard let box = GeoRect(covering: route.coordinates), viewSize.width > 0, viewSize.height > 0 else { return }
+        let fitted = MapCamera.fitting(box, in: viewSize, zoomRange: camera.zoomRange)
         var framed = fitted.zoomed(by: -MapsModel.routeMargin)
         framed.zoom = min(framed.zoom, MapsModel.placeZoom)
         camera = framed
@@ -365,12 +365,9 @@ final class MapsModel {
     /// along a street, not a route.
     static let alreadyThere = 10.0
 
-    /// The distance between two coordinates on the projected map, in metres
-    /// at the first one's latitude: exact enough within a town.
+    /// The distance between two coordinates, in metres.
     static func metres(_ first: GeoCoordinate, _ second: GeoCoordinate) -> Double {
-        let start = WebMercator.project(first), end = WebMercator.project(second)
-        let units = ((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y)).squareRoot()
-        return units * WebMercator.metresPerWorldUnit(atLatitude: first.latitude)
+        first.distance(to: second)
     }
 
     // MARK: - Backends

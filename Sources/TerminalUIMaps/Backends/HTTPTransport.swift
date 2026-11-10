@@ -79,10 +79,10 @@ public enum MapServiceError: Error, Sendable, Equatable {
     case unsupported(String)
 }
 
-/// The User-Agent every request names, as OpenStreetMap's tile and
-/// Nominatim usage policies require an application to identify itself.
-public enum MapUserAgent {
-    public static let `default` = "TerminalUIMaps/0.1 (TerminalUI maps experiment)"
+/// The header every request names its application in, as OpenStreetMap's
+/// tile and Nominatim usage policies require an application to identify
+/// itself (RFC 9110 §10.1.5).
+enum MapUserAgent {
     static let headerField = "User-Agent"
 }
 

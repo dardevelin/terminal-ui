@@ -5,8 +5,8 @@
 /// Rings are written as given: a polygon feature built with
 /// `VectorFeature(polygons:)` is already wound as the spec requires. Each
 /// layer's keys and values are written once, in first-use order.
-public enum VectorTileEncoder {
-    public static func encode(_ tile: VectorTile) -> [UInt8] {
+enum VectorTileEncoder {
+    static func encode(_ tile: VectorTile) -> [UInt8] {
         var writer = ProtobufWriter()
         for layer in tile.layers {
             writer.writeBytesField(TileField.layers, encode(layer))

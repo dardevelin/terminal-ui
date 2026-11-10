@@ -15,33 +15,33 @@ import Foundation
 /// but one not taken never swings the map. Where the course and the route
 /// part — a missed turn — the traveller is carried along their course, not
 /// round the corner they did not take.
-public struct TravellerPrediction: Sendable, Equatable {
-    public struct Configuration: Sendable, Equatable {
+struct TravellerPrediction: Sendable, Equatable {
+    struct Configuration: Sendable, Equatable {
         /// The longest, in seconds, the traveller is carried on past a fix:
         /// a late or lost fix should not send them on down the road.
-        public var maximumPrediction = 1.5
+        var maximumPrediction = 1.5
         /// The heading looks this many seconds of travel ahead…
-        public var lookAheadTime = 2.5
+        var lookAheadTime = 2.5
         /// …but never less than this, in metres, so a crawl still looks
         /// along the street rather than at the next paving stone…
-        public var minimumLookAhead = 25.0
+        var minimumLookAhead = 25.0
         /// …nor more, so a fast road still turns at its own bends.
-        public var maximumLookAhead = 120.0
+        var maximumLookAhead = 120.0
         /// The most, in degrees, the route ahead turns the heading from the
         /// traveller's course: a third of a right angle shows the turn is
         /// coming and which way, and is all the map has turned if the
         /// traveller goes straight on — less than a cell's slant on most
         /// streets, against the quarter turn of following the route.
-        public var maximumAnticipation = 30.0
+        var maximumAnticipation = 30.0
         /// Degrees between the course and the route where the traveller is
         /// beyond which they are not following it: half a right angle, past
         /// any lane change or bend a fix's course shows on a road.
-        public var courseDisagreement = 45.0
+        var courseDisagreement = 45.0
         /// Metres a carried traveller is stepped along the route while
         /// checking it still runs with their course.
-        public var carryStep = 2.0
+        var carryStep = 2.0
 
-        public init(maximumPrediction: Double = 1.5, lookAheadTime: Double = 2.5, minimumLookAhead: Double = 25,
+        init(maximumPrediction: Double = 1.5, lookAheadTime: Double = 2.5, minimumLookAhead: Double = 25,
                     maximumLookAhead: Double = 120, maximumAnticipation: Double = 30, courseDisagreement: Double = 45) {
             self.maximumPrediction = maximumPrediction
             self.lookAheadTime = lookAheadTime
@@ -54,17 +54,17 @@ public struct TravellerPrediction: Sendable, Equatable {
 
     /// The traveller as drawn: where, how far along the route if they are
     /// following it, and which way the map should face.
-    public struct Estimate: Sendable, Equatable {
-        public var coordinate: GeoCoordinate
+    struct Estimate: Sendable, Equatable {
+        var coordinate: GeoCoordinate
         /// Nil when the traveller is carried along their course instead.
-        public var distanceAlong: Double?
+        var distanceAlong: Double?
         /// Degrees clockwise from north.
-        public var course: Double
+        var course: Double
     }
 
-    public var configuration: Configuration
+    var configuration: Configuration
 
-    public init(configuration: Configuration = Configuration()) {
+    init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
     }
 
@@ -77,7 +77,7 @@ public struct TravellerPrediction: Sendable, Equatable {
     /// the carrying stops where the route turns away from the course, and
     /// a course that disagrees with the route at the fix carries them from
     /// `fix` along the course instead.
-    public func estimate(on line: RouteLine, distanceAlong: Double, speed: Double, secondsSinceFix: Double,
+    func estimate(on line: RouteLine, distanceAlong: Double, speed: Double, secondsSinceFix: Double,
                          course: Double? = nil, fix: GeoCoordinate? = nil) -> Estimate {
         let carried = max(0, speed) * min(max(0, secondsSinceFix), configuration.maximumPrediction)
         let lookAhead = min(max(max(0, speed) * configuration.lookAheadTime, configuration.minimumLookAhead),
@@ -112,7 +112,7 @@ public struct TravellerPrediction: Sendable, Equatable {
 
     /// The traveller carried straight on from a fix at `coordinate` along
     /// `course`: off the route, or not following it.
-    public func estimate(from coordinate: GeoCoordinate, course: Double?, speed: Double,
+    func estimate(from coordinate: GeoCoordinate, course: Double?, speed: Double,
                          secondsSinceFix: Double) -> Estimate {
         guard let course else { return Estimate(coordinate: coordinate, distanceAlong: nil, course: 0) }
         let carried = max(0, speed) * min(max(0, secondsSinceFix), configuration.maximumPrediction)
@@ -125,7 +125,7 @@ public struct TravellerPrediction: Sendable, Equatable {
     /// off it or rerouting, and still while `paused` or arrived. The course
     /// counts only from `headingUpSpeed` on, below which a GPS course
     /// swings at random.
-    public func estimate(for session: NavigationSession?, rerouting: Bool, paused: Bool, fix: LocationFix,
+    func estimate(for session: NavigationSession?, rerouting: Bool, paused: Bool, fix: LocationFix,
                          secondsSinceFix: Double, headingUpSpeed: Double) -> Estimate {
         let course = (fix.speed ?? 0) >= headingUpSpeed ? fix.course : nil
         if let session, session.state == .onRoute || session.state == .arrived, !rerouting, session.position != nil {

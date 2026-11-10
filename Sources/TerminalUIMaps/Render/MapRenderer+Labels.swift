@@ -1,8 +1,7 @@
 import TerminalUI
 
-/// A point of interest a frame drew: what it is, where it is, and the
-/// cells its glyph and name took — what a click on the map is matched
-/// against.
+/// A point of interest the map drew — a café, a shop, a station — as a
+/// tap on it hands it to ``MapView/onPointOfInterestTap(perform:)``.
 public struct MapPointOfInterest: Sendable, Hashable {
     public var name: String
     public var category: PointOfInterestCategory
@@ -10,21 +9,24 @@ public struct MapPointOfInterest: Sendable, Hashable {
     /// "restaurant" and "restaurant".
     public var featureClass: String
     public var subclass: String?
-    /// The vector tile feature's id, which some sources tie to the map
-    /// data's own (``OSMElement/init(openMapTilesFeatureID:)``).
-    public var featureID: UInt64?
     public var coordinate: GeoCoordinate
+    /// The vector tile feature's id, which some sources tie to the map
+    /// data's own (``FeatureIdentifiers``).
+    var featureID: UInt64?
+    /// How the source's feature ids name the map data's elements, as the
+    /// source said when the point was drawn.
+    var featureIdentifiers = FeatureIdentifiers.opaque
     /// The glyph's cell.
-    public var column: Int
-    public var row: Int
+    var column: Int
+    var row: Int
     /// The columns its name took on the glyph's row or beside it, nil
     /// where only the glyph found room.
-    public var nameColumns: Range<Int>?
-    public var nameRow: Int?
+    var nameColumns: Range<Int>?
+    var nameRow: Int?
 
-    public init(name: String, category: PointOfInterestCategory, featureClass: String, subclass: String? = nil,
-                featureID: UInt64? = nil, coordinate: GeoCoordinate, column: Int, row: Int,
-                nameColumns: Range<Int>? = nil, nameRow: Int? = nil) {
+    init(name: String, category: PointOfInterestCategory, featureClass: String, subclass: String? = nil,
+         featureID: UInt64? = nil, coordinate: GeoCoordinate, column: Int, row: Int,
+         nameColumns: Range<Int>? = nil, nameRow: Int? = nil) {
         self.name = name
         self.category = category
         self.featureClass = featureClass
@@ -38,7 +40,7 @@ public struct MapPointOfInterest: Sendable, Hashable {
     }
 
     /// Whether the cell at `column`, `row` is the glyph's or its name's.
-    public func contains(column: Int, row: Int) -> Bool {
+    func contains(column: Int, row: Int) -> Bool {
         if column == self.column && row == self.row { return true }
         guard let nameColumns, let nameRow else { return false }
         return row == nameRow && nameColumns.contains(column)
@@ -48,7 +50,7 @@ public struct MapPointOfInterest: Sendable, Hashable {
 extension MapRenderer {
     /// The point of interest the last frame drew at a cell of the canvas —
     /// its glyph or its name — or nil.
-    public func pointOfInterest(atColumn column: Int, row: Int) -> MapPointOfInterest? {
+    func pointOfInterest(atColumn column: Int, row: Int) -> MapPointOfInterest? {
         placedPointsOfInterest.first { $0.contains(column: column, row: row) }
     }
 
@@ -110,7 +112,7 @@ extension MapRenderer {
         }
         func cell(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(x: x / cellWidth, y: y / cellHeight) }
         var travellers: [(cell: CanvasPoint, glyph: String)] = []
-        for case .traveller(let traveller) in content {
+        for case .traveller(let traveller) in content.map(\.kind) {
             let point = camera.screenPoint(for: traveller.coordinate, in: viewport)
             guard onScreen(point.x, point.y) else { continue }
             let cell = CanvasPoint(x: (point.x / cellWidth).rounded(.down), y: (point.y / cellHeight).rounded(.down))
@@ -121,7 +123,7 @@ extension MapRenderer {
             offered.append(.traveller)
         }
         var markerCells: [CanvasPoint] = []
-        for case .marker(let marker) in content {
+        for case .marker(let marker) in content.map(\.kind) {
             let point = camera.screenPoint(for: marker.coordinate, in: viewport)
             guard onScreen(point.x, point.y) else { continue }
             let anchor = cell(point.x, point.y)

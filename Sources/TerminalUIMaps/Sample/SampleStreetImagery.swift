@@ -7,10 +7,10 @@ import TerminalUIIO
 public struct SampleStreetImagery: StreetImagery {
     public let name = "Millbrook street view"
     /// How far apart the photos are along a street.
-    public static let spacing = 40.0
+    static let spacing = 40.0
     /// The photos' size: wide, as a street-level camera's frame is.
-    public static let photoWidth = 160
-    public static let photoHeight = 90
+    static let photoWidth = 160
+    static let photoHeight = 90
 
     /// When the town was photographed: a fixed day, so a test reads it.
     static let captured = Date(timeIntervalSince1970: 1_780_000_000)

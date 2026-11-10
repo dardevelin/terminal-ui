@@ -5,35 +5,35 @@ import Foundation
 /// following it once a second — with, when asked, a wrong turn on the
 /// way: straight on past a junction where the route turns, a U-turn, and
 /// back. The app's demo replays it, and the navigation tests ride it.
-public enum SampleDrive {
+enum SampleDrive {
     /// The stops: from the station, by the town hall, to the library.
-    public static var stops: [Place] {
+    static var stops: [Place] {
         ["Millbrook Station", "Town Hall", "Public Library"].compactMap { name in
             SampleTown.places.first { $0.name == name }
         }
     }
 
-    public static var plan: RoutePlan { RoutePlan(places: stops) }
+    static var plan: RoutePlan { RoutePlan(places: stops) }
 
     /// The route through the stops, as the sample's directions give it.
-    public static func route() async throws -> Route {
+    static func route() async throws -> Route {
         try await SampleRoutes().route(through: plan.coordinates, mode: .driving)
     }
 
     /// When the recorded drive starts: a fixed instant, so the file is the
     /// same every time it is made.
-    public static let startDate = Date(timeIntervalSince1970: 1_794_301_200)
+    static let startDate = Date(timeIntervalSince1970: 1_794_301_200)
 
     /// The car's speed, metres a second: the sample's 30 km/h.
-    public static let speed = 30_000.0 / 3_600
+    static let speed = 30_000.0 / 3_600
 
     /// How far past the junction the wrong turn goes before turning back.
-    public static let detourLength = 150.0
+    static let detourLength = 150.0
 
     /// A point a second along the route at `speed`, timed from `startDate`;
     /// with `detourAtStep`, the drive goes straight on at that step's
     /// manoeuvre for `detourLength`, turns round and comes back to it.
-    public static func track(along route: Route, detourAtStep detourStep: Int? = nil) -> [GPXPoint] {
+    static func track(along route: Route, detourAtStep detourStep: Int? = nil) -> [GPXPoint] {
         var path = route.coordinates
         if let detourStep, route.steps.indices.contains(detourStep),
            let arriving = route.steps[detourStep].maneuver?.bearingBefore,
@@ -63,7 +63,7 @@ public enum SampleDrive {
     /// The step the shipped drive takes its wrong turn at: the turn off
     /// Station Road, the first junction where going straight on stays on a
     /// street.
-    public static let detourStep = 1
+    static let detourStep = 1
 
     /// The step the demo's wrong turn is at — the turn onto Oak Street:
     /// one where going straight on
@@ -71,10 +71,10 @@ public enum SampleDrive {
     /// `detourStep` the next stop is behind the car on the street it went
     /// down, and reaching it means turning round — as any router would
     /// have it, OSRM's 20 s U-turn penalty being far less than the block.
-    public static let rerouteDetourStep = 4
+    static let rerouteDetourStep = 4
 
     /// The demo's GPX: the stops as a route, the drive as a track.
-    public static func document() async throws -> GPXDocument {
+    static func document() async throws -> GPXDocument {
         GPXDocument(name: "A drive through \(SampleTown.name)",
                     routes: [GPXRoute(plan, name: "Station to library")],
                     tracks: [GPXTrack(name: "Drive with a wrong turn",
@@ -87,7 +87,7 @@ public enum SampleDrive {
     /// leaving the way the car is going — what the app tells a driver who
     /// missed the turn. No U-turn: a navigator that reroutes forward should
     /// be shown a driver who follows it.
-    public static func trackFollowingReroute(detourAtStep detourStep: Int = rerouteDetourStep) async throws
+    static func trackFollowingReroute(detourAtStep detourStep: Int = rerouteDetourStep) async throws
         -> [GPXPoint] {
         let router = SampleRoutes()
         let route = try await router.route(through: plan.coordinates, mode: .driving)

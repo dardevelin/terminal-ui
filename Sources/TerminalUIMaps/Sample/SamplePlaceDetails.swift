@@ -15,7 +15,7 @@ public struct SamplePlaceDetails: PlaceDetails {
     public init() {}
 
     /// The town's clock.
-    public static let timeZone = TimeZone(identifier: "UTC") ?? .current
+    static let timeZone = TimeZone(identifier: "UTC") ?? .current
 
     public func details(for place: Place) async throws -> PlaceInformation? {
         Self.details(named: place.name)

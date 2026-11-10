@@ -58,7 +58,7 @@ public struct TileID: Sendable, Hashable, Codable, CustomStringConvertible {
     }
 
     /// The tile's corners on the unit world.
-    public var worldBounds: (minimum: WorldPoint, maximum: WorldPoint) {
+    var worldBounds: (minimum: WorldPoint, maximum: WorldPoint) {
         let count = Double(TileID.tilesPerSide(atZoom: zoom))
         return (WorldPoint(x: Double(x) / count, y: Double(y) / count),
                 WorldPoint(x: Double(x + 1) / count, y: Double(y + 1) / count))

@@ -4,13 +4,13 @@ import Foundation
 /// sends `?WATCH={"enable":true,"json":true};` and the daemon streams one
 /// JSON object a line, each named by its `class`. A TPV — time, position,
 /// velocity — object is a fix.
-public enum GPSDProtocol {
+enum GPSDProtocol {
     /// The daemon's registered port (IANA "gpsd", 2947/tcp).
-    public static let defaultPort: UInt16 = 2947
-    public static let defaultHost = "localhost"
+    static let defaultPort: UInt16 = 2947
+    static let defaultHost = "localhost"
 
     /// The command that asks for reports as JSON.
-    public static let watchCommand = "?WATCH={\"enable\":true,\"json\":true};\n"
+    static let watchCommand = "?WATCH={\"enable\":true,\"json\":true};\n"
 
     /// TPV's `mode`: 0 unknown, 1 no fix, 2 a 2D fix, 3 a 3D fix.
     static let twoDimensionalFix = 2
@@ -35,7 +35,7 @@ public enum GPSDProtocol {
     /// The fix a line reports, or nil for a line that is not a TPV with a
     /// position — a VERSION, a DEVICES, a SKY, or a TPV of mode below 2.
     /// `now` stamps a TPV that gives no time.
-    public static func fix(fromLine line: String, now: Date = Date()) -> LocationFix? {
+    static func fix(fromLine line: String, now: Date = Date()) -> LocationFix? {
         guard let report = try? JSONDecoder().decode(Report.self, from: Data(line.utf8)),
               report.class == "TPV", let mode = report.mode, mode >= twoDimensionalFix,
               let latitude = report.lat, let longitude = report.lon else { return nil }
@@ -56,7 +56,12 @@ public struct GPSDLocationProvider: LocationProvider {
     public let host: String
     public let port: UInt16
 
-    public init(host: String = GPSDProtocol.defaultHost, port: UInt16 = GPSDProtocol.defaultPort) {
+    /// The daemon's registered port (IANA "gpsd", 2947/tcp).
+    public static let defaultPort = GPSDProtocol.defaultPort
+    /// The daemon on this machine.
+    public static let defaultHost = GPSDProtocol.defaultHost
+
+    public init(host: String = GPSDLocationProvider.defaultHost, port: UInt16 = GPSDLocationProvider.defaultPort) {
         self.host = host
         self.port = port
     }

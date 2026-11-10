@@ -19,33 +19,33 @@ import Foundation
 /// turned to the mathematical angle, 360° − azimuth + 90° (Esri, "How
 /// Hillshade works"). Flat ground shades at cos(zenith); a slope facing
 /// the sun brighter, one facing away darker, to zero.
-public struct Hillshade: Sendable, Equatable {
+struct Hillshade: Sendable, Equatable {
     /// The sun's compass bearing, in degrees: north-west by cartographic
     /// convention, so hills read as raised rather than as hollows.
-    public var azimuth: Double
+    var azimuth: Double
     /// The sun's height above the horizon, in degrees.
-    public var altitude: Double
+    var altitude: Double
     /// How much steeper slopes are drawn than they are.
-    public var exaggeration: Double
+    var exaggeration: Double
 
     /// The convention every hillshade defaults to: a sun at 315°, 45° up.
-    public static let standard = Hillshade(azimuth: 315, altitude: 45, exaggeration: 1)
+    static let standard = Hillshade(azimuth: 315, altitude: 45, exaggeration: 1)
 
-    public init(azimuth: Double, altitude: Double, exaggeration: Double) {
+    init(azimuth: Double, altitude: Double, exaggeration: Double) {
         self.azimuth = azimuth
         self.altitude = altitude
         self.exaggeration = exaggeration
     }
 
     /// The shade flat ground takes: cos(zenith).
-    public var flat: Double { cos(radians(Angles.rightAngle - altitude)) }
+    var flat: Double { cos(radians(Angles.rightAngle - altitude)) }
 
     /// The shade of every sample of `tile`, 0 (unlit) to 1 (facing the
     /// sun), its cells `cellSize` metres a side. A sample at the edge takes
     /// its missing neighbours from the edge, and its difference across one
     /// cell rather than two, so a tile's border shades as its middle does
     /// and no seam shows where tiles meet.
-    public func shades(of tile: ElevationTile, cellSize: Double) -> [Float] {
+    func shades(of tile: ElevationTile, cellSize: Double) -> [Float] {
         let cell = max(cellSize, .leastNonzeroMagnitude)
         var shades = [Float](repeating: Float(flat), count: tile.width * tile.height)
         func span(_ index: Int, _ count: Int) -> Double {
@@ -69,7 +69,7 @@ public struct Hillshade: Sendable, Equatable {
 
     /// The shade of ground rising `gradientX` metres a metre east and
     /// `gradientY` a metre south — Horn's dz/dx and dz/dy — from 0 to 1.
-    public func shade(gradientX: Double, gradientY: Double) -> Double {
+    func shade(gradientX: Double, gradientY: Double) -> Double {
         let zenith = radians(Angles.rightAngle - altitude)
         let sunAngle = radians(Angles.fullTurn - azimuth + Angles.rightAngle)
         let slope = atan(exaggeration * (gradientX * gradientX + gradientY * gradientY).squareRoot())
@@ -97,34 +97,34 @@ public struct Hillshade: Sendable, Equatable {
 /// two dimensions): each cell of four samples is cut where the level
 /// crosses its edges, the crossing placed by linear interpolation, and a
 /// saddle — two opposite corners above — resolved by the cell's mean.
-public enum ContourTracer {
+enum ContourTracer {
     /// A level's segments: four values each, `x0 y0 x1 y1`, in the tile's
     /// unit square.
-    public struct Contours: Sendable, Equatable {
-        public var interval: Double
+    struct Contours: Sendable, Equatable {
+        var interval: Double
         /// Every `interval` of height but the index ones.
-        public var minor: [Float] = []
+        var minor: [Float] = []
         /// Every fifth interval, drawn heavier, as topographic maps do.
-        public var index: [Float] = []
+        var index: [Float] = []
 
-        public init(interval: Double) {
+        init(interval: Double) {
             self.interval = interval
         }
 
         /// The levels traced: one segment is four values.
-        public var segmentCount: Int { (minor.count + index.count) / ContourTracer.valuesPerSegment }
+        var segmentCount: Int { (minor.count + index.count) / ContourTracer.valuesPerSegment }
     }
 
     /// Four values make a segment: its two ends' x and y.
-    public static let valuesPerSegment = 4
+    static let valuesPerSegment = 4
     /// Every fifth line is an index contour (USGS, *Topographic Map
     /// Symbols*).
-    public static let indexEvery = 5
+    static let indexEvery = 5
 
     /// The contour interval for a tile zoom, in metres: a ladder of round
     /// heights that keeps lines some ten dots apart on a 10 % slope, from
     /// 5 m at street zooms to 1 000 m across a continent.
-    public static func interval(forZoom zoom: Int) -> Double {
+    static func interval(forZoom zoom: Int) -> Double {
         switch zoom {
         case ...6: 1_000
         case 7: 500
@@ -138,7 +138,7 @@ public enum ContourTracer {
     }
 
     /// The contours of `tile` at every multiple of `interval`.
-    public static func trace(_ tile: ElevationTile, interval: Double) -> Contours {
+    static func trace(_ tile: ElevationTile, interval: Double) -> Contours {
         var contours = Contours(interval: interval)
         guard interval > 0, tile.width >= 2, tile.height >= 2 else { return contours }
         let scaleX = 1 / Double(tile.width), scaleY = 1 / Double(tile.height)
@@ -216,7 +216,7 @@ extension ElevationTile {
     /// The grid at `factor` times fewer samples a side, each the mean of
     /// the block it replaces: the smoothing a contour wants before it is
     /// traced, so a line follows the ground and not the noise of its data.
-    public func reduced(by factor: Int) -> ElevationTile {
+    func reduced(by factor: Int) -> ElevationTile {
         guard factor > 1, width >= factor, height >= factor else { return self }
         let reducedWidth = width / factor, reducedHeight = height / factor
         var reduced = [Float](repeating: 0, count: reducedWidth * reducedHeight)

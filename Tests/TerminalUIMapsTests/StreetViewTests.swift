@@ -58,7 +58,7 @@ struct StreetImageryTests {
     }
 
     @Test func mapillaryNeedsATokenAndSendsItInAHeader() async throws {
-        #expect(throws: StreetImageryError.self) { try MapillaryImagery(environment: [:]) }
+        #expect(throws: StreetImageryError.self) { try MapillaryImagery(environment: [:], userAgent: testUserAgent) }
         let transport = StubTransport { request in
             #expect(request.headers["Authorization"] == "OAuth secret")
             #expect(request.url.query?.contains("secret") == false, "the token never goes in a URL")
@@ -72,7 +72,7 @@ struct StreetImageryTests {
             return .json(request.url.lastPathComponent == "images" ? #"{"data":[\#(image)]}"# : image)
         }
         let mapillary = try MapillaryImagery(environment: [MapillaryImagery.tokenVariable: "secret"],
-                                             transport: transport)
+                                             transport: transport, userAgent: testUserAgent)
         let image = try #require(try await mapillary.images(near: Self.paris, within: 60).first)
         #expect(image.attribution == "© ana, Mapillary")
         #expect(image.heading == 90)

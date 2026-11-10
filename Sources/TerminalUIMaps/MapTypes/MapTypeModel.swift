@@ -82,7 +82,7 @@ public struct MapTypeOffer: Sendable {
     /// imagery leading in the United States with Sentinel-2 2016 filling
     /// in, and AWS Terrain Tiles.
     public static func open(basemapIsVector: Bool = true, transport: any HTTPTransport = URLSessionTransport(),
-                            userAgent: String = MapUserAgent.default) -> MapTypeOffer {
+                            userAgent: String) -> MapTypeOffer {
         MapTypeOffer(imagery: [ImageryOption.open(transport: transport, userAgent: userAgent)],
                      terrain: TerrainOption.open(transport: transport, userAgent: userAgent),
                      basemapIsVector: basemapIsVector)
@@ -93,7 +93,7 @@ extension ImageryOption {
     /// USGS's orthoimagery in the United States, Sentinel-2 cloudless 2016
     /// elsewhere.
     public static func open(transport: any HTTPTransport = URLSessionTransport(),
-                            userAgent: String = MapUserAgent.default) -> ImageryOption {
+                            userAgent: String) -> ImageryOption {
         ImageryOption(id: "open", name: "Sentinel-2 + USGS",
                       detail: "Sentinel-2 2016 worldwide (10 m), USGS in the US (1 m)",
                       source: TileSourceChain([RasterTileSource.usgsImagery(transport: transport, userAgent: userAgent),
@@ -106,7 +106,7 @@ extension ImageryOption {
 extension TerrainOption {
     /// AWS Terrain Tiles.
     public static func open(transport: any HTTPTransport = URLSessionTransport(),
-                            userAgent: String = MapUserAgent.default) -> TerrainOption {
+                            userAgent: String) -> TerrainOption {
         TerrainOption(id: "aws", name: "AWS Terrain Tiles", detail: "AWS Terrain Tiles: shaded relief, contours",
                       source: RasterTileSource.awsTerrain(transport: transport, userAgent: userAgent))
     }

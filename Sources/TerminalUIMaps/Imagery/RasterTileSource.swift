@@ -10,7 +10,7 @@ public enum RasterEncoding: String, Sendable, Codable, Equatable {
 
     /// The tile the bytes hold, decoded in pure Swift, so every system
     /// draws the same: PNG or JPEG by their signatures.
-    public func decode(_ bytes: [UInt8]) throws -> MapTile {
+    func decode(_ bytes: [UInt8]) throws -> MapTile {
         let image = try RasterEncoding.image(bytes)
         switch self {
         case .picture: return .raster(image)
@@ -55,7 +55,7 @@ public struct RasterTileSource: EncodedTileSource {
 
     public init(name: String, attribution: String, template: String, encoding: RasterEncoding,
                 zoomRange: ClosedRange<Int>, bounds: GeoRect = TileSourceInfo.world,
-                transport: any HTTPTransport = URLSessionTransport(), userAgent: String = MapUserAgent.default) {
+                transport: any HTTPTransport = URLSessionTransport(), userAgent: String) {
         self.template = template
         self.encoding = encoding
         sourceInfo = TileSourceInfo(name: name, attribution: attribution, zoomRange: zoomRange, bounds: bounds)
@@ -66,7 +66,7 @@ public struct RasterTileSource: EncodedTileSource {
     public func info() async throws -> TileSourceInfo { sourceInfo }
 
     /// The URL of a tile: the template with its zoom, column and row.
-    public func url(for tile: TileID) -> URL? {
+    func url(for tile: TileID) -> URL? {
         URL(string: template
             .replacingOccurrences(of: "{z}", with: String(tile.zoom))
             .replacingOccurrences(of: "{x}", with: String(tile.x))
@@ -99,7 +99,7 @@ extension RasterTileSource {
     /// WMTS `s2cloudless_3857`, tile matrix set `g` (EPSG:3857), row before
     /// column.
     public static func sentinel2Cloudless2016(transport: any HTTPTransport = URLSessionTransport(),
-                                              userAgent: String = MapUserAgent.default) -> RasterTileSource {
+                                              userAgent: String) -> RasterTileSource {
         RasterTileSource(name: "Sentinel-2 cloudless 2016", attribution: ImageryCredits.sentinel2Cloudless2016,
                          template: "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless_3857/default/g/{z}/{y}/{x}.jpg",
                          encoding: .picture, zoomRange: ImageryZooms.sentinel2, transport: transport,
@@ -110,7 +110,7 @@ extension RasterTileSource {
     /// United States only, to about a metre a pixel (z16). Elsewhere the
     /// server answers 404, which reads as no tile.
     public static func usgsImagery(transport: any HTTPTransport = URLSessionTransport(),
-                                   userAgent: String = MapUserAgent.default) -> RasterTileSource {
+                                   userAgent: String) -> RasterTileSource {
         RasterTileSource(name: "USGS orthoimagery", attribution: ImageryCredits.usgs,
                          template: "https://basemap.nationalmap.gov/arcgis/rest/services/USGSImageryOnly/MapServer/tile/{z}/{y}/{x}",
                          encoding: .picture, zoomRange: ImageryZooms.usgs, bounds: ImageryBounds.unitedStates,
@@ -120,7 +120,7 @@ extension RasterTileSource {
     /// AWS Terrain Tiles (registry.opendata.aws/terrain-tiles), Mapzen's
     /// global elevation in Terrarium PNG, z0 to z15. No key.
     public static func awsTerrain(transport: any HTTPTransport = URLSessionTransport(),
-                                  userAgent: String = MapUserAgent.default) -> RasterTileSource {
+                                  userAgent: String) -> RasterTileSource {
         RasterTileSource(name: "AWS Terrain Tiles", attribution: ImageryCredits.awsTerrain,
                          template: "https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png",
                          encoding: .terrarium, zoomRange: ImageryZooms.awsTerrain, transport: transport,
@@ -130,15 +130,15 @@ extension RasterTileSource {
 
 /// The credit each open source's licence requires on screen, as its
 /// provider words it.
-public enum ImageryCredits {
+enum ImageryCredits {
     /// CC BY 4.0, as EOX's WMTS capabilities give it for the 2016 layer.
-    public static let sentinel2Cloudless2016 =
+    static let sentinel2Cloudless2016 =
         "Sentinel-2 cloudless 2016 by EOX IT Services GmbH (Contains modified Copernicus Sentinel data 2016)"
     /// Public domain; the service's own copyright text.
-    public static let usgs = "USGS The National Map: Orthoimagery"
+    static let usgs = "USGS The National Map: Orthoimagery"
     /// The Terrain Tiles' sources, as tilezen/joerd's attribution lists
     /// the ones that ask to be named.
-    public static let awsTerrain = "Terrain Tiles: Mapzen, AWS Open Data; SRTM, GMTED2010, ETOPO1, USGS 3DEP and others"
+    static let awsTerrain = "Terrain Tiles: Mapzen, AWS Open Data; SRTM, GMTED2010, ETOPO1, USGS 3DEP and others"
 }
 
 /// The zooms each open source has real tiles at.

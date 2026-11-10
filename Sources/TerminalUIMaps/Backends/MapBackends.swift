@@ -1,12 +1,51 @@
 import TerminalUIIO
 
-/// The basemap of one tile: vector features, or a picture.
-public enum MapTile: Sendable, Equatable {
-    case vector(VectorTile)
-    /// Pixels covering exactly the tile's square, north up.
-    case raster(ImageBuffer)
-    /// Heights over the tile's square, north up: a terrain source's tile.
-    case elevation(ElevationTile)
+/// One tile of a source, as a ``MapTileSource`` answers it: vector
+/// features, a picture, or heights.
+///
+/// A source of its own makes one from what it fetched or drew:
+///
+/// ```swift
+/// func tile(_ id: TileID) async throws -> MapTile? {
+///     guard let bytes = try await fetch(id) else { return nil }
+///     return try MapTile.vector(decoding: bytes)
+/// }
+/// ```
+public struct MapTile: Sendable, Equatable {
+    enum Content: Sendable, Equatable {
+        case vector(VectorTile)
+        /// Pixels covering exactly the tile's square, north up.
+        case raster(ImageBuffer)
+        /// Heights over the tile's square, north up: a terrain source's tile.
+        case elevation(ElevationTile)
+    }
+
+    let content: Content
+
+    init(_ content: Content) {
+        self.content = content
+    }
+
+    static func vector(_ tile: VectorTile) -> MapTile { MapTile(.vector(tile)) }
+
+    static func elevation(_ tile: ElevationTile) -> MapTile { MapTile(.elevation(tile)) }
+
+    /// A Mapbox Vector Tile (github.com/mapbox/vector-tile-spec, 2.1) in the
+    /// OpenMapTiles schema, gzip-compressed or not, as a vector source
+    /// serves it.
+    public static func vector(decoding bytes: [UInt8]) throws -> MapTile {
+        .vector(try VectorTileDecoder.decode(bytes))
+    }
+
+    /// A picture covering exactly the tile's square, north up: imagery.
+    public static func raster(_ image: ImageBuffer) -> MapTile { MapTile(.raster(image)) }
+
+    /// Heights in Mapzen's Terrarium encoding — metres as red × 256 +
+    /// green + blue ÷ 256 − 32768 — covering the tile's square, north up:
+    /// a terrain source's tile.
+    public static func terrarium(_ image: ImageBuffer) -> MapTile {
+        .elevation(Terrarium.elevation(of: image))
+    }
 }
 
 /// What a tile source offers, and whose data it is.
@@ -18,17 +57,20 @@ public struct TileSourceInfo: Sendable, Equatable {
     public var zoomRange: ClosedRange<Int>
     /// Where the source has data.
     public var bounds: GeoRect
+    /// How its vector tiles' feature ids name the map data's elements.
+    public var featureIdentifiers: FeatureIdentifiers
 
     /// The whole Web Mercator world.
     public static let world = GeoRect(south: -WebMercator.maximumLatitude, west: -Degrees.halfTurn,
                                       north: WebMercator.maximumLatitude, east: Degrees.halfTurn)
 
     public init(name: String, attribution: String, zoomRange: ClosedRange<Int>,
-                bounds: GeoRect = TileSourceInfo.world) {
+                bounds: GeoRect = TileSourceInfo.world, featureIdentifiers: FeatureIdentifiers = .opaque) {
         self.name = name
         self.attribution = attribution
         self.zoomRange = zoomRange
         self.bounds = bounds
+        self.featureIdentifiers = featureIdentifiers
     }
 }
 
@@ -54,7 +96,7 @@ public protocol EncodedTileSource: MapTileSource {
 extension EncodedTileSource {
     public func tile(_ id: TileID) async throws -> MapTile? {
         guard let data = try await tileData(id) else { return nil }
-        return .vector(try VectorTileDecoder.decode(data))
+        return try .vector(decoding: data)
     }
 }
 
@@ -189,7 +231,7 @@ public protocol RouteProvider: Sendable {
 
 extension TileID {
     /// The coordinate of a point of this tile's layer of `extent`.
-    public func coordinate(of point: TilePoint, extent: Int) -> GeoCoordinate {
+    func coordinate(of point: TilePoint, extent: Int) -> GeoCoordinate {
         let count = Double(TileID.tilesPerSide(atZoom: zoom))
         let scale = Double(extent)
         return WebMercator.unproject(WorldPoint(x: (Double(x) + Double(point.x) / scale) / count,
@@ -199,7 +241,7 @@ extension TileID {
     /// The point of this tile's layer of `extent` at a coordinate, which may
     /// lie outside the tile. Rounded to the nearest unit and clamped to the
     /// 32-bit range a vector tile can hold.
-    public func tilePoint(for coordinate: GeoCoordinate, extent: Int) -> TilePoint {
+    func tilePoint(for coordinate: GeoCoordinate, extent: Int) -> TilePoint {
         let world = WebMercator.project(coordinate)
         let count = Double(TileID.tilesPerSide(atZoom: zoom))
         let scale = Double(extent)

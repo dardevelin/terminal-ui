@@ -6,11 +6,20 @@ public protocol MapContent {
     var mapElements: [MapElement] { get }
 }
 
-/// One item of a map's content.
-public enum MapElement: Sendable, Equatable {
-    case marker(Marker)
-    case polyline(MapPolyline)
-    case traveller(TravellerMarker)
+/// One item of a map's content: what a ``Marker``, a ``MapPolyline`` or a
+/// ``TravellerMarker`` adds, gathered in a ``MapContentGroup``.
+public struct MapElement: Sendable, Equatable {
+    enum Kind: Sendable, Equatable {
+        case marker(Marker)
+        case polyline(MapPolyline)
+        case traveller(TravellerMarker)
+    }
+
+    let kind: Kind
+
+    static func marker(_ marker: Marker) -> MapElement { MapElement(kind: .marker(marker)) }
+    static func polyline(_ polyline: MapPolyline) -> MapElement { MapElement(kind: .polyline(polyline)) }
+    static func traveller(_ traveller: TravellerMarker) -> MapElement { MapElement(kind: .traveller(traveller)) }
 }
 
 /// Where the traveller is: an arrow pointing their way on the screen —
@@ -35,7 +44,7 @@ public struct TravellerMarker: MapContent, Sendable, Equatable {
     static let dot = "●"
 
     /// The glyph for a course seen through a camera turned to `bearing`.
-    public static func glyph(course: Double?, bearing: Double) -> String {
+    static func glyph(course: Double?, bearing: Double) -> String {
         guard let course else { return dot }
         let onScreen = GeoMeasure.normalizedBearing(course - bearing)
         let sector = Degrees.fullTurn / Double(arrows.count)

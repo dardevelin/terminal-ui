@@ -30,23 +30,12 @@ enum PlaceDetailsSource: String, Sendable {
     }
 }
 
-extension BackendPreset {
-    /// OpenFreeMap's tiles, and a pack of them, name OpenStreetMap elements
-    /// by planetiler's ids; the sample town's and Apple's pictures do not.
-    var featureIdentifiers: FeatureIdentifiers {
-        switch self {
-        case .openStreetMap, .offline: .openMapTiles
-        case .apple, .sample: .opaque
-        }
-    }
-}
-
 extension MapsModel {
     /// A point of interest clicked on the map: pinned, its card opened.
     @MainActor
     func select(_ point: MapPointOfInterest) {
         guard panel == nil else { return }
-        let place = point.place(featureIdentifiers: backend.featureIdentifiers)
+        let place = point.place
         route = nil
         selected = place
         placeDetails.show(place)

@@ -17,7 +17,7 @@ struct LiveMapTypeTests {
         let id = TileID(containing: coordinate, zoom: zoom)
         let tile = try #require(try await source.tile(id))
         _ = RenderTile(id: id, tile: tile)
-        guard case .raster(let image) = tile else {
+        guard case .raster(let image) = tile.content else {
             Issue.record("expected a picture")
             throw CancellationError()
         }
@@ -46,7 +46,7 @@ struct LiveMapTypeTests {
     @Test func awsTerrainGivesSintrasHills() async throws {
         let id = TileID(containing: Self.sintra, zoom: 13)
         let tile = try #require(try await RasterTileSource.awsTerrain(userAgent: Self.userAgent).tile(id))
-        guard case .elevation(let elevation) = tile else {
+        guard case .elevation(let elevation) = tile.content else {
             Issue.record("expected heights")
             return
         }

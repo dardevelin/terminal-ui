@@ -1,13 +1,21 @@
+import Foundation
 import TerminalUI
 import TerminalUIMaps
 
 extension Backend {
+    /// Where a Mapillary token is read from: the app's choice, which a
+    /// library never makes for it.
+    static let mapillaryTokenVariable = "MAPILLARY_ACCESS_TOKEN"
+
     /// The street imagery each preset offers, its default first: the
     /// sample town's own, Apple's Look Around on Apple, and everywhere
-    /// Panoramax, with Mapillary where a token is set.
+    /// Panoramax, with Mapillary where `MAPILLARY_ACCESS_TOKEN` holds a
+    /// token.
     var streetImagery: [any StreetImagery] {
         var open: [any StreetImagery] = [PanoramaxImagery(userAgent: Backend.userAgent)]
-        if let mapillary = try? MapillaryImagery(userAgent: Backend.userAgent) { open.append(mapillary) }
+        if let token = ProcessInfo.processInfo.environment[Backend.mapillaryTokenVariable], !token.isEmpty {
+            open.append(MapillaryImagery(token: token, userAgent: Backend.userAgent))
+        }
         switch preset {
         case .sample:
             return [SampleStreetImagery()]

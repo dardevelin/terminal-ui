@@ -60,7 +60,7 @@ public struct Maneuver: Sendable, Hashable, Codable {
     /// to 120° a plain turn, beyond that sharp. A reversal OSRM reserves
     /// exactly 180° for is taken here from 170°, as a polyline's last
     /// segment before a U-turn is rarely exact.
-    public static func direction(turningBy angle: Double) -> Direction {
+    static func direction(turningBy angle: Double) -> Direction {
         let magnitude = abs(angle)
         let right = angle >= 0
         switch magnitude {
@@ -76,7 +76,7 @@ public struct Maneuver: Sendable, Hashable, Codable {
     /// `MKRoute.Step` has only a sentence and a polyline — from the bearing
     /// the traveller arrives on and the one they leave on: straight on is
     /// a new name, anything else a turn.
-    public static func inferred(bearingBefore: Double, bearingAfter: Double) -> Maneuver {
+    static func inferred(bearingBefore: Double, bearingAfter: Double) -> Maneuver {
         let direction = direction(turningBy: GeoMeasure.turn(from: bearingBefore, to: bearingAfter))
         return Maneuver(kind: direction == .straight ? .newName : .turn, direction: direction,
                         bearingBefore: bearingBefore, bearingAfter: bearingAfter)

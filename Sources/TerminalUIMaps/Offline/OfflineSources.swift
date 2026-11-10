@@ -10,7 +10,8 @@ public struct OfflineTileSource: EncodedTileSource {
 
     public func info() async throws -> TileSourceInfo {
         TileSourceInfo(name: pack.manifest.name, attribution: pack.manifest.attribution,
-                       zoomRange: pack.manifest.zoomRange, bounds: pack.manifest.bounds)
+                       zoomRange: pack.manifest.zoomRange, bounds: pack.manifest.bounds,
+                       featureIdentifiers: pack.manifest.featureIdentifiers ?? .opaque)
     }
 
     public func tileData(_ id: TileID) async throws -> [UInt8]? {

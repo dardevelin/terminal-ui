@@ -174,7 +174,7 @@ public struct OSMElement: Sendable, Hashable, Codable, CustomStringConvertible {
     /// feature's id is the element's number times ten, plus 1 for a node,
     /// 2 for a way and 3 for a relation
     /// (onthegomap/planetiler, `SourceFeature.vectorTileFeatureId`).
-    public init?(openMapTilesFeatureID id: UInt64) {
+    init?(openMapTilesFeatureID id: UInt64) {
         let number = id / Self.idMultiplier
         guard number > 0 else { return nil }
         switch id % Self.idMultiplier {
@@ -188,10 +188,10 @@ public struct OSMElement: Sendable, Hashable, Codable, CustomStringConvertible {
     private static let idMultiplier: UInt64 = 10
 
     /// `N1528685379`, as Nominatim's `lookup` takes it.
-    public var nominatimID: String { "\(kind.letter)\(number)" }
+    var nominatimID: String { "\(kind.letter)\(number)" }
 
     /// `node(1528685379)`, as an Overpass QL query selects it.
-    public var overpassSelector: String { "\(kind.rawValue)(\(number))" }
+    var overpassSelector: String { "\(kind.rawValue)(\(number))" }
 
     public var description: String { "\(kind.rawValue)/\(number)" }
 }
@@ -209,8 +209,10 @@ public enum PlaceIdentifier: Sendable, Hashable, Codable {
     }
 }
 
-/// How a tile source's feature ids name the map data's own elements.
-public enum FeatureIdentifiers: Sendable, Hashable {
+/// How a tile source's feature ids name the map data's own elements, as
+/// its ``TileSourceInfo`` says: what lets a tap on a point of interest ask
+/// a ``PlaceDetails`` backend after it.
+public enum FeatureIdentifiers: String, Sendable, Hashable, Codable {
     /// planetiler's OpenMapTiles ids, as OpenFreeMap and a pack downloaded
     /// from it have (``OSMElement/init(openMapTilesFeatureID:)``).
     case openMapTiles
@@ -219,9 +221,9 @@ public enum FeatureIdentifiers: Sendable, Hashable {
 }
 
 extension MapPointOfInterest {
-    /// The place a click on the point picks: its name, kind and position,
+    /// The place a tap on the point picks: its name, kind and position,
     /// and, where the source's ids say, the OpenStreetMap element.
-    public func place(featureIdentifiers: FeatureIdentifiers) -> Place {
+    public var place: Place {
         var identifier: PlaceIdentifier?
         if featureIdentifiers == .openMapTiles, let featureID, let element = OSMElement(openMapTilesFeatureID: featureID) {
             identifier = .openStreetMap(element)

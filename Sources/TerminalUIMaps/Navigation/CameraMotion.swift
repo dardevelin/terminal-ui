@@ -6,13 +6,13 @@ import Foundation
 /// (``FollowCamera/camera(for:current:viewport:)``); animating the pose,
 /// not the camera, is what makes the map turn about the traveller rather
 /// than about the middle of the screen.
-public struct FollowPose: Sendable, Equatable {
-    public var focus: GeoCoordinate
+struct FollowPose: Sendable, Equatable {
+    var focus: GeoCoordinate
     /// Degrees clockwise from north, as ``MapCamera/bearing``.
-    public var bearing: Double
-    public var zoom: Double
+    var bearing: Double
+    var zoom: Double
 
-    public init(focus: GeoCoordinate, bearing: Double, zoom: Double) {
+    init(focus: GeoCoordinate, bearing: Double, zoom: Double) {
         self.focus = focus
         self.bearing = bearing
         self.zoom = zoom
@@ -28,56 +28,56 @@ public struct FollowPose: Sendable, Equatable {
 /// smooth the puck and camera the same way (Mapbox Navigation's
 /// `NavigationCameraStateTransition`, MapLibre's `easeTo`); the time
 /// constants are chosen by eye on the sample drive.
-public struct CameraMotionConfiguration: Sendable, Equatable {
+struct CameraMotionConfiguration: Sendable, Equatable {
     /// Whether the camera eases at all; off, each frame takes the target as
     /// it is — the camera as it was before easing, kept for comparison and
     /// for those who want it.
-    public var isSmooth = true
+    var isSmooth = true
     /// Seconds for the bearing to close all but 1/e of a turn.
-    public var bearingSmoothing = 0.45
+    var bearingSmoothing = 0.45
     /// The fastest the map turns, degrees a second: a quarter turn in no
     /// less than about 0.75 s.
-    public var maximumTurnRate = 120.0
+    var maximumTurnRate = 120.0
     /// Seconds for the focus to close all but 1/e of a correction. Short:
     /// the predicted traveller already moves smoothly, and this only takes
     /// up the difference when a fix disagrees with the prediction.
-    public var focusSmoothing = 0.15
+    var focusSmoothing = 0.15
     /// Seconds for the zoom to close all but 1/e of a change: zoom follows
     /// speed, and should not pump with every fix.
-    public var zoomSmoothing = 0.8
+    var zoomSmoothing = 0.8
     /// Farther than this, in metres, the focus jumps rather than flies: a
     /// reroute across town or a new search is not a drive.
-    public var jumpDistance = 2_000.0
+    var jumpDistance = 2_000.0
 
     /// Within these the motion is done and the app may stop drawing frames.
-    public var settledBearing = 0.25
-    public var settledDistance = 0.25
-    public var settledZoom = 0.005
+    var settledBearing = 0.25
+    var settledDistance = 0.25
+    var settledZoom = 0.005
 
-    public init() {}
+    init() {}
 }
 
 /// A following camera's pose, eased frame by frame toward where it should
 /// be. A pure value: the app advances it by each frame's elapsed time —
 /// from a ``TimelineView`` while ``isSettled(toward:)`` is false — and
 /// draws the camera of ``pose``.
-public struct CameraMotion: Sendable, Equatable {
-    public var configuration: CameraMotionConfiguration
-    public private(set) var pose: FollowPose
+struct CameraMotion: Sendable, Equatable {
+    var configuration: CameraMotionConfiguration
+    private(set) var pose: FollowPose
 
-    public init(pose: FollowPose, configuration: CameraMotionConfiguration = CameraMotionConfiguration()) {
+    init(pose: FollowPose, configuration: CameraMotionConfiguration = CameraMotionConfiguration()) {
         self.pose = pose
         self.configuration = configuration
     }
 
     /// Takes the pose as it is, with no motion: after the user moves the
     /// map, so that following resumes from where they left it.
-    public mutating func reset(to pose: FollowPose) {
+    mutating func reset(to pose: FollowPose) {
         self.pose = pose
     }
 
     /// Moves `seconds` of the way toward `target`.
-    public mutating func advance(toward target: FollowPose, by seconds: Double) {
+    mutating func advance(toward target: FollowPose, by seconds: Double) {
         guard seconds > 0 else { return }
         if !configuration.isSmooth || GeoMeasure.distance(pose.focus, target.focus) > configuration.jumpDistance {
             pose = target
@@ -95,7 +95,7 @@ public struct CameraMotion: Sendable, Equatable {
     }
 
     /// Whether the pose is as near `target` as makes no visible difference.
-    public func isSettled(toward target: FollowPose) -> Bool {
+    func isSettled(toward target: FollowPose) -> Bool {
         abs(Self.signedTurn(from: pose.bearing, to: target.bearing)) <= configuration.settledBearing
             && GeoMeasure.distance(pose.focus, target.focus) <= configuration.settledDistance
             && abs(pose.zoom - target.zoom) <= configuration.settledZoom

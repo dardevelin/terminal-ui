@@ -30,6 +30,20 @@ enum Degrees {
 
 /// A latitude/longitude box. It does not cross the antimeridian: `west` is
 /// at most `east`.
+extension GeoCoordinate {
+    /// The great-circle distance to `other`, in metres, on a sphere of the
+    /// Earth's mean radius (IUGG): within half a percent of the ellipsoid's.
+    public func distance(to other: GeoCoordinate) -> Double {
+        GeoMeasure.distance(self, other)
+    }
+
+    /// The initial bearing of the great circle to `other`, degrees
+    /// clockwise from north, 0 ..< 360.
+    public func bearing(to other: GeoCoordinate) -> Double {
+        GeoMeasure.bearing(self, other)
+    }
+}
+
 public struct GeoRect: Sendable, Hashable, Codable {
     public var south: Double
     public var west: Double

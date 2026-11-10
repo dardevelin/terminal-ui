@@ -41,7 +41,7 @@ Data from <a href=\\"https://www.openstreetmap.org/copyright\\" target=\\"_blank
     @Test func fetchesTilesFromTheTemplate() async throws {
         let transport = try stub()
         let tile = try await source(transport).tile(TileID(zoom: 14, x: 7812, y: 6233))
-        guard case .vector(let vector) = tile else {
+        guard case .vector(let vector) = tile?.content else {
             Issue.record("expected a vector tile, got \(String(describing: tile))")
             return
         }

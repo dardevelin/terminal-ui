@@ -14,7 +14,7 @@ import TerminalUIIO
 /// ```swift
 /// let imagery = TileSourceChain([RasterTileSource.usgsImagery(), RasterTileSource.sentinel2Cloudless2016()])
 /// ```
-public actor TileSourceChain: MapTileSource {
+actor TileSourceChain: MapTileSource {
     private let sources: [any MapTileSource]
     private let name: String?
     private var descriptions: [TileSourceInfo]?
@@ -22,7 +22,7 @@ public actor TileSourceChain: MapTileSource {
     private var ancestorOrder: [AncestorKey] = []
 
     /// How many ancestor tiles are kept to cut deeper tiles from.
-    public static let ancestorCapacity = 16
+    static let ancestorCapacity = 16
 
     private struct AncestorKey: Hashable {
         var source: Int
@@ -33,12 +33,12 @@ public actor TileSourceChain: MapTileSource {
     ///   - sources: In the order they are asked, the first to answer wins.
     ///   - name: What the chain is called; its sources' names joined
     ///     unless given.
-    public init(_ sources: [any MapTileSource], name: String? = nil) {
+    init(_ sources: [any MapTileSource], name: String? = nil) {
         self.sources = sources
         self.name = name
     }
 
-    public func info() async throws -> TileSourceInfo {
+    func info() async throws -> TileSourceInfo {
         let infos = try await describe()
         guard let first = infos.first else {
             throw MapServiceError.unsupported("a chain of no sources")
@@ -54,7 +54,7 @@ public actor TileSourceChain: MapTileSource {
                               zoomRange: shallowest...deepest, bounds: bounds)
     }
 
-    public func tile(_ id: TileID) async throws -> MapTile? {
+    func tile(_ id: TileID) async throws -> MapTile? {
         let infos = try await describe()
         var lastError: (any Error)?
         for (index, source) in sources.enumerated() {
@@ -117,12 +117,12 @@ extension MapTile {
     /// covers: a picture's pixels or a terrain's heights, at the samples
     /// the share has (at least one a side). A vector tile is not cut: it
     /// is drawn over-zoomed instead, and answers nil.
-    public func descendant(_ id: TileID, of ancestor: TileID) -> MapTile? {
+    func descendant(_ id: TileID, of ancestor: TileID) -> MapTile? {
         let shift = id.zoom - ancestor.zoom
         guard shift >= 0, id.ancestor(atZoom: ancestor.zoom) == ancestor else { return nil }
         let span = 1 << shift
         let column = id.x - ancestor.x << shift, row = id.y - ancestor.y << shift
-        switch self {
+        switch content {
         case .vector:
             return nil
         case .raster(let image):

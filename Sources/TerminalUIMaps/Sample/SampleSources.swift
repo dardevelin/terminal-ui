@@ -2,18 +2,22 @@
 /// zoom: no network, the tests' data and a first launch's.
 public struct SampleTileSource: EncodedTileSource {
     /// The zooms it serves: all a camera can take.
-    public static let zoomRange = 0...22
+    static let zoomRange = 0...22
 
     /// The units around a tile its features are kept to, as tile servers
     /// keep a buffer so strokes join across tile edges. OpenMapTiles' tools
     /// default to 4 pixels of a 256-pixel tile: 64 units of 4096.
-    public static let buffer = 64
+    static let buffer = 64
 
     private let gzipped: Bool
 
+    public init() {
+        self.init(gzipped: false)
+    }
+
     /// - Parameter gzipped: whether to serve each tile gzip-compressed, as
     ///   OpenFreeMap's server does.
-    public init(gzipped: Bool = false) {
+    init(gzipped: Bool) {
         self.gzipped = gzipped
     }
 
@@ -30,7 +34,7 @@ public struct SampleTileSource: EncodedTileSource {
 
     /// The town's features cut to a tile, or nil for a tile the town does
     /// not reach.
-    public static func tile(for id: TileID) -> VectorTile? {
+    static func tile(for id: TileID) -> VectorTile? {
         guard id.isValid, zoomRange.contains(id.zoom), id.bounds.intersects(SampleTown.bounds) else { return nil }
         let extent = VectorLayer.defaultExtent
         let clipper = TileClipper(extent: extent, buffer: buffer)
