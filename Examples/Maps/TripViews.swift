@@ -107,9 +107,15 @@ struct LocationPanel: TerminalView {
             .onKeyPress { event in
                 guard event.key == .enter, let id = maps.trip.locationSelection,
                       let choice = maps.trip.choices.first(where: { $0.id == id }) else { return .ignored }
+                // A replay chosen here navigates its route, as one named
+                // with `--location` does.
                 MainActor.assumeIsolated {
-                    maps.trip.startLocation(choice.spec)
                     maps.panel = nil
+                    if case .gpx = choice.spec {
+                        Task { @MainActor in await maps.trip.launch(choice.spec) }
+                    } else {
+                        maps.trip.startLocation(choice.spec)
+                    }
                 }
                 return .handled
             }

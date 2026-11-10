@@ -16,6 +16,9 @@ is now made here, from the tutorial's own code steps and the tapes under
 - **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``, once
   ``check_vhs_compat.py`` has shown vhs draws every Storybook page as the
   framework does.
+- **The maps film**, ``assets/maps.gif``: ``assets/maps.tape``, the Maps
+  example on its sample town, copied into TerminalUIMaps' documentation
+  catalog as well. Not a Storybook page, so outside ``check_vhs_compat.py``.
 
 The steps are built as one package of executables in
 ``.build-recordings/tutorial``, as ``tools/terminalui/tutorial.py`` writes
@@ -23,7 +26,7 @@ it, against this checkout.
 
 Run::
 
-    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|all] [--only STEP|CHAPTER]
+    python3 tools/scripts/record_media.py [previews|gifs|cards|readme|maps|all] [--only STEP|CHAPTER]
 
 Needs vhs (with ttyd and ffmpeg) and ImageMagick.
 """
@@ -32,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -183,6 +187,22 @@ def make_card(chapter: int) -> None:
          "-compose", "Over", "-composite", str(card)])
 
 
+# Where the maps film is shown besides the README: the getting-started
+# article of TerminalUIMaps' catalog, which embeds it by name.
+MAPS_GIF = REPO_ROOT / "assets" / "maps.gif"
+MAPS_DOCS_GIF = REPO_ROOT / "Sources" / "TerminalUIMaps" / "TerminalUIMaps.docc" / "Resources" / "maps.gif"
+
+
+def record_maps() -> None:
+    """The Maps example's film: its release build, recorded, and copied
+    into the documentation catalog."""
+    # Apart from .build, whose lock a developer's own `swift run` holds.
+    run(["swift", "build", "-c", "release", "--product", "Maps", "--scratch-path", str(WORK / "app")])
+    run_vhs("assets/maps.tape")
+    MAPS_DOCS_GIF.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(MAPS_GIF, MAPS_DOCS_GIF)
+
+
 def wanted(step: Step, only: str | None) -> bool:
     return only in (None, step.name, str(step.chapter))
 
@@ -190,7 +210,7 @@ def wanted(step: Step, only: str | None) -> bool:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("what", nargs="?", default="all",
-                        choices=["previews", "gifs", "cards", "readme", "all"])
+                        choices=["previews", "gifs", "cards", "readme", "maps", "all"])
     parser.add_argument("--only", help="one step (tasks2-03-01) or chapter number")
     parser.add_argument("--no-build", action="store_true", help="reuse the last build of the steps")
     args = parser.parse_args()
@@ -218,6 +238,8 @@ def main() -> int:
         run([sys.executable, "tools/scripts/check_vhs_compat.py", str(WORK / "app" / "debug")])
         run_vhs("assets/demo.tape")
         run_vhs("assets/debug.tape")
+    if args.what in ("maps", "all"):
+        record_maps()
     return 0
 
 
