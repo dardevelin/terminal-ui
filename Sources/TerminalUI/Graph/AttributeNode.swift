@@ -1,3 +1,5 @@
+import Foundation
+
 /// Base class for all nodes in the attribute graph.
 /// Persistent across frames — created once, updated in place.
 ///
@@ -285,7 +287,7 @@ public class AttributeNode: @unchecked Sendable {
 
     /// Scrolls this view one wheel step toward the given arrow, and says
     /// whether it moved; see `View.onScrollWheel`.
-    var _wheelHandler: ((Key) -> Bool)?
+    var _wheelHandler: ((ScrollWheelEvent) -> Bool)?
 
     /// Memoised: true iff this node OR any descendant has `.viewBody`
     /// kind. Filled bottom-up at the end of `AttributeGraph.update(from:)`
@@ -327,6 +329,30 @@ public class AttributeNode: @unchecked Sendable {
     /// child (`node.children.first`) before deciding whether to update or
     /// rebuild (e.g. on the very first render before any seed exists).
     public var geometryRebuilder: ((Size, AttributeNode) -> Void)?
+
+    /// The canvas this node draws, or nil for any other node.
+    ///
+    /// A canvas is a `.primitive(.empty)` leaf carrying its renderer here:
+    /// it measures to nothing and draws nothing of its own, as `.empty`
+    /// does, and the renderer and layout look here for the rest. A case of
+    /// its own in the public `PrimitiveContent` would break every switch
+    /// over it outside the framework.
+    var canvas: Canvas?
+
+    /// A canvas's planes, kept from frame to frame so drawing it reuses
+    /// their storage; nil for any other node.
+    var canvasRaster: CanvasRaster?
+
+    /// The date a `TimelineView` last drew at: what a paused animation keeps
+    /// showing. Nil for any other node.
+    var timelineDate: Date?
+
+    #if DEBUG
+    /// What the debug tools call this node: its kind's name, or `Canvas`.
+    var debugName: String {
+        canvas == nil ? kind.debugName : "Canvas"
+    }
+    #endif
 
     /// What a reader node takes from its container, or nil for any other
     /// node. Set alongside ``geometryRebuilder``; the passes read it to decide

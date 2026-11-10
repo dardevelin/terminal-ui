@@ -1175,6 +1175,23 @@ def storybook_braillecanvas_renders_curve(app: Client) -> None:
     assert_true(has_braille, "BrailleCanvas didn't render any braille glyphs (U+2800–U+28FF)")
 
 
+def storybook_canvas_draws_every_plane(app: Client) -> None:
+    """`Canvas` page: the fills' half blocks, the strokes' braille dots and
+    the label all reach the preview, and the label is the canvas's to the
+    pointer."""
+    app.goto_page("Canvas")
+    preview = app.preview_cells()
+    text = preview.text()
+    assert_true(any(0x2800 < ord(ch) <= 0x28FF for ch in text),
+                f"no braille strokes in the Canvas preview:\n{text}")
+    assert_true("▀" in text or "▄" in text, f"no half-block fill edge in the Canvas preview:\n{text}")
+    label_row = next((row for row, line in enumerate(preview.rows) if "lake" in line), None)
+    assert_true(label_row is not None, f"the label is missing from the Canvas preview:\n{text}")
+    x = preview.x + preview.rows[label_row].index("lake")
+    probe = app.probe(x, preview.y + label_row)
+    assert_true(probe.node_kind == "Canvas", f"the label should hit the canvas, hit {probe.node_kind!r}")
+
+
 def storybook_disclosure_group_folds_its_content(app: Client) -> None:
     """`DisclosureGroup` page: Enter on the label folds the files away and
     the line below moves up; Right unfolds them."""
@@ -1233,6 +1250,16 @@ def storybook_morseticker_scrolls_on_its_own(app: Client) -> None:
     first = app.preview_text()
     assert_true(app.wait_until(lambda client: client.preview_text() != first),
                 f"the MorseTicker preview did not move on its own: {first!r}")
+
+
+def storybook_timelineview_draws_on_its_own(app: Client) -> None:
+    """The TimelineView page's bar moves with no key pressed and no timer
+    declared: the animation schedule alone brings the app round."""
+    app.goto_page("TimelineView")
+    first = app.preview_text()
+    assert_true("[" in first and "ticks once a second" in first, f"the TimelineView page is empty:\n{first}")
+    assert_true(app.wait_until(lambda client: client.preview_text() != first),
+                f"the TimelineView preview did not move on its own:\n{first}")
 
 
 # The README's recording: assets/demo.tape's 1020x700 window at font size 15,
@@ -3487,6 +3514,7 @@ CASES: list[SmokeCase] = [
     SmokeCase("storybook.sparkline_renders_line", "Storybook", storybook_sparkline_renders_line),
     SmokeCase("storybook.heatmap_renders_grid", "Storybook", storybook_heatmap_renders_grid),
     SmokeCase("storybook.braillecanvas_renders_curve", "Storybook", storybook_braillecanvas_renders_curve),
+    SmokeCase("storybook.canvas_draws_every_plane", "Storybook", storybook_canvas_draws_every_plane),
     SmokeCase("storybook.dotmatrixtext_renders_HELLO", "Storybook", storybook_dotmatrixtext_renders_HELLO),
     SmokeCase("storybook.hover_follows_content_scrolled_under_the_pointer", "Storybook",
               storybook_hover_follows_content_scrolled_under_the_pointer),
@@ -3520,6 +3548,7 @@ CASES: list[SmokeCase] = [
               storybook_inspector_opens_beside_the_content_and_closes),
     SmokeCase("storybook.morseticker_renders_sos", "Storybook", storybook_morseticker_renders_sos),
     SmokeCase("storybook.morseticker_scrolls_on_its_own", "Storybook", storybook_morseticker_scrolls_on_its_own),
+    SmokeCase("storybook.timelineview_draws_on_its_own", "Storybook", storybook_timelineview_draws_on_its_own),
     SmokeCase("storybook.every_page_fits_the_recording_window", "Storybook",
               storybook_every_page_fits_the_recording_window),
     SmokeCase("storybook.every_page_reaches_the_terminal_as_drawn", "Storybook",

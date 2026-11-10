@@ -9,6 +9,9 @@ struct PointerPress {
     /// `ClickCounter`.
     var count = 1
     var modifiers: KeyModifiers = []
+    /// Where the press landed in the view whose gesture takes it, set as
+    /// that view is found.
+    var location: Point?
 }
 
 /// Counts presses into clicks the way platforms do — AppKit's
@@ -97,6 +100,50 @@ public struct TapGesture {
     }
 }
 
+/// A tap that says where it landed: SwiftUI's `SpatialTapGesture`.
+///
+/// ```swift
+/// Canvas { context, size in drawPins(&context) }
+///     .gesture(SpatialTapGesture().modifiers(.ctrl).onEnded { tap in
+///         pins.append(tap.location)
+///     })
+/// ```
+///
+/// It waits for clicks as a ``TapGesture`` does — a count in a row, with
+/// modifiers held — and takes its place among the view's taps in the same
+/// way. Its location is in cells, from the tapped view's top-left corner.
+public struct SpatialTapGesture {
+    /// Where a tap landed.
+    public struct Value: Equatable, Sendable {
+        /// In cells, from the view's top-left corner.
+        public let location: Point
+    }
+
+    var tap: TapGesture
+
+    /// A gesture that waits for `count` clicks in a row.
+    public init(count: Int = 1) {
+        tap = TapGesture(count: count)
+    }
+
+    /// How many clicks in a row the gesture waits for.
+    public var count: Int { tap.count }
+
+    /// The gesture with `action` to run, given where the tap landed.
+    public func onEnded(_ action: @escaping (Value) -> Void) -> SpatialTapGesture {
+        var gesture = self
+        gesture.tap.action = { press in action(Value(location: press.location ?? Point(x: press.x, y: press.y))) }
+        return gesture
+    }
+
+    /// The gesture, taking only clicks made with exactly `modifiers` held.
+    public func modifiers(_ modifiers: KeyModifiers) -> SpatialTapGesture {
+        var gesture = self
+        gesture.tap = tap.modifiers(modifiers)
+        return gesture
+    }
+}
+
 /// Payload of `.gesture(_:)` for a ``TapGesture``.
 public struct TapGestureModifier: ViewModifier {
     @_documentation(visibility: internal)
@@ -110,6 +157,12 @@ extension TerminalView {
     /// count of clicks in a row, with modifiers held. See ``TapGesture``.
     public func gesture(_ gesture: TapGesture) -> ModifiedView<Self, TapGestureModifier> {
         ModifiedView(content: self, modifier: TapGestureModifier(gesture: gesture))
+    }
+
+    /// Run `gesture`'s action with where the view was tapped. See
+    /// ``SpatialTapGesture``.
+    public func gesture(_ gesture: SpatialTapGesture) -> ModifiedView<Self, TapGestureModifier> {
+        self.gesture(gesture.tap)
     }
 
     /// Run `action` with the press when the view is clicked with the

@@ -366,6 +366,9 @@ public final class DebugPanel {
             case .divider:
                 kind = "div"
                 detail = ""
+            case .empty where node.canvas != nil:
+                kind = "cnv"
+                detail = "\(node.rect.width)x\(node.rect.height)"
             case .empty:
                 kind = "emp"
                 detail = ""

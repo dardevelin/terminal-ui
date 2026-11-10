@@ -37,7 +37,7 @@ public final class FocusEngine: @unchecked Sendable {
     /// The drag a left press began, until the button comes up.
     private var dragSession: DragSession?
     /// Views that scroll themselves under the wheel; see `routeWheel`.
-    private var wheelHandlers: [NodeID: (Key) -> Bool] = [:]
+    private var wheelHandlers: [NodeID: (ScrollWheelEvent) -> Bool] = [:]
 
     /// Registered hover handlers — keyed by NodeID. Fired on hover
     /// state transitions only (cursor enters or leaves the rect).
@@ -668,9 +668,12 @@ public final class FocusEngine: @unchecked Sendable {
         steps: Int = 1
     ) -> Bool {
         let wantedAxis: ScrollAxis
+        let direction: ScrollWheelEvent.Direction
         switch event.key {
-        case .up, .down: wantedAxis = .vertical
-        case .left, .right: wantedAxis = .horizontal
+        case .up: (wantedAxis, direction) = (.vertical, .up)
+        case .down: (wantedAxis, direction) = (.vertical, .down)
+        case .left: (wantedAxis, direction) = (.horizontal, .left)
+        case .right: (wantedAxis, direction) = (.horizontal, .right)
         default: return false
         }
         let start: AttributeNode?
@@ -688,7 +691,10 @@ public final class FocusEngine: @unchecked Sendable {
         var node = start
         while let current = node {
             if let handler = wheelHandlers[current.id] {
-                movers.append { handler(event.key) }
+                let step = ScrollWheelEvent(
+                    direction: direction,
+                    location: Point(x: x - current.rect.x, y: y - current.rect.y))
+                movers.append { handler(step) }
             }
             if case .layout(let info) = current.kind, case .scroll(let axis) = info.kind, axis == wantedAxis {
                 movers.append {
@@ -1034,7 +1040,9 @@ public final class FocusEngine: @unchecked Sendable {
     /// its `.onClick` handler.
     private func pressAction(at node: AttributeNode, for press: PointerPress) -> (() -> Void)? {
         if let tap = tapHandlers[node.id], tap.accepts(press) {
-            return { tap.action(press) }
+            var located = press
+            located.location = Point(x: press.x - node.rect.x, y: press.y - node.rect.y)
+            return { [located] in tap.action(located) }
         }
         guard press.button == .left, let handler = clickHandlers[node.id] else { return nil }
         let (x, y) = (press.x - node.rect.x, press.y - node.rect.y)
@@ -1136,7 +1144,7 @@ public final class FocusEngine: @unchecked Sendable {
 
     /// Register a wheel handler for a node. Called during graph construction
     /// by the framework's self-scrolling views.
-    func registerWheelHandler(for nodeID: NodeID, handler: @escaping (Key) -> Bool) {
+    func registerWheelHandler(for nodeID: NodeID, handler: @escaping (ScrollWheelEvent) -> Bool) {
         wheelHandlers[nodeID] = handler
     }
 

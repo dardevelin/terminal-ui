@@ -353,7 +353,7 @@ public struct DiffView: TerminalView {
             content
                 .focusable()
                 .onKeyPress(scrollHandler())
-                .onScrollWheel(wheelHandler())
+                .onScrollWheel { [scroll = wheelHandler()] step in scroll(step.key) }
         } else {
             content
         }

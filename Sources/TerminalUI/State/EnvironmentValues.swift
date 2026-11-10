@@ -125,6 +125,9 @@ public struct EnvironmentValues: Sendable {
     /// Used by `DotMatrixText`, `MorseTicker`, and other fixed-geometry views
     /// to prevent measurement-driven height inflation at narrow widths.
     public var textWrap: TextWrapMode = .wrap
+    /// What a ``Canvas`` in this subtree strokes at. Default `.braille`;
+    /// set with ``TerminalView/canvasResolution(_:)``.
+    public var canvasResolution: CanvasResolution = .braille
     /// Whether arrow keys are allowed to move keyboard focus between views
     /// when the focused view didn't handle them. Default `false` — only
     /// Tab / Shift+Tab move focus, arrows stay within the focused view.
@@ -180,6 +183,10 @@ public struct EnvironmentValues: Sendable {
     /// The focused cursor's flash at a wall — see ``CursorFlash``. A running
     /// app supplies one; with none, `.bounce` lights nothing.
     public var cursorFlash: CursorFlash?
+
+    /// When each `TimelineView` draws again. A running app supplies one;
+    /// with none, a timeline draws its current moment once.
+    var timelineScheduler: TimelineScheduler?
 
     /// Which key performs which text-editing command in this subtree's
     /// inputs. Set with `.textKeymap(_:)`.

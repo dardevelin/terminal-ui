@@ -215,4 +215,41 @@ struct InspectorWheelTests {
         .modal(isPresented: true) { Text("dialog").focusable() })
         #expect(!screen.wheel(.down, at: 0, 0))
     }
+
+    @Test func aViewTakingTheWheelHearsWhereThePointerIsWithinIt() {
+        let events = WheelEvents()
+        let screen = Screen(VStack(spacing: 0) {
+            Text("above")
+            Text("above")
+            HStack(spacing: 0) {
+                Text("left ")
+                Text("map here").onScrollWheel { event in
+                    events.received.append(event)
+                    return true
+                }
+            }
+        })
+        #expect(screen.wheel(.up, at: 7, 2))
+        #expect(screen.wheel(.right, at: 5, 2))
+        #expect(events.received == [
+            ScrollWheelEvent(direction: .up, location: Point(x: 2, y: 0)),
+            ScrollWheelEvent(direction: .right, location: Point(x: 0, y: 0)),
+        ])
+    }
+
+    @Test func aViewThatDoesNotMoveForTheWheelPassesItOutward() {
+        let screen = Screen(height: 3, ScrollView {
+            VStack(spacing: 0) {
+                ForEachWithID(0..<10, id: \.self) { row in
+                    Text("row \(row)").onScrollWheel { _ in false }
+                }
+            }
+        })
+        #expect(screen.wheel(.down, at: 1, 0))
+        #expect(screen.scrollNodes().first?.scrollOffset ?? 0 > 0)
+    }
+}
+
+private final class WheelEvents {
+    var received: [ScrollWheelEvent] = []
 }

@@ -81,7 +81,7 @@ public enum GraphRenderer {
         node._resolvedEnv = environment
 
         #if DEBUG
-        DevTracer.shared.traceLayoutPlace(node.kind.debugName, rect: context.rect)
+        DevTracer.shared.traceLayoutPlace(node.debugName, rect: context.rect)
         #endif
 
         // Propagate proposed size to this node's subtree so `GeometryReader`
@@ -110,7 +110,11 @@ public enum GraphRenderer {
                 let droppedCells = bufPtr.pointee.withClipMeasured(context.rect) { buffer in
                     switch node.kind {
                     case .primitive(let content):
-                        renderPrimitive(content, into: &buffer, context: context)
+                        if let canvas = node.canvas {
+                            renderCanvas(canvas, node: node, into: &buffer, context: context)
+                        } else {
+                            renderPrimitive(content, into: &buffer, context: context)
+                        }
 
                     case .layout(let info):
                         renderLayout(node, info: info, into: &buffer, context: context)
@@ -167,7 +171,7 @@ public enum GraphRenderer {
                     } else {
                         DebugStream.shared.emitWarning(
                             .componentOverflow,
-                            message: "node \(node.kind.debugName) wrote \(droppedCells) cell(s) outside its assigned rect (\(context.rect.width)×\(context.rect.height) at (\(context.rect.x), \(context.rect.y))). Layout bug? Suppress with `.overflowOK()` if intentional."
+                            message: "node \(node.debugName) wrote \(droppedCells) cell(s) outside its assigned rect (\(context.rect.width)×\(context.rect.height) at (\(context.rect.x), \(context.rect.y))). Layout bug? Suppress with `.overflowOK()` if intentional."
                         )
                     }
                 }
@@ -686,7 +690,7 @@ public enum GraphRenderer {
     /// axis: its content decides its height, so a stack measures it. A stack
     /// holding any of these is one too.
     private static func isVFlexChild(_ node: AttributeNode) -> Bool {
-        if node.readerSizing == .proposal { return true }
+        if node.readerSizing == .proposal || node.canvas != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.vertical) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.vertical) { return true }
@@ -943,7 +947,7 @@ public enum GraphRenderer {
     /// `.frame(maxWidth: .infinity)`, and `GeometryReader` all qualify in
     /// HStacks — see `isVFlexChild` for why the reader is here.
     private static func isFlexChild(_ node: AttributeNode) -> Bool {
-        if node.geometryRebuilder != nil { return true }
+        if node.geometryRebuilder != nil || node.canvas != nil { return true }
         if case .primitive(.spacer) = node.kind { return true }
         if case .layout(let info) = node.kind, case .scroll(.horizontal) = info.kind { return true }
         if case .modifier(.flexible(let axes, _)) = node.kind, axes.contains(.horizontal) { return true }

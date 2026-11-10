@@ -78,22 +78,68 @@ public struct OnPasteModifier: ViewModifier {
     public let handler: (_ payload: String) -> Void
 }
 
-/// A view that scrolls itself — a `List`, a `DiffView` — taking the wheel.
-/// Framework-internal: an app's own scrolling content goes in a
-/// `ScrollView`, which takes the wheel without asking.
-struct OnScrollWheelModifier: ViewModifier {
-    typealias ModifierType = Bool
+/// One step of the mouse wheel over a view.
+public struct ScrollWheelEvent: Equatable, Sendable {
+    /// Which way the wheel turned. A terminal reports a horizontal wheel,
+    /// or a vertical one with Shift held, as `.left` and `.right`.
+    public enum Direction: Equatable, Sendable {
+        /// Away from the user: a map zooms in, a list scrolls back.
+        case up
+        /// Toward the user: a map zooms out, a list scrolls on.
+        case down
+        /// A horizontal wheel, or a vertical one with Shift, turned left.
+        case left
+        /// A horizontal wheel, or a vertical one with Shift, turned right.
+        case right
+    }
+
+    /// Which way the wheel turned.
+    public let direction: Direction
+    /// Where the pointer was, in cells relative to the view's top-left
+    /// corner.
+    public let location: Point
+
+    /// A wheel step toward `direction` with the pointer at `location`.
+    public init(direction: Direction, location: Point) {
+        self.direction = direction
+        self.location = location
+    }
+
+    /// The arrow key the step scrolls like.
+    var key: Key {
+        switch direction {
+        case .up: .up
+        case .down: .down
+        case .left: .left
+        case .right: .right
+        }
+    }
+}
+
+/// Payload of `.onScrollWheel(perform:)`: a view that takes the wheel
+/// itself rather than scrolling inside a ``ScrollView``.
+public struct OnScrollWheelModifier: ViewModifier {
+    @_documentation(visibility: internal)
+    public typealias ModifierType = Bool
     /// One step toward `.up`, `.down`, `.left` or `.right`; returns whether
     /// anything moved, so a view at its end passes the wheel outward.
-    let handler: (Key) -> Bool
+    let handler: (ScrollWheelEvent) -> Bool
 }
 
 extension TerminalView {
-    /// Take the wheel over this view: see `OnScrollWheelModifier`. Never
-    /// delivered as a key, so `.onKeyPress` handlers — this view's and its
-    /// ancestors' — cannot mistake it for one.
-    func onScrollWheel(_ handler: @escaping (Key) -> Bool) -> ModifiedView<Self, OnScrollWheelModifier> {
-        ModifiedView(content: self, modifier: OnScrollWheelModifier(handler: handler))
+    /// Take the wheel over this view: a map zooming about the pointer, a
+    /// dial turning. Each step reaches `action` with where the pointer is;
+    /// return whether anything moved, so that a view with nothing left to
+    /// do — a list at its end — passes the wheel to the scrolling view
+    /// around it. Never delivered as a key, so `.onKeyPress` handlers,
+    /// this view's and its ancestors', cannot mistake it for one.
+    ///
+    /// Scrolling content does not need this: put it in a ``ScrollView``,
+    /// which takes the wheel without asking.
+    public func onScrollWheel(
+        perform action: @escaping (ScrollWheelEvent) -> Bool
+    ) -> ModifiedView<Self, OnScrollWheelModifier> {
+        ModifiedView(content: self, modifier: OnScrollWheelModifier(handler: action))
     }
 }
 

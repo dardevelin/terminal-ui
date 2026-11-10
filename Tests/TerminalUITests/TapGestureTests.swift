@@ -76,6 +76,18 @@ struct TapGestureTests {
         #expect(log.entries == ["add", "select", "select"])
     }
 
+    @Test func aSpatialTapSaysWhereInTheViewItLanded() {
+        var locations: [Point] = []
+        let screen = Screen(VStack(spacing: 0) {
+            Text("header")
+            Text("map here")
+                .gesture(SpatialTapGesture().modifiers(.ctrl).onEnded { locations.append($0.location) })
+        })
+        screen.press(5, 1, modifiers: .ctrl)
+        screen.press(2, 1)
+        #expect(locations == [Point(x: 5, y: 0)], "a row down the screen is the view's first")
+    }
+
     @Test func onClickStillTakesEveryLeftClick() {
         let log = Log()
         let screen = Screen(Text("row").onClick { _, _ in log.entries.append("click") })

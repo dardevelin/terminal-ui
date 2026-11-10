@@ -785,7 +785,11 @@ class Client:
                 f"swallowing the Down key"
             )
 
-    def goto_page(self, name: str, *, max_steps: int = 80) -> None:
+    # More presses than Storybook has pages, so a page at either end of the
+    # sidebar is reached from the other.
+    GOTO_PAGE_STEPS = 160
+
+    def goto_page(self, name: str, *, max_steps: int = GOTO_PAGE_STEPS) -> None:
         """Drive Storybook's sidebar by **page name** (the bold cyan
         title at the top of the right pane). Presses Down until the
         title equals ``name``; if already past it, presses Up.
@@ -795,20 +799,25 @@ class Client:
         declaration, where an index encodes the enum order at
         test-write time and breaks silently when the order changes.
 
+        A page the sidebar shows above the current one is reached by going
+        up first: a sweep down past it to the foot of the sidebar drew every
+        page on the way, the animated ones at the end included, and grew
+        a recorded session past what a test can render in its time.
+
         Raises ``RuntimeError`` if the page can't be reached within
         ``max_steps`` presses in either direction."""
-        if self.storybook_page_title() == name:
+        current = self.storybook_page_title()
+        if current == name:
             return
-        for _ in range(max_steps):
-            self.send_key("down")
-            if self.storybook_page_title() == name:
-                return
-        # Forward sweep didn't find it — try backward (in case we
-        # started below the target page).
-        for _ in range(max_steps):
-            self.send_key("up")
-            if self.storybook_page_title() == name:
-                return
+        rows = self.storybook_sidebar_rows()
+        here = next((index for index, row in enumerate(rows) if self.sidebar_names(row, current)), None)
+        there = next((index for index, row in enumerate(rows) if self.sidebar_names(row, name)), None)
+        directions = ("up", "down") if here is not None and there is not None and there < here else ("down", "up")
+        for direction in directions:
+            for _ in range(max_steps):
+                self.send_key(direction)
+                if self.storybook_page_title() == name:
+                    return
         raise RuntimeError(
             f"goto_page({name!r}): could not reach page within {max_steps} steps; "
             f"current title={self.storybook_page_title()!r}"

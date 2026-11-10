@@ -488,6 +488,9 @@ public final class DebugStream: Sendable {
             case .divider:
                 kind = "divider"
                 value = ""
+            case .empty where node.canvas != nil:
+                kind = "canvas"
+                value = "\(node.rect.width)x\(node.rect.height)"
             case .empty:
                 kind = "empty"
                 value = ""

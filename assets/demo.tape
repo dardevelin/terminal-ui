@@ -1,8 +1,9 @@
 # vhs script for the README demo GIF: a walk through the Storybook sidebar.
 # Regenerate with:  python3 tools/scripts/record_media.py readme
 # Pauses land on the showpiece pages (SplitView, Form, Table, DiffView, the
-# markdown and code views, the charts); the brisk steps between them keep the
-# tour honest — every page shown is a real Storybook page, in sidebar order.
+# markdown and code views, the charts and the Canvas); the brisk steps
+# between them keep the tour honest — every page shown is a real Storybook
+# page, in sidebar order.
 # The counts follow PageID's order in Examples/Storybook/StorybookPage.swift,
 # and each run of presses names the page it lands on in a `# page:` line;
 # tools/tests/test_demo_tape.py replays the presses and fails on a page added
@@ -29,7 +30,7 @@ Down@250ms 8
 Sleep 2s
 
 # Primitives — brisk, land on Button
-Down@200ms 9
+Down@200ms 10
 # page: button
 Sleep 1.2s
 
@@ -58,7 +59,7 @@ Down
 # page: codeView
 Sleep 2s
 
-# Charts — BarChart through MorseTicker (the ticker animates)
+# Charts — BarChart through MorseTicker, the Canvas among them (the ticker animates)
 Down
 # page: barChart
 Sleep 2s
@@ -71,6 +72,9 @@ Sleep 1.5s
 Down
 # page: brailleCanvas
 Sleep 1.5s
+Down
+# page: canvas
+Sleep 2s
 Down
 # page: dotMatrixText
 Sleep 2s
