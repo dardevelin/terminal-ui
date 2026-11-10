@@ -6,6 +6,16 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.5.0] — 2026-11-10 — 3D, drawn in text
+
+A minor release over 2.4.0: an app written for 2.4 compiles unchanged.
+TerminalUI3D, a new library product, draws lit, shaded 3D scenes into a
+terminal — meshes, height fields and lettering, lights, fog and labels,
+rasterized at braille resolution and drawn as an image, braille or
+characters — and turns them with eased motion on a `TimelineView`. Apps
+that draw no 3D never link it. Its reference now sits on the
+documentation site beside TerminalUI's.
+
 ### Added
 
 - **TerminalUI3D, a new library product, draws lit, shaded 3D in a
@@ -1590,7 +1600,8 @@ Closed core debt before expanding the framework's surface.
 - Dev tools: debug overlay, panel, stream protocol.
 - Observation-driven frame skip: ~82,000 fps idle, ~700 fps active.
 
-[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.4.0...HEAD
+[Unreleased]: https://github.com/dardevelin/terminal-ui/compare/v2.5.0...HEAD
+[2.5.0]: https://github.com/dardevelin/terminal-ui/compare/v2.4.0...v2.5.0
 [2.4.0]: https://github.com/dardevelin/terminal-ui/compare/v2.3.2...v2.4.0
 [2.3.2]: https://github.com/dardevelin/terminal-ui/compare/v2.3.1...v2.3.2
 [2.3.1]: https://github.com/dardevelin/terminal-ui/compare/v2.3.0...v2.3.1
