@@ -9,6 +9,7 @@ struct SceneChapter: TerminalView {
     /// Seconds into the chapter.
     let time: Double
     @TerminalEnvironment(\.theme) var theme
+    @TerminalEnvironment(\.terminalSize) var terminalSize
 
     // MARK: The score
 
@@ -32,6 +33,8 @@ struct SceneChapter: TerminalView {
     var body: some TerminalView {
         let theme = theme
         let time = time
+        // The scene has the whole window but the caption's row.
+        let columns = terminalSize.cols, rows = max(1, terminalSize.rows - Self.captionRows)
         let (caption, detail, shading) = Self.captions(at: time)
         let presence = Self.presence(at: time)
         return VStack(spacing: 0) {
@@ -40,7 +43,7 @@ struct SceneChapter: TerminalView {
                 if Self.title.contains(time) {
                     Self.title(&scene, at: time - Self.title.start, theme: theme)
                 } else if Self.torus.contains(time) {
-                    Self.torus(&scene, at: time - Self.torus.start, theme: theme)
+                    Self.torus(&scene, at: time - Self.torus.start, theme: theme, columns: columns, rows: rows)
                 } else if Self.terrain.contains(time) {
                     Self.terrain(&scene, at: time - Self.terrain.start, theme: theme)
                 }
@@ -83,7 +86,6 @@ struct SceneChapter: TerminalView {
             let approach = Cue(from: title.start, to: title.start + titleTurnLength).eased(at: time, .easeOut)
             return .fit(padding: mix(titlePaddingFar, titlePaddingNear, approach))
         }
-        if torus.contains(time) { return .fit(padding: torusPadding) }
         return .camera
     }
 
@@ -95,6 +97,9 @@ struct SceneChapter: TerminalView {
 
     /// Where the veil is at its thickest: at once, in front of everything.
     static let veilDepth = 1e-3
+
+    /// Rows the caption takes under the scene.
+    static let captionRows = 1
 
     // MARK: Title
 
@@ -134,8 +139,10 @@ struct SceneChapter: TerminalView {
 
     /// The ring, its tint running once round it and back, so a gradient
     /// material colours it with no seam.
+    static let torusMajorRadius = 1.0, torusMinorRadius = 0.42
     static let torusMesh: Mesh = {
-        var mesh = Mesh.torus(majorRadius: 1, minorRadius: 0.42, majorSegments: 72, minorSegments: 32)
+        var mesh = Mesh.torus(majorRadius: torusMajorRadius, minorRadius: torusMinorRadius,
+                              majorSegments: 72, minorSegments: 32)
         mesh.tints = mesh.positions.map { position in 0.5 + 0.5 * cos(atan2(position.z, position.x)) }
         return mesh
     }()
@@ -143,12 +150,47 @@ struct SceneChapter: TerminalView {
     /// Stood on its edge, so a turn about the vertical shows it face on,
     /// then edge on.
     static let standing = Quaternion(axis: .unitZ, angle: 0.35) * Quaternion(axis: .unitX, angle: .pi / 2)
-    static let torusPadding = 0.0
+    /// Rows kept clear above and below the torus, and twice as many
+    /// columns either side: the same distance on cells twice as tall as
+    /// they are wide.
+    static let torusPadding = 1.0
+    /// How far the torus reaches from its centre — its ring's radius and
+    /// its tube's — whichever way the turntable tips, rolls and turns it.
+    static var torusReach: Double { torusMajorRadius + torusMinorRadius }
+    /// Where the camera looks at the torus from, before it is brought in.
+    static let torusViewpoint = Vector3(0, 0.6, 4)
+
+    /// The camera that keeps the torus inside a view of `columns` × `rows`
+    /// cells, `torusPadding` clear of each edge, through a whole turn.
+    ///
+    /// `SceneFraming.fit` frames the pose it is given, its height by the
+    /// model's box, and a ring tipped by the turntable's wobble and roll
+    /// rises past a box taken at another moment. Fitting the sphere the
+    /// torus never leaves frames every pose at once: a sphere at distance
+    /// d spans the angle whose sine is r / d.
+    static func torusCamera(columns: Int, rows: Int) -> Camera3D {
+        var camera = Camera3D(position: torusViewpoint)
+        let fieldOfView = Projection3D.defaultFieldOfView
+        let usableHeight = max(leastUsable, 1 - 2 * torusPadding / Double(rows))
+        let usableWidth = max(leastUsable, 1 - 2 * torusPadding * columnsPerRow / Double(columns))
+        let aspect = Double(columns) / (Double(rows) * columnsPerRow)
+        let reach = tan(fieldOfView / 2)
+        let across = reach * aspect * usableWidth, down = reach * usableHeight
+        func distance(_ tangent: Double) -> Double { torusReach * (1 + tangent * tangent).squareRoot() / tangent }
+        camera.position = torusViewpoint.normalized * max(distance(across), distance(down))
+        return camera
+    }
+
+    /// Columns of cells to a row's height.
+    static let columnsPerRow = 2.0
+    /// The least share of the view the torus is given, however small the
+    /// window.
+    static let leastUsable = 0.1
     /// Radians a second the key light swings back and forth at.
     static let lightSwing = 0.9
 
-    static func torus(_ scene: inout Scene3D, at seconds: Double, theme: any Theme) {
-        scene.camera = Camera3D(position: Vector3(0, 0.6, 4))
+    static func torus(_ scene: inout Scene3D, at seconds: Double, theme: any Theme, columns: Int, rows: Int) {
+        scene.camera = torusCamera(columns: columns, rows: rows)
         let swing = sin(seconds * lightSwing)
         scene.lights = [
             .ambient(0.16),
@@ -157,10 +199,14 @@ struct SceneChapter: TerminalView {
             .rim(0.4),
         ]
         scene.fog = veil(torus.presence(at: seconds + torus.start, fade: torusFade))
-        let turn = Turntable().rotation(at: seconds) * standing
-        scene.add(torusMesh, transform: turn.matrix, materials: [
+        scene.add(torusMesh, transform: torusTurn(at: seconds).matrix, materials: [
             Material(gradient: [theme.accent, theme.secondary, theme.error], specular: 0.9, shininess: 40),
         ])
+    }
+
+    /// The torus's orientation `seconds` into its scene.
+    static func torusTurn(at seconds: Double) -> Quaternion {
+        Turntable().rotation(at: seconds) * standing
     }
 
     // MARK: Terrain

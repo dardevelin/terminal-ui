@@ -258,6 +258,14 @@ let package = Package(
             path: "Tests/TerminalUI3DTests",
             swiftSettings: strictSettings
         ),
+        // The Showcase's choreography, which a recording plays once and a
+        // frame cut short would spoil: what can be checked without a screen.
+        .testTarget(
+            name: "ShowcaseTests",
+            dependencies: ["Showcase", "TerminalUI3D"],
+            path: "Tests/ShowcaseTests",
+            swiftSettings: strictSettings
+        ),
         .testTarget(
             name: "TerminalInkTests",
             dependencies: ["TerminalInk"],
