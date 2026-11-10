@@ -12,6 +12,14 @@ draws (``[trace] screenshots``), takes the screen xterm.js held after each
 step (vhs's text output), and fails on any screen that is not one of the
 framework's frames.
 
+A page that animates — a 3D scene turning, redrawing most of its cells each
+frame — can be caught while xterm.js is still taking a frame in: ttyd hands
+the frame's one write over in pieces, and the screen between them shows
+some cells of the new frame and the rest of the one before. Such a screen
+passes when every cell of it is that cell in one of two frames drawn one
+after the other. A disagreement about a character's width or a cursor move
+shifts the cells after it, which neither frame shows, so it still fails.
+
 Run::
 
     python3 tools/scripts/check_vhs_compat.py [build_dir]
@@ -28,6 +36,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from typing import Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -112,11 +121,35 @@ def framework_frames(screenshot_dir: Path) -> tuple[dict[Screen, int], int]:
     return frames, rows
 
 
-def mismatches(screens: list[Screen], frames: dict[Screen, int]) -> list[str]:
-    """Each recorded screen no frame matches, against the frame nearest it."""
+def frame_sequence(screenshot_dir: Path) -> list[Screen]:
+    """Every frame the framework drew, in the order it drew them."""
+    return [normalised(path.read_text().partition("---\n")[2].split("\n"))
+            for path in sorted(screenshot_dir.glob("frame_*.txt"))]
+
+
+def caught_between(screen: Screen, sequence: list[Screen]) -> bool:
+    """Whether every cell of `screen` is that cell of one frame or of the
+    frame drawn next: a screen caught while the next was arriving."""
+    def cell(lines: Screen, row: int, column: int) -> str:
+        line = lines[row] if row < len(lines) else ""
+        return line[column] if column < len(line) else " "
+
+    for before, after in zip(sequence, sequence[1:]):
+        rows = max(len(screen), len(before), len(after))
+        if all(cell(screen, row, column) in (cell(before, row, column), cell(after, row, column))
+               for row in range(rows)
+               for column in range(max(len(line) for line in (screen + before + after) or ("",)))):
+            return True
+    return False
+
+
+def mismatches(screens: list[Screen], frames: dict[Screen, int],
+               sequence: Optional[list[Screen]] = None) -> list[str]:
+    """Each recorded screen no frame matches, and no two frames drawn one
+    after the other make up, against the frame nearest it."""
     reports: list[str] = []
     for index, screen in enumerate(screens):
-        if screen in frames:
+        if screen in frames or (sequence and caught_between(screen, sequence)):
             continue
         nearest = max(frames, key=lambda frame: sum(a == b for a, b in zip(frame, screen)))
         rows = [f"  row {row}\n    drawn : {drawn!r}\n    vhs   : {shown!r}"
@@ -145,8 +178,9 @@ def main() -> int:
         subprocess.run(["vhs", str(tape)], cwd=root, check=True, capture_output=True,
                        env=recording_environment(dict(os.environ)))
         frames, rows = framework_frames(root / ".terminalui" / "screenshots")
+        sequence = frame_sequence(root / ".terminalui" / "screenshots")
         screens = recorded_screens(output.read_text(), rows)
-    reports = mismatches(screens, frames)
+    reports = mismatches(screens, frames, sequence)
     for report in reports:
         print(report)
     print(f"{len(screens) - len(reports)}/{len(screens)} screens vhs showed are frames the "
