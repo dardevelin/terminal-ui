@@ -3993,6 +3993,10 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.bot_reply_appears", "Chat", chat_bot_reply_appears),
     SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
+    # A map at rest draws nothing: its timeline runs only while the camera
+    # or the traveller moves, and tiles stop landing once loaded.
+    SmokeCase("maps.idle_costs_nothing", "Maps", idle_costs_nothing,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
     SmokeCase("maps.search_flies_to_a_street_and_zooms", "Maps", maps_search_flies_to_a_street_and_zooms,
               env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
     SmokeCase("maps.directions_list_the_steps", "Maps", maps_directions_list_the_steps,
