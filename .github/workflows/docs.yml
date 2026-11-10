@@ -55,6 +55,7 @@ jobs:
             generate-documentation \
             --target TerminalUI \
             --target TerminalUI3D \
+            --target TerminalUIMaps \
             --enable-experimental-combined-documentation \
             --experimental-skip-synthesized-symbols \
             --output-path docs-site \

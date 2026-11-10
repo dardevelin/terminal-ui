@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleIdentifier</key>
+	<string>org.terminalui.maps</string>
+	<key>CFBundleName</key>
+	<string>Maps</string>
+	<key>CFBundleExecutable</key>
+	<string>Maps</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Maps shows where you are and navigates you along your route.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Maps shows where you are and navigates you along your route.</string>
+</dict>
+</plist>

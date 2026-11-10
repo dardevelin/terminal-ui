@@ -3015,6 +3015,315 @@ def coder_bash_card_caps_and_cuts_output(app: Client) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Maps — TerminalUIMaps' example app (design/maps.md). It opens on the
+# sample town, Millbrook, so every case runs with no network.
+# ---------------------------------------------------------------------------
+
+BRAILLE = range(0x2801, 0x2900)
+
+
+def _maps_status(app: Client) -> str:
+    """The status bar: the screen's last row."""
+    snap = app.cells()
+    return snap.rows[snap.height - 1]
+
+
+def maps_search_flies_to_a_street_and_zooms(app: Client) -> None:
+    """The map draws the town; `/` searches it; Enter on the text searches,
+    Enter again goes to the street found — the camera moves there, a marker
+    and a card show it — and `+` and the wheel zoom in."""
+    def braille_cells(client: Client) -> int:
+        return sum(ord(ch) in BRAILLE for row in client.cells().rows for ch in row)
+    # The tiles land in their own time, as tasks.
+    assert_true(app.wait_until(lambda c: braille_cells(c) > 100),
+                "the town's streets should be drawn in braille")
+    assert_contains(app.cells(), "Sample data: Millbrook is fictional", "the source's credit")
+    status = _maps_status(app)
+    assert_true("Sample" in status and "z15.0" in status, f"status bar: {status!r}")
+    before = status
+
+    app.send_key("/")
+    assert_contains(app.cells(), "Search", "the search panel opens")
+    app.send_text("market")
+    app.send_key("enter")
+    assert_true(app.wait_until(lambda c: "tertiary · Millbrook" in c.cells().text()),
+                "searching for 'market' lists Market Street, a tertiary road")
+    app.send_key("enter")
+    snap = app.cells()
+    assert_contains(snap, "│ Market Street", "the place card names the street")
+    assert_true("●" in snap.text(), "a marker pins the street")
+    status = _maps_status(app)
+    assert_true("z16.0" in status, f"a street is shown at zoom 16: {status!r}")
+    assert_true(status.split("z16.0")[1].split()[0:2] != before.split("z15.0")[1].split()[0:2],
+                f"the camera moved: {before!r} then {status!r}")
+
+    app.send_key("+")
+    assert_true("z17.0" in _maps_status(app), f"+ zooms in: {_maps_status(app)!r}")
+    app.mouse_wheel("down", 40, 20)
+    assert_true("z16.0" in _maps_status(app), f"a wheel notch down zooms out a level: {_maps_status(app)!r}")
+
+
+def maps_directions_list_the_steps(app: Client) -> None:
+    """With a place pinned and the map moved away from it, `d` routes to it
+    from the map's middle along the town's streets: the panel gives the
+    distance and time and lists the steps, and Escape closes it."""
+    app.send_key("/")
+    app.send_text("copper")
+    app.send_key("enter")
+    assert_true(app.wait_until(lambda c: "cafe" in c.cells().text()), "the café is found")
+    app.send_key("enter")
+    app.press_many("j", 4)
+    app.press_many("l", 4)
+    app.send_key("d")
+    assert_true(app.wait_until(lambda c: "by car" in c.cells().text()), "a route is found")
+    text = app.cells().text()
+    assert_true(re.search(r"\d+ (m|km) · .* by car", text) is not None, f"distance and time: {text}")
+    assert_true("Head " in text and "Arrive at the destination" in text, "the steps are listed")
+    app.send_key("escape")
+    assert_true("by car" not in app.cells().text(), "Escape closes the panel")
+
+
+def maps_a_business_card_shows_its_hours(app: Client) -> None:
+    """Selecting a business shows its card with its hours: chosen from a
+    search, the café's card gives open-now and its week; clicked on the map,
+    another business's name opens its own card."""
+    app.send_key("/")
+    app.send_text("copper")
+    app.send_key("enter")
+    assert_true(app.wait_until(lambda c: "cafe" in c.cells().text()), "the café is found")
+    app.send_key("enter")
+    # The sample source answers as a task.
+    assert_true(app.wait_until(lambda c: "Mo-Fr 07:30-18:00" in c.cells().text()),
+                f"the card lists the café's hours: {app.cells().text()}")
+    text = app.cells().text()
+    assert_true("Open now" in text or "Closed" in text, "the card says whether it is open now")
+    assert_true("01632 960 112" in text, "and its phone")
+
+    # A business drawn on the map below the card: click its name.
+    snap = app.cells()
+    card_bottom = next(index for index, row in enumerate(snap.rows) if "╰" in row)
+    target = None
+    for name in ("Golden Dragon", "Millbrook Bank", "Post Office", "Bean There", "Millbrook Books"):
+        for y in range(card_bottom + 1, snap.height - 1):
+            x = snap.rows[y].find(name)
+            if x >= 0:
+                target = (name, x + 1, y)
+                break
+        if target:
+            break
+    assert_true(target is not None, f"a business is drawn on the map: {snap.text()}")
+    name, x, y = target
+    app.mouse_click(x, y)
+    assert_true(app.wait_until(lambda c: f"│ {name}" in c.cells().text()
+                               and re.search(r"\d\d:\d\d-\d\d:\d\d", c.cells().text()) is not None),
+                f"clicking {name} opens its card: {app.cells().text()}")
+    app.send_key("escape")
+    assert_true(f"│ {name}" not in app.cells().text(), "Escape closes the card, and the app keeps running")
+    app.send_text("?")
+    assert_contains(app.cells(), "On the map", "? shows the legend of the map's glyphs")
+
+
+MAPS_FIVE_WAYS_DRIVE = "Examples/Maps/Tracks/millbrook-five-ways-drive.gpx"
+MAPS_FIVE_WAYS_RIDE = "Examples/Maps/Tracks/millbrook-five-ways-ride.gpx"
+
+
+def _maps_banner(client: Client) -> str:
+    """The banner's first line, under its top border."""
+    rows = client.cells().rows
+    return rows[1] if len(rows) > 1 else ""
+
+
+def _maps_zoom(client: Client) -> float:
+    """The camera's zoom as the status bar shows it."""
+    found = re.search(r" z(\d+\.\d) ", _maps_status(client))
+    return float(found.group(1)) if found else -1.0
+
+
+def _maps_compass_degrees(client: Client) -> Optional[int]:
+    """The compass's bearing: the degrees under its rose in the map's
+    top-right corner, 0 when it shows none (north up), None with no rose."""
+    rows = client.cells().rows
+    corner = [row[-12:] for row in rows[1:14]]
+    if not any("N" in row for row in corner):
+        return None
+    for row in corner:
+        found = re.search(r"(\d{1,3})°", row)
+        if found:
+            return int(found.group(1))
+    return 0
+
+
+def _maps_hold_before(app: Client, words: str, within_metres: int) -> list[float]:
+    """The zooms shown while the banner counts the last `within_metres`
+    down to the manoeuvre `words` names, until it moves on."""
+    zooms: list[float] = []
+
+    def sample(client: Client) -> bool:
+        banner = _maps_banner(client)
+        if words not in banner:
+            return bool(zooms)
+        distance = re.search(r"(\d+) m  " + re.escape(words), banner)
+        if distance and int(distance.group(1)) <= within_metres:
+            zooms.append(_maps_zoom(client))
+        return False
+
+    assert_true(app.wait_until(sample, timeout=90.0, interval=0.05),
+                f"the banner counted down to {words!r}; it reads {_maps_banner(app)!r}")
+    return zooms
+
+
+def maps_five_ways_drive_holds_the_zoom_before_the_junction(app: Client) -> None:
+    """The car through Five Ways, the sample town's confusing corner: the
+    five-way junction whose roads part by 25° closes the camera in from the
+    speed's zoom, and the zoom is still for the last 40 m — about six
+    seconds — before the turn, braking and all. Then Kiln Circus, the
+    staggered turns, and arrival, which says where the place is."""
+    assert_true(app.wait_until(lambda c: "300 m  Turn left onto Abbey Lane" in _maps_banner(c), timeout=60.0),
+                f"the banner reads {_maps_banner(app)!r}")
+    cruising = _maps_zoom(app)
+    held = _maps_hold_before(app, "Turn left onto Abbey Lane", 40)
+    assert_true(len(held) >= 3, f"the last 40 m were seen: {held}")
+    assert_true(len(set(held)) == 1, f"the zoom held still before the junction: {held}")
+    assert_true(held[0] > cruising, f"the five-way closed the camera in from z{cruising}: {held}")
+    for words in ("Enter the roundabout and leave at exit 2 onto Eastwood Drive", "Turn right onto Charcoal Lane",
+                  "Turn left onto Copse Road",
+                  "You have arrived at Eastwood Visitor Centre, 20 m on your right"):
+        assert_true(app.wait_until(lambda c: words in _maps_banner(c), timeout=60.0),
+                    f"the banner reaches {words!r}; it reads {_maps_banner(app)!r}")
+    assert_true("Car" in _maps_status(app), f"the profile is the car's: {_maps_status(app)!r}")
+
+
+def maps_five_ways_ride_takes_the_greenway(app: Client) -> None:
+    """The bicycle through Five Ways: the ride's profile comes from the
+    track's type, the route takes the Silver Greenway no car may, and at a
+    rider's closer zoom the five-way needs little more — still for the
+    last 30 m before the turn, within the status bar's rounding."""
+    assert_true(app.wait_until(lambda c: "Bicycle" in _maps_status(c), timeout=30.0),
+                f"the profile is the bicycle's: {_maps_status(app)!r}")
+    assert_true(app.wait_until(lambda c: "Turn right onto Silver Greenway" in _maps_banner(c), timeout=30.0),
+                f"the ride takes the cycle path; the banner reads {_maps_banner(app)!r}")
+    held = _maps_hold_before(app, "Turn left onto Abbey Lane", 30)
+    assert_true(len(held) >= 3, f"the last 30 m were seen: {held}")
+    assert_true(max(held) - min(held) <= 0.1 + 1e-9, f"the zoom held still before the junction: {held}")
+    assert_true(app.wait_until(lambda c: "You have arrived at Eastwood Visitor Centre" in _maps_banner(c),
+                               timeout=90.0), f"the banner reads {_maps_banner(app)!r}")
+
+
+def maps_demo_drive_faces_the_course_through_a_missed_turn(app: Client) -> None:
+    """The demo drive goes west along High Street, straight on past the
+    right turn onto Oak Street the route takes, and follows the reroute on
+    to Elm Street. From the turn's announcement until a moment after the
+    reroute, the map faces west within 45°: the route ahead leans the
+    heading toward the turn, never round it, and the reroute leaves the way
+    the car is going rather than turning the map back."""
+    west = 270
+    bearings: list[int] = []
+    seen_turn: list[bool] = []
+    seen_reroute: list[float] = []
+
+    def sample(client: Client) -> bool:
+        banner = _maps_banner(client)
+        if not seen_turn and "Turn right onto Oak Street" in banner:
+            seen_turn.append(True)
+        degrees = _maps_compass_degrees(client)
+        if seen_turn and not seen_reroute and degrees is not None:
+            bearings.append(degrees)
+        if not seen_reroute and "Turn right onto Elm Street" in banner:
+            seen_reroute.append(time.monotonic())
+        # Half a second past the reroute is still on High Street, the car
+        # going on west to the next corner.
+        return bool(seen_reroute) and time.monotonic() - seen_reroute[0] > 0.5
+
+    def off_west(bearing: int) -> int:
+        return abs((bearing - west + 540) % 360 - 180)
+
+    assert_true(app.wait_until(sample, timeout=90.0, interval=0.05),
+                f"the drive was rerouted; the banner reads {_maps_banner(app)!r}")
+    off = [bearing for bearing in bearings if off_west(bearing) > 45]
+    assert_true(len(bearings) > 30, f"the compass was read past the missed turn: {len(bearings)} readings")
+    assert_true(not off, f"the map faced away from the car's westward course: {sorted(set(off))}")
+    assert_true(max(off_west(bearing) for bearing in bearings) >= 10,
+                "the route still leaned the heading toward the turn")
+
+
+MAPS_DEMO_TRACK = "Examples/Maps/Tracks/millbrook-drive.gpx"
+# Ten times as fast as recorded: the drive's shortest phase, heading back
+# from the wrong turn, is still over a second on screen.
+MAPS_DEMO_SPEED = "10"
+
+
+def maps_demo_replay_navigates_to_arrival(app: Client) -> None:
+    """The demo: `--location gpx:` the sample drive (here through its
+    variable, as the runner passes no arguments) routes the file's stops
+    and navigates them as the track replays. The banner's first line names
+    each manoeuvre in turn — High Street, the Oak Street turn the drive
+    misses, the reroute's Elm Street and Park Avenue, both onward — and then
+    arrival."""
+    def banner(client: Client) -> str:
+        rows = client.cells().rows
+        return rows[1] if len(rows) > 1 else ""
+    for words in ("Turn left onto High Street", "Turn right onto Oak Street", "Turn right onto Elm Street",
+                  "Turn right onto Park Avenue", "You have arrived at Public Library"):
+        assert_true(app.wait_until(lambda c: words in banner(c), timeout=30.0),
+                    f"the banner reaches {words!r}; it reads {banner(app)!r}")
+    assert_true("replay millbrook-drive.gpx" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+
+
+def maps_map_types_change_the_map(app: Client) -> None:
+    """`m` picks the map type, and each changes what the sample town draws,
+    from its own imagery and ground with no network: Satellite is a picture
+    in half-blocks with no streets drawn over it, Hybrid draws the streets
+    and their names over it, Terrain draws contour lines the Explore map
+    has none of. Then `v` opens street view of the town and `↑` steps up the
+    street."""
+    def count(client: Client, test) -> int:
+        return sum(test(ch) for row in client.cells().rows[:-2] for ch in row)
+    def braille(client: Client) -> int:
+        return count(client, lambda ch: ord(ch) in BRAILLE)
+    def half_blocks(client: Client) -> int:
+        return count(client, lambda ch: ch == "▀")
+    def choose(position: int, title: str) -> None:
+        app.send_key("m")
+        assert_contains(app.cells(), "Map type", "the picker opens")
+        for _ in range(4):
+            app.send_key("up")
+        for _ in range(position):
+            app.send_key("down")
+        app.send_key("enter")
+        assert_true(title in _maps_status(app), f"the status bar names {title}: {_maps_status(app)!r}")
+
+    assert_true(app.wait_until(lambda c: braille(c) > 100), "the town's streets should be drawn in braille")
+    assert_true("Explore" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+    explore_braille = braille(app)
+
+    choose(1, "Satellite")
+    # Sample imagery is painted as tasks; the picture lands in its own time.
+    assert_true(app.wait_until(lambda c: half_blocks(c) > 1000, timeout=30.0),
+                "Satellite draws the town as a picture")
+    assert_true(braille(app) < 20, f"Satellite draws no streets over it: {braille(app)} braille cells")
+    assert_true("Market Street" not in app.cells().text(), "nor their names")
+
+    choose(2, "Hybrid")
+    assert_true(app.wait_until(lambda c: half_blocks(c) > 1000 and braille(c) > 100, timeout=30.0),
+                "Hybrid draws the streets over the picture")
+    assert_contains(app.cells(), "Market Street", "with their names")
+
+    choose(3, "Terrain")
+    assert_true(app.wait_until(lambda c: braille(c) > explore_braille + 50, timeout=30.0),
+                f"Terrain adds contour lines: {braille(app)} braille cells against Explore's {explore_braille}")
+    assert_contains(app.cells(), "Market Street", "over the whole map")
+
+    app.send_key("v")
+    assert_true(app.wait_until(lambda c: "facing N" in c.cells().text() or "facing E" in c.cells().text(),
+                               timeout=30.0),
+                "street view shows a photo of the town, with the way it faces")
+    assert_contains(app.cells(), "Sample data: Millbrook is fictional · CC0, fictional", "and its credit")
+    first = app.cells().text()
+    app.send_key("up")
+    assert_true(app.wait_until(lambda c: c.cells().text() != first, timeout=30.0), "↑ steps along the street")
+
+
+# ---------------------------------------------------------------------------
 # The single-purpose examples
 #
 # Navigation, Settings and AsyncState each exist to put one framework
@@ -3684,6 +3993,36 @@ CASES: list[SmokeCase] = [
     SmokeCase("chat.bot_reply_appears", "Chat", chat_bot_reply_appears),
     SmokeCase("chat.scroll_pins_to_bottom", "Chat", chat_scroll_pins_to_bottom),
     SmokeCase("chat.q_in_empty_prompt_quits", "Chat", chat_q_in_empty_prompt_quits),
+    # A map at rest draws nothing: its timeline runs only while the camera
+    # or the traveller moves, and tiles stop landing once loaded.
+    SmokeCase("maps.idle_costs_nothing", "Maps", idle_costs_nothing,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.search_flies_to_a_street_and_zooms", "Maps", maps_search_flies_to_a_street_and_zooms,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.directions_list_the_steps", "Maps", maps_directions_list_the_steps,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.a_business_card_shows_its_hours", "Maps", maps_a_business_card_shows_its_hours,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.demo_replay_navigates_to_arrival", "Maps", maps_demo_replay_navigates_to_arrival,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),
+                   ("TERMINALUI_MAPS_LOCATION", f"gpx:{MAPS_DEMO_TRACK}"),
+                   ("TERMINALUI_MAPS_REPLAY_SPEED", MAPS_DEMO_SPEED))),
+    SmokeCase("maps.map_types_change_the_map", "Maps", maps_map_types_change_the_map,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.five_ways_drive_holds_the_zoom_before_the_junction", "Maps",
+              maps_five_ways_drive_holds_the_zoom_before_the_junction,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),
+                   ("TERMINALUI_MAPS_LOCATION", f"gpx:{MAPS_FIVE_WAYS_DRIVE}"),
+                   ("TERMINALUI_MAPS_REPLAY_SPEED", "4"))),
+    SmokeCase("maps.five_ways_ride_takes_the_greenway", "Maps", maps_five_ways_ride_takes_the_greenway,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),
+                   ("TERMINALUI_MAPS_LOCATION", f"gpx:{MAPS_FIVE_WAYS_RIDE}"),
+                   ("TERMINALUI_MAPS_REPLAY_SPEED", "6"))),
+    SmokeCase("maps.demo_drive_faces_the_course_through_a_missed_turn", "Maps",
+              maps_demo_drive_faces_the_course_through_a_missed_turn,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),
+                   ("TERMINALUI_MAPS_LOCATION", f"gpx:{MAPS_DEMO_TRACK}"),
+                   ("TERMINALUI_MAPS_REPLAY_SPEED", "4"))),
     SmokeCase("navigation.pop_restores_focus_to_the_pushing_link", "Navigation",
               navigation_pop_restores_focus_to_the_pushing_link),
     SmokeCase("navigation.escape_with_nothing_to_pop_keeps_the_app_running", "Navigation",

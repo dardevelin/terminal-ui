@@ -1,6 +1,7 @@
 # Every character outside ASCII the framework draws, from a string or character
-# literal in Sources/TerminalUI (the tutorial's steps included) or Sources/TerminalUI3D
-# (whose scenes draw their own shading, outlines and labels), and how a picture
+# literal in Sources/TerminalUI (the tutorial's steps included), Sources/TerminalUI3D
+# (whose scenes draw their own shading, outlines and labels) or Sources/TerminalUIMaps
+# (whose map draws its own marks, credits and directions), and how a picture
 # of a recording draws it. tools/scripts/check_font_glyphs.py fails when the
 # sources and this list disagree; GlyphGeometryTests holds each `shape` entry to
 # being one, and each `font` entry to not being one.
@@ -26,15 +27,26 @@ U+25BC ▼ shape The list's and scroll view's more-below marker.
 U+25BE ▾ shape An expanded disclosure and the picker's menu mark.
 U+25C0 ◀ shape The scroll view's left edge marker.
 U+25C2 ◂ shape The stepper's decrement mark.
-U+25CF ● shape The slider's thumb and DotMatrixText's dot.
+U+25CF ● shape The slider's thumb and DotMatrixText's dot, and a map marker's pin.
 U+2610 ☐ shape The tutorial's unchecked task.
 U+2611 ☑ shape The tutorial's checked task.
 U+276F ❯ shape PromptInput's prompt.
 
+# A map's point-of-interest glyphs (TerminalUIMaps' PointOfInterestCategory), drawn
+# from geometry so a recording of a map draws them whatever the font.
+U+2302 ⌂ shape A hotel on the map.
+U+25AA ▪ shape A grocery on the map.
+U+25C6 ◆ shape A restaurant on the map.
+U+2605 ★ shape A sight on the map.
+U+271A ✚ shape A pharmacy, doctor or hospital on the map.
+
 # Text the font draws.
 U+00D7 × font Latin-1, which every face of the stack has: a grow factor in the debug panel, a size in a message.
+U+00B7 · font Latin-1, which every face of the stack has: the dot between a place card's category and cuisine.
+U+00E9 é font Latin-1, which every face of the stack has: a word of the map's legend ("Cafés").
+U+00B0 ° font Latin-1, which every face of the stack has: the degrees under the map's compass rose.
 U+2014 — font General Punctuation, which every face of the font stack has: text, not structure. An em dash in labels and placeholders.
-U+2022 • font General Punctuation, which every face of the font stack has: text, not structure. Markdown's list bullet, the picker's selected mark and a 3D label's point.
+U+2022 • font General Punctuation, which every face of the font stack has: text, not structure. Markdown's list bullet, the picker's selected mark, a 3D label's point and a map's shop.
 U+2026 … font General Punctuation, which every face of the font stack has: text, not structure. Truncation's ellipsis, which ends a run of text.
 U+2194 ↔ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.
 U+2195 ↕ font The axis a flexible view grows on, in the debug panel: text, set alone at its cell.
@@ -57,6 +69,19 @@ U+2326 ⌦ font A key's symbol in a shortcut's label (KeyChord, the tutorial's h
 U+232B ⌫ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
 U+238B ⎋ font A key's symbol in a shortcut's label (KeyChord, the tutorial's help line): read as a word is, and set alone at its cell, so another font changes its look, never the grid.
 
+# A map's navigation marks (TerminalUIMaps' NavigationWording, TravellerMarker,
+# NavigationBanner), each set alone at its cell, so another font changes its look,
+# never the grid.
+U+203A › font General Punctuation, which the bundled JetBrains Mono has: the path through System Settings in a location error.
+U+2197 ↗ font Arrows, which the bundled JetBrains Mono has: a slight right turn, and the traveller heading up and right.
+U+2199 ↙ font Arrows, which the bundled JetBrains Mono has: a sharp left turn, and the traveller heading down and left.
+U+21B0 ↰ font Arrows; the bundled JetBrains Mono lacks it, so a recording draws it from a fallback font: a left turn. A shape in GlyphGeometry would draw it the same everywhere.
+U+21B1 ↱ font Arrows; the bundled JetBrains Mono lacks it, so a recording draws it from a fallback font: a right turn. A shape in GlyphGeometry would draw it the same everywhere.
+U+21B6 ↶ font Arrows; the bundled JetBrains Mono lacks it, so a recording draws it from a fallback font: a U-turn. A shape in GlyphGeometry would draw it the same everywhere.
+U+21BA ↺ font Arrows; the bundled JetBrains Mono lacks it, so a recording draws it from a fallback font: rerouting. A shape in GlyphGeometry would draw it the same everywhere.
+U+21BB ↻ font Arrows; the bundled JetBrains Mono lacks it, so a recording draws it from a fallback font: a roundabout. A shape in GlyphGeometry would draw it the same everywhere.
+U+25CE ◎ font Geometric Shapes, which the bundled JetBrains Mono has: arrival.
+
 # Never drawn. A line break has no glyph, so its glyph column is `-`.
 U+0085 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
 U+2028 - font Not drawn: TextInput takes it as a line break, which a single-line field refuses.
@@ -68,7 +93,7 @@ U+00A1 ¡ font Input, not drawn: AppleOptionDecode maps the character Option typ
 U+00A2 ¢ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
 U+00A3 £ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
 U+00A7 § font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
-U+00A9 © font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
+U+00A9 © font Latin-1, which every face of the stack has: a map's data credit. Also input, never drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
 U+00AA ª font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
 U+00AC ¬ font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.
 U+00AE ® font Input, not drawn: AppleOptionDecode maps the character Option types on a Mac back to its chord.

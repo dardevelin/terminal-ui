@@ -39,7 +39,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 # The modules the site publishes, in docs.yml's order. A module joins the
 # site by joining this list and docs.yml's together.
-TARGETS = ("TerminalUI", "TerminalUI3D")
+TARGETS = ("TerminalUI", "TerminalUI3D", "TerminalUIMaps")
 # The options the published site is built with; kept equal to docs.yml's.
 # docs.yml also combines the modules into one archive, which changes no
 # page; the coverage report is written per module, so this builds them apart.

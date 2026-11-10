@@ -87,6 +87,12 @@ def the_3d_library_is_checked() -> None:
     assert finding.startswith("Sources/TerminalUI3D/Render/Labels.swift:1: U+2022 •"), finding
 
 
+def the_maps_library_is_checked() -> None:
+    root = tree({"Style/Category.swift": 'let glyph = "★"\n'}, target="TerminalUIMaps")
+    [finding] = checker.findings(root)
+    assert finding.startswith("Sources/TerminalUIMaps/Style/Category.swift:1: U+2605"), finding
+
+
 def an_entry_no_source_draws_is_reported() -> None:
     root = tree({"Views/A.swift": 'let a = "─"\n'}, BOX + "U+276F ❯ shape The prompt.\n")
     [finding] = checker.findings(root)
@@ -120,6 +126,7 @@ CASES: list[tuple[str, Callable[[], None]]] = [
     ("every kind of literal counts", every_kind_of_literal_counts),
     ("the tutorial steps are checked", the_tutorial_steps_are_checked),
     ("the 3D library is checked", the_3d_library_is_checked),
+    ("the maps library is checked", the_maps_library_is_checked),
     ("an entry no source draws is reported", an_entry_no_source_draws_is_reported),
     ("an unreadable entry is reported", an_unreadable_entry_is_reported),
     ("an invisible character is listed as a dash", an_invisible_character_is_listed_as_a_dash),
