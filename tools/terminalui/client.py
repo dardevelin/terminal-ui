@@ -69,6 +69,31 @@ def diag_dir_of(pid: int, cwd: str, tmp_root: str = "/tmp") -> str:
     return str(Path(tmp_root) / f"terminalui-{fnv1a(os.path.realpath(cwd))}-{pid}")
 
 
+def reap_dead_data_dirs(tmp_root: str = "/tmp") -> int:
+    """Remove every app's data dir, `terminalui-{hash}-{pid}`, from any
+    checkout, whose process is gone; return how many. An app removes its
+    own as it quits, and the runner one it left; but an app killed before
+    its teardown, or a harness killed mid-case, leaves it, and they piled
+    up by the hundred. A dir whose pid runs is left, whatever runs it."""
+    import re
+    import shutil
+    reaped = 0
+    for entry in Path(tmp_root).glob("terminalui-*-*"):
+        match = re.fullmatch(r"terminalui-[0-9a-f]+-([0-9]+)", entry.name)
+        if match is None or not entry.is_dir() or entry.is_symlink() or entry.stat().st_uid != os.getuid():
+            continue
+        try:
+            os.kill(int(match.group(1)), 0)
+            continue
+        except ProcessLookupError:
+            pass
+        except PermissionError:
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        reaped += 1
+    return reaped
+
+
 def find_diag_dir(pid: int, cwd: Optional[str] = None, tmp_root: str = "/tmp") -> Optional[str]:
     """The per-process dir of the app with `pid` — or None before it has
     made one. Given the app's `cwd`, exactly its own; without, any checkout's

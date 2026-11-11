@@ -6,6 +6,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.7.0] — 2026-11-11 — The map at an angle
+
+A minor release over 2.6.1: an app written for 2.6 compiles unchanged.
+A map can now be seen at an angle, as SwiftUI MapKit's camera sees it — the
+first step toward the 3D map, before buildings and terrain stand up on it.
+A debug app no longer inherits the data dir a dead process left at its id.
+
 ### Added
 
 - **A map seen at an angle.** `MapCamera.pitch` tips the ground away from
