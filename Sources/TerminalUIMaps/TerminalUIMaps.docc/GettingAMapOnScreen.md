@@ -86,6 +86,20 @@ drag still keeps the ground under the pointer.
 camera.pitch = 45
 ```
 
+Set the layers' ``MapLayers/elevation`` to ``MapElevation/realistic``, as
+MapKit's `.mapStyle(.standard(elevation: .realistic))` does, and the
+buildings stand up from their footprints to the heights the tiles give,
+drawn in light and shade with TerminalUI3D. They rise where the ground is
+drawn at zoom 16 or closer; further out they lie flat, where a house would
+be a dot or two.
+
+```swift
+var layers = MapLayers.explore
+layers.elevation = .realistic
+MapView(camera: $camera, store: store)
+    .mapLayers(layers)
+```
+
 Navigation keeps the pitch it is given: ``NavigationCamera`` turns and
 zooms the camera, and the traveller sits low in the view, the road ahead
 above.

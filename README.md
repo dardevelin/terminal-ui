@@ -433,6 +433,7 @@ graph TD
     Scene3D["TerminalUI3D<br/><i>meshes, scenes, a text rasterizer</i>"] --> TUI
     Maps["TerminalUIMaps<br/><i>maps, search, routes, navigation</i>"] --> TUI
     Maps --> IO
+    Maps --> Scene3D
     SW["swtui<br/><i>diagnostics and remote control</i>"] --> TUI
     TUI["TerminalUI<br/><i>the full TUI runtime</i>"] --> Ink
     TUI --> Log
@@ -449,7 +450,7 @@ graph TD
 | `TerminalLog` | TerminalInk | Structured logging with leveled colored prefixes; strips ANSI when output is not a TTY |
 | `TerminalUIIO` | TerminalUI | Opt-in images: `ImageBuffer`, pure-Swift PNG and JPEG decoders behind a decoder protocol you can conform your own to, a half-block renderer, and a pure-Swift inflate |
 | `TerminalUI3D` | TerminalUI | Opt-in 3D: meshes and their primitives, height fields and lettering; a scene of models, materials, lights, a camera, labels and fog; and `SceneView`, which rasterizes it at braille resolution and draws it as an image, half blocks, braille, characters from a ramp, or a fill under them |
-| `TerminalUIMaps` | TerminalUI, TerminalUIIO | Opt-in maps: `MapView` on vector and picture tiles, the camera and its content, search, place details, routes, live location and turn-by-turn navigation, street view and offline regions, behind protocols an app fills with the backends it chooses — a fictional sample town needs no network or key, and every open service it can use requires the app to name itself |
+| `TerminalUIMaps` | TerminalUI, TerminalUIIO, TerminalUI3D | Opt-in maps: `MapView` on vector and picture tiles, seen straight down or at an angle with its buildings standing, the camera and its content, search, place details, routes, live location and turn-by-turn navigation, street view and offline regions, behind protocols an app fills with the backends it chooses — a fictional sample town needs no network or key, and every open service it can use requires the app to name itself |
 | `swtui` | TerminalUI | The [debug tools](#debug-tools-and-agent-driven-development)' command line: `swift run swtui ctl …` from your own package drives the debug build you are running |
 
 `TerminalUIConfig` (the TOML parser, the one spelling of a key combination,

@@ -3316,10 +3316,11 @@ def maps_demo_replay_navigates_to_arrival(app: Client) -> None:
     assert_true("replay millbrook-drive.gpx" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
 
 
-def maps_tilt_tips_the_map_and_back(app: Client) -> None:
-    """`3` tilts the map, live: the town is redrawn at an angle and the
-    status bar says so; Shift-↑ tips it further, Shift-↓ back; `3` again
-    looks straight down, and the town is drawn as it was."""
+def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
+    """`3` turns the 3D view on, live: the town is redrawn at an angle with
+    its buildings standing, and the status bar says so; Shift-↑ tips it
+    further, Shift-↓ back; `3` again looks straight down at a flat map, and
+    the town is drawn as it was."""
     def map_rows(client: Client) -> list[str]:
         return client.cells().rows[:-2]
     def braille(client: Client) -> int:
@@ -3328,7 +3329,7 @@ def maps_tilt_tips_the_map_and_back(app: Client) -> None:
     assert_true(app.wait_until(lambda c: braille(c) > 100), "the town's streets should be drawn in braille")
     flat = map_rows(app)
     app.send_key("3")
-    assert_true("tilted view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+    assert_true("3D view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
     tilted = map_rows(app)
     assert_true(tilted != flat, "the tilted town is drawn differently")
     assert_true(braille(app) > 100, "and its streets are still drawn")
@@ -4087,7 +4088,7 @@ CASES: list[SmokeCase] = [
                    ("TERMINALUI_MAPS_REPLAY_SPEED", MAPS_DEMO_SPEED))),
     SmokeCase("maps.map_types_change_the_map", "Maps", maps_map_types_change_the_map,
               env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
-    SmokeCase("maps.tilt_tips_the_map_and_back", "Maps", maps_tilt_tips_the_map_and_back,
+    SmokeCase("maps.3d_view_tips_the_map_and_back", "Maps", maps_3d_view_tips_the_map_and_back,
               env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
     SmokeCase("maps.five_ways_drive_holds_the_zoom_before_the_junction", "Maps",
               maps_five_ways_drive_holds_the_zoom_before_the_junction,

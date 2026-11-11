@@ -132,3 +132,37 @@ public struct Vector4: Sendable, Hashable {
     @inlinable
     public func dot(_ other: Vector4) -> Double { x * other.x + y * other.y + z * other.z + w * other.w }
 }
+
+/// A point or direction in a plane: a footprint's corner, a texture place.
+public struct Vector2: Sendable, Hashable {
+    /// Across.
+    public var x: Double
+    /// Down the plane's other axis — `z` when the plane is the ground.
+    public var y: Double
+
+    /// The vector (`x`, `y`).
+    @inlinable
+    public init(_ x: Double, _ y: Double) {
+        self.x = x
+        self.y = y
+    }
+
+    /// The origin.
+    public static let zero = Vector2(0, 0)
+
+    /// The sum, component by component.
+    @inlinable public static func + (lhs: Vector2, rhs: Vector2) -> Vector2 { Vector2(lhs.x + rhs.x, lhs.y + rhs.y) }
+    /// The difference, component by component.
+    @inlinable public static func - (lhs: Vector2, rhs: Vector2) -> Vector2 { Vector2(lhs.x - rhs.x, lhs.y - rhs.y) }
+    /// The vector scaled by `rhs`.
+    @inlinable public static func * (lhs: Vector2, rhs: Double) -> Vector2 { Vector2(lhs.x * rhs, lhs.y * rhs) }
+
+    /// The z component of the cross product of the two, extended into
+    /// space: positive when `other` turns anticlockwise from this one.
+    @inlinable
+    public func cross(_ other: Vector2) -> Double { x * other.y - y * other.x }
+
+    /// The dot product.
+    @inlinable
+    public func dot(_ other: Vector2) -> Double { x * other.x + y * other.y }
+}

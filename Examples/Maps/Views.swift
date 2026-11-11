@@ -13,7 +13,12 @@ struct MapsApp: TerminalView {
     var body: some TerminalView {
         let theme = model.theme
         let types = model.mapTypes
-        let layers = MainActor.assumeIsolated { types.layers }
+        let elevation: MapElevation = model.showsBuildings ? .realistic : .flat
+        let layers = MainActor.assumeIsolated {
+            var layers = types.layers
+            layers.elevation = elevation
+            return layers
+        }
         let street = model.street
         let streetImage = MainActor.assumeIsolated { street.image }
         VStack(spacing: 0) {
@@ -112,11 +117,11 @@ struct MapsStatusBar: TerminalView {
     private static func hints(_ panel: Panel?, navigating: Bool, theme: any Theme) -> [TextSpan] {
         let pairs: [(String, String)] = panel == nil && navigating
             ? [("n", "end"), ("Space", "pause"), ("r", "re-centre"), ("u", "heading/north/locked"), ("<>", "rotate"),
-               ("z", "junction zoom"), ("w", "car/bike/foot"), ("C", "compass"), ("e", "smooth"), ("3", "tilt"),
+               ("z", "junction zoom"), ("w", "car/bike/foot"), ("C", "compass"), ("e", "smooth"), ("3", "3D"),
                ("p", "route"), ("q", "quit")]
             : panel == nil
             ? [("/", "search"), ("d", "directions"), ("p", "route"), ("g", "location"), ("n", "navigate"),
-               ("m", "map type"), ("v", "street"), ("3", "tilt"), ("o", "offline"), ("b", "backend"), ("?", "legend"),
+               ("m", "map type"), ("v", "street"), ("3", "3D"), ("o", "offline"), ("b", "backend"), ("?", "legend"),
                ("q", "quit")]
             : [("Tab", "next"), ("Enter", "choose"), ("Esc", "close")]
         var spans: [TextSpan] = []

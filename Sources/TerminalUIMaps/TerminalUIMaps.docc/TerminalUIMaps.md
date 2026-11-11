@@ -55,6 +55,7 @@ directions, map types, street view, offline regions and a replayed drive.
 ### Map types
 
 - ``MapLayers``
+- ``MapElevation``
 - ``BasemapDetail``
 - ``TerrainStyle``
 - ``MapTypeModel``

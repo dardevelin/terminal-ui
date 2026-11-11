@@ -764,6 +764,24 @@ Three stages, each its own branch, in this order:
    that agrees with the homography on the ground — a test holds a ground
    point to the same dot through both. Edges blend toward the drawn
    ground.
+   **As built.** `BuildingExtrusion` keeps each footprint's
+   `render_min_height`/`render_height` beside it in the tile (`hide_3d`
+   outlines not raised; 5 m, the schema's fallback, without a height).
+   `BuildingScene.camera` sits at the projection's eye distance, tipped and
+   turned as it is, with the field of view that makes a middle dot a dot:
+   a test holds a ground point to the same dot through both, to 1e-6. A
+   tile's buildings are a `BuildingTile`: polygons (not features — a z14
+   tile merges a block's buildings into one feature) sorted into a 16 × 16
+   grid by their middles, each cell's mesh built the first time the view
+   reaches it and only where its nearest ground is drawn at zoom 16 or
+   closer. Central Paris at z16.5, 55°, 200 × 60: 11 698 triangles built
+   of some 150 000 (a test's budget), 140 ms a frame in debug against 40
+   flat; TerminalUI3D draws ~10 000 triangles at that size in ~4 ms in
+   release (`SceneBenchmark`). Roofs take `foregroundSubtle`, walls
+   `foregroundMuted`, lit by `Light3D.standard`. The example's `3` is the
+   3D view (tilt and buildings together), each also a Camera-panel
+   toggle.
+
 3. **Terrain.** Realistic elevation from the terrain source makes the
    ground a surface, not a plane, so the homography no longer holds. Its
    own design before it is built: likely the flat map drawn into a ground
