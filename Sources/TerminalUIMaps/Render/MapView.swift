@@ -10,7 +10,10 @@ import TerminalUI
 /// - the wheel zooms in and out about the pointer, so what is under it
 ///   stays there, a level a notch; with Shift, a quarter of a level;
 /// - arrows or `h` `j` `k` `l` pan by an eighth of the view, `+` and `-`
-///   zoom by a level about its middle, and `]` and `[` by half a level.
+///   zoom by a level about its middle, and `]` and `[` by half a level;
+/// - Shift with ↑ tips the map away from straight down, ten degrees a
+///   press, up to ``MapCamera/maximumPitch``, and Shift with ↓ tips it
+///   back — MapLibre's keys for ``MapCamera/pitch``.
 ///
 /// The credit the source's licence requires is drawn in the bottom-right
 /// corner.
@@ -88,6 +91,15 @@ public struct MapView: TerminalView {
         static let fineWheelZoom = 1.0 / 12
         /// The wheel zooms about the middle of the pointer's cell.
         static let cellMiddle = 0.5
+        /// One Shift-arrow press tips the map this many degrees, as
+        /// MapLibre GL's keyboard handler does.
+        static let pitch = 10.0
+    }
+
+    /// The middle of a cell, in dots.
+    static func dot(atCell cell: Point) -> DotPoint {
+        DotPoint(x: (Double(cell.x) + Steps.cellMiddle) * Double(BrailleCell.dotColumns),
+                 y: (Double(cell.y) + Steps.cellMiddle) * Double(BrailleCell.dotRows))
     }
 
     @_documentation(visibility: internal)
@@ -105,9 +117,12 @@ public struct MapView: TerminalView {
             .onChanged { value in
                 var from = value.startLocation
                 if let track = drag.wrappedValue, track.start == value.startLocation { from = track.last }
+                let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
+                // Cell to cell, middle to middle: pitched, the ground under
+                // the pointer is where on the cell it is, not how far it
+                // moved.
                 camera.wrappedValue = camera.wrappedValue.panned(
-                    byDotsX: Double((value.location.x - from.x) * BrailleCell.dotColumns),
-                    y: Double((value.location.y - from.y) * BrailleCell.dotRows))
+                    dragging: MapView.dot(atCell: from), to: MapView.dot(atCell: value.location), in: viewport)
                 drag.wrappedValue = DragTrack(start: value.startLocation, last: value.location)
             }
             .onEnded { _ in drag.wrappedValue = nil })
@@ -127,8 +142,7 @@ public struct MapView: TerminalView {
             case .right: delta = -Steps.fineWheelZoom
             }
             let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
-            let anchor = DotPoint(x: (Double(event.location.x) + Steps.cellMiddle) * Double(BrailleCell.dotColumns),
-                                  y: (Double(event.location.y) + Steps.cellMiddle) * Double(BrailleCell.dotRows))
+            let anchor = MapView.dot(atCell: event.location)
             let before = camera.wrappedValue
             let after = before.zoomed(by: delta, about: anchor, in: viewport)
             guard after != before else { return false }
@@ -152,6 +166,11 @@ public struct MapView: TerminalView {
     /// The camera a key moves to, or nil for a key the map does not take.
     static func camera(_ camera: MapCamera, movedBy event: KeyEvent, in viewport: DotSize) -> MapCamera? {
         guard event.modifiers.isEmpty || event.modifiers == [.shift] else { return nil }
+        if event.modifiers == [.shift], event.key == .up || event.key == .down {
+            var tipped = camera
+            tipped.pitch += event.key == .up ? Steps.pitch : -Steps.pitch
+            return tipped == camera ? nil : tipped
+        }
         let across = viewport.width * Steps.panShare, down = viewport.height * Steps.panShare
         switch event.key {
         case .left, .character("h"): return camera.panned(byDotsX: across, y: 0)

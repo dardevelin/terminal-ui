@@ -137,6 +137,9 @@ struct LocationPanel: TerminalView {
             Toggle("Zoom for junctions  (z)", isOn: Binding(
                 get: { trip.navigationCamera.zoomsForJunctions },
                 set: { _ in MainActor.assumeIsolated { maps.trip.toggleJunctionZoom() } }))
+            Toggle("Tilted view  (3, Shift ↑↓)", isOn: Binding(
+                get: { maps.camera.pitch > 0 },
+                set: { _ in MainActor.assumeIsolated { maps.toggleTilt() } }))
             Toggle("Compass  (C)", isOn: Binding(
                 get: { trip.showsCompass },
                 set: { _ in MainActor.assumeIsolated { maps.trip.toggleCompass() } }))

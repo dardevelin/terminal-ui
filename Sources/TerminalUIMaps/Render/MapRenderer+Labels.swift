@@ -117,8 +117,8 @@ extension MapRenderer {
         func cell(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(x: x / cellWidth, y: y / cellHeight) }
         var travellers: [(cell: CanvasPoint, glyph: String)] = []
         for case .traveller(let traveller) in content.map(\.kind) {
-            let point = camera.screenPoint(for: traveller.coordinate, in: viewport)
-            guard onScreen(point.x, point.y) else { continue }
+            guard let point = camera.screenPoint(for: traveller.coordinate, in: viewport),
+                  onScreen(point.x, point.y) else { continue }
             let cell = CanvasPoint(x: (point.x / cellWidth).rounded(.down), y: (point.y / cellHeight).rounded(.down))
             travellers.append((cell, TravellerMarker.glyph(course: traveller.course, bearing: camera.bearing)))
             requests.append(LabelRequest(text: " ", anchor: CanvasPoint(x: cell.x + Self.cellMiddle,
@@ -128,8 +128,8 @@ extension MapRenderer {
         }
         var markerCells: [CanvasPoint] = []
         for case .marker(let marker) in content.map(\.kind) {
-            let point = camera.screenPoint(for: marker.coordinate, in: viewport)
-            guard onScreen(point.x, point.y) else { continue }
+            guard let point = camera.screenPoint(for: marker.coordinate, in: viewport),
+                  onScreen(point.x, point.y) else { continue }
             let anchor = cell(point.x, point.y)
             markerCells.append(anchor)
             requests.append(LabelRequest(text: marker.title, anchor: anchor, rank: Self.markerRank,
@@ -139,18 +139,24 @@ extension MapRenderer {
         var cut = 0
         for item in items {
             guard case .vector(let vector) = item.tile.content else { continue }
-            let maximumRank = pointOfInterestDensity.maximumRank(atZoom: camera.zoom, tileZoom: item.tile.id.zoom)
-            for label in vector.labels where label.role.isVisible(atZoom: camera.zoom) {
-                if label.pointOfInterest != nil, label.importance > maximumRank {
+            for label in vector.labels {
+                // Named as the zoom the ground under it is drawn at would
+                // name it: the middle's flat, less on a pitched camera's far
+                // ground, which shows only what a map that far out shows.
+                let northUpX = item.originX + label.x * item.side, northUpY = item.originY + label.y * item.side
+                let zoom = projection.zoom(atX: northUpX, y: northUpY)
+                guard label.role.isVisible(atZoom: zoom) else { continue }
+                if label.pointOfInterest != nil,
+                   label.importance > pointOfInterestDensity.maximumRank(atZoom: zoom, tileZoom: item.tile.id.zoom) {
                     cut += 1
                     continue
                 }
-                let northUpX = item.originX + label.x * item.side, northUpY = item.originY + label.y * item.side
                 guard item.covers(x: northUpX, y: northUpY) else { continue }
-                // Turned to where the bearing puts the point; the name
-                // stays level, as text on a screen must.
-                let (x, y) = projection.turned(x: northUpX, y: northUpY)
-                guard onScreen(x, y) else { continue }
+                // Turned and tipped to where the camera puts the point; the
+                // name stays level and its size, as text on a screen must.
+                guard case let (x, y)? = projection.toScreen(x: northUpX, y: northUpY), onScreen(x, y) else {
+                    continue
+                }
                 let rank = (label.role.labelRank ?? 0) * Self.rankStride
                     + min(max(label.importance, 0), Self.rankStride - 1)
                 if label.pointOfInterest != nil {
@@ -162,9 +168,10 @@ extension MapRenderer {
                     offered.append(.name(label.role))
                 }
             }
-            for line in vector.lineLabels where line.role.isVisible(atZoom: camera.zoom) {
+            for line in vector.lineLabels where projection.footprint != nil || line.role.isVisible(atZoom: camera.zoom) {
                 let anchors = lineAnchors(line, in: item, projection: projection)
-                for (index, anchor) in anchors.enumerated() {
+                for (index, anchor) in anchors.enumerated()
+                where line.role.isVisible(atZoom: projection.zoom(atX: anchor.northUpX, y: anchor.northUpY)) {
                     let rank = (line.role.labelRank ?? 0) * Self.rankStride
                         + min(max(line.importance, 0) * Self.lineRankStep + min(index, Self.lineRankStep - 1),
                               Self.rankStride - 1)
@@ -230,7 +237,8 @@ extension MapRenderer {
     /// line out from its middle, those on screen; and where none is, the
     /// middle of the longest stretch the screen shows, so a street that
     /// crosses the view is named however close the camera is.
-    private func lineAnchors(_ line: LineLabel, in item: Item, projection: Projection) -> [(x: Double, y: Double)] {
+    private func lineAnchors(_ line: LineLabel, in item: Item,
+                             projection: Projection) -> [(x: Double, y: Double, northUpX: Double, northUpY: Double)] {
         let side = item.side, originX = item.originX, originY = item.originY
         let viewport = projection.viewport, reach = projection.reach
         guard originX + line.maximumX * side >= reach.left, originX + line.minimumX * side <= reach.right,
@@ -241,30 +249,32 @@ extension MapRenderer {
         let textDots = Double(labelPlacer.width(of: line.text)) * cellWidth
         let lengthDots = line.length * side
         guard textDots > 0, lengthDots >= textDots * LineNames.shortestNamedShare else { return [] }
-        /// A point of the line north up, in dots, and where the bearing
-        /// turns it on screen.
-        func screen(_ point: (x: Double, y: Double)) -> (northUpX: Double, northUpY: Double, x: Double, y: Double) {
+        /// A point of the line north up, in dots, and where the camera
+        /// puts it on screen, if it is in front of the eye.
+        func screen(_ point: (x: Double, y: Double)) -> (northUpX: Double, northUpY: Double, x: Double, y: Double)? {
             let northUpX = originX + point.x * side, northUpY = originY + point.y * side
-            let turned = projection.turned(x: northUpX, y: northUpY)
-            return (northUpX, northUpY, turned.x, turned.y)
+            return projection.toScreen(x: northUpX, y: northUpY).map { (northUpX, northUpY, $0.x, $0.y) }
         }
-        func shows(_ point: (northUpX: Double, northUpY: Double, x: Double, y: Double)) -> Bool {
-            point.x >= 0 && point.x < viewport.width && point.y >= 0 && point.y < viewport.height
+        func shows(_ point: (northUpX: Double, northUpY: Double, x: Double, y: Double)?) -> Bool {
+            guard let point else { return false }
+            return point.x >= 0 && point.x < viewport.width && point.y >= 0 && point.y < viewport.height
                 && item.covers(x: point.northUpX, y: point.northUpY)
         }
         let interval = max(Double(LineNames.interval) * cellWidth, textDots + cellWidth) / side
         let middle = line.length / 2
         let steps = Int((middle / interval).rounded(.down))
-        var anchors: [(x: Double, y: Double)] = []
+        var anchors: [(x: Double, y: Double, northUpX: Double, northUpY: Double)] = []
         for step in 0...steps {
             for distance in step == 0 ? [middle] : [middle - Double(step) * interval, middle + Double(step) * interval] {
-                let point = screen(line.point(at: distance))
-                if shows(point) { anchors.append((point.x, point.y)) }
+                if let point = screen(line.point(at: distance)), shows(point) {
+                    anchors.append((point.x, point.y, point.northUpX, point.northUpY))
+                }
             }
         }
         if anchors.isEmpty, let stretch = longestVisibleStretch(of: line, in: item, projection: projection) {
-            let point = screen(line.point(at: (stretch.lowerBound + stretch.upperBound) / 2))
-            if shows(point) { anchors.append((point.x, point.y)) }
+            if let point = screen(line.point(at: (stretch.lowerBound + stretch.upperBound) / 2)), shows(point) {
+                anchors.append((point.x, point.y, point.northUpX, point.northUpY))
+            }
         }
         return anchors
     }
@@ -279,12 +289,18 @@ extension MapRenderer {
         var best: ClosedRange<Double>?
         var current: ClosedRange<Double>?
         for index in 1..<line.xs.count {
-            // Turned first: a turn keeps a point's share of the way along a
-            // segment, so the clip's fractions are the line's.
-            let (startX, startY) = projection.turned(x: item.originX + line.xs[index - 1] * item.side,
-                                                     y: item.originY + line.ys[index - 1] * item.side)
-            let (endX, endY) = projection.turned(x: item.originX + line.xs[index] * item.side,
-                                                 y: item.originY + line.ys[index] * item.side)
+            // Projected first: a turn keeps a point's share of the way along
+            // a segment, so the clip's fractions are the line's. A pitch
+            // bends them toward the near end, which moves the stretch's
+            // middle a little along the line, still on it; a segment that
+            // reaches behind the eye counts as off screen.
+            guard case let (startX, startY)? = projection.toScreen(x: item.originX + line.xs[index - 1] * item.side,
+                                                                   y: item.originY + line.ys[index - 1] * item.side),
+                  case let (endX, endY)? = projection.toScreen(x: item.originX + line.xs[index] * item.side,
+                                                               y: item.originY + line.ys[index] * item.side) else {
+                current = nil
+                continue
+            }
             let deltaX = endX - startX, deltaY = endY - startY
             var entering = 0.0, leaving = 1.0
             let edges = [(-deltaX, startX), (deltaX, viewport.width - startX),

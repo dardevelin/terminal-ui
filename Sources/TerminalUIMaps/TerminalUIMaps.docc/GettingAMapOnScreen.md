@@ -56,7 +56,8 @@ takes the pointer and, when focused, the keyboard:
 
 - drag to pan; the wheel zooms about the pointer, a level a notch;
 - arrows or `h` `j` `k` `l` pan, `+` and `-` zoom by a level, `]` and `[`
-  by half a level.
+  by half a level;
+- Shift with ↑ and ↓ tips the map away from straight down and back.
 
 Every move writes the camera back through its binding, so the app reads
 where the map is from its own state, and moves it by setting it:
@@ -71,6 +72,23 @@ offline download covers — and ``MapCamera/coordinate(atCell:in:)`` the
 coordinate under a tap; both take the size the map was last drawn at,
 ``MapTileStore/viewSize``. ``MapCamera/fitting(_:in:zoomRange:)`` is the
 camera that shows a whole region.
+
+## Seeing the map at an angle
+
+``MapCamera/pitch`` looks at the ground at an angle, as SwiftUI MapKit's
+camera does: 0 is straight down, ``MapCamera/maximumPitch`` the steepest.
+The street ahead recedes up the screen, its far part drawn from coarser
+tiles and named as a map that far out would name it, while the scale
+across the middle stays the zoom's. Names and markers stay upright, and a
+drag still keeps the ground under the pointer.
+
+```swift
+camera.pitch = 45
+```
+
+Navigation keeps the pitch it is given: ``NavigationCamera`` turns and
+zooms the camera, and the traveller sits low in the view, the road ahead
+above.
 
 ## What goes on the map
 

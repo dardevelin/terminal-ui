@@ -159,7 +159,7 @@ extension MapRenderer {
     /// Hillshade on half cells, as raster tiles are drawn: each takes the
     /// shade under its centre, moved toward the theme's lighter end where
     /// a slope faces the sun and its darker end where it faces away, by
-    /// how far it is from flat. Under a turned camera every half cell of
+    /// how far it is from flat. Under a turned or pitched camera every half cell of
     /// the screen is turned back to where it lies north up, as turned
     /// pictures are, and those outside the tile's square left alone.
     private func shade(_ item: Item, elevation: ElevationContent, projection: Projection, strength: Double,
@@ -176,13 +176,13 @@ extension MapRenderer {
         let flat = elevation.flatShade
         let litRange = max(1 - flat, .leastNonzeroMagnitude), shadowRange = max(flat, .leastNonzeroMagnitude)
         let steps = Self.shadeSteps
-        let turned = projection.isTurned
+        let turned = !projection.isAxisAligned
         let columnRange = turned ? 0..<columns : range(origin: item.originX, limit: columns)
         let rowRange = turned ? 0..<rows : range(origin: item.originY, limit: rows)
         /// The shade's step at a half cell of the screen, 0 where it is
         /// flat or off the tile.
         func level(column: Int, row: Int) -> Int {
-            let point = projection.unturned(x: Double(column) * halfCell + centreOffset,
+            let point = projection.toGround(x: Double(column) * halfCell + centreOffset,
                                             y: Double(row) * halfCell + centreOffset)
             let unitX = (point.x - item.originX) / item.side, unitY = (point.y - item.originY) / item.side
             if turned {
@@ -223,14 +223,16 @@ extension MapRenderer {
         guard !segments.isEmpty else { return }
         var path = Path()
         let stride = ContourTracer.valuesPerSegment
-        func point(_ index: Int) -> CanvasPoint {
-            let turned = projection.turned(x: item.originX + Double(segments[index]) * item.side,
-                                           y: item.originY + Double(segments[index + 1]) * item.side)
-            return CanvasPoint(x: turned.x, y: turned.y)
+        func point(_ index: Int) -> CanvasPoint? {
+            projection.screenPoint(CanvasPoint(x: item.originX + Double(segments[index]) * item.side,
+                                               y: item.originY + Double(segments[index + 1]) * item.side))
         }
+        // A contour's segments are a few dots long: one that reaches behind
+        // a pitched camera's eye lies far below the view, and is left out.
         for start in Swift.stride(from: 0, to: segments.count - stride + 1, by: stride) {
-            path.move(to: point(start))
-            path.addLine(to: point(start + 2))
+            guard let from = point(start), let to = point(start + 2) else { continue }
+            path.move(to: from)
+            path.addLine(to: to)
         }
         item.context.stroke(path, with: .color(colour), lineWidth: 0)
     }

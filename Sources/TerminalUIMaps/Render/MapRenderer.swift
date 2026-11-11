@@ -133,7 +133,7 @@ final class MapRenderer {
         drawPictures(items, projection: projection)
         drawRelief(layers, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
         drawShapes(items, geometry: .line, zoom: camera.zoom, projection: projection, theme: theme)
-        drawPolylines(content, camera: camera, viewport: viewport, dots: dots, theme: theme)
+        drawPolylines(content, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
         drawLabels(items, content: content, camera: camera, projection: projection, size: size,
                    context: context, theme: theme, background: layers.labelBackground(in: theme))
     }
@@ -161,64 +161,91 @@ final class MapRenderer {
         }
     }
 
-    /// Where tiles land on screen. Tiles are laid out north up; a camera's
-    /// bearing then turns every point about the viewport's middle, once,
-    /// in ``turned(x:y:)`` — the turn ``MapCamera`` applies to markers and
-    /// to the pointer, so a click, a label and a road agree.
+    /// Where tiles land on screen. Tiles are laid out north up; the
+    /// camera's ``GroundProjection`` then turns every point by the bearing
+    /// and tips it by the pitch, once, in ``toScreen(x:y:)`` — the
+    /// projection ``MapCamera`` applies to markers and to the pointer, so a
+    /// click, a label and a road agree.
     struct Projection {
         let centre: WorldPoint
         let dotsPerWorld: Double
         let viewport: DotSize
-        let rotation: MapCamera.Rotation
+        let ground: GroundProjection
+        /// The camera's zoom: the scale at the middle of the view.
+        let zoom: Double
+        /// Pitched, the ground the view shows and a margin round it, north
+        /// up: what a shape is cut to before it is projected, so nothing
+        /// behind the eye is drawn. Nil flat, where the screen clips.
+        let footprint: ConvexRegion?
+
+        /// How far past each edge of the view a pitched footprint reaches,
+        /// in dots: past the widest line's half width, so no line's end
+        /// shows where it was cut.
+        static let footprintMargin = 8.0
 
         init(camera: MapCamera, viewport: DotSize) {
             centre = WebMercator.project(camera.center)
             dotsPerWorld = camera.dotsPerWorld
             self.viewport = viewport
-            rotation = camera.rotation
+            ground = camera.groundProjection(in: viewport)
+            zoom = camera.zoom
+            footprint = ground.isFlat ? nil : ground.footprint(of: viewport, margin: Self.footprintMargin)
         }
 
-        var isTurned: Bool { !rotation.isIdentity }
+        /// North up and flat: a point of the map is the point of the screen.
+        var isAxisAligned: Bool { ground.isAxisAligned }
 
-        /// A north-up point of the screen where the camera's bearing puts it.
-        func turned(x: Double, y: Double) -> (x: Double, y: Double) {
-            guard isTurned else { return (x, y) }
-            let turned = rotation.toScreen(x: x - viewport.width / 2, y: y - viewport.height / 2)
-            return (viewport.width / 2 + turned.x, viewport.height / 2 + turned.y)
+        /// A north-up point of the map where the camera puts it on screen,
+        /// or nil behind a pitched camera's eye.
+        func toScreen(x: Double, y: Double) -> (x: Double, y: Double)? {
+            ground.toScreen(x: x, y: y)
         }
 
-        /// A screen point back where it lies north up.
-        func unturned(x: Double, y: Double) -> (x: Double, y: Double) {
-            guard isTurned else { return (x, y) }
-            let unturned = rotation.toMap(x: x - viewport.width / 2, y: y - viewport.height / 2)
-            return (viewport.width / 2 + unturned.x, viewport.height / 2 + unturned.y)
+        /// The zoom a north-up point of the map is drawn at: the camera's
+        /// flat, and pitched, less where the ground recedes and more where
+        /// it nears — what decides which names it carries.
+        func zoom(atX x: Double, y: Double) -> Double {
+            ground.zoom(zoom, atX: x, y: y)
         }
 
-        /// The north-up box whose turned points can reach the screen: the
-        /// viewport itself, or, turned, the square around the circle that
-        /// holds it.
+        /// A screen point back where it lies on the north-up map.
+        func toGround(x: Double, y: Double) -> (x: Double, y: Double) {
+            ground.toGround(x: x, y: y)
+        }
+
+        /// The north-up box whose points can reach the screen: the
+        /// viewport itself; turned, the square around the circle that
+        /// holds it; pitched, the box round the ground it shows.
         var reach: (left: Double, top: Double, right: Double, bottom: Double) {
-            guard isTurned else { return (0, 0, viewport.width, viewport.height) }
+            if let footprint { return footprint.bounds }
+            guard !isAxisAligned else { return (0, 0, viewport.width, viewport.height) }
             let radius = (viewport.width * viewport.width + viewport.height * viewport.height).squareRoot() / 2
             return (viewport.width / 2 - radius, viewport.height / 2 - radius,
                     viewport.width / 2 + radius, viewport.height / 2 + radius)
         }
 
-        /// A square's outline as a path through its turned corners.
+        /// A square's outline as a path through its corners on screen,
+        /// cut first, pitched, to the ground the view shows.
         func outline(_ square: CanvasRect) -> Path {
-            Path { path in
-                let corners = [(square.x, square.y), (square.x + square.width, square.y),
-                               (square.x + square.width, square.y + square.height), (square.x, square.y + square.height)]
-                for (index, corner) in corners.enumerated() {
-                    let point = turned(x: corner.0, y: corner.1)
-                    if index == 0 {
-                        path.move(to: CanvasPoint(x: point.x, y: point.y))
-                    } else {
-                        path.addLine(to: CanvasPoint(x: point.x, y: point.y))
-                    }
-                }
+            var corners = [CanvasPoint(x: square.x, y: square.y), CanvasPoint(x: square.x + square.width, y: square.y),
+                           CanvasPoint(x: square.x + square.width, y: square.y + square.height),
+                           CanvasPoint(x: square.x, y: square.y + square.height)]
+            if let footprint { corners = footprint.clipped(ring: corners) }
+            return Path { path in
+                path.addLines(corners.compactMap(screenPoint))
                 path.closeSubpath()
             }
+        }
+
+        func screenPoint(_ point: CanvasPoint) -> CanvasPoint? {
+            toScreen(x: point.x, y: point.y).map { CanvasPoint(x: $0.x, y: $0.y) }
+        }
+
+        /// A north-up line on screen: whole when flat, and pitched, the
+        /// runs of it the view's ground holds.
+        func screenRuns(of line: [CanvasPoint]) -> [[CanvasPoint]] {
+            guard let footprint else { return [line.compactMap(screenPoint)] }
+            return footprint.runs(of: line).map { $0.compactMap(screenPoint) }
         }
 
         /// A tile's square, in dots: its top-left corner and its side. A
@@ -249,7 +276,7 @@ final class MapRenderer {
         var standInOrder: [TileID] = []
         func clipped(to squares: [CanvasRect]) -> GraphicsContext {
             var context = dots
-            if projection.isTurned {
+            if !projection.isAxisAligned {
                 context.clip(to: Path { path in squares.forEach { path.addPath(projection.outline($0)) } })
             } else {
                 context.clip(to: Path { path in squares.forEach { path.addRect($0) } })
@@ -403,11 +430,12 @@ final class MapRenderer {
             }
             statistics.featuresDrawn += 1
             // Rings are passed over north up, against the box the turn can
-            // bring on screen; what is kept is cut, turned, to the screen.
+            // bring on screen; what is kept is cut, turned, to the screen —
+            // or, pitched, cut to the ground the view shows, then projected.
             let viewport = projection.viewport
             let bounds = Clip(left: -margin, top: -margin, right: viewport.width + margin,
                               bottom: viewport.height + margin)
-            let reachesOut = projection.isTurned
+            let reachesOut = !projection.isAxisAligned
                 || left < bounds.left || right > bounds.right || top < bounds.top || bottom > bounds.bottom
             for ring in feature.rings {
                 let start = geometry.ringStart(ring), end = geometry.ringEnds[ring]
@@ -419,12 +447,35 @@ final class MapRenderer {
                           originY + ringBounds.maximumY * side >= reach.top - margin,
                           originY + ringBounds.minimumY * side <= reach.bottom + margin else { continue }
                 }
+                if let footprint = projection.footprint {
+                    let northUp = (start..<end).map { index in
+                        CanvasPoint(x: originX + geometry.xs[index] * side, y: originY + geometry.ys[index] * side)
+                    }
+                    if isArea {
+                        let points = simplified(footprint.clipped(ring: northUp).compactMap(projection.screenPoint),
+                                                keepingLast: false)
+                        guard !points.isEmpty else { continue }
+                        path.addLines(points)
+                        path.closeSubpath()
+                        statistics.verticesDrawn += points.count
+                    } else {
+                        for run in projection.screenRuns(of: northUp) {
+                            let points = simplified(run, keepingLast: true)
+                            guard points.count >= 2 else { continue }
+                            path.addLines(points)
+                            statistics.verticesDrawn += points.count
+                        }
+                    }
+                    continue
+                }
                 var points: [CanvasPoint] = []
                 points.reserveCapacity(end - start)
                 var lastX = 0.0, lastY = 0.0
                 for index in start..<end {
-                    let (x, y) = projection.turned(x: originX + geometry.xs[index] * side,
-                                                   y: originY + geometry.ys[index] * side)
+                    guard case let (x, y)? = projection.toScreen(x: originX + geometry.xs[index] * side,
+                                                                 y: originY + geometry.ys[index] * side) else {
+                        continue
+                    }
                     let isLast = index == end - 1
                     if !points.isEmpty, abs(x - lastX) < Simplification.dot, abs(y - lastY) < Simplification.dot,
                        !(isLast && !isArea) {
@@ -450,6 +501,22 @@ final class MapRenderer {
             }
         }
         return path
+    }
+
+    /// Screen points with each one within a dot of the one kept before it
+    /// dropped — the last of a line always kept, so it ends where it does.
+    private func simplified(_ points: [CanvasPoint], keepingLast: Bool) -> [CanvasPoint] {
+        var kept: [CanvasPoint] = []
+        kept.reserveCapacity(points.count)
+        for (index, point) in points.enumerated() {
+            if let last = kept.last, abs(point.x - last.x) < Simplification.dot, abs(point.y - last.y) < Simplification.dot,
+               !(keepingLast && index == points.count - 1) {
+                statistics.verticesDropped += 1
+                continue
+            }
+            kept.append(point)
+        }
+        return kept
     }
 
     /// The viewport and a margin around it, to which an area or a line is
@@ -613,9 +680,9 @@ final class MapRenderer {
         }
     }
 
-    /// Picture tiles, north up or under a turned camera.
+    /// Picture tiles, north up or under a turned or pitched camera.
     func drawPictures(_ items: [Item], projection: Projection) {
-        if projection.isTurned {
+        if !projection.isAxisAligned {
             drawTurnedRasters(items, projection: projection)
         } else {
             drawRasters(items, viewport: projection.viewport)
@@ -640,8 +707,8 @@ final class MapRenderer {
         return (UInt8(red / count), UInt8(green / count), UInt8(blue / count), UInt8(alpha / count))
     }
 
-    /// Raster tiles under a turned camera: each half cell of the screen
-    /// turned back to where it lies north up, and given the pixel of the
+    /// Raster tiles under a turned or pitched camera: each half cell of
+    /// the screen taken back to where it lies north up, and given the pixel of the
     /// tile there — a sample a half cell, as the north-up path takes.
     private func drawTurnedRasters(_ items: [Item], projection: Projection) {
         let halfCell = Double(BrailleCell.dotColumns)
@@ -661,7 +728,7 @@ final class MapRenderer {
                     }
                 }
                 for column in 0..<columns {
-                    let point = projection.unturned(x: (Double(column) + Self.halfCellMiddle) * halfCell,
+                    let point = projection.toGround(x: (Double(column) + Self.halfCellMiddle) * halfCell,
                                                     y: (Double(row) + Self.halfCellMiddle) * halfCell)
                     let tileX = (point.x - item.originX) / item.side, tileY = (point.y - item.originY) / item.side
                     var colour: Color?
@@ -704,27 +771,21 @@ final class MapRenderer {
 
     // MARK: - Content
 
-    private func drawPolylines(_ content: [MapElement], camera: MapCamera, viewport: DotSize,
+    private func drawPolylines(_ content: [MapElement], camera: MapCamera, viewport: DotSize, projection: Projection,
                                dots: GraphicsContext, theme: any Theme) {
         for case .polyline(let polyline) in content.map(\.kind) where polyline.coordinates.count >= 2 {
+            let runs = projection.screenRuns(of: polyline.coordinates.map { coordinate in
+                let point = camera.northUpPoint(for: coordinate, in: viewport)
+                return CanvasPoint(x: point.x, y: point.y)
+            })
             if polyline.style == .connector {
-                drawDashes(polyline, camera: camera, viewport: viewport, dots: dots, theme: theme)
+                drawDashes(runs, dots: dots, theme: theme)
                 continue
             }
             var path = Path()
-            var lastX = 0.0, lastY = 0.0
-            for (index, coordinate) in polyline.coordinates.enumerated() {
-                let point = camera.screenPoint(for: coordinate, in: viewport)
-                if index == 0 {
-                    path.move(to: CanvasPoint(x: point.x, y: point.y))
-                } else if abs(point.x - lastX) >= Simplification.dot || abs(point.y - lastY) >= Simplification.dot
-                            || index == polyline.coordinates.count - 1 {
-                    path.addLine(to: CanvasPoint(x: point.x, y: point.y))
-                } else {
-                    continue
-                }
-                lastX = point.x
-                lastY = point.y
+            for run in runs {
+                let points = simplified(run, keepingLast: true)
+                if points.count >= 2 { path.addLines(points) }
             }
             let colour = switch polyline.style {
             case .route: theme.accent
@@ -750,13 +811,11 @@ final class MapRenderer {
 
     /// A polyline as dashes along its screen path: `Dash.on` dots drawn,
     /// `Dash.off` left, the pattern carried across its bends.
-    private func drawDashes(_ polyline: MapPolyline, camera: MapCamera, viewport: DotSize, dots: GraphicsContext,
-                            theme: any Theme) {
-        let points = polyline.coordinates.map { camera.screenPoint(for: $0, in: viewport) }
+    private func drawDashes(_ runs: [[CanvasPoint]], dots: GraphicsContext, theme: any Theme) {
         var path = Path()
         var drawing = true
         var left = Dash.on
-        for (start, end) in zip(points, points.dropFirst()) {
+        for (start, end) in runs.flatMap({ run in zip(run, run.dropFirst()) }) {
             let length = ((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y)).squareRoot()
             guard length > 0 else { continue }
             var travelled = 0.0
