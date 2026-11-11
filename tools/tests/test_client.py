@@ -25,7 +25,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui.cases import run_cases  # noqa: E402
-from terminalui.client import INPUT_TIMEOUT, Client  # noqa: E402
+from terminalui.client import INPUT_TIMEOUT, Client, diag_dir_of, find_diag_dir, fnv1a  # noqa: E402
 
 
 def a_changed_read_timeout_reaches_the_open_socket() -> None:
@@ -54,10 +54,42 @@ def a_timeout_set_before_connecting_is_the_one_it_connects_with() -> None:
     assert client.read_timeout == INPUT_TIMEOUT
 
 
+def fnv1a_is_the_hash_the_framework_names_a_checkout_by() -> None:
+    # The published 32-bit FNV-1a vectors (Fowler, Noll, Vo; Noll's test
+    # suite): DiagPaths hashes the app's working directory the same way.
+    for text, expected in [("", "811c9dc5"), ("a", "e40c292c"), ("foobar", "bf9cf968")]:
+        assert fnv1a(text) == expected, (text, fnv1a(text))
+
+
+def an_app_is_found_by_its_own_directory_not_another_checkouts() -> None:
+    # A dead app from another checkout that had the same pid left its
+    # directory, socket and all: a glob on the pid found it, and the client
+    # waited on its socket for as long as it had.
+    root = tempfile.mkdtemp(prefix="terminalui-client-test-")
+    project = tempfile.mkdtemp(prefix="terminalui-client-project-")
+    pid = 4242
+    try:
+        stale = Path(root) / f"terminalui-00000000-{pid}"
+        (stale / "remote").mkdir(parents=True)
+        (stale / "remote" / f"{pid}.sock").touch()
+        own = Path(diag_dir_of(pid, project, tmp_root=root))
+        assert own.name == f"terminalui-{fnv1a(os.path.realpath(project))}-{pid}", own
+        assert find_diag_dir(pid, cwd=project, tmp_root=root) is None, "the app has not made its own yet"
+        own.mkdir()
+        assert find_diag_dir(pid, cwd=project, tmp_root=root) == str(own)
+    finally:
+        import shutil
+        shutil.rmtree(root)
+        os.rmdir(project)
+
+
 CASES = [
     ("a changed read timeout reaches the open socket", a_changed_read_timeout_reaches_the_open_socket),
     ("a timeout set before connecting is the one it connects with",
      a_timeout_set_before_connecting_is_the_one_it_connects_with),
+    ("fnv1a is the hash the framework names a checkout by", fnv1a_is_the_hash_the_framework_names_a_checkout_by),
+    ("an app is found by its own directory, not another checkout's",
+     an_app_is_found_by_its_own_directory_not_another_checkouts),
 ]
 
 

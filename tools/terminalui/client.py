@@ -52,10 +52,31 @@ def default_socket_path(pid: Optional[int] = None,
     return str(Path(diag_dir) / "remote" / f"{pid}.sock")
 
 
-def find_diag_dir(pid: int) -> Optional[str]:
-    """The per-process dir of the app with `pid`, `/tmp/terminalui-{hash}-{pid}`,
-    from whichever checkout started it — or None before it has made one."""
-    for match in Path("/tmp").glob(f"terminalui-*-{pid}"):
+def fnv1a(text: str) -> str:
+    """32-bit FNV-1a of `text`'s UTF-8, in lowercase hex without leading
+    zeros: how `DiagPaths` names a working directory."""
+    value = 0x811C9DC5
+    for byte in text.encode("utf-8"):
+        value = ((value ^ byte) * 0x01000193) & 0xFFFFFFFF
+    return format(value, "x")
+
+
+def diag_dir_of(pid: int, cwd: str, tmp_root: str = "/tmp") -> str:
+    """Where the app with `pid`, started in `cwd`, keeps its output:
+    `DiagPaths.dataDir(forPID:)`, `{tmp_root}/terminalui-{hash}-{pid}`, the
+    hash of the working directory as the app's `getcwd` gives it — links
+    resolved."""
+    return str(Path(tmp_root) / f"terminalui-{fnv1a(os.path.realpath(cwd))}-{pid}")
+
+
+def find_diag_dir(pid: int, cwd: Optional[str] = None, tmp_root: str = "/tmp") -> Optional[str]:
+    """The per-process dir of the app with `pid` — or None before it has
+    made one. Given the app's `cwd`, exactly its own; without, any checkout's
+    with that pid, which a dead app that had the pid may have left behind."""
+    if cwd is not None:
+        path = diag_dir_of(pid, cwd, tmp_root=tmp_root)
+        return path if Path(path).is_dir() else None
+    for match in Path(tmp_root).glob(f"terminalui-*-{pid}"):
         if match.is_dir():
             return str(match)
     return None
