@@ -3316,6 +3316,32 @@ def maps_demo_replay_navigates_to_arrival(app: Client) -> None:
     assert_true("replay millbrook-drive.gpx" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
 
 
+def maps_tilt_tips_the_map_and_back(app: Client) -> None:
+    """`3` tilts the map, live: the town is redrawn at an angle and the
+    status bar says so; Shift-↑ tips it further, Shift-↓ back; `3` again
+    looks straight down, and the town is drawn as it was."""
+    def map_rows(client: Client) -> list[str]:
+        return client.cells().rows[:-2]
+    def braille(client: Client) -> int:
+        return sum(ord(ch) in BRAILLE for row in map_rows(client) for ch in row)
+
+    assert_true(app.wait_until(lambda c: braille(c) > 100), "the town's streets should be drawn in braille")
+    flat = map_rows(app)
+    app.send_key("3")
+    assert_true("tilted view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+    tilted = map_rows(app)
+    assert_true(tilted != flat, "the tilted town is drawn differently")
+    assert_true(braille(app) > 100, "and its streets are still drawn")
+    app.send_key("up", "shift")
+    steeper = map_rows(app)
+    assert_true(steeper != tilted, "Shift-up tips it further")
+    app.send_key("down", "shift")
+    assert_true(map_rows(app) == tilted, "Shift-down tips it back")
+    app.send_key("3")
+    assert_true("flat view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+    assert_true(map_rows(app) == flat, "straight down again, the town is drawn as it was")
+
+
 def maps_map_types_change_the_map(app: Client) -> None:
     """`m` picks the map type, and each changes what the sample town draws,
     from its own imagery and ground with no network: Satellite is a picture
@@ -4060,6 +4086,8 @@ CASES: list[SmokeCase] = [
                    ("TERMINALUI_MAPS_LOCATION", f"gpx:{MAPS_DEMO_TRACK}"),
                    ("TERMINALUI_MAPS_REPLAY_SPEED", MAPS_DEMO_SPEED))),
     SmokeCase("maps.map_types_change_the_map", "Maps", maps_map_types_change_the_map,
+              env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
+    SmokeCase("maps.tilt_tips_the_map_and_back", "Maps", maps_tilt_tips_the_map_and_back,
               env=(("TERMINALUI_MAPS_PACKS", "/nonexistent/terminalui-maps-smoke"),)),
     SmokeCase("maps.five_ways_drive_holds_the_zoom_before_the_junction", "Maps",
               maps_five_ways_drive_holds_the_zoom_before_the_junction,

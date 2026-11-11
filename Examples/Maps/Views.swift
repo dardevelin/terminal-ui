@@ -112,11 +112,12 @@ struct MapsStatusBar: TerminalView {
     private static func hints(_ panel: Panel?, navigating: Bool, theme: any Theme) -> [TextSpan] {
         let pairs: [(String, String)] = panel == nil && navigating
             ? [("n", "end"), ("Space", "pause"), ("r", "re-centre"), ("u", "heading/north/locked"), ("<>", "rotate"),
-               ("z", "junction zoom"), ("w", "car/bike/foot"), ("C", "compass"), ("e", "smooth"), ("p", "route"),
-               ("q", "quit")]
+               ("z", "junction zoom"), ("w", "car/bike/foot"), ("C", "compass"), ("e", "smooth"), ("3", "tilt"),
+               ("p", "route"), ("q", "quit")]
             : panel == nil
             ? [("/", "search"), ("d", "directions"), ("p", "route"), ("g", "location"), ("n", "navigate"),
-               ("m", "map type"), ("v", "street"), ("o", "offline"), ("b", "backend"), ("?", "legend"), ("q", "quit")]
+               ("m", "map type"), ("v", "street"), ("3", "tilt"), ("o", "offline"), ("b", "backend"), ("?", "legend"),
+               ("q", "quit")]
             : [("Tab", "next"), ("Enter", "choose"), ("Esc", "close")]
         var spans: [TextSpan] = []
         for (key, action) in pairs {

@@ -183,7 +183,7 @@ struct DenseCityTests {
         #expect(renderer.statistics.pointsOfInterestPlaced > 5)
         let viewport = MapRenderer.viewport(for: CanvasSize(width: 200, height: 60))
         for point in renderer.placedPointsOfInterest {
-            let screen = camera.screenPoint(for: point.coordinate, in: viewport)
+            let screen = try #require(camera.screenPoint(for: point.coordinate, in: viewport))
             #expect(Int(screen.x / Double(BrailleCell.dotColumns)) == point.column, "\(point.name)")
             #expect(Int(screen.y / Double(BrailleCell.dotRows)) == point.row, "\(point.name)")
         }

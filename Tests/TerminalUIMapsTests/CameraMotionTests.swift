@@ -67,14 +67,14 @@ struct CameraMotionTests {
     }
 
     @Test("While the map turns, the traveller stays where the follow camera puts them")
-    func pivotsOnTraveller() {
+    func pivotsOnTraveller() throws {
         let follow = FollowCamera()
         var motion = CameraMotion(pose: pose(bearing: 0))
         let current = MapCamera(center: origin, zoom: 17)
         for _ in 0..<30 {
             motion.advance(toward: pose(bearing: 90), by: 1.0 / 60)
             let camera = follow.camera(for: motion.pose, current: current, viewport: viewport)
-            let drawn = camera.screenPoint(for: origin, in: viewport)
+            let drawn = try #require(camera.screenPoint(for: origin, in: viewport))
             #expect(abs(drawn.x - viewport.width / 2) < 0.5)
             #expect(abs(drawn.y - viewport.height * follow.configuration.travellerHeightShare) < 0.5)
         }

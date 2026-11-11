@@ -120,6 +120,9 @@ final class MapsModel {
     static let placeZoom = 16.0
     /// The zoom the app opens at: the whole sample town in a terminal.
     static let openingZoom = 15.0
+    /// The pitch `3` tips the map to: steep enough that the street ahead
+    /// reads as ahead, short of the most, where the far ground is a strip.
+    static let tiltedPitch = 45.0
     /// How many zooms a download spans by default either side of the view.
     static let downloadSpan = 2
 
@@ -170,6 +173,14 @@ final class MapsModel {
         }
     }
 
+    /// The map seen at an angle, or straight down again; Shift with ↑ and
+    /// ↓ tips it by steps in between.
+    @MainActor
+    func toggleTilt() {
+        camera.pitch = camera.pitch > 0 ? 0 : MapsModel.tiltedPitch
+        notice = camera.pitch > 0 ? "tilted view" : "flat view"
+    }
+
     /// A key that reached the app with the map focused.
     @MainActor
     func handleMapKey(_ event: KeyEvent) -> KeyEventResult {
@@ -192,6 +203,8 @@ final class MapsModel {
             open(.backends)
         case .character("t"):
             isDark.toggle()
+        case .character("3"):
+            toggleTilt()
         case .character("?"):
             showsLegend.toggle()
         case .character("c"):

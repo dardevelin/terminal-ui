@@ -101,18 +101,18 @@ private func isClose(_ first: Double, _ second: Double, within tolerance: Double
         #expect(viewport == DotSize(width: 160, height: 96))
     }
 
-    @Test func theCentreIsTheMiddleOfTheViewport() {
+    @Test func theCentreIsTheMiddleOfTheViewport() throws {
         let camera = MapCamera(center: GeoCoordinate(latitude: 39.47, longitude: -8.33), zoom: 13.5)
-        let point = camera.screenPoint(for: camera.center, in: viewport)
+        let point = try #require(camera.screenPoint(for: camera.center, in: viewport))
         #expect(isClose(point.x, 80))
         #expect(isClose(point.y, 48))
     }
 
-    @Test func screenAndGeoRoundTrip() {
+    @Test func screenAndGeoRoundTrip() throws {
         let camera = MapCamera(center: GeoCoordinate(latitude: 51.5, longitude: -0.12), zoom: 12.25)
         let point = DotPoint(x: 13, y: 71)
         let coordinate = camera.coordinate(at: point, in: viewport)
-        let back = camera.screenPoint(for: coordinate, in: viewport)
+        let back = try #require(camera.screenPoint(for: coordinate, in: viewport))
         #expect(isClose(back.x, point.x, within: 1e-6))
         #expect(isClose(back.y, point.y, within: 1e-6))
     }
@@ -144,13 +144,13 @@ private func isClose(_ first: Double, _ second: Double, within tolerance: Double
         #expect(isClose(panned.center.longitude, 179.9 + 1_000.0 / 16_384 * 360 - 360, within: 1e-9))
     }
 
-    @Test func zoomingAboutAPointKeepsItStill() {
+    @Test func zoomingAboutAPointKeepsItStill() throws {
         let camera = MapCamera(center: GeoCoordinate(latitude: 39.47, longitude: -8.33), zoom: 12)
         let anchor = DotPoint(x: 30, y: 20)
         let under = camera.coordinate(at: anchor, in: viewport)
         let zoomed = camera.zoomed(by: 1.5, about: anchor, in: viewport)
         #expect(zoomed.zoom == 13.5)
-        let after = zoomed.screenPoint(for: under, in: viewport)
+        let after = try #require(zoomed.screenPoint(for: under, in: viewport))
         #expect(isClose(after.x, anchor.x, within: 1e-6))
         #expect(isClose(after.y, anchor.y, within: 1e-6))
     }

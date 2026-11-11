@@ -37,8 +37,8 @@ enum BrailleCell {
     static let dotRows = 4
 }
 
-/// Where the map looks: a centre, a zoom and a bearing, as in SwiftUI's
-/// `MapCamera`.
+/// Where the map looks: a centre, a zoom, a bearing and a pitch, as in
+/// SwiftUI's `MapCamera`.
 ///
 /// The zoom is the slippy-map one, fractional: at zoom z the world is
 /// 256 · 2^z braille dots across, a terminal cell holding 2 × 4 dots.
@@ -70,6 +70,20 @@ public struct MapCamera: Sendable, Equatable {
         didSet { bearing = GeoMeasure.normalizedBearing(bearing) }
     }
 
+    /// How far the camera looks away from straight down, in degrees, from
+    /// 0 to ``maximumPitch`` — SwiftUI MapKit's `pitch`. The ground tips
+    /// away about the viewport's middle: what is ahead, up the screen,
+    /// recedes and draws smaller, and the scale across the middle stays the
+    /// zoom's. Names and markers stay upright.
+    public var pitch: Double {
+        didSet { pitch = MapCamera.constrainedPitch(pitch) }
+    }
+
+    /// The steepest pitch a camera takes, MapLibre's long-standing limit:
+    /// the horizon stays above the top of the view, so every point of it
+    /// is ground.
+    public static let maximumPitch = 60.0
+
     /// The zooms the camera may take.
     public var zoomRange: ClosedRange<Double>
 
@@ -100,14 +114,29 @@ public struct MapCamera: Sendable, Equatable {
                   bearing: bearing)
     }
 
+    /// A camera looking at `center` at `zoom`, turned to `bearing` and
+    /// tipped `pitch` degrees from straight down, which may zoom within
+    /// `zoomRange`.
+    public init(center: GeoCoordinate, zoom: Double,
+                zoomRange: ClosedRange<Double> = MapCamera.defaultZoomRange, bearing: Double = 0,
+                pitch: Double) {
+        self.init(center: center, zoom: zoom, zoomRange: zoomRange, tileSize: MapCamera.defaultTileSize,
+                  bearing: bearing, pitch: pitch)
+    }
+
     init(center: GeoCoordinate, zoom: Double,
          zoomRange: ClosedRange<Double> = MapCamera.defaultZoomRange,
-         tileSize: Double, bearing: Double = 0) {
+         tileSize: Double, bearing: Double = 0, pitch: Double = 0) {
         self.zoomRange = zoomRange
         self.tileSize = tileSize
         self.center = MapCamera.constrained(center)
         self.zoom = min(max(zoom, zoomRange.lowerBound), zoomRange.upperBound)
         self.bearing = GeoMeasure.normalizedBearing(bearing)
+        self.pitch = MapCamera.constrainedPitch(pitch)
+    }
+
+    private static func constrainedPitch(_ pitch: Double) -> Double {
+        pitch.isFinite ? min(max(pitch, 0), maximumPitch) : 0
     }
 
     /// The rotation from the north-up map to the screen, as the cosine and
@@ -139,6 +168,11 @@ public struct MapCamera: Sendable, Equatable {
 
     var rotation: Rotation { Rotation(bearing: bearing) }
 
+    /// Where the ground lands in a viewport through this camera.
+    func groundProjection(in viewport: DotSize) -> GroundProjection {
+        GroundProjection(bearing: bearing, pitch: pitch, viewport: viewport)
+    }
+
     /// How many dots the whole world spans at the camera's zoom.
     var dotsPerWorld: Double { MapCamera.dotsPerWorld(atZoom: zoom, tileSize: tileSize) }
 
@@ -146,16 +180,28 @@ public struct MapCamera: Sendable, Equatable {
         tileSize * exp2(zoom)
     }
 
-    /// Where `coordinate` lands in a viewport. A point east or west of the
-    /// centre by more than half the world is taken the short way round, so
-    /// a marker across the antimeridian is drawn beside the centre.
-    func screenPoint(for coordinate: GeoCoordinate, in viewport: DotSize) -> DotPoint {
+    /// Where `coordinate` lands in a viewport, or nil when a pitched camera
+    /// has it behind the eye. A point east or west of the centre by more
+    /// than half the world is taken the short way round, so a marker across
+    /// the antimeridian is drawn beside the centre.
+    func screenPoint(for coordinate: GeoCoordinate, in viewport: DotSize) -> DotPoint? {
+        let northUp = northUpPoint(for: coordinate, in: viewport)
+        return groundProjection(in: viewport).toScreen(x: northUp.x, y: northUp.y)
+            .map { DotPoint(x: $0.x, y: $0.y) }
+    }
+
+    /// Where `coordinate` lies on the north-up, unpitched map of a viewport:
+    /// what ``groundProjection(in:)`` takes to the screen.
+    func northUpPoint(for coordinate: GeoCoordinate, in viewport: DotSize) -> DotPoint {
+        northUpPoint(forWorld: WebMercator.project(coordinate), in: viewport)
+    }
+
+    func northUpPoint(forWorld point: WorldPoint, in viewport: DotSize) -> DotPoint {
         let centre = WebMercator.project(center)
-        let point = WebMercator.project(coordinate)
         var deltaX = point.x - centre.x
         if deltaX > MapCamera.halfWorld { deltaX -= 1 } else if deltaX < -MapCamera.halfWorld { deltaX += 1 }
-        let turned = rotation.toScreen(x: deltaX * dotsPerWorld, y: (point.y - centre.y) * dotsPerWorld)
-        return DotPoint(x: viewport.width / 2 + turned.x, y: viewport.height / 2 + turned.y)
+        return DotPoint(x: viewport.width / 2 + deltaX * dotsPerWorld,
+                        y: viewport.height / 2 + (point.y - centre.y) * dotsPerWorld)
     }
 
     /// The coordinate under a point of a viewport.
@@ -165,14 +211,25 @@ public struct MapCamera: Sendable, Equatable {
 
     /// The unit-world position under a point of a viewport, unwrapped: x may
     /// leave 0 ..< 1 when the view crosses the antimeridian.
+    ///
+    /// Pitched, a point far above the view is taken back to the furthest
+    /// ground the projection reaches (``GroundProjection/toGround(x:y:)``).
     func worldPoint(at point: DotPoint, in viewport: DotSize) -> WorldPoint {
         let centre = WebMercator.project(center)
-        let unturned = rotation.toMap(x: point.x - viewport.width / 2, y: point.y - viewport.height / 2)
-        return WorldPoint(x: centre.x + unturned.x / dotsPerWorld, y: centre.y + unturned.y / dotsPerWorld)
+        let ground = groundOffset(at: point, in: viewport)
+        return WorldPoint(x: centre.x + ground.x / dotsPerWorld, y: centre.y + ground.y / dotsPerWorld)
+    }
+
+    /// The north-up offset, in dots from the viewport's middle, of the
+    /// ground under a point of the screen.
+    private func groundOffset(at point: DotPoint, in viewport: DotSize) -> (x: Double, y: Double) {
+        let ground = groundProjection(in: viewport).toGround(x: point.x, y: point.y)
+        return (ground.x - viewport.width / 2, ground.y - viewport.height / 2)
     }
 
     /// The unit-world box holding a viewport's four corners: the view
-    /// itself north up, and the square around it turned.
+    /// itself north up, the square around it turned, and around the
+    /// trapezoid of ground it shows pitched.
     func worldBounds(in viewport: DotSize) -> (minimum: WorldPoint, maximum: WorldPoint) {
         let corners = [DotPoint(x: 0, y: 0), DotPoint(x: viewport.width, y: 0),
                        DotPoint(x: 0, y: viewport.height), DotPoint(x: viewport.width, y: viewport.height)]
@@ -204,6 +261,7 @@ public struct MapCamera: Sendable, Equatable {
     func coveringTiles(in viewport: DotSize,
                               sourceZoomRange: ClosedRange<Int> = 0...TileID.maximumZoom) -> [TileID] {
         let tileZoom = tileZoom(sourceZoomRange: sourceZoomRange)
+        if pitch > 0 { return pitchedCoveringTiles(in: viewport, nearestZoom: tileZoom, sourceZoomRange: sourceZoomRange) }
         let bounds = worldBounds(in: viewport)
         let tiles = TileID.covering(minimum: bounds.minimum, maximum: bounds.maximum, zoom: tileZoom)
         let centre = WebMercator.project(center)
@@ -217,8 +275,20 @@ public struct MapCamera: Sendable, Equatable {
         }.map(\.element)
     }
 
+    /// The camera moved by a drag from one point of a viewport to another:
+    /// the ground under the pointer stays under it, pitched or not.
+    func panned(dragging start: DotPoint, to end: DotPoint, in viewport: DotSize) -> MapCamera {
+        guard pitch > 0 else { return panned(byDotsX: end.x - start.x, y: end.y - start.y) }
+        let from = worldPoint(at: start, in: viewport), to = worldPoint(at: end, in: viewport)
+        let centre = WebMercator.project(center)
+        var moved = self
+        moved.center = WebMercator.unproject(WorldPoint(x: centre.x + from.x - to.x, y: centre.y + from.y - to.y))
+        return moved
+    }
+
     /// The camera moved by a drag of `deltaX`, `deltaY` dots: the map follows
-    /// the pointer, so the centre moves the other way.
+    /// the pointer, so the centre moves the other way. Pitched, the dots
+    /// are the middle's, before the ground recedes: what a key pans by.
     func panned(byDotsX deltaX: Double, y deltaY: Double) -> MapCamera {
         var moved = self
         let centre = WebMercator.project(center)
@@ -235,8 +305,10 @@ public struct MapCamera: Sendable, Equatable {
         var zoomedCamera = self
         zoomedCamera.zoom = zoom + delta
         let scale = zoomedCamera.dotsPerWorld
-        let unturned = rotation.toMap(x: anchor.x - viewport.width / 2, y: anchor.y - viewport.height / 2)
-        let centre = WorldPoint(x: anchored.x - unturned.x / scale, y: anchored.y - unturned.y / scale)
+        // The ground offset of a screen point is in dots, the same at every
+        // zoom: only the dots a world spans change.
+        let ground = groundOffset(at: anchor, in: viewport)
+        let centre = WorldPoint(x: anchored.x - ground.x / scale, y: anchored.y - ground.y / scale)
         zoomedCamera.center = WebMercator.unproject(centre)
         return zoomedCamera
     }

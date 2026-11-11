@@ -702,6 +702,76 @@ known now:
   on the demo drive, the Paris fixture and the 3D pages, and record the
   numbers here before and after.
 
+### E. The 3D map (planned, 2026-11-11)
+
+The map seen at an angle, buildings standing on it, then the ground itself
+raised — what SwiftUI MapKit shows with `MapCamera(…, pitch:)` and
+`.mapStyle(.standard(elevation: .realistic))`. The API follows MapKit's:
+
+- `MapCamera.pitch`, in degrees from straight down, 0 by default, clamped
+  to a `pitchRange` (MapKit stops near 60° at street zoom, less zoomed
+  out). Zoom keeps meaning the scale at the view's middle; bearing keeps
+  turning about it. Additive: a 2.x camera is a pitch-0 camera.
+- `MapLayers.elevation`, `.flat` (today's map, and the default) or
+  `.realistic`, as MapKit's `MapStyle.Elevation`: buildings and terrain
+  stand up only when asked for.
+- `MapView` pitches with keys (and a drag with a modifier, MapKit's
+  two-finger drag); the app gets a pitch toggle, live, like every other
+  behaviour.
+
+Three stages, each its own branch, in this order:
+
+1. **Pitch.** A flat ground under perspective is a homography: lines stay
+   lines. `MapRenderer.Projection` grows from a rotation into the
+   ground-to-screen 3×3 matrix (bearing, then pitch about the view's
+   middle), and everything that projects already goes through it — tile
+   squares become quads and their clips, areas and lines (clipped to the
+   near side of the horizon before projecting), rasters per dot through
+   the inverse, labels at projected anchors (upright text, nearest ranked
+   first, dropped past a distance), markers, polylines, the pointer
+   (`coordinate(atCell:)`), and pan and wheel zoom anchoring. Tiles cover
+   the visible ground trapezoid at a zoom that falls with distance, so a
+   far tile is drawn at the density a near one is, up to a far limit;
+   above the horizon is sky, a theme role. `NavigationCamera` gets a
+   pitched follow, the traveller low in the view.
+   **As built.** `GroundProjection` (`Geo/`) is the one homography: the
+   camera's `screenPoint` (nil behind the eye) and `worldPoint`, the
+   renderer's `Projection`, the drag (`panned(dragging:to:in:)`, ground
+   under the pointer) and the wheel all go through it. The eye stands 1.5
+   view heights back, so at 60° the top edge sees 2.4 eye distances ahead
+   and the horizon never enters the view: no sky is drawn, and every
+   screen point is ground. Pitched, every area and line is cut to the
+   view's ground (`ConvexRegion`: Sutherland–Hodgman for rings,
+   Cyrus–Beck for lines) before it is projected; flat, the old path runs
+   unchanged, byte for byte. `pitchedCoveringTiles` is the quadtree: a
+   200 × 60 view at z16, 60°, draws 7 tiles, its far rows from z15. A
+   label is shown by the zoom its ground is drawn at, so the far rows
+   carry no house numbers. Keys: Shift-↑/↓, 10° a press. The example
+   tilts with `3` and a Camera-panel toggle.
+
+   **Gap found:** a `DragGesture` value carries no modifiers or button, so
+   MapKit's tilt-by-drag (two-finger drag; a right or Ctrl drag in
+   MapLibre) cannot be offered yet.
+
+2. **Buildings.** `Vector2`, `Polygon2D` and `Mesh.extrusion(of:height:)`
+   return to TerminalUI3D (they wait on the `worktree-maps-experiment`
+   branch, `Sources/TerminalUI3D/Mesh/Mesh+Extrusion.swift`, with their
+   tests), and TerminalUIMaps depends on TerminalUI3D. Each tile's
+   buildings (OpenMapTiles `building`: `render_height`,
+   `render_min_height`) become one mesh, built off the main actor with the
+   tile and cached beside it, drawn after the ground and before labels by
+   the internal `SceneRenderer` (`package` access) through a `Camera3D`
+   that agrees with the homography on the ground — a test holds a ground
+   point to the same dot through both. Edges blend toward the drawn
+   ground.
+3. **Terrain.** Realistic elevation from the terrain source makes the
+   ground a surface, not a plane, so the homography no longer holds. Its
+   own design before it is built: likely the flat map drawn into a ground
+   texture and draped on a `heightField` mesh.
+
+Then the performance pass's 3D item above: measure the triangle counts and
+frame times stages 2 and 3 add, in release.
+
 ### D. Even Realities G2 (after the terminal is right)
 
 G2: 576×288 per eye, 4-bit green. The official route is Even Hub — apps are web

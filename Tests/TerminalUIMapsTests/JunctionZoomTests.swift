@@ -127,7 +127,7 @@ struct JunctionLegibilityTests {
         let follow = FollowCamera()
         let camera = follow.camera(for: FollowPose(focus: traveller, bearing: 90, zoom: group.zoom),
                                    current: MapCamera(center: traveller, zoom: group.zoom), viewport: viewport)
-        let points = found.map { camera.screenPoint(for: $0.coordinate, in: viewport) }
+        let points = try found.map { try #require(camera.screenPoint(for: $0.coordinate, in: viewport)) }
         for point in points {
             #expect((0...viewport.width).contains(point.x) && (0...viewport.height).contains(point.y))
         }

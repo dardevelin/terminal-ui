@@ -65,8 +65,8 @@ private final class MapScreen {
     }
 
     @discardableResult
-    func key(_ key: Key) -> Bool {
-        engine.routeKeyEvent(KeyEvent(key: key), root: graph.root)
+    func key(_ key: Key, modifiers: KeyModifiers = []) -> Bool {
+        engine.routeKeyEvent(KeyEvent(key: key, modifiers: modifiers), root: graph.root)
     }
 
     @discardableResult
@@ -138,6 +138,39 @@ struct MapViewTests {
         #expect(screen.key(.character("j")))
         #expect(screen.model.camera.center.latitude < start.center.latitude, "j looks south")
         #expect(!screen.key(.character("x")), "a key the map has no use for passes on")
+    }
+
+    @Test func shiftAndTheArrowsTipTheMap() async {
+        let screen = MapScreen(store: await sampleStore())
+        screen.engine.focusNext()
+        let start = screen.model.camera
+        #expect(screen.key(.up, modifiers: .shift))
+        #expect(screen.model.camera.pitch == MapView.Steps.pitch, "Shift-up tips the map away")
+        #expect(screen.model.camera.center == start.center, "and does not pan it")
+        for _ in 0..<10 { screen.key(.up, modifiers: .shift) }
+        #expect(screen.model.camera.pitch == MapCamera.maximumPitch)
+        #expect(!screen.key(.up, modifiers: .shift), "at the most, the key passes on")
+        #expect(screen.key(.down, modifiers: .shift))
+        #expect(screen.model.camera.pitch == MapCamera.maximumPitch - MapView.Steps.pitch)
+        for _ in 0..<10 { screen.key(.down, modifiers: .shift) }
+        #expect(screen.model.camera.pitch == 0)
+        #expect(!screen.key(.down, modifiers: .shift), "straight down, the key passes on")
+    }
+
+    @Test func aDragOnAPitchedMapKeepsTheGroundUnderThePointer() async {
+        let model = Model()
+        model.camera.pitch = 50
+        let screen = MapScreen(store: await sampleStore(), model: model)
+        let viewport = DotSize(columns: 40, rows: 12)
+        let middleOf = { (column: Int, row: Int) in DotPoint(x: Double(column * 2 + 1), y: Double(row * 4 + 2)) }
+        let grabbed = model.camera.coordinate(at: middleOf(20, 3), in: viewport)
+        screen.engine.handlePress(PointerPress(x: 20, y: 3), root: screen.graph.root)
+        screen.frame()
+        screen.engine.continueDrag(x: 24, y: 9)
+        screen.frame()
+        let landed = model.camera.screenPoint(for: grabbed, in: viewport)
+        #expect(landed.map { abs($0.x - middleOf(24, 9).x) < 1e-6 && abs($0.y - middleOf(24, 9).y) < 1e-6 } == true)
+        screen.engine.endDrag(x: 24, y: 9)
     }
 
     @Test func theSourcesCreditIsInTheBottomRightCorner() async {

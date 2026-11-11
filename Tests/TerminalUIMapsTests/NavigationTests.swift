@@ -239,15 +239,16 @@ struct FollowCameraTests {
     private let viewport = DotSize(columns: 100, rows: 30)
     private let here = GeoCoordinate(latitude: 0.02, longitude: 0.02)
 
-    @Test func theTravellerSitsAThirdFromTheBottom() {
+    @Test func theTravellerSitsAThirdFromTheBottom() throws {
         let follow = FollowCamera()
         let camera = follow.camera(for: here, course: 45, speed: 10, current: MapCamera(center: here, zoom: 15),
                                    viewport: viewport)
-        let point = camera.screenPoint(for: here, in: viewport)
+        let point = try #require(camera.screenPoint(for: here, in: viewport))
         #expect(abs(point.x - viewport.width / 2) < 0.01)
         #expect(abs(point.y - viewport.height * 2 / 3) < 0.01)
         #expect(camera.bearing == 45)
-        let ahead = camera.screenPoint(for: GeoMeasure.destination(from: here, bearing: 45, distance: 50), in: viewport)
+        let ahead = try #require(camera.screenPoint(for: GeoMeasure.destination(from: here, bearing: 45, distance: 50),
+                                                    in: viewport))
         #expect(abs(ahead.x - point.x) < 0.01 && ahead.y < point.y, "the course points up the screen")
     }
 

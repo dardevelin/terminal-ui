@@ -8,38 +8,40 @@ struct CameraBearingTests {
     private let centre = GeoCoordinate(latitude: 38.5, longitude: -8.2)
     private let viewport = DotSize(width: 80, height: 48)
 
-    @Test func atNinetyDegreesEastIsUp() {
+    @Test func atNinetyDegreesEastIsUp() throws {
         let camera = MapCamera(center: centre, zoom: 16, bearing: 90)
-        let east = camera.screenPoint(for: GeoMeasure.destination(from: centre, bearing: 90, distance: 20), in: viewport)
-        let north = camera.screenPoint(for: GeoMeasure.destination(from: centre, bearing: 0, distance: 20), in: viewport)
+        let east = try #require(camera.screenPoint(for: GeoMeasure.destination(from: centre, bearing: 90, distance: 20),
+                                                   in: viewport))
+        let north = try #require(camera.screenPoint(for: GeoMeasure.destination(from: centre, bearing: 0, distance: 20),
+                                                    in: viewport))
         #expect(abs(east.x - 40) < 0.01 && east.y < 24)
         #expect(abs(north.y - 24) < 0.01 && north.x < 40, "north is to the left")
     }
 
     @Test(arguments: [0.0, 37, 90, 211.5])
-    func screenAndGroundAgreeWhateverTheBearing(bearing: Double) {
+    func screenAndGroundAgreeWhateverTheBearing(bearing: Double) throws {
         let camera = MapCamera(center: centre, zoom: 15.3, bearing: bearing)
         for point in [DotPoint(x: 3, y: 7), DotPoint(x: 70, y: 40), DotPoint(x: 40, y: 24)] {
-            let back = camera.screenPoint(for: camera.coordinate(at: point, in: viewport), in: viewport)
+            let back = try #require(camera.screenPoint(for: camera.coordinate(at: point, in: viewport), in: viewport))
             #expect(abs(back.x - point.x) < 1e-6 && abs(back.y - point.y) < 1e-6)
         }
     }
 
-    @Test func aDragMovesTheMapWithThePointer() {
+    @Test func aDragMovesTheMapWithThePointer() throws {
         // Whatever the bearing, the ground under the pointer stays under it.
         let camera = MapCamera(center: centre, zoom: 15, bearing: 120)
         let grabbed = camera.coordinate(at: DotPoint(x: 20, y: 10), in: viewport)
         let moved = camera.panned(byDotsX: 6, y: -4)
-        let landed = moved.screenPoint(for: grabbed, in: viewport)
+        let landed = try #require(moved.screenPoint(for: grabbed, in: viewport))
         #expect(abs(landed.x - 26) < 1e-6 && abs(landed.y - 6) < 1e-6)
     }
 
-    @Test func zoomingAboutThePointerKeepsItsGroundTurned() {
+    @Test func zoomingAboutThePointerKeepsItsGroundTurned() throws {
         let camera = MapCamera(center: centre, zoom: 15, bearing: 300)
         let anchor = DotPoint(x: 66, y: 9)
         let ground = camera.coordinate(at: anchor, in: viewport)
         let zoomed = camera.zoomed(by: 1, about: anchor, in: viewport)
-        let landed = zoomed.screenPoint(for: ground, in: viewport)
+        let landed = try #require(zoomed.screenPoint(for: ground, in: viewport))
         #expect(abs(landed.x - anchor.x) < 1e-6 && abs(landed.y - anchor.y) < 1e-6)
         #expect(zoomed.bearing == 300)
     }

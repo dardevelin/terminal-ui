@@ -6,6 +6,25 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **A map seen at an angle.** `MapCamera.pitch` tips the ground away from
+  straight down, up to `MapCamera.maximumPitch` (60°), as SwiftUI MapKit's
+  camera does; `MapCamera(center:zoom:zoomRange:bearing:pitch:)` makes one
+  pitched. The ground recedes in perspective about the view's middle,
+  where the zoom's scale holds; the far ground is drawn from coarser tiles
+  and named as its own zoom would name it; markers, routes, the pointer and
+  the wheel agree on where every coordinate lies; nothing behind the eye is
+  drawn. A navigation camera keeps the pitch it is given.
+- **`MapView` tips with the keyboard:** Shift with ↑ and ↓, ten degrees a
+  press, MapLibre's keys. The `Maps` example tilts with `3` and from its
+  Camera panel, live, while browsing or navigating.
+
+### Changed
+
+- **Shift with ↑ or ↓ on a focused `MapView` pitches the map** where it
+  used to pan it as the plain arrows do.
+
 ## [2.6.1] — 2026-11-10 — Maps that build where CI does
 
 A patch release over 2.6.0: an app written for 2.6 compiles unchanged.
