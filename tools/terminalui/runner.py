@@ -32,7 +32,8 @@ from pathlib import Path
 from typing import Callable, Iterator, Mapping, Optional, Sequence, Tuple
 
 from . import verdict
-from .client import INPUT_TIMEOUT, Client, RemoteError, default_socket_path, find_diag_dir, set_window_size
+from .client import (INPUT_TIMEOUT, Client, RemoteError, default_socket_path, diag_dir_of, find_diag_dir,
+                     set_window_size)
 from .recording import RECORDING_TERMINAL, recording_environment
 
 
@@ -216,9 +217,10 @@ def spawn_and_connect(target: str,
     master, slave = pty.openpty()
     # Set window size before spawn so the initial layout pass uses it.
     set_window_size(slave, cols, rows)
+    app_cwd = str(cwd) if cwd is not None else str(root)
     proc = subprocess.Popen(
         [str(exe)],
-        cwd=str(cwd) if cwd is not None else str(root),
+        cwd=app_cwd,
         env=env_full,
         stdin=slave,
         stdout=slave,
@@ -284,11 +286,11 @@ def spawn_and_connect(target: str,
     client: Optional[Client] = None
     case_failed = False
     try:
-        # Resolve the child's PID-isolated diag dir by globbing the
-        # framework-default shape. The cwd-hash component is stable
-        # but FNV-1a-encoded; cheaper to glob `terminalui-*-{pid}`
-        # than reimplement the hash in Python.
-        diag_dir = _wait_for_diag_dir(proc.pid, timeout=connect_timeout)
+        # The child's own PID-isolated diag dir, named by the hash of the
+        # directory it was started in. A glob on the pid alone found what
+        # a dead app from another checkout, which had the pid before, left
+        # behind, and waited on its socket.
+        diag_dir = _wait_for_diag_dir(proc.pid, cwd=app_cwd, timeout=connect_timeout)
         socket_dir = str(Path(diag_dir) / "remote")
         client = (_wait_for_client(proc.pid, timeout=connect_timeout, socket_dir=socket_dir)
                   if connect else Client(pid=proc.pid, socket_dir=socket_dir))
@@ -359,9 +361,9 @@ def spawn_and_connect(target: str,
                 raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
 
 
-def _wait_for_diag_dir(pid: int, timeout: float) -> str:
-    """Resolve the spawned child's per-process diag dir by globbing
-    `/tmp/terminalui-*-{pid}` until it appears. The framework creates
+def _wait_for_diag_dir(pid: int, cwd: str, timeout: float) -> str:
+    """Wait for the spawned child's per-process diag dir,
+    `/tmp/terminalui-{hash of cwd}-{pid}`, to appear. The framework creates
     the dir during boot before writing its socket, so we can race the
     socket-wait by polling for the parent dir first.
 
@@ -369,12 +371,12 @@ def _wait_for_diag_dir(pid: int, timeout: float) -> str:
     appears (child failed to boot)."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        diag_dir = find_diag_dir(pid)
+        diag_dir = find_diag_dir(pid, cwd=cwd)
         if diag_dir is not None:
             return diag_dir
         time.sleep(0.05)
     raise RemoteError(
-        f"diag dir /tmp/terminalui-*-{pid} never appeared; child pid={pid} "
+        f"diag dir {diag_dir_of(pid, cwd)} never appeared; child pid={pid} "
         "may have failed to boot or did not honor PID-isolated paths"
     )
 
@@ -400,7 +402,10 @@ def _wait_for_client(pid: int,
         time.sleep(0.05)
     else:
         raise RemoteError(f"socket for pid={pid} never appeared; app may have failed to boot")
-    client = Client(pid=pid, socket_dir=socket_dir)
+    # The rest of the boot time to connect in: a dir a dead app with this
+    # pid left behind holds its socket, refusing, until the app empties the
+    # dir and listens on its own.
+    client = Client(pid=pid, socket_dir=socket_dir, connect_timeout=max(deadline - time.monotonic(), 0.05))
     client.connect()
     return client
 
