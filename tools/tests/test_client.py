@@ -25,7 +25,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from terminalui.cases import run_cases  # noqa: E402
-from terminalui.client import INPUT_TIMEOUT, Client, diag_dir_of, find_diag_dir, fnv1a  # noqa: E402
+from terminalui.client import (INPUT_TIMEOUT, Client, diag_dir_of, find_diag_dir, fnv1a,  # noqa: E402
+                               reap_dead_data_dirs)
 
 
 def a_changed_read_timeout_reaches_the_open_socket() -> None:
@@ -83,6 +84,30 @@ def an_app_is_found_by_its_own_directory_not_another_checkouts() -> None:
         os.rmdir(project)
 
 
+def only_a_dead_apps_data_dir_is_reaped() -> None:
+    # An app killed before its teardown, or a harness killed mid-case,
+    # leaves its data dir in /tmp: hundreds piled up. A dir whose process
+    # is gone is nobody's; one whose process runs is left, and so is
+    # anything not named as a data dir.
+    import shutil
+    import subprocess
+    root = tempfile.mkdtemp(prefix="terminalui-reap-test-")
+    try:
+        finished = subprocess.Popen(["true"])
+        finished.wait()
+        dead = Path(root) / f"terminalui-1a2b3c4d-{finished.pid}"
+        live = Path(root) / f"terminalui-1a2b3c4d-{os.getpid()}"
+        other = Path(root) / "terminalui_walk"
+        for directory in (dead, live, other):
+            (directory / "remote").mkdir(parents=True)
+        assert reap_dead_data_dirs(tmp_root=root) == 1
+        assert not dead.exists(), "the dead app's dir is removed"
+        assert live.exists(), "a running process keeps its dir"
+        assert other.exists(), "only data dirs are touched"
+    finally:
+        shutil.rmtree(root)
+
+
 CASES = [
     ("a changed read timeout reaches the open socket", a_changed_read_timeout_reaches_the_open_socket),
     ("a timeout set before connecting is the one it connects with",
@@ -90,6 +115,7 @@ CASES = [
     ("fnv1a is the hash the framework names a checkout by", fnv1a_is_the_hash_the_framework_names_a_checkout_by),
     ("an app is found by its own directory, not another checkout's",
      an_app_is_found_by_its_own_directory_not_another_checkouts),
+    ("only a dead app's data dir is reaped", only_a_dead_apps_data_dir_is_reaped),
 ]
 
 

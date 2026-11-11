@@ -20,11 +20,13 @@ Usage::
 Runs against Linux binaries too — see ``tools/scripts/linux_harness.sh``.
 
 Exits 0 on success, non-zero on any failure. Prints one line per page; full
-snapshots land under ``/tmp/terminalui_walk/`` for post-mortem inspection.
+snapshots land under ``/tmp/terminalui_walk/`` for post-mortem inspection,
+kept only when a page fails.
 """
 
 from __future__ import annotations
 
+import shutil
 import sys
 from pathlib import Path
 
@@ -129,6 +131,10 @@ def main(argv: list[str]) -> int:
     print(f"\nwalked {len(results)} pages, {len(failed)} failed")
     for page, detail in failed:
         print(f"  FAIL {page}: {detail}")
+    # The snapshots are for a failure's post-mortem; a walk that passed
+    # leaves nothing in /tmp.
+    if not failed:
+        shutil.rmtree(out_dir, ignore_errors=True)
     return 1 if failed else 0
 
 
