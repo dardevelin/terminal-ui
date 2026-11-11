@@ -11,6 +11,17 @@ public enum BasemapDetail: Sendable, Equatable {
     case hidden
 }
 
+/// Whether a map stands its buildings up — SwiftUI MapKit's
+/// `MapStyle.Elevation`.
+public enum MapElevation: Sendable, Equatable {
+    /// Everything drawn flat on the ground: footprints, not buildings.
+    case flat
+    /// Buildings raised from their footprints to their heights, drawn in
+    /// light and shade; best seen with the camera pitched
+    /// (``MapCamera/pitch``).
+    case realistic
+}
+
 /// How a terrain layer draws its heights.
 public struct TerrainStyle: Sendable, Equatable {
     /// Whether slopes are shaded as the sun would light them.
@@ -53,6 +64,8 @@ public struct MapLayers: Sendable, Equatable {
     public var basemap: BasemapDetail
     /// How the terrain layer draws its heights, where there is one.
     public var terrainStyle: TerrainStyle
+    /// Whether buildings stand up: ``MapElevation/flat`` unless set.
+    public var elevation = MapElevation.flat
 
     /// The layers given; with none, the full basemap alone.
     public init(imagery: MapTileStore? = nil, terrain: MapTileStore? = nil, basemap: BasemapDetail = .full,
@@ -70,7 +83,7 @@ public struct MapLayers: Sendable, Equatable {
     /// identity, drawn the same way.
     public static func == (left: MapLayers, right: MapLayers) -> Bool {
         left.imagery === right.imagery && left.terrain === right.terrain && left.basemap == right.basemap
-            && left.terrainStyle == right.terrainStyle
+            && left.terrainStyle == right.terrainStyle && left.elevation == right.elevation
     }
 }
 
@@ -93,13 +106,15 @@ struct MapFrameLayers {
     var imagery: MapLayerTiles?
     var terrain: MapLayerTiles?
     var terrainStyle: TerrainStyle
+    var elevation: MapElevation
 
     init(basemap: BasemapDetail = .full, imagery: MapLayerTiles? = nil, terrain: MapLayerTiles? = nil,
-                terrainStyle: TerrainStyle = .standard) {
+         terrainStyle: TerrainStyle = .standard, elevation: MapElevation = .flat) {
         self.basemap = basemap
         self.imagery = imagery
         self.terrain = terrain
         self.terrainStyle = terrainStyle
+        self.elevation = elevation
     }
 
     /// Names drawn over a picture sit on the theme's ground, a band the

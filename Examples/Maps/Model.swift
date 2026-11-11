@@ -59,6 +59,8 @@ final class MapsModel {
     let launchLocation: LocationSpec?
     var panel: Panel?
     var isDark = true
+    /// Whether the map stands its buildings up (``MapElevation/realistic``).
+    var showsBuildings = false
     /// A line for the status bar about the last thing that went wrong or
     /// changed.
     var notice: String?
@@ -173,12 +175,30 @@ final class MapsModel {
         }
     }
 
-    /// The map seen at an angle, or straight down again; Shift with ↑ and
-    /// ↓ tips it by steps in between.
+    /// The 3D view, as Maps' 3D button gives it: the map tilted and its
+    /// buildings stood up, or flat and straight down again. Shift with ↑
+    /// and ↓ tips it by steps in between; the Camera panel turns each on
+    /// its own.
+    @MainActor
+    func toggle3D() {
+        let on = !(camera.pitch > 0 && showsBuildings)
+        camera.pitch = on ? MapsModel.tiltedPitch : 0
+        showsBuildings = on
+        notice = on ? "3D view" : "flat view"
+    }
+
+    /// The map seen at an angle, or straight down again.
     @MainActor
     func toggleTilt() {
         camera.pitch = camera.pitch > 0 ? 0 : MapsModel.tiltedPitch
-        notice = camera.pitch > 0 ? "tilted view" : "flat view"
+        notice = camera.pitch > 0 ? "tilted view" : "straight down"
+    }
+
+    /// Buildings stood up from their footprints, or drawn flat.
+    @MainActor
+    func toggleBuildings() {
+        showsBuildings.toggle()
+        notice = showsBuildings ? "3D buildings" : "flat buildings"
     }
 
     /// A key that reached the app with the map focused.
@@ -204,7 +224,7 @@ final class MapsModel {
         case .character("t"):
             isDark.toggle()
         case .character("3"):
-            toggleTilt()
+            toggle3D()
         case .character("?"):
             showsLegend.toggle()
         case .character("c"):

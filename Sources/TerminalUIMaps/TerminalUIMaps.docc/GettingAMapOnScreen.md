@@ -75,6 +75,8 @@ camera that shows a whole region.
 
 ## Seeing the map at an angle
 
+![The Maps example's 3D view: the sample town tilted, its buildings standing in light and shade, turned about the middle, then driven through in 3D.](maps-3d.gif)
+
 ``MapCamera/pitch`` looks at the ground at an angle, as SwiftUI MapKit's
 camera does: 0 is straight down, ``MapCamera/maximumPitch`` the steepest.
 The street ahead recedes up the screen, its far part drawn from coarser
@@ -84,6 +86,20 @@ drag still keeps the ground under the pointer.
 
 ```swift
 camera.pitch = 45
+```
+
+Set the layers' ``MapLayers/elevation`` to ``MapElevation/realistic``, as
+MapKit's `.mapStyle(.standard(elevation: .realistic))` does, and the
+buildings stand up from their footprints to the heights the tiles give,
+drawn in light and shade with TerminalUI3D. They rise where the ground is
+drawn at zoom 16 or closer; further out they lie flat, where a house would
+be a dot or two.
+
+```swift
+var layers = MapLayers.explore
+layers.elevation = .realistic
+MapView(camera: $camera, store: store)
+    .mapLayers(layers)
 ```
 
 Navigation keeps the pitch it is given: ``NavigationCamera`` turns and

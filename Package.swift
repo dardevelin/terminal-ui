@@ -158,7 +158,8 @@ let package = Package(
         // the deflate that gzips the sample town's tiles. Opt-in.
         .target(
             name: "TerminalUIMaps",
-            dependencies: ["TerminalUI", "TerminalUIIO", "TerminalUIRaster"],
+            // TerminalUI3D raises a realistic map's buildings.
+            dependencies: ["TerminalUI", "TerminalUIIO", "TerminalUIRaster", "TerminalUI3D"],
             path: "Sources/TerminalUIMaps",
             swiftSettings: strictSettings
         ),
@@ -297,7 +298,7 @@ let package = Package(
             name: "TerminalUIMapsTests",
             // TerminalUI to draw a map into a canvas's planes and read the
             // cells, as its own canvas tests do.
-            dependencies: ["TerminalUIMaps", "TerminalUI", "TerminalUIIO", "TerminalUIRaster"],
+            dependencies: ["TerminalUIMaps", "TerminalUI", "TerminalUIIO", "TerminalUIRaster", "TerminalUI3D"],
             path: "Tests/TerminalUIMapsTests",
             // Real tiles and responses, read through `#filePath`.
             exclude: ["Fixtures"],

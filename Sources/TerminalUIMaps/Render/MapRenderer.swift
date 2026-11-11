@@ -1,5 +1,6 @@
 import TerminalUI
 import TerminalUIIO
+import TerminalUI3D
 
 /// What the last frame a ``MapRenderer`` drew cost and showed.
 struct MapRenderStatistics: Sendable, Equatable {
@@ -82,6 +83,13 @@ final class MapRenderer {
     /// The points of interest the last frame placed, glyph and name.
     public internal(set) var placedPointsOfInterest: [MapPointOfInterest] = []
 
+    /// Each tile's buildings, as the last frames sorted and raised them;
+    /// nil for a tile with none. Kept so a frame builds only what is new to
+    /// it (``drawBuildings(_:camera:projection:size:context:theme:)``).
+    var buildingTiles: [TileID: BuildingTile?] = [:]
+    /// What draws a realistic map's buildings, kept with its buffers.
+    private(set) lazy var buildingRenderer = SceneRenderer()
+
     init() {}
 
     /// The viewport, in dots, of a canvas of `size` cells.
@@ -133,6 +141,9 @@ final class MapRenderer {
         drawPictures(items, projection: projection)
         drawRelief(layers, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
         drawShapes(items, geometry: .line, zoom: camera.zoom, projection: projection, theme: theme)
+        if layers.elevation == .realistic {
+            drawBuildings(items, camera: camera, projection: projection, size: size, context: context, theme: theme)
+        }
         drawPolylines(content, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
         drawLabels(items, content: content, camera: camera, projection: projection, size: size,
                    context: context, theme: theme, background: layers.labelBackground(in: theme))
@@ -206,6 +217,26 @@ final class MapRenderer {
         /// it nears — what decides which names it carries.
         func zoom(atX x: Double, y: Double) -> Double {
             ground.zoom(zoom, atX: x, y: y)
+        }
+
+        /// The zoom a north-up box is drawn at where the view shows it
+        /// nearest: the camera's flat, when the box reaches the view at all;
+        /// pitched, the most over the corners of the box cut to the view's
+        /// ground. Minus infinity for a box the view does not show.
+        func nearestZoom(of box: CanvasRect) -> Double {
+            let reach = self.reach
+            guard box.x + box.width >= reach.left, box.x <= reach.right,
+                  box.y + box.height >= reach.top, box.y <= reach.bottom else { return -.infinity }
+            guard let footprint else { return zoom }
+            let corners = [CanvasPoint(x: box.x, y: box.y), CanvasPoint(x: box.x + box.width, y: box.y),
+                           CanvasPoint(x: box.x + box.width, y: box.y + box.height),
+                           CanvasPoint(x: box.x, y: box.y + box.height)]
+            return footprint.clipped(ring: corners).map { zoom(atX: $0.x, y: $0.y) }.max() ?? -.infinity
+        }
+
+        /// The zoom a tile is drawn at where the view shows it nearest.
+        func nearestZoom(of item: Item) -> Double {
+            nearestZoom(of: CanvasRect(x: item.originX, y: item.originY, width: item.side, height: item.side))
         }
 
         /// A screen point back where it lies on the north-up map.

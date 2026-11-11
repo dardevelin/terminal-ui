@@ -96,4 +96,45 @@ struct MeshTests {
         #expect(merged.positions.count == Mesh.cube().positions.count * 2)
         #expect(merged.bounds?.maximum.x == 3.5)
     }
+
+    @Test func anExtrusionRoofsItsFootprintAroundItsHole() {
+        let outline = [Vector2(0, 0), Vector2(4, 0), Vector2(4, 4), Vector2(0, 4)]
+        // The courtyard runs the same way as the outline: either winding
+        // is taken.
+        let courtyard = [Vector2(1, 1), Vector2(3, 1), Vector2(3, 3), Vector2(1, 3)]
+        let building = Mesh.extrusion(of: Polygon2D(outline, holes: [courtyard]), height: 5, roofMaterial: 1)
+        let roof = building.triangles.filter { triangle in
+            triangle.material == 1 && building.positions[triangle.first].y == 5
+        }
+        let roofArea = roof.reduce(0) { $0 + area(building, $1) }
+        #expect(abs(roofArea - 12) < 1e-9, "16 square units less the courtyard's 4")
+        #expect(roof.allSatisfy { faceNormal(building, $0).y > 0 })
+        // Four walls outside and four round the courtyard, two triangles each.
+        let walls = building.triangles.filter { $0.material == 0 }
+        #expect(walls.count == 16)
+        #expect(walls.allSatisfy { triangle in
+            let normal = faceNormal(building, triangle)
+            let centre = (building.positions[triangle.first] + building.positions[triangle.third]) / 2
+            let fromMiddle = Vector3(centre.x - 2, 0, centre.z - 2)
+            // An outer wall faces away from the middle, a courtyard wall toward it.
+            let outer = max(abs(fromMiddle.x), abs(fromMiddle.z)) > 1.5
+            return outer ? normal.dot(fromMiddle) > 0 : normal.dot(fromMiddle) < 0
+        })
+    }
+
+    @Test func aConcaveFootprintIsTriangulatedWithoutSpilling() {
+        let ell = [Vector2(0, 0), Vector2(3, 0), Vector2(3, 1), Vector2(1, 1), Vector2(1, 3), Vector2(0, 3)]
+        let block = Mesh.extrusion(of: Polygon2D(ell), height: 1, roofMaterial: 1)
+        let roof = block.triangles.filter { $0.material == 1 && block.positions[$0.first].y == 1 }
+        #expect(abs(roof.reduce(0) { $0 + area(block, $1) } - 5) < 1e-9)
+    }
+
+    @Test func anExtrusionStandsOnItsBase() {
+        // A building part that starts above the ground, OpenMapTiles'
+        // `render_min_height`: its walls run from its base to its top.
+        let square = Polygon2D([Vector2(0, 0), Vector2(2, 0), Vector2(2, 2), Vector2(0, 2)])
+        let part = Mesh.extrusion(of: square, height: 3, base: 4)
+        let heights = part.positions.map(\.y)
+        #expect(heights.min() == 4 && heights.max() == 7)
+    }
 }

@@ -82,4 +82,22 @@ struct PitchedMapTests {
         #expect(farNumbers.isEmpty, "house numbers in the far rows: \(farNumbers)")
         #expect(!nearNumbers.isEmpty, "house numbers are still drawn near")
     }
+
+    @Test func aRealisticTownStandsItsBuildingsUp() {
+        // Printed with TERMINALUI_MAPS_PRINT=1, for a person to look at.
+        let camera = MapCamera(center: SampleTown.coordinate(east: 520, north: -110), zoom: 18, bearing: 20,
+                               pitch: 55)
+        let ids = MapRenderer.tiles(for: camera, size: size, zoomRange: SampleTileSource.zoomRange)
+        let tiles = ids.compactMap { id in SampleTileSource.tile(for: id).map { RenderTile(id: id, tile: .vector($0)) } }
+        let byID = Dictionary(tiles.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func frame(_ elevation: MapElevation) -> CellBuffer {
+            drawMap(width: Int(size.width), height: Int(size.height)) { context, size in
+                MapRenderer().draw(in: context, camera: camera, size: size, zoomRange: SampleTileSource.zoomRange,
+                                   layers: MapFrameLayers(elevation: elevation)) { byID[$0] }
+            }
+        }
+        let flat = frame(.flat), realistic = frame(.realistic)
+        if printFrames { print("Flat\n\(flat.text)\nRealistic\n\(realistic.text)\n") }
+        #expect(flat.text != realistic.text, "the town's buildings stand up")
+    }
 }

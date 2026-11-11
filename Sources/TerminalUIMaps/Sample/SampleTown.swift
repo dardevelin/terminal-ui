@@ -307,6 +307,8 @@ public enum SampleTown {
         /// Half a house's frontage and depth, in metres.
         static let halfWidth = 6.0
         static let halfDepth = 5.0
+        /// A house's height in metres: two floors and a roof.
+        static let height = 8.0
         /// Metres a house keeps from another street and from a landmark,
         /// so none stands in a junction or on a landmark.
         static let clearance = 24.0
@@ -424,20 +426,25 @@ public enum SampleTown {
         features.append(Feature(layer: "transportation", shape: .line(points([(-1_200, -930), (1_200, -930)])),
                                 properties: ["class": "rail"]))
 
-        let buildingCentres: [(Double, Double)] = [
-            (-280, 20), (-170, -60), (-640, 360), (10, 410), (-590, -390), (520, -50),
-            (-880, -380), (-860, 30), (-40, -870), (650, -500), (700, -700),
+        // The town's bigger buildings and their heights in metres, as
+        // OpenMapTiles' `render_height` gives them: a block of flats by the
+        // church, a tower by the station, halls and sheds of a few floors.
+        let buildings: [(east: Double, north: Double, height: Double)] = [
+            (-280, 20, 24), (-170, -60, 15), (-640, 360, 9), (10, 410, 12), (-590, -390, 18), (520, -50, 30),
+            (-880, -380, 9), (-860, 30, 6), (-40, -870, 45), (650, -500, 12), (700, -700, 8),
         ]
-        for (east, north) in buildingCentres {
-            let footprint = rectangle(west: east - buildingHalfSide, south: north - buildingHalfSide,
-                                      east: east + buildingHalfSide, north: north + buildingHalfSide)
-            features.append(Feature(layer: "building", shape: .polygon(footprint, holes: []), properties: [:],
+        for building in buildings {
+            let footprint = rectangle(west: building.east - buildingHalfSide, south: building.north - buildingHalfSide,
+                                      east: building.east + buildingHalfSide, north: building.north + buildingHalfSide)
+            features.append(Feature(layer: "building", shape: .polygon(footprint, holes: []),
+                                    properties: ["render_height": .double(building.height)],
                                     minimumZoom: LayerZoom.building))
         }
         for house in houses {
             let footprint = rectangle(west: house.east - Houses.halfWidth, south: house.north - Houses.halfDepth,
                                       east: house.east + Houses.halfWidth, north: house.north + Houses.halfDepth)
-            features.append(Feature(layer: "building", shape: .polygon(footprint, holes: []), properties: [:],
+            features.append(Feature(layer: "building", shape: .polygon(footprint, holes: []),
+                                    properties: ["render_height": .double(Houses.height)],
                                     minimumZoom: LayerZoom.building))
             features.append(Feature(layer: "housenumber",
                                     shape: .point(coordinate(east: house.east, north: house.north)),

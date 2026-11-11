@@ -13,7 +13,10 @@ import TerminalUI
 /// silhouette and creases are found where coverage, depth or the surface's
 /// direction jumps between neighbours; and the ``ShadingStyle`` turns the
 /// samples into cells.
-final class SceneRenderer {
+///
+/// Package access: TerminalUIMaps draws a realistic map's buildings with it,
+/// over the map it has drawn.
+package final class SceneRenderer {
     let rasterizer = SceneRasterizer()
     let tone = SampleBuffer<Float>(0)
     private let fog = SampleBuffer<Float>(0)
@@ -44,12 +47,14 @@ final class SceneRenderer {
     private var lastSampleWidth = 0
     private var lastSampleHeight = 0
 
+    package init() {}
+
     // MARK: - Drawing
 
     /// Draw `scene` into `context`, over a canvas of `size` cells, in
     /// `shading`, placed by `framing`.
-    func draw(_ scene: Scene3D, in context: GraphicsContext, size: CanvasSize,
-              shading: ShadingStyle = .image(), framing: SceneFraming = .camera) {
+    package func draw(_ scene: Scene3D, in context: GraphicsContext, size: CanvasSize,
+                      shading: ShadingStyle = .image(), framing: SceneFraming = .camera) {
         let columns = Int(size.width.rounded(.down)), rows = Int(size.height.rounded(.down))
         guard columns > 0, rows > 0 else { return }
         let sampleWidth = columns * Grid.columnsPerCell, sampleHeight = rows * Grid.rowsPerCell

@@ -53,7 +53,13 @@ struct VectorContent: Sendable {
                 switch role.geometry {
                 case .area:
                     guard feature.kind == .polygon else { continue }
+                    let featuresBefore = byRole[role]?.features.count ?? 0
                     byRole[role, default: RoleGeometry(role: role)].append(feature.rings, scale: scale)
+                    // One extrusion a footprint kept: a feature with no
+                    // rings adds none.
+                    if role == .building, byRole[role]?.features.count ?? 0 > featuresBefore {
+                        byRole[role]?.extrusions.append(BuildingExtrusion(feature.properties))
+                    }
                 case .line:
                     guard feature.kind == .lineString else { continue }
                     byRole[role, default: RoleGeometry(role: role)].append(feature.rings, scale: scale)
@@ -92,6 +98,9 @@ struct RoleGeometry: Sendable {
     /// a few features of thousands of points.
     var ringBounds: [Bounds] = []
     var features: [FeatureSpan] = []
+    /// For the building role, how each feature stands up on a realistic
+    /// map, one per feature in order; nil for one that is not raised.
+    var extrusions: [BuildingExtrusion?] = []
 
     struct Bounds: Sendable {
         var minimumX = Double.infinity
@@ -283,4 +292,31 @@ struct LineLabel: Sendable {
 /// A raster tile's pixels, north up, covering exactly the tile's square.
 struct RasterContent: Sendable {
     let image: ImageBuffer
+}
+
+/// How far a building's footprint is raised, in metres: from its base to
+/// its top — OpenMapTiles' `render_min_height` and `render_height`
+/// (openmaptiles.org/schema, `building`).
+struct BuildingExtrusion: Sendable, Equatable {
+    var base: Double
+    var top: Double
+
+    /// What a footprint without a height stands to: the schema's own
+    /// fallback for a building with neither a height nor a level count.
+    static let defaultHeight = 5.0
+
+    init(base: Double, top: Double) {
+        self.base = base
+        self.top = top
+    }
+
+    /// A feature's extrusion, or nil for an outline whose `building:part`s
+    /// stand in its place, which the schema marks `hide_3d`.
+    init?(_ properties: [String: VectorValue]) {
+        if case .bool(true)? = properties["hide_3d"] { return nil }
+        let top = properties["render_height"]?.numberValue ?? Self.defaultHeight
+        let base = properties["render_min_height"]?.numberValue ?? 0
+        guard top > base else { return nil }
+        self.init(base: base, top: top)
+    }
 }

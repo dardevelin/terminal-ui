@@ -16,9 +16,11 @@ is now made here, from the tutorial's own code steps and the tapes under
 - **README GIFs**: ``assets/demo.tape`` and ``assets/debug.tape``, once
   ``check_vhs_compat.py`` has shown vhs draws every Storybook page as the
   framework does.
-- **The maps film**, ``assets/maps.gif``: ``assets/maps.tape``, the Maps
-  example on its sample town, copied into TerminalUIMaps' documentation
-  catalog as well. Not a Storybook page, so outside ``check_vhs_compat.py``.
+- **The maps films**, ``assets/maps.gif`` and ``assets/maps-3d.gif``:
+  ``assets/maps.tape`` and ``assets/maps-3d.tape``, the Maps example on its
+  sample town — the second its 3D view — copied into TerminalUIMaps'
+  documentation catalog as well. Not Storybook pages, so outside
+  ``check_vhs_compat.py``.
 - **Showcase GIFs**: ``assets/3d.tape`` and ``assets/canvas.tape``, the
   ``Showcase`` example's chapters, from vhs's frames (see
   ``record_showcase``).
@@ -194,18 +196,26 @@ def make_card(chapter: int) -> None:
 
 # Where the maps film is shown besides the README: the getting-started
 # article of TerminalUIMaps' catalog, which embeds it by name.
-MAPS_GIF = REPO_ROOT / "assets" / "maps.gif"
-MAPS_DOCS_GIF = REPO_ROOT / "Sources" / "TerminalUIMaps" / "TerminalUIMaps.docc" / "Resources" / "maps.gif"
+MAPS_DOCS = REPO_ROOT / "Sources" / "TerminalUIMaps" / "TerminalUIMaps.docc" / "Resources"
+# The 3D view's film, made from vhs's frames: its shaded buildings take
+# hundreds of colours, which vhs's own encoder dithers.
+MAPS_3D_FRAMES = WORK / "maps-3d"
 
 
 def record_maps() -> None:
-    """The Maps example's film: its release build, recorded, and copied
-    into the documentation catalog."""
+    """The Maps example's films — the town, and its 3D view — from its
+    release build, recorded, and copied into the documentation catalog."""
     # Apart from .build, whose lock a developer's own `swift run` holds.
     run(["swift", "build", "-c", "release", "--product", "Maps", "--scratch-path", str(WORK / "app")])
+    MAPS_DOCS.mkdir(parents=True, exist_ok=True)
     run_vhs("assets/maps.tape")
-    MAPS_DOCS_GIF.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(MAPS_GIF, MAPS_DOCS_GIF)
+    shutil.copyfile(REPO_ROOT / "assets" / "maps.gif", MAPS_DOCS / "maps.gif")
+    shutil.rmtree(MAPS_3D_FRAMES, ignore_errors=True)
+    run_vhs("assets/maps-3d.tape")
+    output = REPO_ROOT / "assets" / "maps-3d.gif"
+    showcase_gif(captured_frames(MAPS_3D_FRAMES), ShowcaseEncoding(frame_rate="10", colours=128), output)
+    print(f"{output.relative_to(REPO_ROOT)}: {output.stat().st_size / 1e6:.2f} MB", flush=True)
+    shutil.copyfile(output, MAPS_DOCS / "maps-3d.gif")
 # The Showcase example's chapters, each recorded as its own GIF.
 #
 # vhs's GIF will not do for them. Its browser terminal takes up to a quarter
@@ -251,21 +261,30 @@ def showcase_frames(frames: Path, pace: float) -> list[tuple[Path, float]]:
     """vhs's frames of the screen, each with the seconds it stood for, in
     the app's own time. vhs writes each as it captures it, so a frame's time
     is its file's; the cursor is a layer of its own, and the app hides it."""
+    captured = captured_frames(frames)
+    # A frame the app drew and vhs never captured is a jump in the motion.
+    longest, drawn = max(seconds for _, seconds in captured), 1 / (SHOWCASE_APP_FRAME_RATE * pace)
+    if longest > drawn:
+        raise SystemExit(f"vhs fell behind: {longest:.3f}s between captures, longer than the "
+                         f"{drawn:.3f}s between the app's frames; record at a slower pace")
+    return [(path, seconds * pace) for path, seconds in captured]
+
+
+def captured_frames(frames: Path) -> list[tuple[Path, float]]:
+    """vhs's frames of the screen in `frames`, each with the seconds it was
+    on screen: vhs writes each as it captures it, so a frame's time is its
+    file's. The cursor is a layer of its own, and the app hides it."""
     captured = sorted(frames.glob("frame-text-*.png"))
     if len(captured) < 2:
         raise SystemExit(f"vhs captured no frames into {frames}")
     times = [path.stat().st_mtime for path in captured]
     gaps = [later - earlier for earlier, later in zip(times, times[1:])]
-    # A frame the app drew and vhs never captured is a jump in the motion.
-    longest, drawn = max(gaps), 1 / (SHOWCASE_APP_FRAME_RATE * pace)
-    if longest > drawn:
-        raise SystemExit(f"vhs fell behind: {longest:.3f}s between captures, longer than the "
-                         f"{drawn:.3f}s between the app's frames; record at a slower pace")
-    return [(path, gap * pace) for path, gap in zip(captured, gaps + [gaps[-1]])]
+    return list(zip(captured, gaps + [gaps[-1]]))
 
 
 def showcase_gif(frames: list[tuple[Path, float]], encoding: ShowcaseEncoding, output: Path) -> None:
     listing = SHOWCASE_FRAMES / f"{output.stem}.txt"
+    listing.parent.mkdir(parents=True, exist_ok=True)
     lines = []
     for path, seconds in frames:
         lines += [f"file '{path}'", f"duration {seconds:.4f}"]

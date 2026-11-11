@@ -50,6 +50,7 @@ sets it turning.
 ### Shapes
 
 - ``Mesh``
+- ``Polygon2D``
 - ``Text3D``
 
 ### Shading
@@ -63,6 +64,7 @@ sets it turning.
 
 ### Math
 
+- ``Vector2``
 - ``Vector3``
 - ``Vector4``
 - ``Matrix4``

@@ -204,7 +204,7 @@ public struct MapView: TerminalView {
         let frameLayers = MapFrameLayers(basemap: layers.basemap,
                                          imagery: layerTiles(layers.imagery, camera: camera, size: size),
                                          terrain: layerTiles(layers.terrain, camera: camera, size: size),
-                                         terrainStyle: layers.terrainStyle)
+                                         terrainStyle: layers.terrainStyle, elevation: layers.elevation)
         let drawsLayer = frameLayers.imagery != nil || frameLayers.terrain != nil
         if zoomRange != nil || drawsLayer {
             renderer.draw(in: context, camera: camera, size: size, zoomRange: zoomRange ?? 0...0, content: content,
