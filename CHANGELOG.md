@@ -6,6 +6,28 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **Buildings stand up on a realistic map.** `MapLayers.elevation`, as
+  SwiftUI MapKit's `MapStyle.Elevation`, is `.flat` by default; set to
+  `.realistic`, a map raises every footprint to the height its tiles give
+  (OpenMapTiles' `render_height` and `render_min_height`, 5 m without one,
+  an outline marked `hide_3d` left to its parts) and draws the buildings in
+  light and shade over the ground and its streets, beneath the routes and
+  names. They stand where the ground is drawn at zoom 16 or closer, and lie
+  flat further out; a tile's buildings are built in chunks only where the
+  view reaches, so a close view of a city builds a fraction of its tile.
+  The `Maps` example's `3` is now the 3D view — tilted, its buildings up —
+  and its Camera panel turns each on alone.
+- **`Mesh.extrusion(of:height:base:material:roofMaterial:)`** in
+  TerminalUI3D raises a `Polygon2D` — an outline with holes, of `Vector2`
+  points, triangulated by ear clipping — into a prism with walls, a roof
+  and a floor.
+
+### Changed
+
+- **TerminalUIMaps depends on TerminalUI3D**, which draws its buildings.
+
 ## [2.7.0] — 2026-11-11 — The map at an angle
 
 A minor release over 2.6.1: an app written for 2.6 compiles unchanged.
