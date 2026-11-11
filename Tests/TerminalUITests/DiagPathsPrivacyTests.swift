@@ -66,4 +66,35 @@ struct DiagPathsPrivacyTests {
         #expect(FileManager.default.createFile(atPath: path, contents: Data()))
         #expect(!DiagPaths.ensurePrivateDirectory(atPath: path))
     }
+
+    /// A process id names one live process, so a data dir already at this
+    /// one's path was left by a process that had the id before and died
+    /// without removing it — killed, or crashed. Its socket was found by a
+    /// client before the new app had bound its own, and refused it; an app
+    /// told to open no socket was seen to have one.
+    @Test func whatADeadProcessLeftIsClearedBeforeTheDirectoryIsUsed() throws {
+        let path = scratch()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        mkdir(path, 0o700)
+        let remote = (path as NSString).appendingPathComponent("remote")
+        mkdir(remote, 0o700)
+        #expect(FileManager.default.createFile(atPath: (remote as NSString).appendingPathComponent("4242.sock"),
+                                               contents: Data()))
+        #expect(FileManager.default.createFile(atPath: (path as NSString).appendingPathComponent("app-name"),
+                                               contents: Data("Old".utf8)))
+        #expect(DiagPaths.claimLeftoverDirectory(atPath: path))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: path).isEmpty)
+        #expect(mode(path) & 0o077 == 0, "still its owner's alone")
+    }
+
+    @Test func aDirectoryNotItsOwnersAloneIsNotEmptied() throws {
+        let path = scratch()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        mkdir(path, 0o700)
+        chmod(path, 0o755)
+        let kept = (path as NSString).appendingPathComponent("kept")
+        #expect(FileManager.default.createFile(atPath: kept, contents: Data()))
+        #expect(!DiagPaths.claimLeftoverDirectory(atPath: path))
+        #expect(FileManager.default.fileExists(atPath: kept), "a directory refused is not written into, or emptied")
+    }
 }

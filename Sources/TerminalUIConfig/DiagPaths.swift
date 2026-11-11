@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 #if canImport(Darwin)
 import Darwin
 #elseif canImport(Glibc)
@@ -340,8 +341,16 @@ public enum DiagPaths {
         try? fm.createDirectory(atPath: configDir, withIntermediateDirectories: true)
 
         let root = dataDir(useTmp: config.useTmp)
-        if root == tmpDataDir, !ensurePrivateDirectory(atPath: root) {
-            return false
+        if root == tmpDataDir {
+            // The first time this process prepares its dir, whatever is in
+            // it is a dead process's: later calls find this one's own.
+            let isFirst = dataDirectoryClaimed.withLock { claimed in
+                defer { claimed = true }
+                return !claimed
+            }
+            guard isFirst ? claimLeftoverDirectory(atPath: root) : ensurePrivateDirectory(atPath: root) else {
+                return false
+            }
         }
 
         // Create the data root and subdirectories
@@ -352,6 +361,26 @@ public enum DiagPaths {
 
         if root == tmpDataDir {
             try? recordAppName(ProcessInfo.processInfo.processName, inDataDir: root)
+        }
+        return true
+    }
+
+    /// Whether this process has prepared its `/tmp` data dir yet.
+    private static let dataDirectoryClaimed = Mutex(false)
+
+    /// ``ensurePrivateDirectory(atPath:)``, and the directory emptied: a
+    /// process id names one live process, so a data dir already at this
+    /// process's path was left by one that had the id before it and died
+    /// without removing it — killed, or crashed. Its socket would be found
+    /// before this app bound its own, and refuse the client; its traces and
+    /// screenshots would be taken for this app's. A directory refused is
+    /// left as it is.
+    public static func claimLeftoverDirectory(atPath path: String) -> Bool {
+        guard ensurePrivateDirectory(atPath: path) else { return false }
+        let fm = FileManager.default
+        for entry in (try? fm.contentsOfDirectory(atPath: path)) ?? [] {
+            // `removeItem` takes a link away, never what it points to.
+            try? fm.removeItem(atPath: (path as NSString).appendingPathComponent(entry))
         }
         return true
     }

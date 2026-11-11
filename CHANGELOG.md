@@ -25,6 +25,16 @@ All notable changes to TerminalUI are documented here. Format based on
 - **Shift with ↑ or ↓ on a focused `MapView` pitches the map** where it
   used to pan it as the plain arrows do.
 
+### Fixed
+
+- **A debug app no longer inherits what a dead process left at its data
+  dir.** A process id names one live process, but an app that was killed
+  or crashed leaves `/tmp/terminalui-{hash}-{pid}/` behind, and the next
+  app given that id used it as it was: its stale socket was found before
+  the new app bound its own, refusing the client, and an app told to open
+  no socket appeared to have one. The first time an app prepares the
+  directory, it now empties it.
+
 ## [2.6.1] — 2026-11-10 — Maps that build where CI does
 
 A patch release over 2.6.0: an app written for 2.6 compiles unchanged.
