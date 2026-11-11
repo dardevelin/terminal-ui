@@ -33,7 +33,7 @@ from typing import Callable, Iterator, Mapping, Optional, Sequence, Tuple
 
 from . import verdict
 from .client import (INPUT_TIMEOUT, Client, RemoteError, default_socket_path, diag_dir_of, find_diag_dir,
-                     set_window_size)
+                     reap_dead_data_dirs, set_window_size)
 from .recording import RECORDING_TERMINAL, recording_environment
 
 
@@ -185,6 +185,7 @@ def spawn_and_connect(target: str,
     resolved_build_dir = Path(build_dir or DEFAULT_BUILD_DIR)
     if not resolved_build_dir.is_absolute():
         resolved_build_dir = root / resolved_build_dir
+    _reap_dead_data_dirs_once()
     exe = resolved_build_dir / target
     if not exe.exists():
         raise FileNotFoundError(
@@ -359,6 +360,20 @@ def spawn_and_connect(target: str,
             )
             if problems:
                 raise AppExitedBadly(f"{target} (pid {proc.pid}): " + "; ".join(problems))
+
+
+_reaped = threading.Event()
+_reap_lock = threading.Lock()
+
+
+def _reap_dead_data_dirs_once() -> None:
+    """Before the first app a harness process starts, the data dirs of
+    apps that are gone (`reap_dead_data_dirs`): /tmp holds no more than
+    the apps running."""
+    with _reap_lock:
+        if not _reaped.is_set():
+            reap_dead_data_dirs()
+            _reaped.set()
 
 
 def _wait_for_diag_dir(pid: int, cwd: str, timeout: float) -> str:
