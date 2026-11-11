@@ -75,6 +75,8 @@ camera that shows a whole region.
 
 ## Seeing the map at an angle
 
+![The Maps example's 3D view: the sample town tilted, its buildings standing in light and shade, turned about the middle, then driven through in 3D.](maps-3d.gif)
+
 ``MapCamera/pitch`` looks at the ground at an angle, as SwiftUI MapKit's
 camera does: 0 is straight down, ``MapCamera/maximumPitch`` the steepest.
 The street ahead recedes up the screen, its far part drawn from coarser
