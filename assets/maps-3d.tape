@@ -1,9 +1,9 @@
 # vhs script for the README's 3D map GIF: the Maps example's 3D view on
 # the sample town, offline. Regenerate with:  python3 tools/scripts/record_media.py maps
 # The film: a search flies to the café, the map closes in, `3` tilts it
-# into the 3D view with its buildings standing, `>` turns it about the
-# middle, and the demo drive takes the car through the town in 3D, the map
-# turning with it. The packs variable points at no directory, so a
+# into the 3D view with its buildings standing on the ground, the camera
+# moves up toward Beacon Hill, `>` turns it about the middle, and the demo
+# drive takes the car through the town in 3D, the map turning with it. The packs variable points at no directory, so a
 # developer's own downloaded regions never show.
 #
 # vhs keeps its frames here and record_media.py makes assets/maps-3d.gif of
@@ -42,8 +42,15 @@ Show
 # The streets by the café, straight down.
 Sleep 1.5s
 
-# The 3D view: tilted, the buildings standing.
+# The 3D view: tilted, the buildings standing on the ground.
 Type "3"
+Sleep 2.5s
+
+# Out to the town and north-west toward Beacon Hill: its flank lit from
+# the north-west, the roads bending as they climb.
+Type@250ms "[[[["
+Sleep 300ms
+Type@300ms "hhhhhkkk"
 Sleep 2.5s
 
 # Turned about the middle, a step at a time.

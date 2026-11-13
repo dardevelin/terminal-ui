@@ -47,7 +47,8 @@ the script is <code>assets/demo.tape</code>.</sub></p>
 
 Full-screen pieces, each about one thing: the `Showcase` example plays the
 first two on its own (`swift run Showcase 3d`, `swift run Showcase canvas`),
-and the third is the `Maps` example (`swift run Maps`).
+and the last two are the `Maps` example (`swift run Maps`, then `3` for its
+3D view).
 
 <p align="center">
   <img src="assets/3d.gif" alt="TerminalUI3D: an extruded TERMINALUI wordmark turns into view, a torus turns as a shaded image with its highlight sliding, then in braille and character shading, then the camera flies over a fogged terrain with labelled peaks"/>
@@ -63,6 +64,11 @@ and the third is the `Maps` example (`swift run Maps`).
   <img src="assets/maps.gif" alt="The Maps example: a town in braille, searched, seen from the air and as terrain, then driven through a corner"/>
 </p>
 <p align="center"><sub><b>Maps, drawn in text</b> — <a href="#maps"><code>TerminalUIMaps</code></a>: a town zoomed from street plan to buildings, a search and its place card, satellite and terrain, then a drive turning through a corner — on a sample town that needs no network.</sub></p>
+
+<p align="center">
+  <img src="assets/maps-3d.gif" alt="The Maps example in 3D: the town tilted, its buildings standing in light and shade, the camera moving up to a hill whose lit flank the roads climb, the map turned about the middle, then driven through in 3D"/>
+</p>
+<p align="center"><sub><b>Maps in 3D</b> — the camera tilted as MapKit's is, buildings raised to their heights, the ground itself standing up with its hills shaded and its roads and names following them, hidden behind a ridge, and the pointer landing on the hillside — drawn by <a href="#maps"><code>TerminalUIMaps</code></a> through <code>TerminalUI3D</code>.</sub></p>
 
 ## Design
 
@@ -121,7 +127,7 @@ animated version of this table.
 | **Drawing & time** | [`Canvas`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/canvas) — paths, fills and text on half cells, braille dots and whole cells · [`TimelineView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/timelineview) — redrawn every frame, or at a schedule's dates · [see it](#showcase) |
 | **Presentation** | [`.alert`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.confirmationDialog`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.modal`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.inspector`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.contextMenu`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) — with focus containment |
 | **3D** (`TerminalUI3D`) | [`SceneView`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/sceneview) — a lit, shaded [`Scene3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/scene3d) drawn as an image, braille or characters · [`Mesh`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/mesh) · [`Text3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/text3d) · [`Turntable`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/turntable) · [`CameraTour`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/cameratour) · [see it](#showcase) |
-| **Maps** (`TerminalUIMaps`) | [`MapView`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/mapview) — vector and picture tiles in braille and half blocks, panned, zoomed, turned, tilted, with its buildings standing in 3D · [`MapTileStore`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/maptilestore) · [`PlaceSearch`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/placesearch) · [`RouteProvider`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/routeprovider) · [`NavigationController`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcontroller) · [`NavigationCamera`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcamera) · [`RegionDownloader`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/regiondownloader) |
+| **Maps** (`TerminalUIMaps`) | [`MapView`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/mapview) — vector and picture tiles in braille and half blocks, panned, zoomed, turned, and tilted with its buildings and hills standing in 3D · [`MapTileStore`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/maptilestore) · [`PlaceSearch`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/placesearch) · [`RouteProvider`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/routeprovider) · [`NavigationController`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcontroller) · [`NavigationCamera`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/navigationcamera) · [`RegionDownloader`](https://dardevelin.github.io/terminal-ui/documentation/terminaluimaps/regiondownloader) |
 | **Gestures** | [`TapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/tapgesture) · [`SpatialTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/spatialtapgesture) · [`DragGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/draggesture) · [`.onScrollWheel`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onTapGesture`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) · [`.onHover`](https://dardevelin.github.io/terminal-ui/documentation/terminalui/terminalview) |
 
 Beyond the components:
@@ -284,17 +290,15 @@ the [backends article](https://dardevelin.github.io/terminal-ui/documentation/te
 `swift run Maps --backend osm` draws the real world;
 `--location gpx:Examples/Maps/Tracks/millbrook-drive.gpx` replays the drive.
 
-<p align="center">
-  <img src="assets/maps-3d.gif" alt="The Maps example's 3D view: the sample town tilted, its buildings standing in light and shade, turned about the middle, then driven through in 3D"/>
-</p>
-
 The camera tilts, as MapKit's does: `camera.pitch = 45` tips the ground away
 with the far streets drawn from coarser tiles, and a realistic map —
 `MapLayers.elevation = .realistic` — stands every building up to the height
 its tiles give and, with a terrain layer, the ground itself, its hills
 shaded and its roads following them, drawn in light and shade by
-[`TerminalUI3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/). In the example, `3` is the 3D view,
-browsing or navigating.
+[`TerminalUI3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/) — the
+[Maps in 3D](#showcase) film above. A drag holds the hillside it grabbed,
+and `MapCamera.coordinate(atCell:in:layers:)` gives the ground a tap lands
+on. In the example, `3` is the 3D view, browsing or navigating.
 
 A few more single-purpose targets live in `Examples/` (`AsyncState`,
 `Navigation`, `Settings`, `DotMatrixDemo`); they double as fixtures for the
