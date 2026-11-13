@@ -89,7 +89,9 @@ struct MapsStatusBar: TerminalView {
                          bold: true),
                 TextSpan(" \(MainActor.assumeIsolated { types.mapType.title }) ",
                          foreground: theme.foregroundEmphasis, background: theme.backgroundSelected),
-                TextSpan(String(format: "  z%.1f  ", camera.zoom), foreground: theme.foregroundEmphasis),
+                TextSpan(String(format: "  z%.1f  ", camera.zoom)
+                         + (camera.pitch > 0 ? String(format: "tilt %.0f°  ", camera.pitch) : ""),
+                         foreground: theme.foregroundEmphasis),
                 TextSpan(MapsModel.describe(camera.center), foreground: theme.foregroundSubtle),
                 MapsStatusBar.state(status, notice: model.notice, theme: theme),
             ] + tripStatus(model.trip, theme: theme))

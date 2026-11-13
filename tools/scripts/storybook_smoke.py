@@ -3336,29 +3336,43 @@ def _maps_settled(app: Client) -> list[str]:
 
 def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
     """`3` turns the 3D view on, live: the town is redrawn at an angle with
-    its buildings and its ground standing, and the status bar says so;
-    Shift-↑ tips it further, Shift-↓ back; `3` again looks straight down at
-    a flat map, and the town is drawn as it was. Each frame is compared once
-    its tiles have landed: the terrain arrives after `3` asks for it."""
+    its buildings and its ground standing, and the status bar says so and
+    shows the tilt; Shift-↑ tips it further, Shift-↓ back; `3` again looks
+    straight down at a flat map, and the town is drawn as it was.
+
+    The tilt is read from the status bar, and the town compared in the
+    middle of the view, once its tiles have landed: tipping the map loads
+    coarser tiles, and once cached they may stand in at the sample data's
+    edges where none was drawn before, so the frame's edges can differ
+    with the camera exactly where it was."""
     def braille(rows: list[str]) -> int:
         return sum(ord(ch) in BRAILLE for row in rows for ch in row)
+
+    def middle(rows: list[str]) -> list[str]:
+        third, columns = len(rows) // 3, len(rows[0]) // 3 if rows else 0
+        return [row[columns:2 * columns] for row in rows[third:2 * third]]
 
     assert_true(app.wait_until(lambda c: braille(c.cells().rows[:-2]) > 100),
                 "the town's streets should be drawn in braille")
     flat = _maps_settled(app)
+    assert_true("tilt" not in _maps_status(app), f"straight down shows no tilt: {_maps_status(app)!r}")
     app.send_key("3")
-    assert_true("3D view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
+    assert_true("3D view" in _maps_status(app) and "tilt 45°" in _maps_status(app),
+                f"status bar: {_maps_status(app)!r}")
     tilted = _maps_settled(app)
-    assert_true(tilted != flat, "the tilted town is drawn differently")
+    assert_true(middle(tilted) != middle(flat), "the tilted town is drawn differently")
     assert_true(braille(tilted) > 100, "and its streets are still drawn")
     app.send_key("up", "shift")
+    assert_true("tilt 55°" in _maps_status(app), f"Shift-up tips it further: {_maps_status(app)!r}")
     steeper = _maps_settled(app)
-    assert_true(steeper != tilted, "Shift-up tips it further")
+    assert_true(middle(steeper) != middle(tilted), "and the town is drawn steeper")
     app.send_key("down", "shift")
-    assert_true(_maps_settled(app) == tilted, "Shift-down tips it back")
+    assert_true("tilt 45°" in _maps_status(app), f"Shift-down tips it back: {_maps_status(app)!r}")
+    assert_true(middle(_maps_settled(app)) == middle(tilted), "and the town is drawn as it was tilted")
     app.send_key("3")
-    assert_true("flat view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
-    assert_true(_maps_settled(app) == flat, "straight down again, the town is drawn as it was")
+    assert_true("flat view" in _maps_status(app) and "tilt" not in _maps_status(app),
+                f"status bar: {_maps_status(app)!r}")
+    assert_true(middle(_maps_settled(app)) == middle(flat), "straight down again, the town is drawn as it was")
 
 
 def maps_map_types_change_the_map(app: Client) -> None:
