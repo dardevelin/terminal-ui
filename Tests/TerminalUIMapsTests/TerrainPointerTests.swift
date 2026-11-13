@@ -15,21 +15,28 @@ struct TerrainPointerTests {
     /// every zoom from 10 to 15.
     private var ridge: TerrainSampler {
         let centre = centre
-        return TerrainSampler(zoomRange: 10...15) { id in
-            let samples = 64
-            var metres = [Float]()
-            for row in 0..<samples {
-                for column in 0..<samples {
-                    let extent = 4096
-                    let point = TilePoint(x: Int32((Double(column) + 0.5) / Double(samples) * Double(extent)),
-                                          y: Int32((Double(row) + 0.5) / Double(samples) * Double(extent)))
-                    let north = (id.coordinate(of: point, extent: extent).latitude - centre.latitude)
-                        * GeoMeasure.meanEarthRadius * .pi / 180
-                    metres.append(Float(300 * exp(-((north - 300) * (north - 300)) / (2 * 120 * 120))))
-                }
+        return TerrainSampler(zoomRange: 10...15) { id in Self.ridgeTile(id, centre: centre) }
+    }
+
+    /// The ridge over one tile. A function of its own, each step typed:
+    /// Linux's type checker gave up on it written as one closure.
+    private static func ridgeTile(_ id: TileID, centre: GeoCoordinate) -> ElevationTile {
+        let samples = 64, extent = 4096
+        let metresPerDegree: Double = GeoMeasure.meanEarthRadius * .pi / 180
+        var metres: [Float] = []
+        for row in 0..<samples {
+            for column in 0..<samples {
+                let unitX: Double = (Double(column) + 0.5) / Double(samples)
+                let unitY: Double = (Double(row) + 0.5) / Double(samples)
+                let point = TilePoint(x: Int32(unitX * Double(extent)), y: Int32(unitY * Double(extent)))
+                let latitude: Double = id.coordinate(of: point, extent: extent).latitude
+                let north: Double = (latitude - centre.latitude) * metresPerDegree
+                let across: Double = north - 300
+                let height: Double = 300 * exp(-(across * across) / (2 * 120 * 120))
+                metres.append(Float(height))
             }
-            return ElevationTile(checkedWidth: samples, height: samples, metres: metres)
         }
+        return ElevationTile(checkedWidth: samples, height: samples, metres: metres)
     }
 
     /// Where the ground at `world` is drawn through `camera`.
