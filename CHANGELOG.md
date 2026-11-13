@@ -6,6 +6,15 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **A debug app's `/tmp` data dir lives exactly as long as its run.** The
+  runtime made `/tmp/terminalui-{hash}-{pid}/` as it was created, and only
+  a run's teardown removed it: a runtime never run, and a run that failed
+  to start — an app launched without a terminal, which throws
+  `rawModeUnavailable` — left it behind. The dir is now made as the run
+  starts and removed on every way out of it.
+
 ## [2.8.0] — 2026-11-13 — Buildings stand up
 
 A minor release over 2.7.0: an app written for 2.7 compiles unchanged.
