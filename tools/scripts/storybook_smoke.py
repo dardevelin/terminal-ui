@@ -3340,19 +3340,28 @@ def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
     """`3` turns the 3D view on, live: the town is redrawn at an angle with
     its buildings and its ground standing, and the status bar says so and
     shows the tilt; Shift-↑ tips it further, Shift-↓ back; `3` again looks
-    straight down at a flat map, and the town is drawn as it was.
+    straight down at a flat map.
 
-    The tilt is read from the status bar, and the town compared in the
-    middle of the view, once its tiles have landed: tipping the map loads
-    coarser tiles, and once cached they may stand in at the sample data's
-    edges where none was drawn before, so the frame's edges can differ
-    with the camera exactly where it was."""
+    Tipping the map loads coarser tiles, and once they are cached the map
+    draws more of what it has — ground, names and points of interest from a
+    coarser tile standing in where a finer one has none — so the first
+    frame at a tilt is not the one a return to it draws. A return is
+    compared with another return, once the tiles have landed: the same
+    camera on the same tiles draws the same frame. The tilt is read from
+    the status bar."""
     def braille(rows: list[str]) -> int:
         return sum(ord(ch) in BRAILLE for row in rows for ch in row)
 
-    def middle(rows: list[str]) -> list[str]:
-        third, columns = len(rows) // 3, len(rows[0]) // 3 if rows else 0
-        return [row[columns:2 * columns] for row in rows[third:2 * third]]
+    def round_trip(up: Callable[[], None], down: Callable[[], None]) -> list[str]:
+        up()
+        _maps_settled(app)
+        down()
+        return _maps_settled(app)
+
+    def differing(first: list[str], second: list[str]) -> str:
+        rows = [f"{index}: {before!r}\n    -> {after!r}" for index, (before, after)
+                in enumerate(zip(first, second)) if before != after]
+        return "\n".join(rows[:4])
 
     assert_true(app.wait_until(lambda c: braille(c.cells().rows[:-2]) > 100),
                 "the town's streets should be drawn in braille")
@@ -3362,23 +3371,23 @@ def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
     assert_true("3D view" in _maps_status(app) and "tilt 45°" in _maps_status(app),
                 f"status bar: {_maps_status(app)!r}")
     tilted = _maps_settled(app)
-    assert_true(middle(tilted) != middle(flat), "the tilted town is drawn differently")
+    assert_true(tilted != flat, "the tilted town is drawn differently")
     assert_true(braille(tilted) > 100, "and its streets are still drawn")
     app.send_key("up", "shift")
     assert_true("tilt 55°" in _maps_status(app), f"Shift-up tips it further: {_maps_status(app)!r}")
-    steeper = _maps_settled(app)
-    assert_true(middle(steeper) != middle(tilted), "and the town is drawn steeper")
+    assert_true(_maps_settled(app) != tilted, "and the town is drawn steeper")
     app.send_key("down", "shift")
     assert_true("tilt 45°" in _maps_status(app), f"Shift-down tips it back: {_maps_status(app)!r}")
-    back = middle(_maps_settled(app))
-    differing = [f"{index}: {before!r}\n    -> {after!r}" for index, (before, after)
-                 in enumerate(zip(middle(tilted), back)) if before != after]
-    assert_true(back == middle(tilted), "and the town is drawn as it was tilted; rows that differ:\n"
-                + "\n".join(differing[:4]))
+    back = _maps_settled(app)
+    again = round_trip(lambda: app.send_key("up", "shift"), lambda: app.send_key("down", "shift"))
+    assert_true(again == back, "tipped up and back again, the town is drawn as it was:\n" + differing(back, again))
     app.send_key("3")
     assert_true("flat view" in _maps_status(app) and "tilt" not in _maps_status(app),
                 f"status bar: {_maps_status(app)!r}")
-    assert_true(middle(_maps_settled(app)) == middle(flat), "straight down again, the town is drawn as it was")
+    straight = _maps_settled(app)
+    assert_true(straight != tilted, "straight down, the town is drawn flat again")
+    twice = round_trip(lambda: app.send_key("3"), lambda: app.send_key("3"))
+    assert_true(twice == straight, "and in and out of 3D again, as it was:\n" + differing(straight, twice))
 
 
 def maps_map_types_change_the_map(app: Client) -> None:
