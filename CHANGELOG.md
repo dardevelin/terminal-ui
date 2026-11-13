@@ -18,6 +18,13 @@ All notable changes to TerminalUI are documented here. Format based on
   traveller are hidden where a hill or a building stands in front of them.
   Buildings stand on the ground under them. Without a terrain layer, the
   map is drawn as before.
+- **The pointer meets the raised ground.** On terrain a drag holds the
+  hillside it grabbed under the pointer, the wheel zooms about the ground
+  under it, and `MapCamera.coordinate(atCell:in:layers:)` gives the ground
+  a tap lands on — a hill's face before the plain behind it. The camera's
+  heights are measured from the ground under its centre, which a drag
+  moves, so the pan is settled in a few steps until the grabbed ground is
+  within a hundredth of a dot of the pointer.
 - **`MapTypeModel.elevation`**, as MapKit's elevation is part of a map's
   style: `.realistic` raises every map type's buildings and stands it on
   the offer's terrain. The `Maps` example's `3` now brings the sample

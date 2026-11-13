@@ -88,3 +88,85 @@ struct TerrainProjection {
         static let bisections = 16
     }
 }
+
+extension MapCamera {
+    /// The unit-world point of the ground under a point of a viewport, on
+    /// `terrain`: the first ground the view ray meets there.
+    func groundWorldPoint(at point: DotPoint, in viewport: DotSize, terrain: TerrainSampler) -> WorldPoint {
+        let field = ElevationField(camera: self, viewport: viewport, sampler: terrain)
+        guard !field.isFlat else { return worldPoint(at: point, in: viewport) }
+        let ground = TerrainProjection(camera: self, viewport: viewport, field: field).toGround(x: point.x, y: point.y)
+        let centre = WebMercator.project(center)
+        return WorldPoint(x: centre.x + (ground.x - viewport.width / 2) / dotsPerWorld,
+                          y: centre.y + (ground.y - viewport.height / 2) / dotsPerWorld)
+    }
+
+    /// The coordinate under the middle of a cell of a map of `size` cells,
+    /// on `terrain`: where a tap on a hillside lands.
+    func coordinate(atCell cell: Point, in size: CanvasSize, terrain: TerrainSampler) -> GeoCoordinate {
+        let dot = DotPoint(x: (Double(cell.x) + PointerOnTerrain.cellMiddle) * Double(BrailleCell.dotColumns),
+                           y: (Double(cell.y) + PointerOnTerrain.cellMiddle) * Double(BrailleCell.dotRows))
+        return WebMercator.unproject(groundWorldPoint(at: dot, in: MapRenderer.viewport(for: size), terrain: terrain))
+            .normalized
+    }
+
+    /// The coordinate under the middle of a cell of a map of `size` cells
+    /// drawn with `layers` — where a tap landed. On a realistic map with a
+    /// terrain layer it is the ground the view shows there, a hill's face
+    /// before the plain behind it; otherwise as
+    /// ``coordinate(atCell:in:)``.
+    @MainActor
+    public func coordinate(atCell cell: Point, in size: CanvasSize, layers: MapLayers) -> GeoCoordinate {
+        guard let terrain = layers.terrainSampler else { return coordinate(atCell: cell, in: size) }
+        return coordinate(atCell: cell, in: size, terrain: terrain)
+    }
+
+    /// The camera moved by a drag on `terrain`: the ground grabbed at
+    /// `start` ends under `end`.
+    ///
+    /// The heights are measured from the ground under the camera's centre,
+    /// which the drag moves, so no one step lands it: from the flat drag,
+    /// the centre is moved by however far the ground now under `end` lies
+    /// from the ground grabbed, until it lies within a hundredth of a dot.
+    func panned(dragging start: DotPoint, to end: DotPoint, in viewport: DotSize,
+                terrain: TerrainSampler) -> MapCamera {
+        let grabbed = groundWorldPoint(at: start, in: viewport, terrain: terrain)
+        return settled(panned(dragging: start, to: end, in: viewport), holding: grabbed, at: end,
+                       in: viewport, terrain: terrain)
+    }
+
+    /// The camera zoomed by `delta` levels on `terrain`, keeping the ground
+    /// under `anchor` where it is on screen.
+    func zoomed(by delta: Double, about anchor: DotPoint, in viewport: DotSize,
+                terrain: TerrainSampler) -> MapCamera {
+        let grabbed = groundWorldPoint(at: anchor, in: viewport, terrain: terrain)
+        return settled(zoomed(by: delta, about: anchor, in: viewport), holding: grabbed, at: anchor,
+                       in: viewport, terrain: terrain)
+    }
+
+    /// `camera`, its centre moved until the ground at `world` is under
+    /// `point`: a few steps, each the miss between that ground and what is
+    /// under the point, which shrinks as the ground under the centre settles.
+    private func settled(_ camera: MapCamera, holding world: WorldPoint, at point: DotPoint, in viewport: DotSize,
+                         terrain: TerrainSampler) -> MapCamera {
+        var moved = camera
+        for _ in 0..<PointerOnTerrain.settlingSteps {
+            let under = moved.groundWorldPoint(at: point, in: viewport, terrain: terrain)
+            let missX = world.x - under.x, missY = world.y - under.y
+            guard (missX * missX + missY * missY).squareRoot() * moved.dotsPerWorld > PointerOnTerrain.closeEnough
+            else { break }
+            let centre = WebMercator.project(moved.center)
+            moved.center = WebMercator.unproject(WorldPoint(x: centre.x + missX, y: centre.y + missY))
+        }
+        return moved
+    }
+}
+
+private enum PointerOnTerrain {
+    static let cellMiddle = 0.5
+    /// A miss under this many dots is no miss a terminal can show.
+    static let closeEnough = 0.01
+    /// Each step leaves only the change in the centre's ground over the
+    /// last, a small share of it: a few steps reach a hundredth of a dot.
+    static let settlingSteps = 8
+}

@@ -145,7 +145,8 @@ final class TripModel {
     /// A stop where a cell of the map is: a Ctrl+click.
     @MainActor
     func addStop(atCell cell: Point) {
-        addStop("Pin \(plan.waypoints.count + 1)", at: maps.camera.coordinate(atCell: cell, in: maps.store.viewSize))
+        addStop("Pin \(plan.waypoints.count + 1)",
+                at: maps.camera.coordinate(atCell: cell, in: maps.store.viewSize, layers: maps.mapTypes.layers))
     }
 
     @MainActor
