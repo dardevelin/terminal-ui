@@ -96,4 +96,20 @@ struct TerrainProjectionTests {
         let met = projection.toGround(x: drawn.x, y: drawn.y)
         #expect(met.y > behind.y + 5, "the ray meets the hill \(behind.y - met.y) dots short of the point behind it")
     }
+
+    @Test func aPointOnTheSeamBetweenTwoTilesReadsTheSameTileWhateverTheirOrder() {
+        // Neighbouring tiles disagree a little at their shared edge, each
+        // holding its own edge samples. The town's centre lies on such an
+        // edge, and the tile it read followed the order a frame happened to
+        // plan them in, so the whole view rose or fell a row after the
+        // camera tipped and came back.
+        let west = ElevationTile(checkedWidth: 1, height: 1, metres: [10])
+        let east = ElevationTile(checkedWidth: 1, height: 1, metres: [30])
+        let patches = [ElevationField.Patch(originX: 0, originY: 0, side: 100, tile: west),
+                       ElevationField.Patch(originX: 100, originY: 0, side: 100, tile: east)]
+        let one = ElevationField(patches: patches, dotsPerMetre: 1, referenceX: 50, referenceY: 50)
+        let other = ElevationField(patches: patches.reversed(), dotsPerMetre: 1, referenceX: 50, referenceY: 50)
+        #expect(one.metres(x: 100, y: 50) == other.metres(x: 100, y: 50))
+        #expect(one.metres(x: 100, y: 50) == 30, "a point on a seam is the tile it begins")
+    }
 }

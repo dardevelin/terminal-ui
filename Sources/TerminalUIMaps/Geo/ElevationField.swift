@@ -33,7 +33,9 @@ struct ElevationField {
     /// (`referenceX`, `referenceY`), or from sea level where no patch
     /// covers it.
     init(patches: [Patch], dotsPerMetre: Double, referenceX: Double, referenceY: Double) {
-        let sorted = patches.sorted { $0.side < $1.side }
+        // Finest first, and among one size a fixed order: a frame's plan
+        // lists its tiles in an order that depends on what is cached.
+        let sorted = patches.sorted { ($0.side, $0.originY, $0.originX) < ($1.side, $1.originY, $1.originX) }
         self.init(sortedPatches: sorted, dotsPerMetre: dotsPerMetre,
                   reference: Self.metres(in: sorted, x: referenceX, y: referenceY) ?? 0)
     }
@@ -96,7 +98,11 @@ struct ElevationField {
     private static func metres(in patches: [Patch], x: Double, y: Double) -> Double? {
         for patch in patches {
             let unitX = (x - patch.originX) / patch.side, unitY = (y - patch.originY) / patch.side
-            guard (0...1).contains(unitX), (0...1).contains(unitY) else { continue }
+            // Half open: a point on the seam between two tiles is the one it
+            // begins. Neighbours each hold their own edge samples and differ
+            // a little there, so a seam read from either by turns moved the
+            // whole view.
+            guard (0..<1).contains(unitX), (0..<1).contains(unitY) else { continue }
             return patch.tile.elevation(atUnitX: unitX, y: unitY)
         }
         return nil
