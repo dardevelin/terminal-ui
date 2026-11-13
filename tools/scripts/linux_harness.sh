@@ -29,7 +29,9 @@ if [[ -n "${TERMINALUI_LINUX_PLATFORM:-}" ]]; then
     PLATFORM_FLAG=(--platform "$TERMINALUI_LINUX_PLATFORM")
 fi
 
-exec docker run --rm "${PLATFORM_FLAG[@]}" -v "$(pwd)":/app -w /app "$IMAGE" bash -c "
+# macOS's bash 3.2 calls an empty array unbound under `set -u`: the
+# expansion stands in for nothing when no platform was asked for.
+exec docker run --rm ${PLATFORM_FLAG[@]+"${PLATFORM_FLAG[@]}"} -v "$(pwd)":/app -w /app "$IMAGE" bash -c "
     set -e
     # One command each: \`set -e\` lets a failure inside an && list pass, so a
     # mirror that did not answer left the run to die later on a python3 that
