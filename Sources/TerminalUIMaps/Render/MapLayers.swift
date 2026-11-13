@@ -79,6 +79,13 @@ public struct MapLayers: Sendable, Equatable {
     /// The basemap alone: the Explore map.
     public static let explore = MapLayers()
 
+    /// The ground the pointer meets: the terrain's heights on a realistic
+    /// map, nil on a plane.
+    @MainActor
+    var terrainSampler: TerrainSampler? {
+        elevation == .realistic ? terrain?.terrainSampler : nil
+    }
+
     /// Whether two sets of layers are the same: the same stores, by
     /// identity, drawn the same way.
     public static func == (left: MapLayers, right: MapLayers) -> Bool {

@@ -117,12 +117,18 @@ public struct MapView: TerminalView {
             .onChanged { value in
                 var from = value.startLocation
                 if let track = drag.wrappedValue, track.start == value.startLocation { from = track.last }
-                let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
                 // Cell to cell, middle to middle: pitched, the ground under
                 // the pointer is where on the cell it is, not how far it
-                // moved.
-                camera.wrappedValue = camera.wrappedValue.panned(
-                    dragging: MapView.dot(atCell: from), to: MapView.dot(atCell: value.location), in: viewport)
+                // moved — and on terrain, the hill it is on.
+                let start = MapView.dot(atCell: from), end = MapView.dot(atCell: value.location)
+                let current = camera.wrappedValue
+                camera.wrappedValue = MainActor.assumeIsolated {
+                    let viewport = MapRenderer.viewport(for: store.viewSize)
+                    guard let terrain = layers.terrainSampler else {
+                        return current.panned(dragging: start, to: end, in: viewport)
+                    }
+                    return current.panned(dragging: start, to: end, in: viewport, terrain: terrain)
+                }
                 drag.wrappedValue = DragTrack(start: value.startLocation, last: value.location)
             }
             .onEnded { _ in drag.wrappedValue = nil })
@@ -141,10 +147,15 @@ public struct MapView: TerminalView {
             case .left: delta = Steps.fineWheelZoom
             case .right: delta = -Steps.fineWheelZoom
             }
-            let viewport = MainActor.assumeIsolated { MapRenderer.viewport(for: store.viewSize) }
             let anchor = MapView.dot(atCell: event.location)
             let before = camera.wrappedValue
-            let after = before.zoomed(by: delta, about: anchor, in: viewport)
+            let after = MainActor.assumeIsolated {
+                let viewport = MapRenderer.viewport(for: store.viewSize)
+                guard let terrain = layers.terrainSampler else {
+                    return before.zoomed(by: delta, about: anchor, in: viewport)
+                }
+                return before.zoomed(by: delta, about: anchor, in: viewport, terrain: terrain)
+            }
             guard after != before else { return false }
             camera.wrappedValue = after
             return true

@@ -20,6 +20,9 @@ struct ElevationField {
 
     /// Finest first: a point takes the first patch that covers it.
     private let patches: [Patch]
+    /// Instead of patches, a height for a north-up point read from the
+    /// world: a field for a camera no frame has been drawn through.
+    private let sample: ((Double, Double) -> Double?)?
     /// Dots a metre of height spans: the ground's own scale at the view's
     /// latitude, so a hill stands as tall as it is wide on the map.
     let dotsPerMetre: Double
@@ -35,8 +38,27 @@ struct ElevationField {
                   reference: Self.metres(in: sorted, x: referenceX, y: referenceY) ?? 0)
     }
 
+    /// The field `camera` sees over a viewport, its heights read from
+    /// `sampler`: what the pointer meets, for whatever camera a drag or the
+    /// wheel is trying. Flat where the sampler has no ground under the
+    /// camera's centre.
+    init(camera: MapCamera, viewport: DotSize, sampler: TerrainSampler) {
+        let centre = WebMercator.project(camera.center)
+        let scale = camera.dotsPerWorld, middleX = viewport.width / 2, middleY = viewport.height / 2
+        let sample: (Double, Double) -> Double? = { x, y in
+            sampler.metres(at: WorldPoint(x: centre.x + (x - middleX) / scale, y: centre.y + (y - middleY) / scale))
+        }
+        let reference = sample(middleX, middleY)
+        patches = []
+        self.sample = reference == nil ? nil : sample
+        dotsPerMetre = scale / WebMercator.metresPerWorldUnit(atLatitude: camera.center.latitude)
+        self.reference = reference ?? 0
+        signature = 0
+    }
+
     private init(sortedPatches: [Patch], dotsPerMetre: Double, reference: Double) {
         patches = sortedPatches
+        sample = nil
         self.dotsPerMetre = dotsPerMetre
         self.reference = reference
         var hasher = Hasher()
@@ -52,10 +74,10 @@ struct ElevationField {
     let signature: Int
 
     /// No terrain: the ground is the reference everywhere.
-    static let flat = ElevationField(sortedPatches: [], dotsPerMetre: 0, reference: 0)
+    static var flat: ElevationField { ElevationField(sortedPatches: [], dotsPerMetre: 0, reference: 0) }
 
     /// Whether the field has no terrain in it.
-    var isFlat: Bool { patches.isEmpty }
+    var isFlat: Bool { patches.isEmpty && sample == nil }
 
     /// The height of the ground at a north-up point, in dots above the
     /// reference.
@@ -67,7 +89,8 @@ struct ElevationField {
     /// The height above sea level of the ground at a north-up point, in
     /// metres, or nil where no terrain tile reaches.
     func metres(x: Double, y: Double) -> Double? {
-        Self.metres(in: patches, x: x, y: y)
+        if let sample { return sample(x, y) }
+        return Self.metres(in: patches, x: x, y: y)
     }
 
     private static func metres(in patches: [Patch], x: Double, y: Double) -> Double? {

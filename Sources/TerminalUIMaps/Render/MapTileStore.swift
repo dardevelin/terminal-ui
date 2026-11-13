@@ -125,6 +125,16 @@ public final class MapTileStore {
         return entry.tile
     }
 
+    /// The heights of the terrain tiles the store holds, read anywhere on
+    /// the world; nil until its source has said what it has.
+    var terrainSampler: TerrainSampler? {
+        guard let zoomRange = info?.zoomRange else { return nil }
+        return TerrainSampler(zoomRange: zoomRange) { [self] id in
+            guard case .elevation(let content)? = tile(id)?.content else { return nil }
+            return content.elevation
+        }
+    }
+
     /// The tiles the store holds.
     var cachedTiles: Set<TileID> {
         _ = revision

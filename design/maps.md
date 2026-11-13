@@ -833,11 +833,16 @@ Three stages, each its own branch, in this order:
    under every type. Tests: a 600 m ridge hides a marker behind it, not one
    before it; the ray march finds a hill's face before what stands behind.
 
-   **Left for a step of its own:** the pointer on terrain. A click, a drag
-   and the wheel still read the flat ground: a drag on a hillside slips by
-   the hill's height, and the camera, whose reference is the ground under
-   its centre, rises and falls as it pans. Imagery on terrain (satellite
-   draped) waits too.
+   **The pointer on terrain** (its own step, after): a `TerrainSampler`
+   reads heights anywhere on the world from the terrain store's tiles, so
+   an `ElevationField` can be made for any camera a drag or the wheel
+   tries. Because the reference is the ground under the centre, which the
+   drag moves, a pan is settled: from the flat drag, the centre moves by
+   the miss between the grabbed ground and what is under the pointer, a
+   few steps to a hundredth of a dot (tests: two drags across a 300 m
+   ridge, the wheel, a tap on its face). `MapView` drags and zooms so;
+   `MapCamera.coordinate(atCell:in:layers:)` is a tap's ground for an app.
+   Imagery on terrain (satellite draped) is still to come.
 
    Cost: a 33 × 33 grid is ~2 000 triangles a tile, ~20 000 for a view —
    ~5–8 ms in release by `SceneBenchmark`'s numbers. Imagery on terrain

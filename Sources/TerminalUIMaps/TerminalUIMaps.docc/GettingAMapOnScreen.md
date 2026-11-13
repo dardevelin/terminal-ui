@@ -102,6 +102,11 @@ roads and names following them and hidden behind a ridge. A
 ``MapElevation/realistic`` and every map type it draws stands on the
 offer's terrain.
 
+The pointer meets that ground too: a drag holds the hillside it grabbed,
+and the wheel zooms about the ground under it. Read where a tap landed with
+``MapCamera/coordinate(atCell:in:layers:)``, which gives the hill's face
+the view shows rather than the plain behind it.
+
 ```swift
 var layers = MapLayers.explore
 layers.elevation = .realistic
