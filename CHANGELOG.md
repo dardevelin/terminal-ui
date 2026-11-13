@@ -6,6 +6,14 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.9.0] — 2026-11-13 — The ground stands up
+
+A minor release over 2.8.0: an app written for 2.8 compiles unchanged.
+On a realistic map with a terrain layer the ground itself rises — hills
+shaded, roads and names following them and hidden behind them — and the
+pointer meets it: the third step of the 3D map. A debug app's data dir now
+lives exactly as long as its run.
+
 ### Added
 
 - **The ground stands up on a realistic map with terrain.** With
