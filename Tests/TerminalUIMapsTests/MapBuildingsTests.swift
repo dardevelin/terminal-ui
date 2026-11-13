@@ -20,7 +20,10 @@ struct MapBuildingsTests {
     private func screen(_ point: Vector3, through camera: Camera3D, in viewport: DotSize) -> DotPoint? {
         let projection = camera.projection.matrix(aspect: viewport.width / viewport.height, near: camera.near,
                                                   far: camera.far)
-        let clip = projection * camera.viewMatrix * Vector4(point, 1)
+        // One product at a time: Linux's type checker read the chain as a
+        // matrix times a matrix times a vector, and could not.
+        let seen: Vector4 = camera.viewMatrix * Vector4(point, 1)
+        let clip: Vector4 = projection * seen
         guard clip.w > 0 else { return nil }
         return DotPoint(x: (clip.x / clip.w + 1) / 2 * viewport.width,
                         y: (1 - clip.y / clip.w) / 2 * viewport.height)
