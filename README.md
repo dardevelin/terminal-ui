@@ -155,7 +155,7 @@ there are no transitive dependencies, including build-time ones.
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.7.0"),
+    .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.8.0"),
 ],
 targets: [
     .executableTarget(
@@ -485,7 +485,7 @@ image code, `TerminalUI3D` so apps without 3D never carry a rasterizer, and
 
 ## Status
 
-v2.7.0. 2708 tests in 470 suites, run on macOS and Linux, plus a PTY-driven
+v2.8.0. 2716 tests in 471 suites, run on macOS and Linux, plus a PTY-driven
 harness that walks every Storybook page, runs 195 behavioural cases against
 the example apps and drives every tutorial step through what its page
 says, and a Thread Sanitizer build of the tests and the cases. Builds with
