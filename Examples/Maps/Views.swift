@@ -78,8 +78,12 @@ struct MapsStatusBar: TerminalView {
         let status = MainActor.assumeIsolated {
             let layers = types.layers
             let layerStores = [layers.imagery, layers.terrain].compactMap { $0 }
+            // A layer's store still asking its source what it has loads no
+            // tile yet, and counts none: it is waited on all the same, as
+            // the terrain is when `3` first asks for it.
             return (loading: store.loadingCount + layerStores.reduce(0) { $0 + $1.loadingCount },
-                    waiting: store.isLoading, error: store.lastError ?? layerStores.lazy.compactMap(\.lastError).first)
+                    waiting: store.isLoading || layerStores.contains(where: \.isLoading),
+                    error: store.lastError ?? layerStores.lazy.compactMap(\.lastError).first)
         }
         let camera = model.camera
         let navigating = MainActor.assumeIsolated { maps.trip.isNavigating }

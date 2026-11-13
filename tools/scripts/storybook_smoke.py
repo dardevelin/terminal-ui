@@ -3317,10 +3317,12 @@ def maps_demo_replay_navigates_to_arrival(app: Client) -> None:
 
 
 def _maps_settled(app: Client) -> list[str]:
-    """The map's rows once what it loads has landed: nothing loading, and
-    the same frame twice running. Tiles land in their own time — the 3D
-    view's terrain after the key that asks for it — so a frame read at once
-    can be one drawn before them, and on a slow runner it was."""
+    """The map's rows once what it loads has landed: nothing loading or
+    connecting, and the same frame twice running. Tiles land in their own
+    time — the 3D view's terrain after the key that asks for it, once its
+    new store has heard what its source has, which the status bar shows as
+    connecting — so a frame read at once can be one drawn before them, and
+    on a slow runner it was."""
     last: list[Optional[list[str]]] = [None]
 
     def settled(client: Client) -> bool:
@@ -3368,7 +3370,11 @@ def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
     assert_true(middle(steeper) != middle(tilted), "and the town is drawn steeper")
     app.send_key("down", "shift")
     assert_true("tilt 45°" in _maps_status(app), f"Shift-down tips it back: {_maps_status(app)!r}")
-    assert_true(middle(_maps_settled(app)) == middle(tilted), "and the town is drawn as it was tilted")
+    back = middle(_maps_settled(app))
+    differing = [f"{index}: {before!r}\n    -> {after!r}" for index, (before, after)
+                 in enumerate(zip(middle(tilted), back)) if before != after]
+    assert_true(back == middle(tilted), "and the town is drawn as it was tilted; rows that differ:\n"
+                + "\n".join(differing[:4]))
     app.send_key("3")
     assert_true("flat view" in _maps_status(app) and "tilt" not in _maps_status(app),
                 f"status bar: {_maps_status(app)!r}")
