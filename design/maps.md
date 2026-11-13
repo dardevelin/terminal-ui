@@ -782,10 +782,67 @@ Three stages, each its own branch, in this order:
    3D view (tilt and buildings together), each also a Camera-panel
    toggle.
 
-3. **Terrain.** Realistic elevation from the terrain source makes the
-   ground a surface, not a plane, so the homography no longer holds. Its
-   own design before it is built: likely the flat map drawn into a ground
-   texture and draped on a `heightField` mesh.
+3. **Terrain** (designed 2026-11-13). With `.realistic` elevation and a
+   terrain layer (`MapLayers.terrain`), the ground rises as MapKit's
+   does: hills stand, valleys sink, roads and names follow the ground and
+   go behind a hill, buildings stand on it. Without a terrain layer, or
+   flat, today's paths run unchanged.
+
+   *Why not a draped picture.* Drawing the flat map into a texture and
+   sampling it per dot through the terrain would break every braille line
+   — a road is one dot wide, and resampling breaks it into specks — and
+   TerminalUI3D has no textures. So the ground and its areas are a mesh,
+   and the lines and names stay vectors, projected point by point with
+   their heights and tested against the mesh's depth.
+
+   *Heights.* Relative to the ground under the camera's centre, so the
+   centre keeps its scale and the camera its target, in dots by the
+   buildings' dots per metre.
+
+   1. `ElevationField`: the height at a north-up point, from the terrain
+      layer's tiles at hand (the plan's tile or a stand-in), bilinear;
+      zero where none has landed.
+   2. A projection with height: `toScreen(x, y, height)` through the
+      buildings' camera (one 3D camera for the whole map), and
+      `toGround(screen)` by marching the view ray over the field and
+      bisecting the crossing — for the pointer, the wheel and a drag.
+   3. The ground: per basemap tile a `heightField` grid (33 × 33 at its
+      own zoom) in the shared scene, each triangle's material the area
+      under its middle — water, park, landuse, plain — from a land-cover
+      grid rasterised once from the tile's areas; lit by the scene's
+      lights, which shade the slopes as hillshade did.
+   4. The drape: roads, rivers, rail, routes and contours densified to a
+      dot apart on screen, each point projected with its height and drawn
+      only where it is nearer than the scene's depth there (the
+      rasterizer's depth buffer, at package access); names, points of
+      interest, markers and the traveller anchored the same way, hidden
+      behind a hill.
+   5. Buildings stand on the ground at their footprint's height; the
+      covering uses the ground the view's corners reach, the flat
+      footprint as the fallback.
+   6. The example's `3` brings the sample town's terrain, so Beacon Hill
+      (160 m) stands; its film shows it.
+
+   **As built.** Steps 1–5 as designed. The ground is drawn half-block
+   (the canvas's fill plane), so braille roads and text stay over it and
+   the depth test alone hides what is behind; the building-only map keeps
+   its image shading. A high key light left gentle slopes unshaded, so the
+   ground is lit by hillshade's sun (NW, 45° up) and a sky of 0.35; the
+   plain ground takes `backgroundOverlay`. `MapTypeModel.elevation` puts
+   realistic elevation in the map's style, with the offer's terrain store
+   under every type. Tests: a 600 m ridge hides a marker behind it, not one
+   before it; the ray march finds a hill's face before what stands behind.
+
+   **Left for a step of its own:** the pointer on terrain. A click, a drag
+   and the wheel still read the flat ground: a drag on a hillside slips by
+   the hill's height, and the camera, whose reference is the ground under
+   its centre, rises and falls as it pans. Imagery on terrain (satellite
+   draped) waits too.
+
+   Cost: a 33 × 33 grid is ~2 000 triangles a tile, ~20 000 for a view —
+   ~5–8 ms in release by `SceneBenchmark`'s numbers. Imagery on terrain
+   (satellite draped) waits: it needs a picture sampled per triangle or
+   per dot, its own step after these.
 
 Then the performance pass's 3D item above: measure the triangle counts and
 frame times stages 2 and 3 add, in release.

@@ -6,6 +6,23 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+### Added
+
+- **The ground stands up on a realistic map with terrain.** With
+  `MapLayers.elevation = .realistic` and a terrain layer, the ground is a
+  surface raised to the terrain's heights, measured from the ground under
+  the camera's centre: each tile's ground a mesh coloured by the areas it
+  holds — water, parks, landuse — and shaded by hillshade's sun from the
+  north-west; roads, rivers, routes and contours follow it, stepped a few
+  dots at a time, and they, names, points of interest, markers and the
+  traveller are hidden where a hill or a building stands in front of them.
+  Buildings stand on the ground under them. Without a terrain layer, the
+  map is drawn as before.
+- **`MapTypeModel.elevation`**, as MapKit's elevation is part of a map's
+  style: `.realistic` raises every map type's buildings and stands it on
+  the offer's terrain. The `Maps` example's `3` now brings the sample
+  town's hills with its buildings.
+
 ### Fixed
 
 - **A debug app's `/tmp` data dir lives exactly as long as its run.** The

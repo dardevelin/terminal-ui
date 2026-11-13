@@ -13,12 +13,7 @@ struct MapsApp: TerminalView {
     var body: some TerminalView {
         let theme = model.theme
         let types = model.mapTypes
-        let elevation: MapElevation = model.showsBuildings ? .realistic : .flat
-        let layers = MainActor.assumeIsolated {
-            var layers = types.layers
-            layers.elevation = elevation
-            return layers
-        }
+        let layers = MainActor.assumeIsolated { types.layers }
         let street = model.street
         let streetImage = MainActor.assumeIsolated { street.image }
         VStack(spacing: 0) {

@@ -180,8 +180,15 @@ public final class MapTypeModel {
     public private(set) var imageryIndex = 0
     /// The store of imagery tiles; nil until a satellite or hybrid map is first shown.
     public private(set) var imageryStore: MapTileStore?
-    /// The store of elevation tiles; nil until a terrain map is first shown.
+    /// The store of elevation tiles; nil until a terrain map, or realistic
+    /// elevation, is first shown.
     public private(set) var terrainStore: MapTileStore?
+    /// Whether the map stands up — SwiftUI MapKit's elevation, part of a
+    /// map's style: realistic, every type raises its buildings and stands
+    /// on the offer's terrain where it has one.
+    public var elevation = MapElevation.flat {
+        didSet { prepareStores() }
+    }
 
     /// Which source each store was given, by the option's id and whether
     /// it is the hybrid one, so choosing it again keeps its tiles.
@@ -259,8 +266,17 @@ public final class MapTypeModel {
         prepareStores()
     }
 
-    /// What the map draws for the type shown.
+    /// What the map draws for the type shown, at its ``elevation``.
     public var layers: MapLayers {
+        var layers = typeLayers
+        if elevation == .realistic {
+            layers.elevation = .realistic
+            if layers.terrain == nil { layers.terrain = terrainStore }
+        }
+        return layers
+    }
+
+    private var typeLayers: MapLayers {
         switch mapType {
         case .explore:
             return .explore
@@ -286,7 +302,9 @@ public final class MapTypeModel {
             let key = "\(imagery.id)\(usesHybrid ? "-hybrid" : "")"
             imageryStore = store(imageryStore, key: key, current: &imageryKey, source: source)
         case .terrain:
-            guard let terrain = offer.terrain else { return }
+            break
+        }
+        if mapType == .terrain || elevation == .realistic, let terrain = offer.terrain {
             terrainStore = store(terrainStore, key: terrain.id, current: &terrainKey, source: terrain.source)
         }
     }

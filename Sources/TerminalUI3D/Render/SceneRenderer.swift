@@ -120,6 +120,18 @@ package final class SceneRenderer {
         placeLabels(scene.labels, columns: columns, rows: rows, theme: theme, into: context)
     }
 
+    /// How far from the eye, along the view, the nearest surface the last
+    /// frame drew at a sample lies — braille dots, two across a cell and
+    /// four down — or nil where none covers it. What a caller drawing over
+    /// the scene tests its own points against: TerminalUIMaps hides a road
+    /// behind a hill so.
+    package func depth(atSampleX x: Int, y: Int) -> Double? {
+        guard x >= 0, y >= 0, x < rasterizer.width, y < rasterizer.height else { return nil }
+        let index = y * rasterizer.width + x
+        guard rasterizer.material.pointer[index] != SceneRasterizer.uncovered else { return nil }
+        return Double(rasterizer.depth.pointer[index])
+    }
+
     /// Where `point` in the scene fell on the last frame drawn, in cells
     /// from the canvas's top-left corner, and how far in front of the camera
     /// it is — or nil when it is behind the camera or no frame has been

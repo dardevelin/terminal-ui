@@ -105,6 +105,9 @@ final class BuildingTile {
         /// Built the first time the view reaches the chunk; nil when it
         /// raises nothing.
         var mesh: Mesh??
+        /// The ground the mesh was built standing on: the terrain's tiles
+        /// it read, 0 on a plane.
+        var ground = 0
     }
 
     /// The grid's cells along each side of a tile.
@@ -147,15 +150,20 @@ final class BuildingTile {
 
     /// Chunk `index`'s buildings in the tile's unit square — x and z across
     /// it, y up in the same unit — walls in material 0 and roofs in
-    /// material 1, built now if they were not before.
-    func mesh(ofChunk index: Int) -> Mesh? {
-        if let built = chunks[index].mesh { return built }
+    /// material 1, built now if they were not before, or not on this
+    /// ground. Each stands on the ground under its outline's first point:
+    /// `groundMetres` gives its height above sea level from a point of the
+    /// unit square, and `ground` names the terrain it reads.
+    func mesh(ofChunk index: Int, ground: Int = 0,
+              groundMetres: (Double, Double) -> Double = { _, _ in 0 }) -> Mesh? {
+        if let built = chunks[index].mesh, chunks[index].ground == ground { return built }
         var positions: [Vector3] = [], normals: [Vector3] = [], triangles: [Mesh.Triangle] = []
         for (feature, rings) in chunks[index].polygons {
             guard let extrusion = geometry.extrusions[feature] else { continue }
-            let mesh = Mesh.extrusion(of: BuildingScene.polygon(rings: rings, in: geometry),
-                                      height: (extrusion.top - extrusion.base) / metresPerUnit,
-                                      base: extrusion.base / metresPerUnit, material: 0, roofMaterial: 1)
+            let polygon = BuildingScene.polygon(rings: rings, in: geometry)
+            let foot = polygon.outer.first.map { groundMetres($0.x, $0.y) } ?? 0
+            let mesh = Mesh.extrusion(of: polygon, height: (extrusion.top - extrusion.base) / metresPerUnit,
+                                      base: (foot + extrusion.base) / metresPerUnit, material: 0, roofMaterial: 1)
             let offset = positions.count
             positions += mesh.positions
             normals += mesh.normals
@@ -166,6 +174,7 @@ final class BuildingTile {
         }
         let mesh = triangles.isEmpty ? nil : Mesh(positions: positions, normals: normals, triangles: triangles)
         chunks[index].mesh = .some(mesh)
+        chunks[index].ground = ground
         return mesh
     }
 }
@@ -178,9 +187,20 @@ extension MapRenderer {
     /// its buildings waiting for the tile they belong to.
     func drawBuildings(_ items: [Item], camera: MapCamera, projection: Projection, size: CanvasSize,
                        context: GraphicsContext, theme: any Theme) {
+        var scene = Scene3D(camera: BuildingScene.camera(for: camera, viewport: projection.viewport))
+        addBuildings(items, to: &scene, projection: projection, theme: theme)
+        guard !scene.models.isEmpty else { return }
+        buildingRenderer.draw(scene, in: context, size: size, shading: .image(), framing: .camera)
+    }
+
+    /// The buildings of `items` added to `scene`, each standing on the
+    /// projection's ground: the terrain's where it has a drape.
+    func addBuildings(_ items: [Item], to scene: inout Scene3D, projection: Projection, theme: any Theme) {
         let viewport = projection.viewport
-        var scene = Scene3D(camera: BuildingScene.camera(for: camera, viewport: viewport))
         let materials = [Material(theme.foregroundMuted), Material(theme.foregroundSubtle)]
+        let field = projection.drape?.projection.field ?? .flat
+        // Heights are kept above sea level and shown above the reference.
+        let lift = -field.reference * field.dotsPerMetre
         var used: Set<TileID> = []
         for item in items where item.standsIn == nil {
             // Judged where the view shows the tile nearest: a tile's
@@ -200,8 +220,9 @@ extension MapRenderer {
                 guard let made else { continue }
                 buildings = made
             }
-            let corner = BuildingScene.scenePoint(x: item.originX, y: item.originY, height: 0, in: viewport)
+            let corner = BuildingScene.scenePoint(x: item.originX, y: item.originY, height: lift, in: viewport)
             let transform = Matrix4.translation(corner) * .scale(item.side)
+            let originX = item.originX, originY = item.originY, side = item.side
             for index in buildings.chunks.indices {
                 let chunk = buildings.chunks[index]
                 let box = CanvasRect(x: item.originX + chunk.minimumX * item.side,
@@ -211,15 +232,15 @@ extension MapRenderer {
                 // Raised only where the ground is drawn close enough: the
                 // far part of a pitched view lies flat, as MapKit's does.
                 guard projection.nearestZoom(of: box) >= BuildingScene.minimumZoom,
-                      let mesh = buildings.mesh(ofChunk: index) else { continue }
+                      let mesh = buildings.mesh(ofChunk: index, ground: field.signature, groundMetres: { unitX, unitY in
+                          field.metres(x: originX + unitX * side, y: originY + unitY * side) ?? field.reference
+                      }) else { continue }
                 scene.add(mesh, transform: transform, materials: materials)
             }
         }
         if buildingTiles.count > Self.buildingTileLimit {
             buildingTiles = buildingTiles.filter { used.contains($0.key) }
         }
-        guard !scene.models.isEmpty else { return }
-        buildingRenderer.draw(scene, in: context, size: size, shading: .image(), framing: .camera)
     }
 
     /// How many tiles' buildings are kept between frames: a view's worth

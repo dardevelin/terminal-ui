@@ -140,8 +140,8 @@ struct LocationPanel: TerminalView {
             Toggle("Tilted view  (Shift ↑↓)", isOn: Binding(
                 get: { maps.camera.pitch > 0 },
                 set: { _ in MainActor.assumeIsolated { maps.toggleTilt() } }))
-            Toggle("3D buildings  (3 for both)", isOn: Binding(
-                get: { maps.showsBuildings },
+            Toggle("3D buildings and ground  (3 for both)", isOn: Binding(
+                get: { MainActor.assumeIsolated { maps.showsBuildings } },
                 set: { _ in MainActor.assumeIsolated { maps.toggleBuildings() } }))
             Toggle("Compass  (C)", isOn: Binding(
                 get: { trip.showsCompass },
