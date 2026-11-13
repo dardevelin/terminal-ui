@@ -130,10 +130,25 @@ final class MapRenderer {
         let theme = context.environment.theme
         var dots = context
         dots.scaleBy(x: 1 / Double(BrailleCell.dotColumns), y: 1 / Double(BrailleCell.dotRows))
-        let projection = Projection(camera: camera, viewport: viewport)
+        // On a realistic map with terrain, the ground is a surface: the
+        // field lifts every point, and the scene drawn of the ground and
+        // the buildings hides what stands behind a hill.
+        let field = elevationField(layers, camera: camera, viewport: viewport, dots: dots)
+        let drape = field.isFlat ? nil
+            : TerrainDrape(projection: TerrainProjection(camera: camera, viewport: viewport, field: field),
+                           scene: buildingRenderer)
+        let projection = Projection(camera: camera, viewport: viewport, drape: drape)
 
         let items = layers.basemap == .hidden ? [] : plan(camera: camera, viewport: viewport, zoomRange: zoomRange,
                                                           projection: projection, dots: dots, lookup: lookup)
+        if drape != nil {
+            drawTerrainScene(items, camera: camera, projection: projection, size: size, context: context, theme: theme)
+            drawShapes(items, geometry: .line, zoom: camera.zoom, projection: projection, theme: theme)
+            drawPolylines(content, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
+            drawLabels(items, content: content, camera: camera, projection: projection, size: size,
+                       context: context, theme: theme, background: layers.labelBackground(in: theme))
+            return
+        }
         drawGround(layers, camera: camera, viewport: viewport, projection: projection, dots: dots, theme: theme)
         if layers.basemap == .full {
             drawShapes(items, geometry: .area, zoom: camera.zoom, projection: projection, theme: theme)
@@ -194,22 +209,33 @@ final class MapRenderer {
         /// shows where it was cut.
         static let footprintMargin = 8.0
 
-        init(camera: MapCamera, viewport: DotSize) {
+        /// On a realistic map with terrain, the ground's heights and the
+        /// scene drawn of them: points are lifted onto the ground, and one
+        /// a hill or a building hides is not drawn. Nil on a plane.
+        let drape: TerrainDrape?
+
+        init(camera: MapCamera, viewport: DotSize, drape: TerrainDrape? = nil) {
             centre = WebMercator.project(camera.center)
             dotsPerWorld = camera.dotsPerWorld
             self.viewport = viewport
             ground = camera.groundProjection(in: viewport)
             zoom = camera.zoom
-            footprint = ground.isFlat ? nil : ground.footprint(of: viewport, margin: Self.footprintMargin)
+            self.drape = drape
+            // Over terrain a line is cut to the view and stepped along, so it
+            // follows the ground between its points, pitched or not.
+            footprint = ground.isFlat && drape == nil
+                ? nil : ground.footprint(of: viewport, margin: Self.footprintMargin)
         }
 
         /// North up and flat: a point of the map is the point of the screen.
-        var isAxisAligned: Bool { ground.isAxisAligned }
+        var isAxisAligned: Bool { ground.isAxisAligned && drape == nil }
 
         /// A north-up point of the map where the camera puts it on screen,
-        /// or nil behind a pitched camera's eye.
+        /// or nil behind a pitched camera's eye — and over terrain, lifted
+        /// to the ground's height, nil where a hill or a building hides it.
         func toScreen(x: Double, y: Double) -> (x: Double, y: Double)? {
-            ground.toScreen(x: x, y: y)
+            guard let drape else { return ground.toScreen(x: x, y: y) }
+            return drape.visiblePoint(x: x, y: y)
         }
 
         /// The zoom a north-up point of the map is drawn at: the camera's
@@ -239,9 +265,10 @@ final class MapRenderer {
             nearestZoom(of: CanvasRect(x: item.originX, y: item.originY, width: item.side, height: item.side))
         }
 
-        /// A screen point back where it lies on the north-up map.
+        /// A screen point back where it lies on the north-up map: over
+        /// terrain, the ground the view meets first there.
         func toGround(x: Double, y: Double) -> (x: Double, y: Double) {
-            ground.toGround(x: x, y: y)
+            drape?.projection.toGround(x: x, y: y) ?? ground.toGround(x: x, y: y)
         }
 
         /// The north-up box whose points can reach the screen: the
@@ -273,10 +300,38 @@ final class MapRenderer {
         }
 
         /// A north-up line on screen: whole when flat, and pitched, the
-        /// runs of it the view's ground holds.
+        /// runs of it the view's ground holds. Over terrain each run is
+        /// stepped along a few dots at a time, so it follows the ground
+        /// between its points, and broken where the ground hides it.
         func screenRuns(of line: [CanvasPoint]) -> [[CanvasPoint]] {
             guard let footprint else { return [line.compactMap(screenPoint)] }
-            return footprint.runs(of: line).map { $0.compactMap(screenPoint) }
+            let runs = footprint.runs(of: line)
+            guard drape != nil else { return runs.map { $0.compactMap(screenPoint) } }
+            var visible: [[CanvasPoint]] = []
+            for run in runs {
+                var current: [CanvasPoint] = []
+                func take(_ point: CanvasPoint) {
+                    if let shown = screenPoint(point) {
+                        current.append(shown)
+                    } else if !current.isEmpty {
+                        if current.count >= 2 { visible.append(current) }
+                        current = []
+                    }
+                }
+                guard let first = run.first else { continue }
+                take(first)
+                for (start, end) in zip(run, run.dropFirst()) {
+                    let length = ((end.x - start.x) * (end.x - start.x) + (end.y - start.y) * (end.y - start.y))
+                        .squareRoot()
+                    let steps = max(1, Int((length / TerrainDrape.step).rounded(.up)))
+                    for step in 1...steps {
+                        let share = Double(step) / Double(steps)
+                        take(CanvasPoint(x: start.x + (end.x - start.x) * share, y: start.y + (end.y - start.y) * share))
+                    }
+                }
+                if current.count >= 2 { visible.append(current) }
+            }
+            return visible
         }
 
         /// A tile's square, in dots: its top-left corner and its side. A

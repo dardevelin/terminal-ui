@@ -95,6 +95,13 @@ drawn in light and shade with TerminalUI3D. They rise where the ground is
 drawn at zoom 16 or closer; further out they lie flat, where a house would
 be a dot or two.
 
+Give the layers a terrain store as well, and the ground itself stands up:
+hills rise and valleys sink, shaded by a sun from the north-west, with the
+roads and names following them and hidden behind a ridge. A
+``MapTypeModel`` does both at once: set its ``MapTypeModel/elevation`` to
+``MapElevation/realistic`` and every map type it draws stands on the
+offer's terrain.
+
 ```swift
 var layers = MapLayers.explore
 layers.elevation = .realistic

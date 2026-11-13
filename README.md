@@ -291,7 +291,8 @@ the [backends article](https://dardevelin.github.io/terminal-ui/documentation/te
 The camera tilts, as MapKit's does: `camera.pitch = 45` tips the ground away
 with the far streets drawn from coarser tiles, and a realistic map —
 `MapLayers.elevation = .realistic` — stands every building up to the height
-its tiles give, drawn in light and shade by
+its tiles give and, with a terrain layer, the ground itself, its hills
+shaded and its roads following them, drawn in light and shade by
 [`TerminalUI3D`](https://dardevelin.github.io/terminal-ui/documentation/terminalui3d/). In the example, `3` is the 3D view,
 browsing or navigating.
 

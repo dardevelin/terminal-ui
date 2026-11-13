@@ -59,8 +59,13 @@ final class MapsModel {
     let launchLocation: LocationSpec?
     var panel: Panel?
     var isDark = true
-    /// Whether the map stands its buildings up (``MapElevation/realistic``).
-    var showsBuildings = false
+    /// Whether the map stands up — its buildings, and the sample town's
+    /// hills — as the map types' elevation says.
+    @MainActor
+    var showsBuildings: Bool {
+        get { mapTypes.elevation == .realistic }
+        set { mapTypes.elevation = newValue ? .realistic : .flat }
+    }
     /// A line for the status bar about the last thing that went wrong or
     /// changed.
     var notice: String?
@@ -198,7 +203,7 @@ final class MapsModel {
     @MainActor
     func toggleBuildings() {
         showsBuildings.toggle()
-        notice = showsBuildings ? "3D buildings" : "flat buildings"
+        notice = showsBuildings ? "3D buildings and ground" : "flat map"
     }
 
     /// A key that reached the app with the map focused.

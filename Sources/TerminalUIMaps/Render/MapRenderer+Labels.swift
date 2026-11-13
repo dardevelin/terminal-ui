@@ -117,8 +117,13 @@ extension MapRenderer {
         func cell(_ x: Double, _ y: Double) -> CanvasPoint { CanvasPoint(x: x / cellWidth, y: y / cellHeight) }
         var travellers: [(cell: CanvasPoint, glyph: String)] = []
         for case .traveller(let traveller) in content.map(\.kind) {
-            guard let point = camera.screenPoint(for: traveller.coordinate, in: viewport),
-                  onScreen(point.x, point.y) else { continue }
+            // Through the frame's projection, not the camera's: over terrain
+            // it stands on the ground, and a hill hides it.
+            let northUp = camera.northUpPoint(for: traveller.coordinate, in: viewport)
+            guard case let (x, y)? = projection.toScreen(x: northUp.x, y: northUp.y), onScreen(x, y) else {
+                continue
+            }
+            let point = (x: x, y: y)
             let cell = CanvasPoint(x: (point.x / cellWidth).rounded(.down), y: (point.y / cellHeight).rounded(.down))
             travellers.append((cell, TravellerMarker.glyph(course: traveller.course, bearing: camera.bearing)))
             requests.append(LabelRequest(text: " ", anchor: CanvasPoint(x: cell.x + Self.cellMiddle,
@@ -128,8 +133,11 @@ extension MapRenderer {
         }
         var markerCells: [CanvasPoint] = []
         for case .marker(let marker) in content.map(\.kind) {
-            guard let point = camera.screenPoint(for: marker.coordinate, in: viewport),
-                  onScreen(point.x, point.y) else { continue }
+            let northUp = camera.northUpPoint(for: marker.coordinate, in: viewport)
+            guard case let (x, y)? = projection.toScreen(x: northUp.x, y: northUp.y), onScreen(x, y) else {
+                continue
+            }
+            let point = (x: x, y: y)
             let anchor = cell(point.x, point.y)
             markerCells.append(anchor)
             requests.append(LabelRequest(text: marker.title, anchor: anchor, rank: Self.markerRank,

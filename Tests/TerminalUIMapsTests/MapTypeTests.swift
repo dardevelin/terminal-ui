@@ -37,6 +37,26 @@ struct MapTypeModelTests {
         #expect(model.layers.basemap == .full)
     }
 
+    @Test func aRealisticElevationStandsEveryTypeOnTheOfferedGround() throws {
+        // MapKit's elevation is part of the style: realistic, every map type
+        // raises its buildings and stands on the backend's terrain.
+        let model = MapTypeModel(offer: MapTypeOffer(imagery: [imagery], terrain: terrain, basemapIsVector: true))
+        #expect(model.layers.elevation == .flat && model.layers.terrain == nil)
+        model.elevation = .realistic
+        let explore = model.layers
+        #expect(explore.elevation == .realistic)
+        #expect(explore.terrain != nil, "the Explore map stands on the terrain's heights")
+        model.select(.satellite)
+        #expect(model.layers.elevation == .realistic && model.layers.terrain === explore.terrain,
+                "every type stands on the one terrain store")
+        model.elevation = .flat
+        #expect(model.layers.terrain == nil && model.layers.elevation == .flat)
+        let bare = MapTypeModel(offer: MapTypeOffer(imagery: [imagery], terrain: nil, basemapIsVector: true))
+        bare.elevation = .realistic
+        #expect(bare.layers.elevation == .realistic && bare.layers.terrain == nil,
+                "without terrain, buildings still stand, on a plane")
+    }
+
     @Test func aPictureBasemapCannotHaveRoadsDrawnOverImagery() {
         let model = MapTypeModel(offer: MapTypeOffer(imagery: [imagery], terrain: nil, basemapIsVector: false))
         let hybrid = model.option(for: .hybrid)
