@@ -6,6 +6,13 @@ All notable changes to TerminalUI are documented here. Format based on
 
 ## [Unreleased]
 
+## [2.8.0] — 2026-11-13 — Buildings stand up
+
+A minor release over 2.7.0: an app written for 2.7 compiles unchanged.
+A realistic map stands its buildings up from their footprints, drawn in
+light and shade through TerminalUI3D — the second step of the 3D map,
+after the tilted camera and before the terrain.
+
 ### Added
 
 - **Buildings stand up on a realistic map.** `MapLayers.elevation`, as
