@@ -377,11 +377,11 @@ public final class TerminalRuntime<RootView: TerminalView> {
     /// before each event drain, so injected keystrokes land in the frame they
     /// arrive in, and whenever its socket wakes an idle loop.
     private var remoteControl: RemoteControlServer?
-    /// Whether this run may write diagnostics: false when its `/tmp` data
-    /// dir is not its owner's alone (see `DiagPaths.prepareDataDirectories`),
-    /// and then nothing — trace, screenshots, captures, warnings, socket —
-    /// goes there.
-    private var diagnosticsAreWritable = true
+    /// Whether this run may write diagnostics: false before it starts, and
+    /// when its `/tmp` data dir is not its owner's alone (see
+    /// `DiagPaths.prepareDataDirectories`); then nothing — trace,
+    /// screenshots, captures, warnings, socket — goes there.
+    private var diagnosticsAreWritable = false
     /// Keeps the frames this runtime draws in a `.tuirec` log while a
     /// recording is open: from launch with `[record] enabled`, or from a
     /// control client's `record_start`.
@@ -440,7 +440,17 @@ public final class TerminalRuntime<RootView: TerminalView> {
         }
         self.tracer = DevTracer.shared
         self.size = Terminal.size()
+        self.devTrace = devTrace
+    }
 
+    /// The trace the app asked for at init, configured as its run starts.
+    private let devTrace: DevTraceConfig?
+
+    /// The run's diagnostics: its `/tmp` data dir made, and the trace
+    /// configured into it. Done as the run starts, not as the runtime is
+    /// made, so the dir lives exactly as long as the run — a runtime never
+    /// run makes none, and one whose start fails removes it again.
+    private func prepareDiagnostics() {
         #if DEBUG
         let fileConfig = DiagPaths.loadConfig()
         diagnosticsAreWritable = DiagPaths.prepareDataDirectories(config: fileConfig)
@@ -490,7 +500,13 @@ public final class TerminalRuntime<RootView: TerminalView> {
         // default @main shim — can decide whether to abort or fall back.
         // Aborting before alternate-screen entry keeps the terminal
         // state pristine for the failure message.
+        prepareDiagnostics()
         guard Terminal.enableRawMode() else {
+            #if DEBUG
+            // The teardown that removes the data dir is not installed yet.
+            if diagnosticsAreWritable { DiagPaths.cleanupOwnDir() }
+            diagnosticsAreWritable = false
+            #endif
             throw TerminalRuntimeError.rawModeUnavailable
         }
         Terminal.enterAlternateScreen()
