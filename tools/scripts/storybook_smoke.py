@@ -3316,31 +3316,49 @@ def maps_demo_replay_navigates_to_arrival(app: Client) -> None:
     assert_true("replay millbrook-drive.gpx" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
 
 
+def _maps_settled(app: Client) -> list[str]:
+    """The map's rows once what it loads has landed: nothing loading, and
+    the same frame twice running. Tiles land in their own time — the 3D
+    view's terrain after the key that asks for it — so a frame read at once
+    can be one drawn before them, and on a slow runner it was."""
+    last: list[Optional[list[str]]] = [None]
+
+    def settled(client: Client) -> bool:
+        rows = client.cells().rows
+        status = rows[-1]
+        same = rows == last[0]
+        last[0] = rows
+        return same and "loading" not in status and "connecting" not in status
+
+    assert_true(app.wait_until(settled, timeout=30.0), "the map never settled")
+    return (last[0] or [])[:-2]
+
+
 def maps_3d_view_tips_the_map_and_back(app: Client) -> None:
     """`3` turns the 3D view on, live: the town is redrawn at an angle with
-    its buildings standing, and the status bar says so; Shift-↑ tips it
-    further, Shift-↓ back; `3` again looks straight down at a flat map, and
-    the town is drawn as it was."""
-    def map_rows(client: Client) -> list[str]:
-        return client.cells().rows[:-2]
-    def braille(client: Client) -> int:
-        return sum(ord(ch) in BRAILLE for row in map_rows(client) for ch in row)
+    its buildings and its ground standing, and the status bar says so;
+    Shift-↑ tips it further, Shift-↓ back; `3` again looks straight down at
+    a flat map, and the town is drawn as it was. Each frame is compared once
+    its tiles have landed: the terrain arrives after `3` asks for it."""
+    def braille(rows: list[str]) -> int:
+        return sum(ord(ch) in BRAILLE for row in rows for ch in row)
 
-    assert_true(app.wait_until(lambda c: braille(c) > 100), "the town's streets should be drawn in braille")
-    flat = map_rows(app)
+    assert_true(app.wait_until(lambda c: braille(c.cells().rows[:-2]) > 100),
+                "the town's streets should be drawn in braille")
+    flat = _maps_settled(app)
     app.send_key("3")
     assert_true("3D view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
-    tilted = map_rows(app)
+    tilted = _maps_settled(app)
     assert_true(tilted != flat, "the tilted town is drawn differently")
-    assert_true(braille(app) > 100, "and its streets are still drawn")
+    assert_true(braille(tilted) > 100, "and its streets are still drawn")
     app.send_key("up", "shift")
-    steeper = map_rows(app)
+    steeper = _maps_settled(app)
     assert_true(steeper != tilted, "Shift-up tips it further")
     app.send_key("down", "shift")
-    assert_true(map_rows(app) == tilted, "Shift-down tips it back")
+    assert_true(_maps_settled(app) == tilted, "Shift-down tips it back")
     app.send_key("3")
     assert_true("flat view" in _maps_status(app), f"status bar: {_maps_status(app)!r}")
-    assert_true(map_rows(app) == flat, "straight down again, the town is drawn as it was")
+    assert_true(_maps_settled(app) == flat, "straight down again, the town is drawn as it was")
 
 
 def maps_map_types_change_the_map(app: Client) -> None:
