@@ -34,7 +34,7 @@ let package = Package(
     name: "YourApp",
     platforms: [.macOS(.v15)],
     dependencies: [
-        .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.8.0"),
+        .package(url: "https://github.com/dardevelin/terminal-ui", from: "2.9.0"),
     ],
     targets: [
         .executableTarget(
